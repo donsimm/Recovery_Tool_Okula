@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+import os
 import threading
 import time
 from pathlib import Path
@@ -14,7 +15,7 @@ gi.require_version("GdkPixbuf", "2.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GdkPixbuf, GLib, GObject, Gtk, Pango  # noqa: E402
 
-from okula_recovery import __version__, config, discovery, nas, network  # noqa: E402
+from okula_recovery import __version__, config, discovery, nas, nasfiles, network  # noqa: E402
 from okula_recovery.image_dialog import ImageDialog  # noqa: E402
 from okula_recovery.stick_dialog import StickDialog  # noqa: E402
 
@@ -53,6 +54,14 @@ def svg_pixbuf(path: Path, height: int, color: str | None = None) -> GdkPixbuf.P
 
 def rgba_hex(c: Gdk.RGBA) -> str:
     return "#{:02x}{:02x}{:02x}".format(*(round(v * 255) for v in (c.red, c.green, c.blue)))
+
+
+def confirm_error(parent: Gtk.Window, text: str) -> None:
+    dlg = Gtk.MessageDialog(transient_for=parent, modal=True, message_type=Gtk.MessageType.ERROR,
+                            buttons=Gtk.ButtonsType.CLOSE, text="Aktion fehlgeschlagen")
+    dlg.format_secondary_text(text)
+    dlg.run()
+    dlg.destroy()
 
 
 def run_async(work, done):
@@ -96,6 +105,35 @@ def scrolled(child: Gtk.Widget) -> Gtk.ScrolledWindow:
     return sw
 
 
+def confirm(parent: Gtk.Window, title: str, text: str, ok_label: str = "Löschen") -> bool:
+    dlg = Gtk.MessageDialog(transient_for=parent, modal=True, message_type=Gtk.MessageType.WARNING,
+                            buttons=Gtk.ButtonsType.NONE, text=title)
+    dlg.format_secondary_text(text)
+    dlg.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
+    btn = dlg.add_button(ok_label, Gtk.ResponseType.OK)
+    btn.get_style_context().add_class("destructive-action")
+    dlg.set_default_response(Gtk.ResponseType.CANCEL)
+    ok = dlg.run() == Gtk.ResponseType.OK
+    dlg.destroy()
+    return ok
+
+
+def ask_text(parent: Gtk.Window, title: str, label: str, initial: str = "") -> str | None:
+    dlg = Gtk.Dialog(title=title, transient_for=parent, modal=True)
+    dlg.add_buttons("Abbrechen", Gtk.ResponseType.CANCEL, "OK", Gtk.ResponseType.OK)
+    dlg.set_default_response(Gtk.ResponseType.OK)
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=12)
+    box.pack_start(Gtk.Label(label=label, xalign=0), False, False, 0)
+    entry = Gtk.Entry(text=initial, activates_default=True, width_chars=40)
+    box.pack_start(entry, False, False, 0)
+    dlg.get_content_area().add(box)
+    dlg.show_all()
+    entry.grab_focus()
+    text = entry.get_text() if dlg.run() == Gtk.ResponseType.OK else None
+    dlg.destroy()
+    return text
+
+
 def pane_title(text: str) -> Gtk.Label:
     lbl = Gtk.Label(label=text, xalign=0)
     lbl.get_style_context().add_class("pane-title")
@@ -106,6 +144,10 @@ class MainWindow(Gtk.ApplicationWindow):
     def __init__(self, app: Gtk.Application):
         super().__init__(application=app, title="Okula Recovery Tool")
         self.set_default_size(1280, 760)
+        self.maximize()  # Arbeitsplatz-Tool: ganzer Bildschirm, F11 = Vollbild ohne Titelleiste
+        self._fullscreen = False
+        self.connect("key-press-event", self._on_key)
+        self.connect("window-state-event", self._on_window_state)
         self.cfg = config.load()
         self.agents: dict[str, discovery.AgentInfo] = {}  # IP → letzte Meldung
         self._auto_mount_tried = False
@@ -214,25 +256,218 @@ class MainWindow(Gtk.ApplicationWindow):
         checks.get_selection().set_mode(Gtk.SelectionMode.NONE)
         sw = scrolled(checks)
         sw.set_vexpand(False)
-        sw.set_min_content_height(150)
-        box.pack_start(sw, False, False, 0)
+        sw.set_min_content_height(140)
+        # Bei Erfolg zugeklappt, damit die Dateiliste Platz hat; bei Fehlern offen
+        self.check_expander = Gtk.Expander(label="Prüfdetails", expanded=True)
+        self.check_expander.add(sw)
+        box.pack_start(self.check_expander, False, False, 0)
 
-        img_head = Gtk.Box(spacing=6)
-        img_head.pack_start(pane_title("Gespeicherte Images"), True, True, 0)
-        self.img_count = Gtk.Label(label="")
-        img_head.pack_start(self.img_count, False, False, 0)
+        # Reiter: Images (Übersicht) und Dateien (Dateiverwaltung des NAS)
+        self.nas_tabs = Gtk.Notebook()
+        self.nas_tabs.append_page(self._build_images_tab(), Gtk.Label(label="Images"))
+        self.nas_tabs.append_page(self._build_files_tab(), Gtk.Label(label="Dateien"))
+        self.nas_tabs.connect("switch-page", lambda _n, _p, num: num == 1 and self.refresh_files())
+        box.pack_start(self.nas_tabs, True, True, 4)
+        return box
+
+    def _build_images_tab(self) -> Gtk.Widget:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=6)
+        head = Gtk.Box(spacing=6)
+        self.img_count = Gtk.Label(label="", xalign=0)
+        head.pack_start(self.img_count, True, True, 0)
+        self.btn_img_delete = Gtk.Button(label="Löschen", sensitive=False)
+        self.btn_img_delete.set_tooltip_text("Gewähltes Image vom NAS löschen")
+        self.btn_img_delete.connect("clicked", self.on_delete_image)
+        head.pack_start(self.btn_img_delete, False, False, 0)
         btn_refresh = Gtk.Button.new_from_icon_name("view-refresh-symbolic", Gtk.IconSize.BUTTON)
         btn_refresh.set_tooltip_text("Image-Liste neu laden")
         btn_refresh.connect("clicked", lambda _b: self.refresh_images())
-        img_head.pack_start(btn_refresh, False, False, 0)
-        box.pack_start(img_head, False, False, 4)
+        head.pack_start(btn_refresh, False, False, 0)
+        box.pack_start(head, False, False, 0)
 
         # Name, Typ, Grösse (Text), Datum (Text), Grösse (Byte, für Sortierung), Pfad
         self.image_store = Gtk.ListStore(str, str, str, str, str, GObject.TYPE_INT64, str)
         self.image_view = make_tree([("Name", 1), ("Typ", 2), ("Grösse", 3), ("Datum", 4)], self.image_store)
         self.image_view.get_column(2).set_sort_column_id(5)
+        self.image_view.get_selection().connect(
+            "changed", lambda sel: self.btn_img_delete.set_sensitive(sel.get_selected()[1] is not None))
         box.pack_start(scrolled(self.image_view), True, True, 0)
         return box
+
+    def _build_files_tab(self) -> Gtk.Widget:
+        self.files_rel = ""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=6)
+        bar = Gtk.Box(spacing=6)
+        self.btn_up = Gtk.Button.new_from_icon_name("go-up-symbolic", Gtk.IconSize.BUTTON)
+        self.btn_up.set_tooltip_text("Übergeordneter Ordner")
+        self.btn_up.connect("clicked", lambda _b: self.open_folder(nasfiles.parent(self.files_rel)))
+        bar.pack_start(self.btn_up, False, False, 0)
+        self.files_path = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.START, selectable=True)
+        bar.pack_start(self.files_path, True, True, 0)
+        buttons = (("folder-new-symbolic", "Neuer Ordner", self.on_new_folder),
+                   ("document-edit-symbolic", "Umbenennen", self.on_rename),
+                   ("user-trash-symbolic", "Löschen", self.on_delete_files),
+                   ("view-refresh-symbolic", "Aktualisieren", lambda _b: self.refresh_files()))
+        self.file_buttons = {}
+        for icon, tip, handler in buttons:
+            b = Gtk.Button.new_from_icon_name(icon, Gtk.IconSize.BUTTON)
+            b.set_tooltip_text(tip)
+            b.connect("clicked", handler)
+            bar.pack_start(b, False, False, 0)
+            self.file_buttons[tip] = b
+        box.pack_start(bar, False, False, 0)
+
+        # icon, Name, Grösse (Text), Geändert, Ordner?, Grösse (Byte)
+        self.file_store = Gtk.ListStore(str, str, str, str, bool, GObject.TYPE_INT64)
+        self.file_view = make_tree([("", -1), ("Name", 1), ("Grösse", 2), ("Geändert", 3)], self.file_store)
+        self.file_view.get_column(2).set_sort_column_id(5)
+        self.file_view.get_selection().set_mode(Gtk.SelectionMode.MULTIPLE)
+        self.file_view.get_selection().connect("changed", lambda _s: self._update_file_buttons())
+        self.file_view.connect("row-activated", self._on_file_activated)
+        self.file_view.connect("key-press-event", self._on_file_key)
+        box.pack_start(scrolled(self.file_view), True, True, 0)
+        self._update_file_buttons()
+        return box
+
+    # ---------- Fenster ----------
+
+    def _on_window_state(self, _w, event) -> None:
+        self._fullscreen = bool(event.new_window_state & Gdk.WindowState.FULLSCREEN)
+
+    def _on_key(self, _w, event) -> bool:
+        if event.keyval == Gdk.KEY_F11:
+            self.unfullscreen() if self._fullscreen else self.fullscreen()
+            return True
+        return False
+
+    # ---------- Dateiverwaltung NAS ----------
+
+    def _nas_root(self) -> str | None:
+        mp = self._nas_cfg_from_form().mount_point
+        return mp if os.path.ismount(mp) else None
+
+    def _selected_files(self) -> list[str]:
+        model, paths = self.file_view.get_selection().get_selected_rows()
+        return [model[p][1] for p in paths]
+
+    def _update_file_buttons(self) -> None:
+        n = len(self._selected_files()) if hasattr(self, "file_view") else 0
+        root_ok = self._nas_root() is not None if hasattr(self, "nas_mount") else False
+        self.file_buttons["Neuer Ordner"].set_sensitive(root_ok)
+        self.file_buttons["Umbenennen"].set_sensitive(root_ok and n == 1)
+        self.file_buttons["Löschen"].set_sensitive(root_ok and n > 0)
+        self.btn_up.set_sensitive(bool(self.files_rel))
+
+    def refresh_files(self) -> None:
+        self.open_folder(self.files_rel)
+
+    def open_folder(self, rel: str) -> None:
+        root = self._nas_root()
+        self.file_store.clear()
+        if root is None:
+            self.files_path.set_text("NAS nicht eingehängt")
+            self._update_file_buttons()
+            return
+        run_async(lambda: nasfiles.list_dir(root, rel), lambda r: self._on_folder(root, rel, r))
+
+    def _on_folder(self, root: str, rel: str, result) -> None:
+        if isinstance(result, Exception):
+            self.status(f"Ordner nicht lesbar: {result}")
+            if rel:
+                self.open_folder(nasfiles.parent(rel))
+            return
+        self.files_rel = rel
+        self.files_path.set_text(f"NAS: /{rel}")
+        self.files_path.set_tooltip_text(f"{root}/{rel}" if rel else root)
+        self.file_store.clear()
+        for e in result:
+            icon = "folder-symbolic" if e.is_dir else "emblem-symbolic-link-symbolic" if e.is_link \
+                else "text-x-generic-symbolic"
+            self.file_store.append([icon, e.name, "" if e.is_dir else nas.format_size(e.size),
+                                    e.mtime.strftime("%d.%m.%Y %H:%M"), e.is_dir, e.size])
+        self._update_file_buttons()
+
+    def _on_file_activated(self, view, path, _col) -> None:
+        row = view.get_model()[path]
+        if row[4]:
+            self.open_folder(nasfiles.join(self.files_rel, row[1]))
+
+    def _on_file_key(self, _view, event) -> bool:
+        if event.keyval == Gdk.KEY_Delete:
+            self.on_delete_files(None)
+            return True
+        if event.keyval == Gdk.KEY_F2:
+            self.on_rename(None)
+            return True
+        if event.keyval == Gdk.KEY_BackSpace and self.files_rel:
+            self.open_folder(nasfiles.parent(self.files_rel))
+            return True
+        return False
+
+    def _file_op(self, op, done_msg: str) -> None:
+        def finished(result) -> None:
+            if isinstance(result, Exception):
+                self.status(f"Fehler: {result}")
+                confirm_error(self, str(result))
+            else:
+                self.status(done_msg)
+            self.refresh_files()
+            self.refresh_images()
+        run_async(op, finished)
+
+    def on_new_folder(self, _btn) -> None:
+        root = self._nas_root()
+        name = root and ask_text(self, "Neuer Ordner", "Name des neuen Ordners:")
+        if name:
+            rel = self.files_rel
+            self._file_op(lambda: nasfiles.make_dir(root, rel, name), f"Ordner „{name.strip()}“ angelegt")
+
+    def on_rename(self, _btn) -> None:
+        root, names = self._nas_root(), self._selected_files()
+        if not root or len(names) != 1:
+            return
+        new = ask_text(self, "Umbenennen", f"Neuer Name für „{names[0]}“:", names[0])
+        if new and new != names[0]:
+            rel = self.files_rel
+            self._file_op(lambda: nasfiles.rename(root, rel, names[0], new), f"Umbenannt in „{new.strip()}“")
+
+    def on_delete_files(self, _btn) -> None:
+        root, names = self._nas_root(), self._selected_files()
+        if root and names:
+            self._confirm_delete(root, self.files_rel, names)
+
+    def on_delete_image(self, _btn) -> None:
+        root = self._nas_root()
+        model, it = self.image_view.get_selection().get_selected()
+        if not root or it is None:
+            return
+        try:
+            rel_path = os.path.relpath(model[it][6], root)
+        except ValueError:
+            return
+        if rel_path.startswith(".."):
+            return
+        self._confirm_delete(root, nasfiles.parent(rel_path), [os.path.basename(rel_path)])
+
+    def _confirm_delete(self, root: str, rel: str, names: list[str]) -> None:
+        """Erst Umfang zählen (kann bei Images dauern), dann nachfragen, dann löschen."""
+        self.status("Ermittle Umfang …")
+
+        def ask(result) -> None:
+            if isinstance(result, Exception):
+                self.status(f"Fehler: {result}")
+                return
+            files, size = result
+            what = f"„{names[0]}“" if len(names) == 1 else f"{len(names)} Einträge"
+            if not confirm(self, f"{what} endgültig löschen?",
+                           f"{files} Datei(en), {nas.format_size(size)} in NAS: /{rel}\n\n"
+                           "Das NAS hat keinen Papierkorb für das Tool – gelöschte Daten sind weg."):
+                self.status("Löschen abgebrochen")
+                return
+            self.status(f"Lösche {what} …")
+            self._file_op(lambda: nasfiles.delete(root, rel, names), f"{what} gelöscht")
+
+        run_async(lambda: nasfiles.measure(root, rel, names), ask)
 
     def _nas_cfg_from_form(self) -> config.NasConfig:
         return config.NasConfig(protocol=self.nas_protocol.get_active_id() or "smb",
@@ -288,12 +523,16 @@ class MainWindow(Gtk.ApplicationWindow):
             self.check_store.append(["emblem-ok-symbolic" if c.ok else "dialog-error-symbolic", c.name, c.detail])
         if all(c.ok for c in result):
             self._set_nas_status("● NAS verbunden", "ok")
+            self.check_expander.set_expanded(False)
             self.refresh_images()
+            self.refresh_files()
         else:
             failed = next(c for c in result if not c.ok)
             self._set_nas_status(f"● Keine Verbindung – {failed.name}: {failed.detail}", "fail")
+            self.check_expander.set_expanded(True)
             self.image_store.clear()
             self.img_count.set_text("")
+            self.refresh_files()
             if failed.name == "Eingehängt" and not self._auto_mount_tried and \
                     (not self._is_smb() or nas.has_credentials()):
                 self._auto_mount_tried = True

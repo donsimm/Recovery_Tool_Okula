@@ -39,6 +39,16 @@ Das Passwort speichert nur der Root-Helfer, in `/etc/okula-recovery/nas.cred` (r
 
 Für NFS gibst du als Freigabe den Exportpfad an (z. B. `/volume1/recovery`) und erlaubst im NAS die IP des Servers.
 
+### Dateien auf dem NAS verwalten
+
+Links gibt es zwei Reiter:
+- **Images:** Alle gefundenen Images. Ein gewähltes Image löschst du mit **Löschen**.
+- **Dateien:** Dateiverwaltung der Freigabe. Ordner öffnest du per Doppelklick, ↑ oder Backspace führt eine Ebene zurück. Dazu kommen **Neuer Ordner**, **Umbenennen** (F2) und **Löschen** (Entf, mit Mehrfachauswahl).
+
+Vor dem Löschen zeigt das Tool Anzahl und Grösse der Dateien und fragt nach. Das Tool hat keinen Papierkorb, gelöschte Daten sind weg. Falls im NAS ein Papierkorb für die Freigabe aktiv ist, greift dieser. Alle Aktionen bleiben innerhalb des Einhängepunkts: `..` und Links nach draussen werden abgewiesen, Links werden nie verfolgt.
+
+Das Tool startet maximiert. **F11** schaltet auf Vollbild ohne Titelleiste und wieder zurück.
+
 ## Agent-USB-Stick
 
 Button **„Agent-USB-Stick erstellen …“** oben rechts:
