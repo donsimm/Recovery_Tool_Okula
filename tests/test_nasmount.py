@@ -68,7 +68,7 @@ class CredentialTest(unittest.TestCase):
         with mock.patch.object(nasmount, "_run", calls.append), \
                 mock.patch.object(nasmount, "MOUNT_ROOT", Path(self.tmp.name)):
             mp = str(Path(self.tmp.name) / "okula-nas")
-            nasmount.do_mount("smb", "192.168.110.154", "recovery", mp, "NASuser", "pw", 1000, 1000)
+            nasmount.do_mount("smb", "192.168.110.154", "recovery", mp, "NASuser", "Geheim-Passwort-42", 1000, 1000)
             # Ohne Passwort: gespeicherte Zugangsdaten desselben Benutzers verwenden
             nasmount.do_mount("smb", "192.168.110.154", "recovery", mp, "NASuser", None, 1000, 1000)
             with self.assertRaises(nasmount.MountError):
@@ -76,7 +76,7 @@ class CredentialTest(unittest.TestCase):
         cmd = calls[0]
         self.assertEqual(cmd[:5], ["mount", "-t", "cifs", "//192.168.110.154/recovery", mp])
         self.assertIn(f"credentials={self.cred},uid=1000,gid=1000", cmd[6])
-        self.assertNotIn("pw", " ".join(cmd))
+        self.assertNotIn("Geheim-Passwort-42", " ".join(cmd))
 
     def test_failed_mount_keeps_previous_credentials(self):
         def fail(cmd):
