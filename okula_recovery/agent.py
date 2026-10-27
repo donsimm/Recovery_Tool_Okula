@@ -40,10 +40,13 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Okula Recovery Agent")
     ap.add_argument("--port", type=int, default=discovery.PORT)
     ap.add_argument("--interval", type=float, default=3.0, help="Sekunden zwischen Beacons")
-    ap.add_argument("--server", help="IP des Tools (statt Broadcast)")
+    ap.add_argument("--server", help="IP des Tools, zusätzlich zum Broadcast (z. B. anderes Subnetz)")
+    ap.add_argument("--no-broadcast", action="store_true", help="nur an --server senden")
     args = ap.parse_args(argv)
     if args.server:
         ipaddress.IPv4Address(args.server)
+    elif args.no_broadcast:
+        ap.error("--no-broadcast braucht --server")
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -58,7 +61,10 @@ def main(argv: list[str] | None = None) -> int:
             time.sleep(args.interval)
             continue
         beacon = json.dumps(discovery.build_beacon(ip, __version__)).encode()
-        for target in [args.server] if args.server else broadcast_targets():
+        targets = [] if args.no_broadcast else broadcast_targets()
+        if args.server:
+            targets.append(args.server)
+        for target in targets:
             try:
                 sock.sendto(beacon, (target, args.port))
             except OSError as e:

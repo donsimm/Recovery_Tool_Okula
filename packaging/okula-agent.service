@@ -1,6 +1,5 @@
 # Agent auf dem USB-Stick: meldet die Zielmaschine beim Recovery-Tool an.
-# Installation (im Live-Image): /etc/systemd/system/okula-agent.service, dann
-#   systemctl enable okula-agent.service
+# Wird vom live-config-Hook des Agent-Sticks installiert und gestartet.
 [Unit]
 Description=Okula Recovery Agent (Anmeldung beim Recovery-Tool)
 Wants=network-online.target
@@ -9,7 +8,8 @@ After=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/okula-recovery
-ExecStart=/usr/bin/python3 -m okula_recovery.agent
+EnvironmentFile=-/etc/okula-agent.conf
+ExecStart=/usr/bin/python3 -m okula_recovery.agent $AGENT_ARGS
 Restart=always
 RestartSec=3
 # Statusmeldungen auch auf der Konsole der Zielmaschine anzeigen

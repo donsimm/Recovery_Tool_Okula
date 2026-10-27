@@ -11,12 +11,17 @@ Server: Debian 13 + Xfce, Python 3 + GTK 3.
 ## Server-Installation (Debian 13)
 
 ```bash
-sudo apt install python3-gi gir1.2-gtk-3.0 cifs-utils nfs-common iputils-ping iproute2
-sudo git clone https://github.com/donsimm/recovery_tool_okula.git /opt/okula-recovery
-cd /opt/okula-recovery && python3 -m okula_recovery
+sudo apt install git
+git clone https://github.com/donsimm/recovery_tool_okula.git
+cd recovery_tool_okula
+git checkout claude/blissful-goldberg-mo3xda   # bis zum Merge
+sudo ./install.sh --autostart
 ```
 
-Autostart nach dem Login: `packaging/okula-recovery.desktop` nach `~/.config/autostart/` kopieren.
+`install.sh` installiert die Pakete, kopiert das Tool nach `/opt/okula-recovery` (gehört root), legt den Root-Helfer `/usr/local/sbin/okula-make-stick` samt sudo-Regel für deinen Benutzer an, erstellt den Menüeintrag und mit `--autostart` den Start nach dem Login.
+
+Starten: Menü → System → *Okula Recovery Tool* oder `cd /opt/okula-recovery && python3 -m okula_recovery`.
+Update: im Repo `git pull`, dann wieder `sudo ./install.sh`.
 
 ### NAS einhängen
 
@@ -31,15 +36,23 @@ nas.local:/volume1/recovery  /mnt/okula-nas  nfs  user,noauto,_netdev  0 0
 
 `/etc/okula-nas.cred` (Rechte `600`): `username=...` und `password=...`.
 
-## USB-Stick (Zielmaschine)
+## Agent-USB-Stick
 
-Auf dem Stick läuft ein Live-Debian mit dem Agent (`python3 -m okula_recovery.agent`, systemd-Unit `packaging/okula-agent.service`). Der Agent sendet alle 3 s ein UDP-Broadcast-Beacon an **Port 47811**. Inhalt: Hostname, MAC, Hersteller/Modell und Disks (`lsblk`). Das Tool antwortet, und auf der Konsole der Zielmaschine erscheint „Verbunden“. Kommt 15 s lang kein Beacon, zeigt das Tool die Maschine als offline.
+Button **„Agent-USB-Stick erstellen …“** oben rechts:
 
-- **Voraussetzung:** Server und Zielmaschine sind im selben Subnetz (Broadcast). In einem anderen Subnetz startet der Agent mit `--server <IP>`.
+1. Stick einstecken und auswählen. Angeboten werden nur USB- und Wechseldatenträger, nie die Systemdisk.
+2. Debian-Live-ISO wählen oder **Herunterladen** klicken. Das Tool lädt das aktuelle `debian-live-…-amd64-standard.iso` von cdimage.debian.org und prüft es gegen `SHA512SUMS`. Die Datei liegt danach unter `~/.cache/okula-recovery/iso`. Einen anderen Mirror setzt du über die Umgebungsvariable `OKULA_DEBIAN_LIVE_URL`.
+3. **Stick vorbereiten**. Der Stick wird gelöscht und so aufgebaut:
+   - MBR mit einer FAT32-Partition (Label `OKULAAGENT`), darauf der Inhalt des Live-ISO
+   - eigene `grub.cfg`; gebootet wird per UEFI über den GRUB des ISO und per BIOS über `grub-install`
+   - Agent unter `/live/okula`; ein live-config-Hook (`live-config.hooks=medium`) startet ihn beim Booten als Dienst
+   - Tastatur `ch`, Locale `de_CH.UTF-8`, Zeitzone `Europe/Zurich`
+
+**Ablauf an der Zielmaschine:** vom Stick booten (Boot-Menü, meist F12/F11/F8). Der Agent sendet alle 3 s ein Beacon auf **UDP 47811**, und zwar per Broadcast und zusätzlich direkt an die Server-IP aus dem Dialog. Das Tool antwortet, die Konsole zeigt „Verbunden“, und die Maschine erscheint rechts mit Hostname `okula-<MAC-Ende>`, Hersteller/Modell und Disks. Kommt 15 s lang kein Beacon, zeigt das Tool die Maschine als offline.
+
 - **Firewall auf dem Server:** UDP 47811 eingehend freigeben (z. B. `sudo ufw allow 47811/udp`).
+- **Secure Boot:** Der Stick nutzt die signierte Boot-Kette des Debian-ISO.
 - **Hinweis:** Die Beacons sind nicht authentifiziert. Die spätere Steuerverbindung zum Agent bekommt eine Authentifizierung.
-
-Das Live-Image selbst (Debian live-build) ist der nächste Schritt.
 
 ## Tests
 

@@ -13,6 +13,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 
 from okula_recovery import __version__, config, discovery, nas, network  # noqa: E402
+from okula_recovery.stick_dialog import StickDialog  # noqa: E402
 
 # Agent gilt als offline, wenn so lange kein Beacon kam
 AGENT_TIMEOUT = 15
@@ -84,6 +85,10 @@ class MainWindow(Gtk.ApplicationWindow):
 
         header = Gtk.HeaderBar(title="Okula Recovery Tool", subtitle=f"Version {__version__}",
                                show_close_button=True)
+        btn_stick = Gtk.Button(label="Agent-USB-Stick erstellen …")
+        btn_stick.set_tooltip_text("USB-Stick wählen und mit Live-System und Agent vorbereiten")
+        btn_stick.connect("clicked", lambda _b: StickDialog(self))
+        header.pack_end(btn_stick)
         self.set_titlebar(header)
 
         paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL, wide_handle=True)
