@@ -82,6 +82,7 @@ class MainWindow(Gtk.ApplicationWindow):
         super().__init__(application=app, title="Okula Recovery Tool")
         self.set_default_size(1280, 760)
         self.cfg = config.load()
+        self._auto_mount_tried = False
 
         header = Gtk.HeaderBar(title="Okula Recovery Tool", subtitle=f"Version {__version__}",
                                show_close_button=True)
@@ -102,6 +103,7 @@ class MainWindow(Gtk.ApplicationWindow):
         root.pack_start(self.statusbar, False, False, 0)
         self.add(root)
 
+        self._update_nas_form()
         self._load_manual_machines()
         self._start_listener()
         GLib.idle_add(self.on_test_nas, None)
@@ -117,14 +119,33 @@ class MainWindow(Gtk.ApplicationWindow):
         self.nas_protocol.append("smb", "SMB / CIFS")
         self.nas_protocol.append("nfs", "NFS")
         self.nas_protocol.set_active_id(self.cfg.nas.protocol)
+        self.nas_protocol.connect("changed", lambda _c: self._update_nas_form())
         self.nas_host = Gtk.Entry(text=self.cfg.nas.host, placeholder_text="z. B. nas.local oder 192.168.1.10",
                                   hexpand=True)
-        self.nas_share = Gtk.Entry(text=self.cfg.nas.share, placeholder_text="z. B. recovery")
+
+        # Freigabe: frei eingeben oder aus „Freigaben suchen“ wählen
+        share_box = Gtk.Box(spacing=6)
+        self.nas_share_combo = Gtk.ComboBoxText.new_with_entry()
+        self.nas_share_combo.set_hexpand(True)
+        self.nas_share = self.nas_share_combo.get_child()
+        self.nas_share.set_text(self.cfg.nas.share)
+        share_box.pack_start(self.nas_share_combo, True, True, 0)
+        self.btn_shares = Gtk.Button(label="Freigaben suchen")
+        self.btn_shares.set_tooltip_text("Freigaben des NAS mit Benutzer/Passwort auflisten (SMB)")
+        self.btn_shares.connect("clicked", self.on_find_shares)
+        share_box.pack_start(self.btn_shares, False, False, 0)
+
+        self.nas_user = Gtk.Entry(text=self.cfg.nas.username, placeholder_text="NAS-Benutzer")
+        self.nas_password = Gtk.Entry(visibility=False, input_purpose=Gtk.InputPurpose.PASSWORD)
         self.nas_mount = Gtk.Entry(text=self.cfg.nas.mount_point)
+        self.nas_rows = {}
         for row, (label, widget) in enumerate([("Protokoll", self.nas_protocol), ("Host", self.nas_host),
-                                               ("Freigabe", self.nas_share), ("Einhängepunkt", self.nas_mount)]):
-            grid.attach(Gtk.Label(label=label, xalign=0), 0, row, 1, 1)
+                                               ("Freigabe", share_box), ("Benutzer", self.nas_user),
+                                               ("Passwort", self.nas_password), ("Einhängepunkt", self.nas_mount)]):
+            lbl = Gtk.Label(label=label, xalign=0)
+            grid.attach(lbl, 0, row, 1, 1)
             grid.attach(widget, 1, row, 1, 1)
+            self.nas_rows[label] = (lbl, widget)
         box.pack_start(grid, False, False, 0)
 
         buttons = Gtk.Box(spacing=6)
@@ -132,15 +153,17 @@ class MainWindow(Gtk.ApplicationWindow):
         self.btn_test.connect("clicked", self.on_test_nas)
         btn_mount = Gtk.Button(label="Einhängen")
         btn_mount.connect("clicked", self.on_mount_nas)
+        btn_umount = Gtk.Button(label="Aushängen")
+        btn_umount.connect("clicked", self.on_umount_nas)
         btn_save = Gtk.Button(label="Speichern")
         btn_save.connect("clicked", self.on_save_nas)
-        for b in (self.btn_test, btn_mount, btn_save):
+        for b in (self.btn_test, btn_mount, btn_umount, btn_save):
             buttons.pack_start(b, False, False, 0)
         self.nas_spinner = Gtk.Spinner()
         buttons.pack_start(self.nas_spinner, False, False, 0)
         box.pack_start(buttons, False, False, 0)
 
-        self.nas_status = Gtk.Label(label="Nicht geprüft", xalign=0)
+        self.nas_status = Gtk.Label(label="Nicht geprüft", xalign=0, wrap=True, selectable=True)
         self.nas_status.get_style_context().add_class("status-idle")
         box.pack_start(self.nas_status, False, False, 0)
 
@@ -174,8 +197,25 @@ class MainWindow(Gtk.ApplicationWindow):
     def _nas_cfg_from_form(self) -> config.NasConfig:
         return config.NasConfig(protocol=self.nas_protocol.get_active_id() or "smb",
                                 host=self.nas_host.get_text().strip(),
-                                share=self.nas_share.get_text().strip(),
-                                mount_point=self.nas_mount.get_text().strip() or "/mnt/okula-nas")
+                                share=self.nas_share.get_text().strip().strip("/") if self._is_smb()
+                                else self.nas_share.get_text().strip(),
+                                mount_point=self.nas_mount.get_text().strip() or "/mnt/okula-nas",
+                                username=self.nas_user.get_text().strip())
+
+    def _is_smb(self) -> bool:
+        return (self.nas_protocol.get_active_id() or "smb") == "smb"
+
+    def _update_nas_form(self) -> None:
+        """Benutzer/Passwort und Freigabensuche gibt es nur für SMB."""
+        smb = self._is_smb()
+        for key in ("Benutzer", "Passwort"):
+            for w in self.nas_rows.get(key, ()):
+                w.set_visible(smb)
+        if hasattr(self, "btn_shares"):
+            self.btn_shares.set_visible(smb)
+        self.nas_share.set_placeholder_text("z. B. recovery" if smb else "z. B. /volume1/recovery")
+        if smb and nas.has_credentials():
+            self.nas_password.set_placeholder_text("gespeichert – nur zum Ändern eingeben")
 
     def _set_nas_status(self, text: str, state: str) -> None:
         ctx = self.nas_status.get_style_context()
@@ -211,21 +251,73 @@ class MainWindow(Gtk.ApplicationWindow):
             self.refresh_images()
         else:
             failed = next(c for c in result if not c.ok)
-            self._set_nas_status(f"● Keine Verbindung – {failed.name}", "fail")
+            self._set_nas_status(f"● Keine Verbindung – {failed.name}: {failed.detail}", "fail")
             self.image_store.clear()
             self.img_count.set_text("")
+            if failed.name == "Eingehängt" and not self._auto_mount_tried and \
+                    (not self._is_smb() or nas.has_credentials()):
+                self._auto_mount_tried = True
+                self.on_mount_nas(None)
 
-    def on_mount_nas(self, _btn) -> None:
+    def on_mount_nas(self, _btn) -> bool:
         cfg = self._nas_cfg_from_form()
+        if not cfg.host or not cfg.share:
+            self._set_nas_status("● Host und Freigabe eingeben", "fail")
+            return False
+        password = self.nas_password.get_text() if self._is_smb() else ""
+        self.cfg.nas = cfg
+        config.save(self.cfg)
         self.nas_spinner.start()
-        run_async(lambda: nas.mount(cfg), self._on_mounted)
+        self._set_nas_status("Hänge NAS ein …", "idle")
+        run_async(lambda: nas.mount(cfg, password), self._on_mounted)
+        return False
 
     def _on_mounted(self, result) -> None:
         self.nas_spinner.stop()
         ok, msg = (False, str(result)) if isinstance(result, Exception) else result
         self.status(f"Einhängen: {msg}")
         if ok:
+            self.nas_password.set_text("")
+            self._update_nas_form()
             self.on_test_nas(None)
+        else:
+            self._set_nas_status(f"● Einhängen fehlgeschlagen: {msg}", "fail")
+
+    def on_umount_nas(self, _btn) -> None:
+        cfg = self._nas_cfg_from_form()
+        self.nas_spinner.start()
+        run_async(lambda: nas.umount(cfg), self._on_umounted)
+
+    def _on_umounted(self, result) -> None:
+        self.nas_spinner.stop()
+        ok, msg = (False, str(result)) if isinstance(result, Exception) else result
+        self.status(f"Aushängen: {msg}")
+        self.on_test_nas(None)
+
+    def on_find_shares(self, _btn) -> None:
+        cfg = self._nas_cfg_from_form()
+        password = self.nas_password.get_text()
+        if not cfg.host or not cfg.username or not password:
+            self._set_nas_status("● Für die Suche Host, Benutzer und Passwort eingeben", "fail")
+            return
+        self.btn_shares.set_sensitive(False)
+        self.nas_spinner.start()
+        run_async(lambda: nas.list_smb_shares(cfg.host, cfg.username, password), self._on_shares)
+
+    def _on_shares(self, result) -> None:
+        self.btn_shares.set_sensitive(True)
+        self.nas_spinner.stop()
+        if isinstance(result, Exception):
+            self._set_nas_status(f"● Freigaben nicht lesbar: {result}", "fail")
+            return
+        current = self.nas_share.get_text()
+        self.nas_share_combo.remove_all()
+        for name in result:
+            self.nas_share_combo.append_text(name)
+        if current not in result:
+            self.nas_share_combo.set_active(0)
+            self.nas_share_combo.popup()
+        self.status(f"{len(result)} Freigaben gefunden: {', '.join(result)}")
 
     def refresh_images(self) -> None:
         mp = self._nas_cfg_from_form().mount_point
@@ -435,6 +527,7 @@ class App(Gtk.Application):
                                                  Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         win = self.get_active_window() or MainWindow(self)
         win.show_all()
+        win._update_nas_form()  # show_all würde die SMB-Felder bei NFS wieder einblenden
         win.present()
 
 

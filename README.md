@@ -23,18 +23,21 @@ sudo ./install.sh --autostart
 Starten: Menü → System → *Okula Recovery Tool* oder `cd /opt/okula-recovery && python3 -m okula_recovery`.
 Update: im Repo `git pull`, dann wieder `sudo ./install.sh`.
 
-### NAS einhängen
+### NAS einrichten (z. B. Synology)
 
-Der Button „Einhängen“ ruft `mount <Einhängepunkt>` auf. Dafür braucht es einen Eintrag in `/etc/fstab` mit der Option `user`:
+Im NAS (Synology DSM: Systemsteuerung):
+1. **Freigegebener Ordner** anlegen, z. B. `recovery`.
+2. Eigenen **Benutzer** anlegen (nicht den Admin) und ihm Lese-/Schreibrecht nur auf diese Freigabe geben.
+3. **Dateidienste → SMB** aktivieren, Mindestversion SMB2 (Standard in DSM 7).
 
-```fstab
-# SMB
-//nas.local/recovery  /mnt/okula-nas  cifs  user,noauto,credentials=/etc/okula-nas.cred,uid=1000,gid=1000,iocharset=utf8  0 0
-# oder NFS
-nas.local:/volume1/recovery  /mnt/okula-nas  nfs  user,noauto,_netdev  0 0
-```
+Im Tool links:
+1. Host (IP des NAS), Benutzer und Passwort eingeben.
+2. **Freigaben suchen**, dann die Freigabe aus der Liste wählen.
+3. **Einhängen**. Bei Erfolg zeigt das Tool „NAS verbunden“ und listet die Images.
 
-`/etc/okula-nas.cred` (Rechte `600`): `username=...` und `password=...`.
+Das Passwort speichert nur der Root-Helfer, in `/etc/okula-recovery/nas.cred` (root, `0600`). Es steht nie in der Konfiguration oder in Prozess-Argumenten. Nach dem nächsten Start hängt das Tool das NAS automatisch wieder ein. Fehlermeldungen von `mount` und `smbclient` werden als Hinweis angezeigt, etwa bei einem falschen Passwort, einer fehlenden Freigabe oder einer unpassenden SMB-Version.
+
+Für NFS gibst du als Freigabe den Exportpfad an (z. B. `/volume1/recovery`) und erlaubst im NAS die IP des Servers.
 
 ## Agent-USB-Stick
 

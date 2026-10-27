@@ -19,6 +19,7 @@ class NasConfig:
     host: str = ""
     share: str = ""
     mount_point: str = "/mnt/okula-nas"
+    username: str = ""  # Passwort nur in /etc/okula-recovery/nas.cred (root)
 
 
 @dataclass

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import socket
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime
@@ -13,6 +14,30 @@ from pathlib import Path
 from okula_recovery.config import NasConfig
 
 PORTS = {"smb": 445, "nfs": 2049}
+
+# Zugangsdaten für SMB, nur für root lesbar (vom Root-Helfer geschrieben)
+CRED_FILE = Path("/etc/okula-recovery/nas.cred")
+MOUNT_HELPER = "/usr/local/sbin/okula-nas-mount"
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+
+# Typische Fehlermeldungen von mount.cifs / mount.nfs → Hinweis für den Benutzer
+MOUNT_HINTS = (
+    ("error(13)", "Benutzer oder Passwort falsch, oder der Benutzer hat keinen Zugriff auf die Freigabe"),
+    ("Permission denied", "Benutzer oder Passwort falsch, oder der Benutzer hat keinen Zugriff auf die Freigabe"),
+    ("error(2)", "Freigabe existiert nicht – Namen prüfen („Freigaben suchen“)"),
+    ("error(112)", "SMB-Version passt nicht – im NAS SMB2/SMB3 aktivieren"),
+    ("Host is down", "SMB-Version passt nicht – im NAS SMB2/SMB3 aktivieren"),
+    ("access denied by server", "NFS-Freigabe erlaubt diese IP nicht – NFS-Berechtigung im NAS setzen"),
+    ("NT_STATUS_LOGON_FAILURE", "Benutzer oder Passwort falsch"),
+    ("NT_STATUS_ACCESS_DENIED", "Benutzer hat keinen Zugriff"),
+    ("NT_STATUS_ACCOUNT_DISABLED", "NAS-Benutzer ist deaktiviert"),
+    ("NT_STATUS_IO_TIMEOUT", "NAS antwortet nicht – IP und SMB-Dienst prüfen"),
+    ("NT_STATUS_CONNECTION_REFUSED", "SMB-Dienst auf dem NAS nicht aktiv"),
+    ("NT_STATUS_HOST_UNREACHABLE", "NAS nicht erreichbar – IP und Netzwerk prüfen"),
+    ("not supported by the system", "CIFS fehlt im System – install.sh ausführen (cifs-utils)"),
+    ("wrong fs type", "Mount-Werkzeug fehlt – install.sh ausführen (cifs-utils/nfs-common)"),
+    ("bad option", "Mount-Werkzeug fehlt – install.sh ausführen (cifs-utils/nfs-common)"),
+)
 
 # Endungen von Roh-/partclone-Images, optional komprimiert
 IMAGE_SUFFIXES = (".img", ".raw", ".dd", ".pcl", ".partclone", ".qcow2", ".vhdx")
@@ -62,7 +87,7 @@ def test_connection(cfg: NasConfig, timeout: float = 3.0) -> list[Check]:
 
     mp = Path(cfg.mount_point)
     if not os.path.ismount(mp):
-        checks.append(Check("Eingehängt", False, f"{mp} ist nicht eingehängt"))
+        checks.append(Check("Eingehängt", False, f"{mp} ist nicht eingehängt – „Einhängen“ klicken"))
         return checks
     checks.append(Check("Eingehängt", True, str(mp)))
 
@@ -89,17 +114,78 @@ def test_connection(cfg: NasConfig, timeout: float = 3.0) -> list[Check]:
     return checks
 
 
-def mount(cfg: NasConfig) -> tuple[bool, str]:
-    """Hängt den Einhängepunkt über /etc/fstab ein (Eintrag mit Option 'user' nötig)."""
-    if os.path.ismount(cfg.mount_point):
-        return True, "Bereits eingehängt"
+def mount_error_hint(message: str) -> str:
+    for needle, hint in MOUNT_HINTS:
+        if needle in message:
+            return hint
+    return ""
+
+
+def has_credentials() -> bool:
+    return CRED_FILE.exists()
+
+
+def _helper(args: list[str]) -> list[str]:
+    if os.geteuid() == 0:
+        return [sys.executable, "-m", "okula_recovery.nasmount", *args]
+    if not Path(MOUNT_HELPER).exists():
+        raise FileNotFoundError(f"{MOUNT_HELPER} fehlt – bitte install.sh erneut ausführen")
+    return ["sudo", "-n", MOUNT_HELPER, *args]
+
+
+def _call_helper(args: list[str], stdin: str | None = None) -> tuple[bool, str]:
     try:
-        r = subprocess.run(["mount", cfg.mount_point], capture_output=True, text=True, timeout=30)
+        r = subprocess.run(_helper(args), input=stdin, capture_output=True, text=True, timeout=90,
+                           cwd=PROJECT_DIR)
     except (OSError, subprocess.TimeoutExpired) as e:
         return False, str(e)
-    if r.returncode != 0:
-        return False, (r.stderr or r.stdout).strip() or f"mount Exit-Code {r.returncode}"
-    return True, "Eingehängt"
+    lines = [ln for ln in r.stdout.splitlines() if ln.startswith(("OK ", "ERROR "))]
+    if lines:
+        kind, _, msg = lines[-1].partition(" ")
+        return kind == "OK" and r.returncode == 0, msg
+    return False, (r.stderr or r.stdout).strip() or f"Hilfsprogramm: Exit-Code {r.returncode}"
+
+
+def mount(cfg: NasConfig, password: str = "") -> tuple[bool, str]:
+    """Hängt die Freigabe über den Root-Helfer ein; leeres Passwort = gespeicherte Zugangsdaten."""
+    args = ["mount", "--protocol", cfg.protocol, "--host", cfg.host, "--share", cfg.share,
+            "--mount-point", cfg.mount_point, "--user", cfg.username]
+    if password:
+        args.append("--password-stdin")
+    return _call_helper(args, stdin=password + "\n" if password else None)
+
+
+def umount(cfg: NasConfig) -> tuple[bool, str]:
+    return _call_helper(["umount", "--mount-point", cfg.mount_point])
+
+
+def parse_smbclient_shares(output: str) -> list[str]:
+    """Parst `smbclient -L … -g`: Zeilen „Disk|Name|Kommentar“, versteckte ($) weggelassen."""
+    shares = []
+    for line in output.splitlines():
+        parts = line.split("|")
+        if len(parts) >= 2 and parts[0] == "Disk" and not parts[1].endswith("$"):
+            shares.append(parts[1])
+    return sorted(shares, key=str.lower)
+
+
+def list_smb_shares(host: str, user: str, password: str) -> list[str]:
+    """Freigaben des NAS über smbclient; Zugangsdaten über eine temporäre 0600-Datei, nicht über argv."""
+    with tempfile.NamedTemporaryFile("w", prefix="okula-auth-") as auth:
+        auth.write(f"username={user}\npassword={password}\n")
+        auth.flush()
+        try:
+            r = subprocess.run(["smbclient", "-L", f"//{host}", "-A", auth.name, "-g"],
+                               capture_output=True, text=True, timeout=20)
+        except FileNotFoundError:
+            raise RuntimeError("smbclient fehlt – install.sh erneut ausführen") from None
+    shares = parse_smbclient_shares(r.stdout)
+    if not shares:
+        lines = (r.stderr or r.stdout).strip().splitlines()
+        msg = lines[-1] if lines else "Keine Freigaben gefunden"
+        hint = mount_error_hint(msg)
+        raise RuntimeError(f"{hint} ({msg})" if hint else msg)
+    return shares
 
 
 def _image_kind(name: str) -> str | None:
