@@ -141,6 +141,27 @@ class ClonezillaRestoreTest(base.RestoreTest):
                                           port=port, source_disk="sda")
         self.assertEqual(sha(dst), before)
 
+    def test_verify_with_debian_user_path(self):
+        """Tool läuft als Benutzer: PATH ohne /usr/sbin (Debian) – partclone.chkimg muss trotzdem greifen."""
+        src = self.build_source("gpt")
+        img = self.make_clonezilla(src, "gpt")
+        source = clonezilla.build(img, "sda")
+        events = []
+        with mock.patch.dict(os.environ, {"PATH": "/usr/local/bin:/usr/bin:/bin:/usr/games"}):
+            self.assertIsNone(shutil.which("partclone.chkimg"))
+            clonezilla.verify(source, events.append, threading.Event())
+        self.assertFalse([e for e in events if e["phase"] == "note"], "chkimg nicht gefunden")
+
+    def test_verify_falls_back_without_chkimg(self):
+        src = self.build_source("gpt")
+        img = self.make_clonezilla(src, "gpt")
+        source = clonezilla.build(img, "sda")
+        events = []
+        with mock.patch.object(clonezilla, "find_tool",
+                               lambda name: None if name == "partclone.chkimg" else shutil.which(name)):
+            clonezilla.verify(source, events.append, threading.Event())
+        self.assertIn("nur die Kompression", events[0]["message"])
+
     # Okula-spezifische Tests der Basisklasse hier nicht doppelt ausführen
     test_refuses_smaller_target = None
     test_corrupt_image_detected_before_writing = None

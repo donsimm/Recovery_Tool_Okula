@@ -262,7 +262,9 @@ class RestoreDialog(Gtk.Dialog):
 
     def _on_progress(self, ev: dict) -> bool:
         phase = ev.get("phase")
-        if phase == "verify":
+        if phase == "note":
+            self.append_log(ev.get("message", ""))
+        elif phase == "verify":
             self.progress.set_fraction(ev.get("fraction", 0))
             self.progress.set_text(f"Prüfe Image: {ev.get('fraction', 0) * 100:.0f} %")
         elif phase == "table":

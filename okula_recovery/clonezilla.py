@@ -15,7 +15,9 @@ Nicht unterstützt: LVM, alte ntfsclone/partimage-Images (*.ntfs-img, *.ext4-img
 
 from __future__ import annotations
 
+import os
 import re
+import shutil
 import subprocess
 import threading
 import time
@@ -32,6 +34,14 @@ PART_RE = re.compile(r"^(?P<part>[A-Za-z0-9_-]+?)\.(?P<fs>[a-z0-9+]+)-ptcl-img\.
 OLD_FORMAT_RE = re.compile(r"^[A-Za-z0-9_-]+\.[a-z0-9+]+-img(\.|$)")
 
 Progress = Callable[[dict], None]
+
+# Debian-Benutzer haben /usr/sbin nicht im PATH; partclone liegt dort
+SBIN_DIRS = ("/usr/local/sbin", "/usr/sbin", "/sbin")
+
+
+def find_tool(name: str) -> str | None:
+    path = os.pathsep.join([os.environ.get("PATH", ""), *SBIN_DIRS])
+    return shutil.which(name, path=path)
 
 
 class ClonezillaError(Exception):
@@ -145,11 +155,14 @@ def verify(source: dict, progress: Progress, cancel: threading.Event) -> None:
     steps = [s for s in source["steps"] if s.get("pieces")]
     total = sum(s["size"] for s in steps) or 1
     done = 0
+    chkimg = find_tool("partclone.chkimg")
+    if not chkimg and any(s["kind"] == "pcl" for s in steps):
+        progress({"phase": "note", "message": "partclone.chkimg nicht gefunden – prüfe nur die Kompression (CRC)"})
     for s in steps:
         comp = s["compression"]
-        cmds = [DECOMPRESS[comp]] if comp else []
-        if s["kind"] == "pcl":
-            cmds.append(["partclone.chkimg", "-s", "-", "-L", "/dev/null"])
+        cmds = [list(DECOMPRESS[comp])] if comp else []
+        if s["kind"] == "pcl" and chkimg:
+            cmds.append([chkimg, "-s", "-", "-L", "/dev/null"])
         elif comp:
             cmds[-1] = [cmds[-1][0], "-t"]  # nur Integrität der Kompression
         if not cmds:
@@ -158,11 +171,13 @@ def verify(source: dict, progress: Progress, cancel: threading.Event) -> None:
         procs = []
         stdin = subprocess.PIPE
         for i, argv in enumerate(cmds):
+            argv = [find_tool(argv[0]) or argv[0], *argv[1:]]
             try:
                 p = subprocess.Popen(argv, stdin=stdin, stdout=subprocess.PIPE if i < len(cmds) - 1 else
                                      subprocess.DEVNULL, stderr=subprocess.PIPE)
             except FileNotFoundError:
-                raise ClonezillaError(f"{argv[0]} fehlt auf dem Server – install.sh erneut ausführen") from None
+                raise ClonezillaError(f"{os.path.basename(argv[0])} fehlt auf dem Server – "
+                                      "install.sh erneut ausführen") from None
             if i > 0:
                 procs[-1].stdout.close()
             procs.append(p)
