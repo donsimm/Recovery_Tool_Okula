@@ -97,6 +97,41 @@ def power(ip: str, key: bytes, action: str = "poweroff", port: int = wire.PORT, 
         raise AgentError(reply.get("message", "Agent hat abgelehnt"))
 
 
+class Notifier:
+    """Meldet dem Agent, was das Tool gerade für ihn vorbereitet (z. B. Image-Prüfung).
+
+    Höchstens alle `interval` Sekunden; Fehler werden ignoriert, nach dem ersten
+    Fehlschlag (z. B. alter Stick ohne „notify“) wird nichts mehr gesendet.
+    """
+
+    def __init__(self, ip: str, key: bytes, port: int, title: str, job: str, interval: float = 2.0):
+        self.ip, self.key, self.port = ip, key, port
+        self.title, self.job, self.interval = title, job, interval
+        self.last = 0.0
+        self.enabled = True
+
+    def _send(self, **fields) -> None:
+        if not self.enabled:
+            return
+        try:
+            with _connect(self.ip, self.key, self.port) as sock:
+                sock.settimeout(5)
+                wire.send_json(sock, {"cmd": "notify", "title": self.title, "job": self.job, **fields})
+                if wire.recv_json(sock).get("type") != "ok":
+                    self.enabled = False
+        except (AgentError, OSError, ssl.SSLError, wire.ProtocolError):
+            self.enabled = False
+
+    def progress(self, fraction: float, label: str = "", force: bool = False) -> None:
+        now = time.monotonic()
+        if force or now - self.last >= self.interval:
+            self.last = now
+            self._send(fraction=fraction, label=label)
+
+    def result(self, text: str) -> None:
+        self._send(result=text)
+
+
 def safe_name(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("._-")[:80] or "maschine"
 
@@ -322,7 +357,21 @@ def restore_image(ip: str, key: bytes, image_path: str | Path, target_disk: str,
                   source_disk: str | None = None) -> None:
     src = image_source(image_path, source_disk)
     if verify:
-        src["verify"](progress, cancel)
+        name = Path(image_path).name
+        notifier = Notifier(ip, key, port, f"Image wird im Tool geprüft ({name}) – gleich wird zurückgespielt",
+                            "Image prüfen")
+        notifier.progress(0.0, force=True)
+
+        def verify_progress(ev: dict) -> None:
+            progress(ev)
+            if ev.get("phase") == "verify":
+                notifier.progress(ev.get("fraction", 0.0), "Prüfung")
+
+        try:
+            src["verify"](verify_progress, cancel)
+        except AgentError as e:
+            notifier.result(f"Image-Prüfung im Tool: {e}")
+            raise
     steps = src["steps"]
     req = {"cmd": "restore", "disk": target_disk, "source": src["source"], "sfdisk": src["sfdisk"],
            "head": src["head"].hex(), "steps": [{k: v for k, v in st.items() if k != "pieces"} for st in steps]}

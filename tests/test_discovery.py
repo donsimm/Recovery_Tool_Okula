@@ -49,6 +49,38 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(info.disks, [])
 
 
+class StatusTest(unittest.TestCase):
+    def test_beacon_job_and_status(self):
+        info = discovery.parse_beacon(beacon(job="Zurückspielen", progress=0.523, busy=True), "1.2.3.4")
+        self.assertEqual(info.status, "Zurückspielen 52 %")
+        self.assertEqual(discovery.parse_beacon(beacon(), "1.2.3.4").status, "bereit")
+        self.assertEqual(discovery.parse_beacon(beacon(busy=True), "1.2.3.4").status, "beschäftigt")
+        self.assertIsNone(discovery.parse_beacon(beacon(job="x", progress="kaputt"), "1.2.3.4").progress)
+        self.assertEqual(discovery.parse_beacon(beacon(job="x", progress=7), "1.2.3.4").progress, 1.0)
+
+    def test_tool_notice_expires(self):
+        from unittest import mock
+        from okula_recovery import agent
+        st = agent.JobState()
+        st.set("Image prüfen", 0.4, from_tool=True)
+        self.assertEqual(st.beacon(), {"job": "Image prüfen", "progress": 0.4})
+        with mock.patch.object(agent.time, "monotonic", lambda: st.updated + agent.JobState.NOTICE_TTL + 1):
+            self.assertEqual(st.beacon(), {"job": "", "progress": None})
+        st.set("Zurückspielen", 0.1)  # eigener Auftrag verfällt nicht
+        with mock.patch.object(agent.time, "monotonic", lambda: st.updated + 999):
+            self.assertEqual(st.beacon()["job"], "Zurückspielen")
+
+    def test_notifier_gives_up_quietly(self):
+        from okula_recovery import agentclient
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]  # danach geschlossen → nicht erreichbar
+        n = agentclient.Notifier("127.0.0.1", bytes(32), port, "t", "j")
+        n.progress(0.1, force=True)
+        self.assertFalse(n.enabled)
+        n.progress(0.2, force=True)  # keine Exception, kein Versuch mehr
+
+
 class ListenerTest(unittest.TestCase):
     def test_round_trip_with_ack(self):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:

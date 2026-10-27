@@ -45,7 +45,15 @@ class AgentInfo:
     version: str = ""
     control_port: int = 0  # 0 = Agent ohne Steuerdienst (alter Stick)
     busy: bool = False
+    job: str = ""                   # was gerade läuft, z. B. „Zurückspielen“
+    progress: float | None = None   # 0..1
     last_seen: float = 0.0
+
+    @property
+    def status(self) -> str:
+        if not self.job:
+            return "beschäftigt" if self.busy else "bereit"
+        return f"{self.job} {self.progress * 100:.0f} %" if self.progress is not None else self.job
 
     @property
     def hardware(self) -> str:
@@ -141,7 +149,16 @@ def parse_beacon(data: bytes, sender_ip: str) -> AgentInfo | None:
     return AgentInfo(agent_id=str(msg.get("id") or sender_ip), hostname=str(msg.get("hostname") or ""),
                      ip=sender_ip, mac=str(msg.get("mac") or ""), vendor=str(msg.get("vendor") or ""),
                      product=str(msg.get("product") or ""), disks=disks, version=str(msg.get("version") or ""),
-                     control_port=_int(msg.get("control")), busy=bool(msg.get("busy")), last_seen=time.time())
+                     control_port=_int(msg.get("control")), busy=bool(msg.get("busy")),
+                     job=str(msg.get("job") or "")[:40], progress=_fraction(msg.get("progress")),
+                     last_seen=time.time())
+
+
+def _fraction(v) -> float | None:
+    try:
+        return None if v is None else max(0.0, min(1.0, float(v)))
+    except (TypeError, ValueError):
+        return None
 
 
 def _int(v) -> int:

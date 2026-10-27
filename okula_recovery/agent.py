@@ -127,7 +127,9 @@ class ConsoleBar:
         filled = int(f * cls.WIDTH)
         bar = "=" * filled + (">" + " " * (cls.WIDTH - filled - 1) if filled < cls.WIDTH else "")
         rate = transferred / elapsed if elapsed > 0 else 0
-        line = f"  [{bar}] {f * 100:3.0f} %  {label}  {rate / 1e6:.0f} MB/s"
+        line = f"  [{bar}] {f * 100:3.0f} %  {label}"
+        if transferred > 0:
+            line += f"  {rate / 1e6:.0f} MB/s"
         if 0.02 < f < 1 and elapsed > 10:
             line += f"  noch ca. {format_eta(elapsed * (1 - f) / f)}"
         return line
@@ -160,6 +162,70 @@ KEY_FILE = "/etc/okula-agent.key"
 job_lock = threading.Lock()
 
 
+class JobState:
+    """Was gerade läuft – für die Beacons (Status-Spalte im Tool) und den Bildschirm.
+
+    Ein Auftrag kann hier laufen (Image, Zurückspielen) oder im Tool vorbereitet werden
+    (Image-Prüfung, per „notify“ gemeldet). Meldungen aus dem Tool verfallen nach NOTICE_TTL.
+    """
+
+    NOTICE_TTL = 30
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.text = ""
+        self.fraction: float | None = None
+        self.updated = 0.0
+        self.from_tool = False
+        self.bar: ConsoleBar | None = None
+        self.bar_title = ""
+
+    def set(self, text: str, fraction: float | None = None, from_tool: bool = False) -> None:
+        with self.lock:
+            self.text, self.fraction, self.from_tool, self.updated = text, fraction, from_tool, time.monotonic()
+
+    def clear(self) -> None:
+        with self.lock:
+            self.text, self.fraction, self.from_tool = "", None, False
+
+    def beacon(self) -> dict:
+        with self.lock:
+            if self.from_tool and time.monotonic() - self.updated > self.NOTICE_TTL:
+                self.text, self.fraction, self.from_tool = "", None, False
+            return {"job": self.text, "progress": self.fraction}
+
+    # Bildschirm für Meldungen aus dem Tool (eigene Aufträge haben ihren eigenen Balken)
+    def notice(self, title: str, fraction: float | None, label: str, result: str = "") -> None:
+        if not console:
+            return
+        if self.bar is None or self.bar_title != title:
+            self.end_notice("")
+            self.bar = ConsoleBar(console, title)
+            self.bar_title = title
+        if result:
+            self.end_notice(result)
+        elif fraction is not None:
+            self.bar(fraction, label, 0)
+
+    def end_notice(self, result: str) -> None:
+        if self.bar is not None:
+            self.bar.finish(f"» {result}" if result else "")
+            self.bar = None
+            self.bar_title = ""
+
+
+job_state = JobState()
+
+
+def tracked(kind: str, bar: "ConsoleBar | None"):
+    """Fortschritt eines Auftrags an Bildschirm-Balken und Beacon-Status weitergeben."""
+    def report(fraction: float, label: str, transferred: int) -> None:
+        job_state.set(kind, fraction)
+        if bar:
+            bar(fraction, label, transferred)
+    return report
+
+
 def load_key(path: str) -> bytes | None:
     try:
         key = bytes.fromhex(Path(path).read_text().strip())
@@ -183,12 +249,14 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
                     wire.send_json(tls, {"type": "error", "message": "Agent ist mit einem anderen Auftrag beschäftigt"})
                     return
                 disk = str(req.get("disk") or "")
+                job_state.end_notice("")
+                job_state.set("Disk-Image", 0.0)
                 bar = ConsoleBar(console, f"Disk-Image von {disk} läuft – Maschine nicht ausschalten") \
                     if console else None
                 result = "abgebrochen"
                 try:
                     log(f"Disk-Image von {disk} für {addr[0]} gestartet")
-                    imaging.stream_disk_image(tls, disk, log, bar)
+                    imaging.stream_disk_image(tls, disk, log, tracked("Disk-Image", bar))
                     result = "fertig"
                     log(f"Disk-Image von {disk} fertig", show=not bar)
                 except imaging.ImagingError as e:
@@ -198,18 +266,21 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
                 finally:
                     if bar:
                         bar.finish(f"» Disk-Image von {disk} {result}")
+                    job_state.clear()
                     job_lock.release()
             elif cmd == "restore":
                 if not job_lock.acquire(blocking=False):
                     wire.send_json(tls, {"type": "error", "message": "Agent ist mit einem anderen Auftrag beschäftigt"})
                     return
                 disk = str(req.get("disk") or "")
+                job_state.end_notice("Image im Tool geprüft – Zurückspielen startet")
+                job_state.set("Zurückspielen", 0.0)
                 bar = ConsoleBar(console, f"Image wird auf {disk} zurückgespielt – Maschine nicht ausschalten") \
                     if console else None
                 result = "abgebrochen – Disk ist unvollständig"
                 try:
                     log(f"Zurückspielen auf {disk} für {addr[0]} gestartet")
-                    imaging.restore_disk(tls, req, log, bar)
+                    imaging.restore_disk(tls, req, log, tracked("Zurückspielen", bar))
                     result = "zurückgespielt – Stick abziehen und neu starten"
                     log(f"Image auf {disk} zurückgespielt", show=not bar)
                 except imaging.ImagingError as e:
@@ -219,7 +290,24 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
                 finally:
                     if bar:
                         bar.finish(f"» Image auf {disk} {result}")
+                    job_state.clear()
                     job_lock.release()
+            elif cmd == "notify":
+                # Das Tool bereitet einen Auftrag vor (z. B. Image-Prüfung) – am Bildschirm zeigen
+                title = str(req.get("title") or "Auftrag wird im Tool vorbereitet")[:120]
+                job = str(req.get("job") or "")[:40]
+                result = str(req.get("result") or "")[:200]
+                try:
+                    fraction = float(req["fraction"]) if req.get("fraction") is not None else None
+                except (TypeError, ValueError):
+                    fraction = None
+                if result:
+                    job_state.clear()
+                    log(result)
+                elif not job_lock.locked():
+                    job_state.set(job, fraction, from_tool=True)
+                job_state.notice(title, fraction, str(req.get("label") or "")[:40], result)
+                wire.send_json(tls, {"type": "ok"})
             elif cmd == "power":
                 action = req.get("action")
                 if action not in ("poweroff", "reboot"):
@@ -300,7 +388,8 @@ def main(argv: list[str] | None = None) -> int:
         threading.Thread(target=serve_control, args=(key, args.control_port), daemon=True).start()
     else:
         log(f"Kein Schlüssel in {args.key_file} – nur Anmeldung, keine Images möglich", show=True)
-    extra = lambda: {"control": args.control_port if key else 0, "busy": job_lock.locked()}  # noqa: E731
+    extra = lambda: {"control": args.control_port if key else 0,  # noqa: E731
+                     "busy": job_lock.locked(), **job_state.beacon()}
 
     server = None
     no_ip_since = time.monotonic()

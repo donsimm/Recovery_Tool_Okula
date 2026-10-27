@@ -152,6 +152,34 @@ class RestoreTest(unittest.TestCase):
     def test_dos(self):
         self.roundtrip("dos")
 
+    def test_console_shows_tool_verification_then_restore(self):
+        src = self.build_source("gpt")
+        dst = self.loop("dst.img", 128)
+        port = self.serve()
+        tty = self.dir / "tty1"
+        tty.touch()
+        with mock.patch.object(imaging, "list_disks", lambda: loop_disks(src, dst)), \
+                mock.patch.object(agent, "log", lambda *a, **k: None), \
+                mock.patch.object(agent, "console", str(tty)):
+            image = agentclient.create_image("127.0.0.1", self.key, src, self.dir / "nas", "PC-Test",
+                                             lambda e: None, threading.Event(), port=port)
+            agentclient.restore_image("127.0.0.1", self.key, image, dst, lambda e: None, threading.Event(),
+                                      port=port, verify=True)
+            # kaputtes Image: Prüfung schlägt im Tool fehl → Agent zeigt es an
+            victim = next(image.glob("*p1.*"))
+            victim.write_bytes(victim.read_bytes()[:-10] + b"x" * 10)
+            with self.assertRaises(agentclient.AgentError):
+                agentclient.restore_image("127.0.0.1", self.key, image, dst, lambda e: None, threading.Event(),
+                                          port=port, verify=True)
+        text = tty.read_text()
+        verify_at = text.index("Image wird im Tool geprüft")
+        handover = text.index("» Image im Tool geprüft – Zurückspielen startet")
+        restore_at = text.index("zurückgespielt – Maschine nicht ausschalten")
+        self.assertLess(verify_at, handover)
+        self.assertLess(handover, restore_at)
+        self.assertIn("» Image-Prüfung im Tool: Image beschädigt", text)
+        self.assertEqual(agent.job_state.beacon(), {"job": "", "progress": None})
+
     def test_refuses_smaller_target(self):
         src = self.build_source("gpt")
         small = self.loop("small.img", 64)

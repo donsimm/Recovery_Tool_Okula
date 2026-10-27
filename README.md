@@ -127,6 +127,8 @@ Bestehende Clonezilla-Images (Modus „savedisk“) erkennt das Tool automatisch
     Image wird auf /dev/sda zurückgespielt – Maschine nicht ausschalten
     [==============>               ]  47 %  sda3  98 MB/s  noch ca. 6 min
   ```
+- **Image-Prüfung im Tool:** Beim Zurückspielen zeigt der Agent schon während der Prüfung einen Balken („Image wird im Tool geprüft … – gleich wird zurückgespielt“). Schlägt die Prüfung fehl, erscheint das auch am Agent-Bildschirm.
+- **Status-Spalte im Tool:** Die Liste „Maschinen im LAN“ zeigt pro Agent, was gerade läuft, etwa „Image prüfen 37 %“, „Zurückspielen 52 %“, „Disk-Image 10 %“, „bereit“ oder „offline“.
 - **Danach herunterfahren:** In beiden Dialogen gibt es das Häkchen „Maschine danach herunterfahren“. Es greift nur, wenn der Auftrag erfolgreich war.
 - **Knopf „Herunterfahren“:** Er steht rechts für die gewählte Agent-Maschine bereit, mit Rückfrage. Während ein Auftrag läuft, lehnt der Agent das Herunterfahren ab. Auf seinem Bildschirm meldet er „Maschine wird in 5 s heruntergefahren“.
 

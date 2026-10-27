@@ -636,9 +636,9 @@ class MainWindow(Gtk.ApplicationWindow):
         self.scan_progress = Gtk.ProgressBar(show_text=True, no_show_all=True)
         box.pack_start(self.scan_progress, False, False, 0)
 
-        # icon, Name, IP, MAC, Quelle, IP als Zahl (Sortierung), Hardware, Disks, zuletzt gesehen
-        self.machine_store = Gtk.ListStore(str, str, str, str, str, GObject.TYPE_INT64, str, str, float)
-        self.machine_view = make_tree([("", -1), ("Name", 1), ("IP-Adresse", 2), ("Quelle", 4),
+        # icon, Name, IP, MAC, Quelle, IP als Zahl (Sortierung), Hardware, Disks, zuletzt gesehen, Status
+        self.machine_store = Gtk.ListStore(str, str, str, str, str, GObject.TYPE_INT64, str, str, float, str)
+        self.machine_view = make_tree([("", -1), ("Name", 1), ("IP-Adresse", 2), ("Status", 9), ("Quelle", 4),
                                        ("Hardware", 6), ("Disks", 7), ("MAC", 3)], self.machine_store)
         self.machine_view.get_column(2).set_sort_column_id(5)
         self.machine_view.get_column(1).set_min_width(190)
@@ -685,7 +685,7 @@ class MainWindow(Gtk.ApplicationWindow):
                 return
         icon = ICON_AGENT if m.source == "USB-Agent" else ICON_ONLINE if m.online else ICON_OFFLINE
         self.machine_store.append([icon, m.name or "–", m.ip, m.mac or "–", m.source,
-                                   int(ipaddress.IPv4Address(m.ip)), m.hardware, m.disks, now])
+                                   int(ipaddress.IPv4Address(m.ip)), m.hardware, m.disks, now, ""])
 
     # ---------- USB-Agent ----------
 
@@ -705,6 +705,9 @@ class MainWindow(Gtk.ApplicationWindow):
                     for row in self.machine_store)
         self._add_machine_row(network.Machine(ip=info.ip, name=info.hostname, mac=info.mac, online=True,
                                               source="USB-Agent", hardware=info.hardware, disks=disks))
+        for row in self.machine_store:
+            if row[2] == info.ip:
+                row[9] = info.status
         self._update_image_button()
         if not known:
             note = " – Link-Local, im Netz gibt es kein DHCP" if info.ip.startswith("169.254.") else ""
@@ -723,6 +726,7 @@ class MainWindow(Gtk.ApplicationWindow):
                 gone.append(row.iter)
             elif row[0] == ICON_AGENT and row[8] < now - AGENT_TIMEOUT:
                 row[0] = ICON_OFFLINE
+                row[9] = "offline"
         for it in gone:
             ip, name = self.machine_store[it][2], self.machine_store[it][1]
             self.agents.pop(ip, None)
@@ -732,7 +736,7 @@ class MainWindow(Gtk.ApplicationWindow):
                 self.machine_store[it][0] = ICON_OFFLINE
                 self.machine_store[it][1] = entry.get("name") or "–"
                 self.machine_store[it][4] = "manuell"
-                self.machine_store[it][6] = self.machine_store[it][7] = ""
+                self.machine_store[it][6] = self.machine_store[it][7] = self.machine_store[it][9] = ""
             else:
                 self.machine_store.remove(it)
             self.status(f"{name} ({ip}) entfernt – seit {AGENT_REMOVE_AFTER} s keine Meldung")
