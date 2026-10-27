@@ -15,7 +15,7 @@ gi.require_version("GdkPixbuf", "2.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GdkPixbuf, GLib, GObject, Gtk, Pango  # noqa: E402
 
-from okula_recovery import __version__, agentclient, config, discovery, nas, nasfiles, network  # noqa: E402
+from okula_recovery import __version__, agentclient, clonezilla, config, discovery, nas, nasfiles, network  # noqa: E402
 from okula_recovery.image_dialog import ImageDialog  # noqa: E402
 from okula_recovery.restore_dialog import RestoreDialog  # noqa: E402
 from okula_recovery.stick_dialog import StickDialog  # noqa: E402
@@ -277,6 +277,11 @@ class MainWindow(Gtk.ApplicationWindow):
         head = Gtk.Box(spacing=6)
         self.img_count = Gtk.Label(label="", xalign=0)
         head.pack_start(self.img_count, True, True, 0)
+        self.btn_img_stick = Gtk.Button(label="Restore-Stick …", sensitive=False)
+        self.btn_img_stick.set_tooltip_text("Bootfähigen USB-Stick mit diesem Image erstellen – spielt es nach "
+                                            "Rückfrage ohne Netzwerk zurück")
+        self.btn_img_stick.connect("clicked", self.on_restore_stick)
+        head.pack_start(self.btn_img_stick, False, False, 0)
         self.btn_img_delete = Gtk.Button(label="Löschen", sensitive=False)
         self.btn_img_delete.set_tooltip_text("Gewähltes Image vom NAS löschen")
         self.btn_img_delete.connect("clicked", self.on_delete_image)
@@ -291,10 +296,22 @@ class MainWindow(Gtk.ApplicationWindow):
         self.image_store = Gtk.ListStore(str, str, str, str, str, GObject.TYPE_INT64, str)
         self.image_view = make_tree([("Name", 1), ("Typ", 2), ("Grösse", 3), ("Datum", 4)], self.image_store)
         self.image_view.get_column(2).set_sort_column_id(5)
-        self.image_view.get_selection().connect(
-            "changed", lambda sel: self.btn_img_delete.set_sensitive(sel.get_selected()[1] is not None))
+        self.image_view.get_selection().connect("changed", self._on_image_selected)
         box.pack_start(scrolled(self.image_view), True, True, 0)
         return box
+
+    def _on_image_selected(self, sel: Gtk.TreeSelection) -> None:
+        model, it = sel.get_selected()
+        self.btn_img_delete.set_sensitive(it is not None)
+        self.btn_img_stick.set_sensitive(it is not None and model[it][2] in ("Disk-Image", "Clonezilla"))
+
+    def on_restore_stick(self, _btn) -> None:
+        model, it = self.image_view.get_selection().get_selected()
+        if it is None:
+            return
+        path = model[it][6]
+        disks = clonezilla.disks(Path(path)) if model[it][2] == "Clonezilla" else None
+        StickDialog(self, image=path, source_disks=disks)
 
     def _build_files_tab(self) -> Gtk.Widget:
         self.files_rel = ""

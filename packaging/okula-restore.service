@@ -1,0 +1,19 @@
+# Restore-Stick: Bildschirmführung zum Zurückspielen des Images auf tty1.
+# Liegt im Squashfs-Image des Restore-Sticks; getty@tty1 (Autologin) ist dort maskiert.
+[Unit]
+Description=Okula Restore-Stick
+After=systemd-user-sessions.service live-config.service
+
+[Service]
+Type=idle
+ExecStart=/bin/sh /opt/okula-recovery/start-restore.sh
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

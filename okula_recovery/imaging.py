@@ -20,11 +20,12 @@ import shutil
 import subprocess
 import threading
 import time
-from typing import Callable
+from typing import Callable, Iterator
 
 from okula_recovery import wire
 
 LIVE_MEDIUM = "/run/live/medium"
+STICK_DATA = "/run/okula-data"  # Datenpartition des Restore-Sticks
 HEAD_TAIL = 1024 * 1024
 
 # lsblk-FSTYPE → partclone-Variante
@@ -73,8 +74,8 @@ def parse_disks(output: str, types: tuple[str, ...] = ("disk",),
     for d in devices:
         if d.get("type") not in types or d["name"].startswith(skip):
             continue
-        if any(m.startswith(LIVE_MEDIUM) for m in _flatten_mounts(d)):
-            continue  # davon läuft das Live-System
+        if any(m.startswith((LIVE_MEDIUM, STICK_DATA)) for m in _flatten_mounts(d)):
+            continue  # davon läuft das Live-System bzw. das ist der Restore-Stick
         parts = [_partition(c) for c in d.get("children") or [] if c.get("type") == "part"]
         disks.append({
             "name": d["name"], "path": d.get("path") or f"/dev/{d['name']}", "size": int(d.get("size") or 0),
@@ -386,9 +387,35 @@ def write_partition_table(target: dict, source: dict, dump: str, head: bytes) ->
     subprocess.run(["udevadm", "settle"], capture_output=True)
 
 
-def _receive_into(sock, cmds: list[list[str]], expected: dict,
-                  on_bytes: Callable[[int], None] | None = None) -> None:
-    """Empfängt Daten-Frames bis file_end und schreibt sie in die Pipeline."""
+def _frames(sock, expected: dict):
+    """Daten-Frames einer Datei bis file_end; prüft dabei SHA256 und Grösse der Übertragung."""
+    h = hashlib.sha256()
+    size = 0
+    while True:
+        kind, payload = wire.recv_frame(sock)
+        if kind == wire.FRAME_DATA:
+            h.update(payload)
+            size += len(payload)
+            yield payload
+            continue
+        if payload.get("type") != "file_end":
+            raise ImagingError(f"Unerwartete Nachricht: {payload.get('type')}")
+        if payload.get("sha256") != h.hexdigest() or payload.get("size") != size:
+            raise ImagingError(f"Prüfsumme von {expected['file']} stimmt nicht – Übertragung fehlerhaft")
+        return
+
+
+def read_pieces(pieces: list) -> Iterator[bytes]:
+    """(Gesplittete) Image-Dateien als ein Datenstrom (Restore-Stick)."""
+    for piece in pieces:
+        with open(piece, "rb") as fh:
+            while chunk := fh.read(wire.CHUNK):
+                yield chunk
+
+
+def _pipe_into(cmds: list[list[str]], chunks, expected: dict,
+               on_bytes: Callable[[int], None] | None = None) -> None:
+    """Schreibt einen Datenstrom in die Restore-Pipeline und prüft die Exit-Codes."""
     procs = []
     stdin = subprocess.PIPE
     for i, argv in enumerate(cmds):
@@ -401,26 +428,16 @@ def _receive_into(sock, cmds: list[list[str]], expected: dict,
         stdin = p.stdout
     progress = _Progress(procs[-1].stderr)
     sink = procs[0].stdin
-    h = hashlib.sha256()
     size = 0
     try:
-        while True:
-            kind, payload = wire.recv_frame(sock)
-            if kind == wire.FRAME_DATA:
-                h.update(payload)
-                size += len(payload)
-                if on_bytes:
-                    on_bytes(size)
-                try:
-                    sink.write(payload)
-                except BrokenPipeError:
-                    break  # Prozess ist ausgestiegen, Exit-Code unten
-                continue
-            if payload.get("type") != "file_end":
-                raise ImagingError(f"Unerwartete Nachricht: {payload.get('type')}")
-            if payload.get("sha256") != h.hexdigest() or payload.get("size") != size:
-                raise ImagingError(f"Prüfsumme von {expected['file']} stimmt nicht – Übertragung fehlerhaft")
-            break
+        for payload in chunks:
+            size += len(payload)
+            if on_bytes:
+                on_bytes(size)
+            try:
+                sink.write(payload)
+            except BrokenPipeError:
+                break  # Prozess ist ausgestiegen, Exit-Code unten
         try:
             sink.close()
         except BrokenPipeError:
@@ -445,19 +462,14 @@ def _receive_into(sock, cmds: list[list[str]], expected: dict,
                         pass
 
 
-def restore_disk(sock, req: dict, log: Callable[[str], None] = print, report: Report | None = None) -> None:
-    target = {d["path"]: d for d in list_disks()}.get(str(req.get("disk") or ""))
-    if target is None:
-        raise ImagingError(f"Zieldisk {req.get('disk')} nicht gefunden")
-    source = req.get("source") or {}
-    steps = req.get("steps") or []
+def prepare_target(target: dict, source: dict, steps: list[dict], sfdisk: str, head: bytes,
+                   log: Callable[[str], None] = print) -> dict[str, str]:
+    """Prüft die Zieldisk, schreibt Tabelle + Bootcode und liefert Partition → Gerät."""
     check_restore(target, source, steps)
-    head = bytes.fromhex(req.get("head") or "")
     if len(head) < MBR_BOOTCODE:
         raise ImagingError("Image ohne Kopfbereich (head.img)")
-
     log(f"Schreibe Partitionstabelle auf {target['path']} …")
-    write_partition_table(target, source, req.get("sfdisk") or "", head)
+    write_partition_table(target, source, sfdisk, head)
     devices = {}
     for s in steps:
         if source.get("partitions"):
@@ -465,6 +477,34 @@ def restore_disk(sock, req: dict, log: Callable[[str], None] = print, report: Re
         else:
             devices[s["part"]] = target["path"]
     _wait_for(sorted(set(devices.values())))
+    return devices
+
+
+def finish_target(steps: list[dict], devices: dict[str, str]) -> None:
+    for s in steps:
+        if s["kind"] == "swap":
+            cmd = ["mkswap", "-q"]
+            if s.get("uuid"):
+                cmd += ["-U", s["uuid"]]
+            if s.get("label"):
+                cmd += ["-L", s["label"]]
+            subprocess.run(cmd + [devices[s["part"]]], capture_output=True)
+    subprocess.run(["sync"])
+
+
+def _find_target(path: str) -> dict:
+    target = {d["path"]: d for d in list_disks()}.get(path)
+    if target is None:
+        raise ImagingError(f"Zieldisk {path} nicht gefunden")
+    return target
+
+
+def restore_disk(sock, req: dict, log: Callable[[str], None] = print, report: Report | None = None) -> None:
+    """Zurückspielen mit Daten vom Tool (Steuerverbindung)."""
+    target = _find_target(str(req.get("disk") or ""))
+    source = req.get("source") or {}
+    steps = req.get("steps") or []
+    devices = prepare_target(target, source, steps, req.get("sfdisk") or "", bytes.fromhex(req.get("head") or ""), log)
     wire.send_json(sock, {"type": "ready", "devices": devices})
 
     by_file = {s["file"]: s for s in steps if s.get("file")}
@@ -479,18 +519,27 @@ def restore_disk(sock, req: dict, log: Callable[[str], None] = print, report: Re
         step = by_file[msg["file"]]
         log(f"Schreibe {step['part']} → {devices[step['part']]} …")
         before = received
-        _receive_into(sock, restore_command(step, devices[step["part"]]), step,
-                      (lambda n, p=step["part"], b=before: report((b + n) / total, p, b + n)) if report else None)
+        _pipe_into(restore_command(step, devices[step["part"]]), _frames(sock, step), step,
+                   (lambda n, p=step["part"], b=before: report((b + n) / total, p, b + n)) if report else None)
         received += int(step.get("size") or 0)
         wire.send_json(sock, {"type": "file_done", "file": step["file"]})
-
-    for s in steps:
-        if s["kind"] == "swap":
-            cmd = ["mkswap", "-q"]
-            if s.get("uuid"):
-                cmd += ["-U", s["uuid"]]
-            if s.get("label"):
-                cmd += ["-L", s["label"]]
-            subprocess.run(cmd + [devices[s["part"]]], capture_output=True)
-    subprocess.run(["sync"])
+    finish_target(steps, devices)
     wire.send_json(sock, {"type": "done"})
+
+
+def restore_local(target_path: str, src: dict, log: Callable[[str], None] = print,
+                  report: Report | None = None) -> None:
+    """Zurückspielen aus lokalen Dateien (Restore-Stick); src wie agentclient.image_source()."""
+    target = _find_target(target_path)
+    steps = src["steps"]
+    devices = prepare_target(target, src["source"], steps, src["sfdisk"], src["head"], log)
+    files = [s for s in steps if s.get("pieces")]
+    total = sum(int(s.get("size") or 0) for s in files) or 1
+    done = 0
+    for step in files:
+        log(f"Schreibe {step['part']} → {devices[step['part']]} …")
+        before = done
+        _pipe_into(restore_command(step, devices[step["part"]]), read_pieces(step["pieces"]), step,
+                   (lambda n, p=step["part"], b=before: report((b + n) / total, p, b + n)) if report else None)
+        done += int(step.get("size") or 0)
+    finish_target(steps, devices)

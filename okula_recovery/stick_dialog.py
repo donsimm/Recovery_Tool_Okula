@@ -18,10 +18,15 @@ from okula_recovery import agentclient, isofetch, network, stick  # noqa: E402
 HELPER = "/usr/local/sbin/okula-make-stick"
 
 
-def helper_command(device: str, iso: str, server: str) -> list[str]:
+def helper_command(device: str, iso: str, server: str, image: str | None = None,
+                   source_disk: str | None = None) -> list[str]:
     args = ["--device", device, "--iso", iso, "--key-stdin"]
     if server:
         args += ["--server", server]
+    if image:
+        args += ["--image", image]
+        if source_disk:
+            args += ["--source-disk", source_disk]
     if os.geteuid() == 0:
         return [sys.executable, "-m", "okula_recovery.stick", *args]
     if not Path(HELPER).exists():
@@ -30,10 +35,16 @@ def helper_command(device: str, iso: str, server: str) -> list[str]:
 
 
 class StickDialog(Gtk.Dialog):
-    def __init__(self, parent: Gtk.Window):
-        super().__init__(title="Agent-USB-Stick erstellen", transient_for=parent, modal=True)
+    """Agent-Stick (image=None) oder Restore-Stick mit genau einem Image."""
+
+    def __init__(self, parent: Gtk.Window, image: str | None = None, source_disks: list[str] | None = None):
+        title = "Restore-Stick erstellen" if image else "Agent-USB-Stick erstellen"
+        super().__init__(title=title, transient_for=parent, modal=True)
         self.set_default_size(620, 460)
         self.busy = False
+        self.image = image
+        self.image_size = stick.tree_size(Path(image)) if image else 0
+        self.disk_sizes: dict[str, int] = {}
         self.btn_close = self.add_button("Schliessen", Gtk.ResponseType.CLOSE)
         self.btn_start = self.add_button("Stick vorbereiten", Gtk.ResponseType.APPLY)
         self.btn_start.get_style_context().add_class("destructive-action")
@@ -67,15 +78,33 @@ class StickDialog(Gtk.Dialog):
         self.btn_download.connect("clicked", self.on_download)
         grid.attach(self.btn_download, 2, 1, 1, 1)
 
-        grid.attach(Gtk.Label(label="Server-IP", xalign=0), 0, 2, 1, 1)
-        ifaces = network.local_interfaces()
-        self.server_ip = Gtk.Entry(text=str(ifaces[0].ip) if ifaces else "",
-                                   placeholder_text="leer = nur Broadcast")
-        self.server_ip.set_tooltip_text("Der Agent meldet sich per Broadcast und zusätzlich direkt an diese IP")
-        grid.attach(self.server_ip, 1, 2, 2, 1)
+        self.server_ip = Gtk.Entry(text="")
+        self.source_disk = Gtk.ComboBoxText()
+        if image:
+            grid.attach(Gtk.Label(label="Image", xalign=0), 0, 2, 1, 1)
+            info = Gtk.Label(xalign=0, wrap=True, selectable=True)
+            info.set_markup(f"<b>{GLib.markup_escape_text(Path(image).name)}</b>  "
+                            f"({self.image_size / 1000**3:.1f} GB) – der Stick spielt es nach Rückfrage "
+                            "am Bildschirm auf eine Disk zurück, ohne Netzwerk")
+            grid.attach(info, 1, 2, 2, 1)
+            if source_disks and len(source_disks) > 1:
+                grid.attach(Gtk.Label(label="Disk im Image", xalign=0), 0, 6, 1, 1)
+                for d in source_disks:
+                    self.source_disk.append(d, d)
+                self.source_disk.set_active(0)
+                grid.attach(self.source_disk, 1, 6, 2, 1)
+        else:
+            grid.attach(Gtk.Label(label="Server-IP", xalign=0), 0, 2, 1, 1)
+            ifaces = network.local_interfaces()
+            self.server_ip.set_text(str(ifaces[0].ip) if ifaces else "")
+            self.server_ip.set_placeholder_text("leer = nur Broadcast")
+            self.server_ip.set_tooltip_text("Der Agent meldet sich per Broadcast und zusätzlich direkt an diese IP")
+            grid.attach(self.server_ip, 1, 2, 2, 1)
 
         warn = Gtk.Label(xalign=0, wrap=True)
-        warn.set_markup("<b>Achtung:</b> Alle Daten auf dem gewählten Stick werden gelöscht.")
+        warn.set_markup("<b>Achtung:</b> Alle Daten auf dem gewählten Stick werden gelöscht."
+                        + (f" Der Stick braucht mindestens <b>{self.required_size() / 1000**3:.0f} GB</b>."
+                           if image else ""))
         warn.get_style_context().add_class("status-fail")
         grid.attach(warn, 0, 3, 3, 1)
 
@@ -100,7 +129,10 @@ class StickDialog(Gtk.Dialog):
         return self.disk_combo.get_active_id()
 
     def _update_sensitivity(self) -> None:
-        ready = not self.busy and self.selected_disk() is not None and bool(self.iso_chooser.get_filename())
+        disk = self.selected_disk()
+        need = self.required_size() if self.image else stick.MIN_SIZE
+        big_enough = disk is not None and self.disk_sizes.get(disk, 0) >= need
+        ready = not self.busy and big_enough and bool(self.iso_chooser.get_filename())
         self.btn_start.set_sensitive(ready)
         for w in (self.btn_download, self.btn_close, self.btn_refresh, self.disk_combo, self.iso_chooser,
                   self.server_ip):
@@ -115,11 +147,19 @@ class StickDialog(Gtk.Dialog):
         buf.insert(buf.get_end_iter(), text + "\n")
         self.log.scroll_to_iter(buf.get_end_iter(), 0, False, 0, 0)
 
+    def required_size(self) -> int:
+        """Mindestgrösse des Sticks für den Restore-Stick (ISO-Grösse geschätzt, falls noch keins gewählt)."""
+        iso = self.iso_chooser.get_filename() if hasattr(self, "iso_chooser") else None
+        iso_size = Path(iso).stat().st_size if iso and Path(iso).is_file() else 1_600_000_000
+        return stick.restore_need(iso_size, self.image_size)[1]
+
     def refresh_disks(self) -> None:
         self.disk_combo.remove_all()
         disks = stick.list_usb_disks()
+        need = self.required_size() if self.image else stick.MIN_SIZE
+        self.disk_sizes = {d.path: d.size for d in disks}
         for d in disks:
-            self.disk_combo.append(d.path, d.label)
+            self.disk_combo.append(d.path, d.label + ("  – zu klein" if d.size < need else ""))
         if disks:
             self.disk_combo.set_active(0)
         else:
@@ -181,14 +221,15 @@ class StickDialog(Gtk.Dialog):
         if answer != Gtk.ResponseType.OK:
             return
         try:
-            cmd = helper_command(device, iso, self.server_ip.get_text().strip())
+            cmd = helper_command(device, iso, self.server_ip.get_text().strip(), self.image,
+                                 self.source_disk.get_active_id())
         except FileNotFoundError as e:
             self.append_log(str(e))
             return
 
         key_hex = agentclient.load_or_create_key().hex()
         self._set_busy(True)
-        self.append_log(f"Erstelle Agent-Stick auf {device} …")
+        self.append_log(f"Erstelle {'Restore-Stick' if self.image else 'Agent-Stick'} auf {device} …")
         cwd = str(Path(stick.__file__).resolve().parent.parent)
 
         def work():
