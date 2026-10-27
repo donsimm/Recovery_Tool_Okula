@@ -20,7 +20,7 @@ fi
 echo "==> Pakete installieren"
 apt-get update
 apt-get install -y --no-install-recommends \
-    python3 python3-gi gir1.2-gtk-3.0 \
+    python3 python3-gi gir1.2-gtk-3.0 librsvg2-common \
     cifs-utils nfs-common smbclient iputils-ping iproute2 \
     util-linux dosfstools grub-pc-bin grub2-common
 
@@ -45,6 +45,9 @@ visudo -cf "$SUDOERS.tmp" >/dev/null
 mv "$SUDOERS.tmp" "$SUDOERS"
 
 echo "==> Startmenü-Eintrag"
+install -D -m 0644 "$APP_DIR/okula_recovery/assets/okula-emblem.svg" \
+    /usr/share/icons/hicolor/scalable/apps/okula-recovery.svg
+gtk-update-icon-cache -q /usr/share/icons/hicolor 2>/dev/null || true
 install -m 0644 "$APP_DIR/packaging/okula-recovery.desktop" /usr/share/applications/okula-recovery.desktop
 if [ "$AUTOSTART" -eq 1 ]; then
     HOME_DIR=$(getent passwd "$TARGET_USER" | cut -d: -f6)

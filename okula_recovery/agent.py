@@ -15,6 +15,15 @@ import time
 from okula_recovery import __version__, discovery, network
 
 
+BANNER = """\
+  ####   #   #  #   #  #       ###
+ #    #  #  #   #   #  #      #   #
+ #    #  ###    #   #  #      #####
+ #    #  #  #   #   #  #      #   #
+  ####   #   #   ###   #####  #   #   Recovery Agent
+"""
+
+
 def broadcast_targets() -> list[str]:
     targets = {"255.255.255.255"}
     for iface in network.local_interfaces():
@@ -53,6 +62,7 @@ def main(argv: list[str] | None = None) -> int:
     sock.settimeout(args.interval)
 
     server = None
+    print(BANNER, flush=True)
     print(f"Okula Recovery Agent {__version__} – suche Recovery-Tool im LAN …", flush=True)
     while True:
         ip = primary_ip(args.server)

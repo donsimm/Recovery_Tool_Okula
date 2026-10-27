@@ -1,0 +1,43 @@
+# GRUB-Theme des Okula-Agent-Sticks (getestet mit GRUB 2.12 in QEMU)
+# Achtung: unbekannte/leere Eigenschaften lassen GRUB still auf das Textmenü zurückfallen.
+desktop-color: "#ffffff"
+title-text: ""
+message-color: "#0b1213"
+
++ image {
+    left = 50%-300
+    top = 14%
+    width = 600
+    height = 145
+    file = "okula-logo.png"
+}
+
++ label {
+    left = 0
+    top = 14%+170
+    width = 100%
+    align = "center"
+    color = "#5a6366"
+    text = "Recovery Agent"
+}
+
++ boot_menu {
+    left = 50%-260
+    top = 50%
+    width = 520
+    height = 30%
+    item_color = "#8a9396"
+    selected_item_color = "#0b1213"
+    item_height = 34
+    item_spacing = 6
+}
+
++ label {
+    id = "__timeout__"
+    left = 0
+    top = 84%
+    width = 100%
+    align = "center"
+    color = "#5a6366"
+    text = "Automatischer Start in %d s"
+}

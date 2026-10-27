@@ -30,6 +30,7 @@ SYSTEM_MOUNTS = ("/", "/boot", "/boot/efi", "/usr", "/var", "/home", "[SWAP]")
 AGENT_MODULES = ("__init__.py", "agent.py", "discovery.py", "network.py")
 PACKAGE_DIR = Path(__file__).resolve().parent
 SERVICE_FILE = PACKAGE_DIR.parent / "packaging" / "okula-agent.service"
+GRUB_THEME_DIR = PACKAGE_DIR / "assets" / "grub"
 BIOS_GRUB_DIR = Path("/usr/lib/grub/i386-pc")
 
 Emit = Callable[[str, str], None]
@@ -59,13 +60,16 @@ if [ -n "$MAC" ]; then
     hostname "$NAME"
 fi
 
+# Login-Bildschirm der Zielmaschine kennzeichnen
+cp "$SRC/issue" /etc/issue
+
 mkdir -p /etc/systemd/system/multi-user.target.wants
 ln -sf /etc/systemd/system/okula-agent.service /etc/systemd/system/multi-user.target.wants/okula-agent.service
 systemctl daemon-reload || true
 systemctl --no-block start okula-agent.service || true
 """
 
-GRUB_CFG = """# Okula Recovery Agent – erzeugt vom Okula Recovery Tool
+GRUB_CFG = """# Okula Recovery Agent - erzeugt vom Okula Recovery Tool (nur ASCII)
 set timeout=3
 set default=0
 insmod all_video
@@ -73,12 +77,31 @@ insmod part_msdos
 insmod fat
 search --no-floppy --label --set=root {label}
 
+# Grafisches Menue mit Okula-Logo; ohne Font/Grafik bleibt das Textmenue.
+# GRUB-Skript kennt keinen Oder-Operator, daher if/elif
+# (font.pf2 aus dem ISO bzw. fonts/unicode.pf2 von grub-install).
+if loadfont /boot/grub/font.pf2; then
+    set okula_font=1
+elif loadfont unicode; then
+    set okula_font=1
+fi
+if [ -n "$okula_font" ]; then
+    insmod gfxterm
+    insmod gfxmenu
+    insmod png
+    set gfxmode=auto
+    terminal_output gfxterm
+    set theme=/boot/grub/themes/okula/theme.txt
+fi
+set menu_color_normal=dark-gray/black
+set menu_color_highlight=white/black
+
 menuentry "Okula Recovery Agent" {{
     linux /live/{kernel} {params}
     initrd /live/{initrd}
 }}
 
-menuentry "Okula Recovery Agent (Grafik-Kompatibilitätsmodus)" {{
+menuentry "Okula Recovery Agent (nomodeset)" {{
     linux /live/{kernel} {params} nomodeset
     initrd /live/{initrd}
 }}
@@ -198,6 +221,7 @@ def install_agent(root: Path, server_ip: str = "") -> None:
     for name in AGENT_MODULES:
         (pkg / name).write_bytes((PACKAGE_DIR / name).read_bytes())
     (okula / "okula-agent.service").write_bytes(SERVICE_FILE.read_bytes())
+    (okula / "issue").write_bytes((PACKAGE_DIR / "assets" / "issue").read_bytes())
     args = f"--server {server_ip}" if server_ip else ""
     (okula / "agent.conf").write_text(f'AGENT_ARGS="{args}"\n')
     hooks = root / "live" / "config-hooks"
@@ -207,7 +231,10 @@ def install_agent(root: Path, server_ip: str = "") -> None:
 
 def write_boot_config(root: Path, kernel: str, initrd: str) -> None:
     grub = root / "boot" / "grub"
-    grub.mkdir(parents=True, exist_ok=True)
+    theme = grub / "themes" / "okula"
+    theme.mkdir(parents=True, exist_ok=True)
+    for f in GRUB_THEME_DIR.iterdir():
+        (theme / f.name).write_bytes(f.read_bytes())
     (grub / "grub.cfg").write_text(grub_cfg(kernel, initrd))
 
 

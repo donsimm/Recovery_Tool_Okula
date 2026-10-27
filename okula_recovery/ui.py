@@ -5,15 +5,20 @@ from __future__ import annotations
 import ipaddress
 import threading
 import time
+from pathlib import Path
 
 import gi
 
 gi.require_version("Gdk", "3.0")
+gi.require_version("GdkPixbuf", "2.0")
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
+from gi.repository import Gdk, GdkPixbuf, GLib, GObject, Gtk, Pango  # noqa: E402
 
 from okula_recovery import __version__, config, discovery, nas, network  # noqa: E402
 from okula_recovery.stick_dialog import StickDialog  # noqa: E402
+
+ASSETS = Path(__file__).resolve().parent / "assets"
+LOGO_COLOR = b"#0b1213"  # Füllfarbe im Original-SVG
 
 # Agent gilt als offline, wenn so lange kein Beacon kam
 AGENT_TIMEOUT = 15
@@ -28,6 +33,25 @@ CSS = b"""
 .status-fail { color: #c62828; font-weight: bold; }
 .status-idle { color: #757575; }
 """
+
+
+def svg_pixbuf(path: Path, height: int, color: str | None = None) -> GdkPixbuf.Pixbuf | None:
+    """Rendert ein SVG auf die gewünschte Höhe, optional mit anderer Füllfarbe (dunkles Theme)."""
+    try:
+        data = path.read_bytes()
+        if color:
+            data = data.replace(LOGO_COLOR, color.encode())
+        loader = GdkPixbuf.PixbufLoader.new_with_type("svg")
+        loader.connect("size-prepared", lambda ld, w, h: ld.set_size(max(1, round(w * height / h)), height))
+        loader.write(data)
+        loader.close()
+        return loader.get_pixbuf()
+    except (OSError, GLib.Error):
+        return None  # ohne SVG-Loader (librsvg2-common) eben ohne Logo
+
+
+def rgba_hex(c: Gdk.RGBA) -> str:
+    return "#{:02x}{:02x}{:02x}".format(*(round(v * 255) for v in (c.red, c.green, c.blue)))
 
 
 def run_async(work, done):
@@ -84,8 +108,15 @@ class MainWindow(Gtk.ApplicationWindow):
         self.cfg = config.load()
         self._auto_mount_tried = False
 
-        header = Gtk.HeaderBar(title="Okula Recovery Tool", subtitle=f"Version {__version__}",
+        header = Gtk.HeaderBar(title="Recovery Tool", subtitle=f"Version {__version__}",
                                show_close_button=True)
+        self.logo = Gtk.Image(margin_start=6, margin_end=6)
+        header.pack_start(self.logo)
+        header.connect("style-updated", self._update_logo)
+        icon = svg_pixbuf(ASSETS / "okula-emblem.svg", 128)
+        if icon:
+            self.set_icon(icon)
+            Gtk.Window.set_default_icon(icon)
         btn_stick = Gtk.Button(label="Agent-USB-Stick erstellen …")
         btn_stick.set_tooltip_text("USB-Stick wählen und mit Live-System und Agent vorbereiten")
         btn_stick.connect("clicked", lambda _b: StickDialog(self))
@@ -107,6 +138,13 @@ class MainWindow(Gtk.ApplicationWindow):
         self._load_manual_machines()
         self._start_listener()
         GLib.idle_add(self.on_test_nas, None)
+
+    def _update_logo(self, header: Gtk.HeaderBar) -> None:
+        """Logo in der Textfarbe der Titelleiste, damit es auch im dunklen Theme lesbar ist."""
+        color = rgba_hex(header.get_style_context().get_color(Gtk.StateFlags.NORMAL))
+        if color != getattr(self, "_logo_color", None):
+            self._logo_color = color
+            self.logo.set_from_pixbuf(svg_pixbuf(ASSETS / "okula-logo.svg", 22, color))
 
     # ---------- linke Seite: NAS ----------
 

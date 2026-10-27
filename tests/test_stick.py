@@ -66,6 +66,16 @@ class LayoutTest(unittest.TestCase):
         self.assertIn("initrd /live/initrd.img", cfg)
         self.assertIn("--label --set=root OKULAAGENT", cfg)
         self.assertEqual(cfg.count("menuentry"), 2)
+        self.assertIn("set theme=/boot/grub/themes/okula/theme.txt", cfg)
+        self.assertNotIn("||", cfg)  # kennt das GRUB-Skript nicht
+        self.assertTrue(cfg.isascii(), "Menü muss auch ohne Unicode-Font lesbar sein")
+
+    def test_write_boot_config_copies_theme(self):
+        stick.write_boot_config(self.root, "vmlinuz", "initrd.img")
+        theme = self.root / "boot/grub/themes/okula"
+        self.assertTrue((theme / "theme.txt").is_file())
+        self.assertEqual((theme / "okula-logo.png").read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertIn('file = "okula-logo.png"', (theme / "theme.txt").read_text())
 
     def test_copy_tree_follows_symlinks(self):
         src, dst = self.root / "src", self.root / "dst"
@@ -86,6 +96,7 @@ class LayoutTest(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in pkg.iterdir()), sorted(stick.AGENT_MODULES))
         self.assertEqual((self.root / "live/okula/agent.conf").read_text(), 'AGENT_ARGS="--server 192.168.1.20"\n')
         self.assertIn("EnvironmentFile", (self.root / "live/okula/okula-agent.service").read_text())
+        self.assertIn("Recovery Agent", (self.root / "live/okula/issue").read_text())
         hook = self.root / "live/config-hooks/9990-okula-agent"
         self.assertEqual(subprocess.run(["sh", "-n", str(hook)]).returncode, 0)
         # Agent-Module dürfen nichts ausserhalb der kopierten Dateien brauchen (kein GTK auf dem Stick)

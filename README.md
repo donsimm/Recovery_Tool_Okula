@@ -51,6 +51,8 @@ Button **„Agent-USB-Stick erstellen …“** oben rechts:
    - Agent unter `/live/okula`; ein live-config-Hook (`live-config.hooks=medium`) startet ihn beim Booten als Dienst
    - Tastatur `ch`, Locale `de_CH.UTF-8`, Zeitzone `Europe/Zurich`
 
+![Boot-Menü des Agent-Sticks](docs/grub-menu.png)
+
 **Ablauf an der Zielmaschine:** vom Stick booten (Boot-Menü, meist F12/F11/F8). Der Agent sendet alle 3 s ein Beacon auf **UDP 47811**, und zwar per Broadcast und zusätzlich direkt an die Server-IP aus dem Dialog. Das Tool antwortet, die Konsole zeigt „Verbunden“, und die Maschine erscheint rechts mit Hostname `okula-<MAC-Ende>`, Hersteller/Modell und Disks. Kommt 15 s lang kein Beacon, zeigt das Tool die Maschine als offline.
 
 - **Firewall auf dem Server:** UDP 47811 eingehend freigeben (z. B. `sudo ufw allow 47811/udp`).
