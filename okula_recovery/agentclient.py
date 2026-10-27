@@ -88,6 +88,15 @@ def get_info(ip: str, key: bytes, port: int = wire.PORT) -> dict:
     return reply
 
 
+def power(ip: str, key: bytes, action: str = "poweroff", port: int = wire.PORT, delay: int = 5) -> None:
+    """Zielmaschine herunterfahren („poweroff“) oder neu starten („reboot“)."""
+    with _connect(ip, key, port) as sock:
+        wire.send_json(sock, {"cmd": "power", "action": action, "delay": delay})
+        reply = wire.recv_json(sock)
+    if reply.get("type") != "ok":
+        raise AgentError(reply.get("message", "Agent hat abgelehnt"))
+
+
 def safe_name(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("._-")[:80] or "maschine"
 

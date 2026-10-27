@@ -15,7 +15,7 @@ gi.require_version("GdkPixbuf", "2.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GdkPixbuf, GLib, GObject, Gtk, Pango  # noqa: E402
 
-from okula_recovery import __version__, config, discovery, nas, nasfiles, network  # noqa: E402
+from okula_recovery import __version__, agentclient, config, discovery, nas, nasfiles, network  # noqa: E402
 from okula_recovery.image_dialog import ImageDialog  # noqa: E402
 from okula_recovery.restore_dialog import RestoreDialog  # noqa: E402
 from okula_recovery.stick_dialog import StickDialog  # noqa: E402
@@ -657,6 +657,10 @@ class MainWindow(Gtk.ApplicationWindow):
         self.btn_restore.connect("clicked", self.on_restore_image)
         for b in (self.btn_backup, self.btn_image, self.btn_restore):
             actions.pack_start(b, False, False, 0)
+        self.btn_power = Gtk.Button(label="Herunterfahren", sensitive=False)
+        self.btn_power.set_tooltip_text("Gewählte Maschine mit Agent-Stick herunterfahren")
+        self.btn_power.connect("clicked", self.on_power_off)
+        actions.pack_start(self.btn_power, False, False, 0)
         self.btn_remove = Gtk.Button(label="Entfernen", sensitive=False)
         self.btn_remove.connect("clicked", self.on_remove_machine)
         actions.pack_end(self.btn_remove, False, False, 0)
@@ -802,6 +806,7 @@ class MainWindow(Gtk.ApplicationWindow):
         ok = agent is not None and agent.control_port > 0
         self.btn_image.set_sensitive(ok)
         self.btn_restore.set_sensitive(ok)
+        self.btn_power.set_sensitive(ok)
         if agent is not None and not agent.control_port:
             self.btn_image.set_tooltip_text("Agent-Stick ist veraltet – mit aktuellem Tool neu erstellen")
 
@@ -813,6 +818,25 @@ class MainWindow(Gtk.ApplicationWindow):
             self.status("Agent ist mit einem anderen Auftrag beschäftigt")
             return
         ImageDialog(self, agent, self._nas_cfg_from_form().mount_point, on_done=self.refresh_images)
+
+    def on_power_off(self, _btn) -> None:
+        agent = self._selected_agent()
+        if agent is None:
+            return
+        if not confirm(self, f"{agent.hostname or agent.ip} herunterfahren?",
+                       f"{agent.hardware} ({agent.ip})\n\nDanach kann der Stick abgezogen werden.",
+                       ok_label="Herunterfahren"):
+            return
+        key = agentclient.load_or_create_key()
+
+        def done(result) -> None:
+            if isinstance(result, Exception):
+                self.status(f"Herunterfahren fehlgeschlagen: {result}")
+                confirm_error(self, str(result))
+            else:
+                self.status(f"{agent.hostname or agent.ip} wird heruntergefahren")
+
+        run_async(lambda: agentclient.power(agent.ip, key, "poweroff", agent.control_port), done)
 
     def on_restore_image(self, _btn) -> None:
         agent = self._selected_agent()

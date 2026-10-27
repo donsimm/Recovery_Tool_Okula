@@ -120,6 +120,16 @@ Bestehende Clonezilla-Images (Modus „savedisk“) erkennt das Tool automatisch
 - **Nicht unterstützt** (wird im Dialog mit Grund gemeldet): LVM, sehr alte Images mit ntfsclone/partimage (`*.ntfs-img`), Images einzelner Partitionen (Modus „saveparts“).
 - **Agent-Stick:** Für gzip-, lz4- und lzop-Images liefert der Stick `pigz`, `lz4` und `lzop` mit, falls sie im Live-System fehlen. Dafür den Stick einmal mit dem aktuellen Tool neu erstellen.
 
+### Fortschritt am Agent und Herunterfahren
+
+- **Am Bildschirm der Zielmaschine:** Während Disk-Image oder Zurückspielen zeigt der Agent einen Fortschrittsbalken mit Prozent, Partition, Geschwindigkeit und Restzeit, danach eine Abschlussmeldung:
+  ```
+    Image wird auf /dev/sda zurückgespielt – Maschine nicht ausschalten
+    [==============>               ]  47 %  sda3  98 MB/s  noch ca. 6 min
+  ```
+- **Danach herunterfahren:** In beiden Dialogen gibt es das Häkchen „Maschine danach herunterfahren“. Es greift nur, wenn der Auftrag erfolgreich war.
+- **Knopf „Herunterfahren“:** Er steht rechts für die gewählte Agent-Maschine bereit, mit Rückfrage. Während ein Auftrag läuft, lehnt der Agent das Herunterfahren ab. Auf seinem Bildschirm meldet er „Maschine wird in 5 s heruntergefahren“.
+
 ## Tests
 
 ```bash

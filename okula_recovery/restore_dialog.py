@@ -88,6 +88,9 @@ class RestoreDialog(Gtk.Dialog):
         self.verify = Gtk.CheckButton(label="Image vor dem Schreiben vollständig prüfen (empfohlen)", active=True)
         grid.attach(self.verify, 0, row, 2, 1)
         row += 1
+        self.shutdown = Gtk.CheckButton(label="Maschine danach herunterfahren (Stick dann abziehen und einschalten)")
+        grid.attach(self.shutdown, 0, row, 2, 1)
+        row += 1
         self.confirm_label = Gtk.Label(xalign=0)
         grid.attach(self.confirm_label, 0, row, 1, 1)
         self.confirm = Gtk.Entry(placeholder_text="Disk-Namen eintippen")
@@ -229,7 +232,7 @@ class RestoreDialog(Gtk.Dialog):
 
     def _set_busy(self, busy: bool) -> None:
         self.busy = busy
-        for w in (self.image_combo, self.disk_combo, self.verify, self.confirm, self.btn_close):
+        for w in (self.image_combo, self.disk_combo, self.verify, self.shutdown, self.confirm, self.btn_close):
             w.set_sensitive(not busy)
         self.btn_start.set_label("Abbrechen" if busy else "Zurückspielen")
         if not busy:
@@ -288,5 +291,23 @@ class RestoreDialog(Gtk.Dialog):
             self.progress.set_fraction(1.0)
             self.progress.set_text("Zurückgespielt")
             self.append_log(f"Fertig {datetime.now():%H:%M}. Stick abziehen und die Maschine neu starten.")
+            self._power_off_after()
         self.confirm.set_text("")
         return False
+
+    def _power_off_after(self) -> None:
+        """Nach erfolgreichem Auftrag: Zielmaschine herunterfahren, wenn gewünscht."""
+        if not self.shutdown.get_active():
+            return
+        agent, key = self.agent, self.key
+
+        def work():
+            try:
+                agentclient.power(agent.ip, key, "poweroff", agent.control_port)
+                msg = "Maschine wird heruntergefahren."
+            except Exception as e:
+                msg = f"Herunterfahren fehlgeschlagen: {e}"
+            GLib.idle_add(self.append_log, msg)
+
+        threading.Thread(target=work, daemon=True).start()
+

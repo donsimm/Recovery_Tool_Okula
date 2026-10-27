@@ -6,6 +6,7 @@ import socket
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -215,6 +216,47 @@ class RealPartcloneTest(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr.decode(errors="replace")[-500:])
             self.assertEqual(hashlib.sha256(restored.read_bytes()).hexdigest(),
                              hashlib.sha256(part.read_bytes()).hexdigest())
+
+
+class ConsoleAndPowerTest(EndToEndTest):
+    def test_console_bar_render(self):
+        r = agent.ConsoleBar.render
+        self.assertEqual(r(0.47, "sda3", 47_000_000_000, 600),
+                         "  [==============>               ]  47 %  sda3  78 MB/s  noch ca. 11 min")
+        self.assertNotIn("noch", r(1.0, "sda3", 1, 100))
+        self.assertTrue(r(2.0, "x", 0, 0).startswith("  [" + "=" * 30 + "] 100 %"))
+        self.assertEqual(agent.format_eta(3 * 3600 + 5 * 60), "3 h 05 min")
+
+    def test_image_shows_progress_on_console(self):
+        with tempfile.NamedTemporaryFile("r") as tty, mock.patch.object(agent, "console", tty.name):
+            self.image()
+            text = Path(tty.name).read_text()
+        self.assertIn("Disk-Image von", text)
+        self.assertIn("» Disk-Image von", text)
+        self.assertIn("fertig", text)
+
+    def test_power_off(self):
+        calls = []
+        with mock.patch.object(agent, "power_action", calls.append):
+            agentclient.power("127.0.0.1", self.key, "poweroff", self.port, delay=0)
+            deadline = time.monotonic() + 3
+            while not calls and time.monotonic() < deadline:
+                time.sleep(0.05)
+        self.assertEqual(calls, ["poweroff"])
+
+    def test_power_refused_while_busy_or_unknown(self):
+        with mock.patch.object(agent, "power_action", lambda a: self.fail("darf nicht ausschalten")):
+            self.assertTrue(agent.job_lock.acquire(blocking=False))
+            try:
+                with self.assertRaisesRegex(agentclient.AgentError, "beschäftigt"):
+                    agentclient.power("127.0.0.1", self.key, "poweroff", self.port, delay=0)
+            finally:
+                agent.job_lock.release()
+            with self.assertRaisesRegex(agentclient.AgentError, "Unbekannte Aktion"):
+                agentclient.power("127.0.0.1", self.key, "halt; rm -rf /", self.port, delay=0)
+
+    # Basistests nicht doppelt
+    test_info = test_full_image = test_wrong_key = test_failure_leaves_no_partial = test_cancel = None
 
 
 class MaliciousAgentTest(unittest.TestCase):

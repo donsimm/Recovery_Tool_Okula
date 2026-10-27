@@ -36,6 +36,10 @@ PARTCLONE = {
 PROGRESS_RE = re.compile(rb"Completed:\s*([\d.]+)%")
 
 
+# Fortschritt für die Anzeige am Agent-Bildschirm: (Anteil 0..1, Partition, übertragene Bytes)
+Report = Callable[[float, str, int], None]
+
+
 class ImagingError(Exception):
     pass
 
@@ -157,8 +161,8 @@ class _Progress:
 
 
 def _send_file(sock, name: str, chunks, info: dict, on_tick: Callable[[int], dict],
-               check: Callable[[], None] | None = None) -> None:
-    """Sendet eine Datei; check() läuft nach den Daten und vor file_end (Exit-Codes prüfen)."""
+               check: Callable[[], None] | None = None) -> int:
+    """Sendet eine Datei, gibt die Grösse zurück; check() läuft vor file_end (Exit-Codes prüfen)."""
     wire.send_json(sock, {"type": "file", "file": name, **info})
     h = hashlib.sha256()
     size = 0
@@ -173,6 +177,7 @@ def _send_file(sock, name: str, chunks, info: dict, on_tick: Callable[[int], dic
     if check:
         check()
     wire.send_json(sock, {"type": "file_end", "file": name, "size": size, "sha256": h.hexdigest()})
+    return size
 
 
 def _read_range(path: str, offset: int, length: int):
@@ -194,13 +199,17 @@ def _run_pipe(cmds: list[list[str]]):
     return procs
 
 
-def stream_disk_image(sock, disk_path: str, log: Callable[[str], None] = print) -> None:
+def stream_disk_image(sock, disk_path: str, log: Callable[[str], None] = print,
+                      report: Report | None = None) -> None:
     disk = {d["path"]: d for d in list_disks()}.get(disk_path)
     if disk is None:
         raise ImagingError(f"Disk {disk_path} nicht gefunden")
     compress = bool(shutil.which("zstd"))
     plan = make_plan(disk, compress)
     wire.send_json(sock, {"type": "begin", "disk": disk, "plan": plan, "compression": "zstd" if compress else ""})
+    total = sum(s["size"] for s in plan if s["kind"] == "pipe") or 1
+    done = 0          # Grösse der fertigen Partitionen
+    sent_before = 0   # übertragene Bytes der fertigen Partitionen
 
     for step in plan:
         if step["kind"] == "skip":
@@ -233,9 +242,16 @@ def stream_disk_image(sock, disk_path: str, log: Callable[[str], None] = print) 
                     raise ImagingError(f"{step['cmds'][0][0]} für {step['part']} fehlgeschlagen: "
                                        f"{msg[-1] if msg else codes}")
 
+            def tick(n: int) -> dict:
+                if report:
+                    pct = progress.pct or 0.0
+                    report((done + step["size"] * pct / 100) / total, step["part"], sent_before + n)
+                return {"part": step["part"], "pct": progress.pct}
+
             try:
-                _send_file(sock, name, chunks(), {"part": step["part"], "total": step["size"]},
-                           lambda n: {"part": step["part"], "pct": progress.pct}, check)
+                sent_before += _send_file(sock, name, chunks(), {"part": step["part"], "total": step["size"]},
+                                          tick, check)
+                done += step["size"]
             finally:
                 for p in procs:
                     if p.poll() is None:
@@ -370,7 +386,8 @@ def write_partition_table(target: dict, source: dict, dump: str, head: bytes) ->
     subprocess.run(["udevadm", "settle"], capture_output=True)
 
 
-def _receive_into(sock, cmds: list[list[str]], expected: dict) -> None:
+def _receive_into(sock, cmds: list[list[str]], expected: dict,
+                  on_bytes: Callable[[int], None] | None = None) -> None:
     """Empfängt Daten-Frames bis file_end und schreibt sie in die Pipeline."""
     procs = []
     stdin = subprocess.PIPE
@@ -392,6 +409,8 @@ def _receive_into(sock, cmds: list[list[str]], expected: dict) -> None:
             if kind == wire.FRAME_DATA:
                 h.update(payload)
                 size += len(payload)
+                if on_bytes:
+                    on_bytes(size)
                 try:
                     sink.write(payload)
                 except BrokenPipeError:
@@ -426,7 +445,7 @@ def _receive_into(sock, cmds: list[list[str]], expected: dict) -> None:
                         pass
 
 
-def restore_disk(sock, req: dict, log: Callable[[str], None] = print) -> None:
+def restore_disk(sock, req: dict, log: Callable[[str], None] = print, report: Report | None = None) -> None:
     target = {d["path"]: d for d in list_disks()}.get(str(req.get("disk") or ""))
     if target is None:
         raise ImagingError(f"Zieldisk {req.get('disk')} nicht gefunden")
@@ -449,6 +468,8 @@ def restore_disk(sock, req: dict, log: Callable[[str], None] = print) -> None:
     wire.send_json(sock, {"type": "ready", "devices": devices})
 
     by_file = {s["file"]: s for s in steps if s.get("file")}
+    total = sum(int(s.get("size") or 0) for s in by_file.values()) or 1
+    received = 0  # Bytes der fertigen Dateien
     while True:
         msg = wire.recv_json(sock)
         if msg.get("type") == "end":
@@ -457,7 +478,10 @@ def restore_disk(sock, req: dict, log: Callable[[str], None] = print) -> None:
             raise ImagingError(f"Unerwartete Datei: {msg.get('file')}")
         step = by_file[msg["file"]]
         log(f"Schreibe {step['part']} → {devices[step['part']]} …")
-        _receive_into(sock, restore_command(step, devices[step["part"]]), step)
+        before = received
+        _receive_into(sock, restore_command(step, devices[step["part"]]), step,
+                      (lambda n, p=step["part"], b=before: report((b + n) / total, p, b + n)) if report else None)
+        received += int(step.get("size") or 0)
         wire.send_json(sock, {"type": "file_done", "file": step["file"]})
 
     for s in steps:

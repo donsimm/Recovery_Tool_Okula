@@ -91,6 +91,10 @@ class ImageDialog(Gtk.Dialog):
         grid.attach(self.target, 1, row, 1, 1)
 
         row += 1
+        self.shutdown = Gtk.CheckButton(label="Maschine danach herunterfahren (nur wenn das Image fertig ist)")
+        grid.attach(self.shutdown, 0, row, 2, 1)
+
+        row += 1
         self.progress = Gtk.ProgressBar(show_text=True)
         self.progress.set_text("Lese Disks vom Agent …")
         grid.attach(self.progress, 0, row, 2, 1)
@@ -184,7 +188,7 @@ class ImageDialog(Gtk.Dialog):
         machine = self.name.get_text().strip()
         self.busy = True
         self.cancel.clear()
-        for w in (self.name, self.disk_combo, self.btn_close):
+        for w in (self.name, self.disk_combo, self.shutdown, self.btn_close):
             w.set_sensitive(False)
         self.btn_start.set_label("Abbrechen")
         self.btn_start.get_style_context().remove_class("suggested-action")
@@ -236,7 +240,7 @@ class ImageDialog(Gtk.Dialog):
 
     def _on_finished(self, path, error) -> bool:
         self.busy = False
-        for w in (self.name, self.disk_combo, self.btn_close):
+        for w in (self.name, self.disk_combo, self.shutdown, self.btn_close):
             w.set_sensitive(True)
         self.btn_start.set_label("Image erstellen")
         self.btn_start.get_style_context().remove_class("destructive-action")
@@ -250,4 +254,22 @@ class ImageDialog(Gtk.Dialog):
             self.append_log(f"Fertig: {path}")
             if self.on_done:
                 self.on_done()
+            self._power_off_after()
         return False
+
+    def _power_off_after(self) -> None:
+        """Nach erfolgreichem Auftrag: Zielmaschine herunterfahren, wenn gewünscht."""
+        if not self.shutdown.get_active():
+            return
+        agent, key = self.agent, self.key
+
+        def work():
+            try:
+                agentclient.power(agent.ip, key, "poweroff", agent.control_port)
+                msg = "Maschine wird heruntergefahren."
+            except Exception as e:
+                msg = f"Herunterfahren fehlgeschlagen: {e}"
+            GLib.idle_add(self.append_log, msg)
+
+        threading.Thread(target=work, daemon=True).start()
+

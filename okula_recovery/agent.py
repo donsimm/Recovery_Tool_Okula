@@ -99,6 +99,61 @@ def ensure_network(server: str | None) -> None:
         return
 
 
+# ---------- Fortschritt am Bildschirm ----------
+
+def format_eta(seconds: float) -> str:
+    minutes = round(seconds / 60)
+    if minutes < 1:
+        return "< 1 min"
+    if minutes < 60:
+        return f"{minutes} min"
+    return f"{minutes // 60} h {minutes % 60:02d} min"
+
+
+class ConsoleBar:
+    """Einzeiliger Fortschrittsbalken auf dem Terminal der Zielmaschine (nur ASCII)."""
+
+    WIDTH = 30
+
+    def __init__(self, path: str, title: str):
+        self.path = path
+        self.started = time.monotonic()
+        self.last = 0.0
+        self._write(f"\n  {title}\n")
+
+    @classmethod
+    def render(cls, fraction: float, label: str, transferred: int, elapsed: float) -> str:
+        f = max(0.0, min(1.0, fraction))
+        filled = int(f * cls.WIDTH)
+        bar = "=" * filled + (">" + " " * (cls.WIDTH - filled - 1) if filled < cls.WIDTH else "")
+        rate = transferred / elapsed if elapsed > 0 else 0
+        line = f"  [{bar}] {f * 100:3.0f} %  {label}  {rate / 1e6:.0f} MB/s"
+        if 0.02 < f < 1 and elapsed > 10:
+            line += f"  noch ca. {format_eta(elapsed * (1 - f) / f)}"
+        return line
+
+    def __call__(self, fraction: float, label: str, transferred: int) -> None:
+        now = time.monotonic()
+        if now - self.last < 1.0:
+            return
+        self.last = now
+        self._write("\r\033[K" + self.render(fraction, label, transferred, now - self.started))
+
+    def finish(self, text: str) -> None:
+        self._write(f"\r\033[K  {text}\n")
+
+    def _write(self, text: str) -> None:
+        try:
+            with open(self.path, "a") as tty:
+                tty.write(text)
+        except OSError:
+            pass
+
+
+def power_action(action: str) -> None:
+    subprocess.run(["systemctl", action], capture_output=True)
+
+
 # ---------- Steuerdienst (Tool → Agent) ----------
 
 KEY_FILE = "/etc/okula-agent.key"
@@ -128,29 +183,55 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
                     wire.send_json(tls, {"type": "error", "message": "Agent ist mit einem anderen Auftrag beschäftigt"})
                     return
                 disk = str(req.get("disk") or "")
+                bar = ConsoleBar(console, f"Disk-Image von {disk} läuft – Maschine nicht ausschalten") \
+                    if console else None
+                result = "abgebrochen"
                 try:
-                    log(f"Disk-Image von {disk} läuft (Tool {addr[0]}) – Maschine nicht ausschalten", show=True)
-                    imaging.stream_disk_image(tls, disk, log)
-                    log(f"Disk-Image von {disk} fertig", show=True)
+                    log(f"Disk-Image von {disk} für {addr[0]} gestartet")
+                    imaging.stream_disk_image(tls, disk, log, bar)
+                    result = "fertig"
+                    log(f"Disk-Image von {disk} fertig", show=not bar)
                 except imaging.ImagingError as e:
-                    log(f"Disk-Image von {disk} fehlgeschlagen: {e}", show=True)
+                    result = f"fehlgeschlagen: {e}"
+                    log(f"Disk-Image von {disk} fehlgeschlagen: {e}", show=not bar)
                     wire.send_json(tls, {"type": "error", "message": str(e)})
                 finally:
+                    if bar:
+                        bar.finish(f"» Disk-Image von {disk} {result}")
                     job_lock.release()
             elif cmd == "restore":
                 if not job_lock.acquire(blocking=False):
                     wire.send_json(tls, {"type": "error", "message": "Agent ist mit einem anderen Auftrag beschäftigt"})
                     return
                 disk = str(req.get("disk") or "")
+                bar = ConsoleBar(console, f"Image wird auf {disk} zurückgespielt – Maschine nicht ausschalten") \
+                    if console else None
+                result = "abgebrochen – Disk ist unvollständig"
                 try:
-                    log(f"Image wird auf {disk} zurückgespielt (Tool {addr[0]}) – Maschine nicht ausschalten", show=True)
-                    imaging.restore_disk(tls, req, log)
-                    log(f"Image auf {disk} zurückgespielt – Stick abziehen und neu starten", show=True)
+                    log(f"Zurückspielen auf {disk} für {addr[0]} gestartet")
+                    imaging.restore_disk(tls, req, log, bar)
+                    result = "zurückgespielt – Stick abziehen und neu starten"
+                    log(f"Image auf {disk} zurückgespielt", show=not bar)
                 except imaging.ImagingError as e:
-                    log(f"Zurückspielen auf {disk} fehlgeschlagen: {e}", show=True)
+                    result = f"fehlgeschlagen: {e}"
+                    log(f"Zurückspielen auf {disk} fehlgeschlagen: {e}", show=not bar)
                     wire.send_json(tls, {"type": "error", "message": str(e)})
                 finally:
+                    if bar:
+                        bar.finish(f"» Image auf {disk} {result}")
                     job_lock.release()
+            elif cmd == "power":
+                action = req.get("action")
+                if action not in ("poweroff", "reboot"):
+                    wire.send_json(tls, {"type": "error", "message": f"Unbekannte Aktion: {action}"})
+                elif job_lock.locked():
+                    wire.send_json(tls, {"type": "error", "message": "Agent ist beschäftigt – nicht herunterfahren"})
+                else:
+                    delay = max(0, min(60, int(req.get("delay") or 0)))
+                    wire.send_json(tls, {"type": "ok"})
+                    what = "heruntergefahren" if action == "poweroff" else "neu gestartet"
+                    log(f"Maschine wird in {delay} s {what} (Tool {addr[0]})", show=True)
+                    threading.Timer(delay, power_action, args=(action,)).start()
             else:
                 wire.send_json(tls, {"type": "error", "message": f"Unbekannter Befehl: {cmd}"})
     except ssl.SSLError:
