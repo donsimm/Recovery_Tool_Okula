@@ -11,9 +11,10 @@ EnvironmentFile=-/etc/okula-agent.conf
 ExecStart=/bin/sh /opt/okula-recovery/start-agent.sh
 Restart=always
 RestartSec=3
-# Statusmeldungen auch auf der Konsole der Zielmaschine anzeigen
-StandardOutput=journal+console
-StandardError=journal+console
+# Ausführliches Protokoll nur ins Journal; wichtige Meldungen schreibt der Agent
+# selbst sauber (ohne Zeitstempel/Präfix) auf tty1, siehe --console
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

@@ -109,7 +109,7 @@ class ClonezillaRestoreTest(base.RestoreTest):
         port = self.serve()
         events = []
         with mock.patch.object(imaging, "list_disks", lambda: loop_disks(dst)), \
-                mock.patch.object(agent, "log", lambda m: None):
+                mock.patch.object(agent, "log", lambda *a, **k: None):
             agentclient.restore_image("127.0.0.1", self.key, img, dst, events.append, threading.Event(),
                                       port=port, verify=True, source_disk="sda")
         self.assertIn("verify", [e["phase"] for e in events])
@@ -135,7 +135,7 @@ class ClonezillaRestoreTest(base.RestoreTest):
         port = self.serve()
         before = sha(dst)
         with mock.patch.object(imaging, "list_disks", lambda: loop_disks(dst)), \
-                mock.patch.object(agent, "log", lambda m: None):
+                mock.patch.object(agent, "log", lambda *a, **k: None):
             with self.assertRaisesRegex(agentclient.AgentError, "beschädigt"):
                 agentclient.restore_image("127.0.0.1", self.key, img, dst, lambda e: None, threading.Event(),
                                           port=port, source_disk="sda")

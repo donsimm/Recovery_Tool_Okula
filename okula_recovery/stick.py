@@ -70,7 +70,7 @@ fi
 ldconfig 2>/dev/null || true
 
 cd /opt/okula-recovery || exit 1
-exec python3 -m okula_recovery.agent $AGENT_ARGS
+exec python3 -m okula_recovery.agent --console /dev/tty1 $AGENT_ARGS
 """
 
 GRUB_CFG = """# Okula Recovery Agent - erzeugt vom Okula Recovery Tool (nur ASCII)

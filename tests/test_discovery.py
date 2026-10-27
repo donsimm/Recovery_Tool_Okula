@@ -94,5 +94,33 @@ class AgentNetworkTest(unittest.TestCase):
             self.assertEqual(agent.wired_interfaces(Path(d)), ["enp2s0"])
 
 
+class AgentConsoleTest(unittest.TestCase):
+    def test_console_shows_only_key_messages_without_banner(self):
+        import subprocess
+        import sys
+        import tempfile
+        import time
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        listener = discovery.Listener(lambda i: None, port=port, server_name="RecoveryPC")
+        listener.start()
+        with tempfile.NamedTemporaryFile("r") as tty:
+            p = subprocess.Popen([sys.executable, "-m", "okula_recovery.agent", "--port", str(port), "--server",
+                                  "127.0.0.1", "--no-broadcast", "--interval", "0.5", "--console", tty.name,
+                                  "--key-file", "/nonexistent"],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(2.5)
+            p.terminate()
+            p.wait()
+            listener.stop()
+            text = open(tty.name).read()
+        self.assertNotIn("#", text)
+        self.assertNotIn("sh[", text)
+        self.assertEqual(text.count("» Verbunden:"), 1, text)
+        self.assertIn("RecoveryPC", text)
+        self.assertIn("» Kein Schlüssel", text)  # Meldungen dürfen sich nicht überschreiben
+
+
 if __name__ == "__main__":
     unittest.main()

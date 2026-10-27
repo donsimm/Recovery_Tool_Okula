@@ -21,15 +21,6 @@ from pathlib import Path
 from okula_recovery import __version__, discovery, imaging, network, wire
 
 
-BANNER = """\
-  ####   #   #  #   #  #       ###
- #    #  #  #   #   #  #      #   #
- #    #  ###    #   #  #      #####
- #    #  #  #   #   #  #      #   #
-  ####   #   #   ###   #####  #   #   Recovery Agent
-"""
-
-
 # So lange ohne IPv4, dann DHCP nachfassen bzw. Link-Local-Adresse setzen
 LINK_LOCAL_AFTER = 25
 DHCP_CLIENTS = (
@@ -39,8 +30,19 @@ DHCP_CLIENTS = (
 )
 
 
-def log(msg: str) -> None:
+# Terminal der Zielmaschine für die wichtigsten Meldungen (ohne systemd-Präfix); leer = keins
+console = ""
+
+
+def log(msg: str, show: bool = False) -> None:
+    """Protokoll ins Journal; show=True zusätzlich kurz und ohne Präfix auf den Bildschirm."""
     print(msg, flush=True)
+    if show and console:
+        try:
+            with open(console, "a") as tty:
+                tty.write(f"\n  » {msg}\n")
+        except OSError:
+            pass
 
 
 def wired_interfaces(net_dir: Path = Path("/sys/class/net")) -> list[str]:
@@ -90,7 +92,7 @@ def ensure_network(server: str | None) -> None:
         if primary_ip(server):
             return
         addr = link_local_address(Path(f"/sys/class/net/{name}/address").read_text().strip())
-        log(f"Kein DHCP im Netz – verwende Link-Local-Adresse {addr} auf {name}")
+        log(f"Kein DHCP im Netz – verwende Link-Local-Adresse {addr} auf {name}", show=True)
         _try(["ip", "addr", "add", f"{addr}/16", "dev", name], timeout=5)
         # Ohne Route ist der Broadcast an 255.255.255.255 nicht sendbar
         _try(["ip", "route", "add", "default", "dev", name, "metric", "9999"], timeout=5)
@@ -127,11 +129,11 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
                     return
                 disk = str(req.get("disk") or "")
                 try:
-                    log(f"Disk-Image von {disk} für {addr[0]} gestartet")
+                    log(f"Disk-Image von {disk} läuft (Tool {addr[0]}) – Maschine nicht ausschalten", show=True)
                     imaging.stream_disk_image(tls, disk, log)
-                    log(f"Disk-Image von {disk} fertig")
+                    log(f"Disk-Image von {disk} fertig", show=True)
                 except imaging.ImagingError as e:
-                    log(f"Disk-Image von {disk} fehlgeschlagen: {e}")
+                    log(f"Disk-Image von {disk} fehlgeschlagen: {e}", show=True)
                     wire.send_json(tls, {"type": "error", "message": str(e)})
                 finally:
                     job_lock.release()
@@ -141,18 +143,18 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
                     return
                 disk = str(req.get("disk") or "")
                 try:
-                    log(f"Image zurückspielen auf {disk} für {addr[0]} gestartet")
+                    log(f"Image wird auf {disk} zurückgespielt (Tool {addr[0]}) – Maschine nicht ausschalten", show=True)
                     imaging.restore_disk(tls, req, log)
-                    log(f"Image auf {disk} zurückgespielt")
+                    log(f"Image auf {disk} zurückgespielt – Stick abziehen und neu starten", show=True)
                 except imaging.ImagingError as e:
-                    log(f"Zurückspielen auf {disk} fehlgeschlagen: {e}")
+                    log(f"Zurückspielen auf {disk} fehlgeschlagen: {e}", show=True)
                     wire.send_json(tls, {"type": "error", "message": str(e)})
                 finally:
                     job_lock.release()
             else:
                 wire.send_json(tls, {"type": "error", "message": f"Unbekannter Befehl: {cmd}"})
     except ssl.SSLError:
-        log(f"Verbindung von {addr[0]} abgelehnt (falscher Schlüssel – Stick von anderem Tool?)")
+        log(f"Verbindung von {addr[0]} abgelehnt (falscher Schlüssel – Stick von anderem Tool?)", show=True)
     except (OSError, wire.ProtocolError) as e:
         log(f"Verbindung zu {addr[0]} beendet: {e}")
 
@@ -199,6 +201,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-broadcast", action="store_true", help="nur an --server senden")
     ap.add_argument("--key-file", default=KEY_FILE, help="Schlüssel für den Steuerdienst (hex)")
     ap.add_argument("--control-port", type=int, default=wire.PORT)
+    ap.add_argument("--console", default="", help="Terminal für Statusmeldungen, z. B. /dev/tty1")
     args = ap.parse_args(argv)
     if args.server:
         ipaddress.IPv4Address(args.server)
@@ -209,18 +212,20 @@ def main(argv: list[str] | None = None) -> int:
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     sock.settimeout(args.interval)
 
-    print(BANNER, flush=True)
+    global console
+    console = args.console
     key = load_key(args.key_file)
     if key:
         threading.Thread(target=serve_control, args=(key, args.control_port), daemon=True).start()
     else:
-        log(f"Kein Schlüssel in {args.key_file} – nur Anmeldung, keine Images möglich")
+        log(f"Kein Schlüssel in {args.key_file} – nur Anmeldung, keine Images möglich", show=True)
     extra = lambda: {"control": args.control_port if key else 0, "busy": job_lock.locked()}  # noqa: E731
 
     server = None
     no_ip_since = time.monotonic()
     network_fixed = False
-    print(f"Okula Recovery Agent {__version__} – suche Recovery-Tool im LAN …", flush=True)
+    waiting_shown = False
+    log(f"Okula Recovery Agent {__version__} – suche Recovery-Tool im LAN …")
     while True:
         ip = primary_ip(args.server)
         if not ip:
@@ -229,7 +234,8 @@ def main(argv: list[str] | None = None) -> int:
                 network_fixed = True
                 ensure_network(args.server)
                 continue
-            log("Keine Netzwerkadresse, warte auf DHCP … (Netzwerkkabel eingesteckt?)")
+            log("Keine Netzwerkadresse, warte auf DHCP … (Netzwerkkabel eingesteckt?)", show=not waiting_shown)
+            waiting_shown = True
             time.sleep(args.interval)
             continue
         no_ip_since = time.monotonic()
@@ -258,7 +264,7 @@ def main(argv: list[str] | None = None) -> int:
                 name = str(msg.get("name") or sip)
                 if server != name:  # pro Server nur einmal melden (Ack kommt per Uni- und Broadcast)
                     server = name
-                    log(f"Verbunden: {ip} ist im Tool sichtbar (Server {name} / {sip})")
+                    log(f"Verbunden: {ip} ist im Tool sichtbar (Server {name} / {sip})", show=True)
 
 
 if __name__ == "__main__":

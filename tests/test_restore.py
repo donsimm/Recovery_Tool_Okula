@@ -118,7 +118,7 @@ class RestoreTest(unittest.TestCase):
         dst = self.loop("dst.img", 128)  # grössere Zieldisk
         port = self.serve()
         with mock.patch.object(imaging, "list_disks", lambda: loop_disks(src, dst)), \
-                mock.patch.object(agent, "log", lambda m: None):
+                mock.patch.object(agent, "log", lambda *a, **k: None):
             image = agentclient.create_image("127.0.0.1", self.key, src, self.dir / "nas", "test",
                                              lambda e: None, threading.Event(), port=port)
             events = []
@@ -157,7 +157,7 @@ class RestoreTest(unittest.TestCase):
         small = self.loop("small.img", 64)
         port = self.serve()
         with mock.patch.object(imaging, "list_disks", lambda: loop_disks(src, small)), \
-                mock.patch.object(agent, "log", lambda m: None):
+                mock.patch.object(agent, "log", lambda *a, **k: None):
             image = agentclient.create_image("127.0.0.1", self.key, src, self.dir / "nas", "t",
                                              lambda e: None, threading.Event(), port=port)
             before = sha(small)
@@ -171,7 +171,7 @@ class RestoreTest(unittest.TestCase):
         dst = self.loop("dst.img", 128)
         port = self.serve()
         with mock.patch.object(imaging, "list_disks", lambda: loop_disks(src, dst)), \
-                mock.patch.object(agent, "log", lambda m: None):
+                mock.patch.object(agent, "log", lambda *a, **k: None):
             image = agentclient.create_image("127.0.0.1", self.key, src, self.dir / "nas", "t",
                                              lambda e: None, threading.Event(), port=port)
             victim = next(image.glob("*p1.*"))

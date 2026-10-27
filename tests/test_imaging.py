@@ -92,7 +92,7 @@ class EndToEndTest(unittest.TestCase):
             mock.patch.object(imaging.shutil, "which", lambda name: None if name == "zstd" else name),
             mock.patch.object(imaging, "partition_command",
                               lambda p: None if p["fstype"] == "swap" else ("dd.img", ["cat", p["path"]])),
-            mock.patch.object(agent, "log", lambda msg: None),
+            mock.patch.object(agent, "log", lambda *a, **k: None),
         ]
         for p in self.patches:
             p.start()
@@ -193,7 +193,7 @@ class RealPartcloneTest(unittest.TestCase):
                 conn, addr = server.accept()
                 agent.handle_connection(ctx, conn, addr)
 
-            with mock.patch.object(imaging, "list_disks", lambda: [disk]), mock.patch.object(agent, "log", print):
+            with mock.patch.object(imaging, "list_disks", lambda: [disk]), mock.patch.object(agent, "log", lambda *a, **k: None):
                 threading.Thread(target=serve, daemon=True).start()
                 nas = root / "nas"
                 path = agentclient.create_image("127.0.0.1", key, str(part), nas, "test", lambda e: None,
