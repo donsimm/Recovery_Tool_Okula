@@ -23,8 +23,9 @@ from okula_recovery.stick_dialog import StickDialog  # noqa: E402
 ASSETS = Path(__file__).resolve().parent / "assets"
 LOGO_COLOR = b"#0b1213"  # Füllfarbe im Original-SVG
 
-# Agent gilt als offline, wenn so lange kein Beacon kam
+# Agent gilt als offline, wenn so lange kein Beacon kam, und verschwindet nach AGENT_REMOVE_AFTER
 AGENT_TIMEOUT = 15
+AGENT_REMOVE_AFTER = 60
 
 ICON_ONLINE = "network-transmit-receive-symbolic"
 ICON_OFFLINE = "network-offline-symbolic"
@@ -711,11 +712,31 @@ class MainWindow(Gtk.ApplicationWindow):
         return False
 
     def _expire_agents(self) -> bool:
-        limit = time.time() - AGENT_TIMEOUT
+        """Agents ohne Meldung: nach 15 s offline, nach 60 s aus der Liste (manuelle bleiben)."""
+        now = time.time()
+        manual = {e.get("ip") for e in self.cfg.machines}
+        gone = []
         for row in self.machine_store:
-            if row[4] == "USB-Agent" and row[0] == ICON_AGENT and row[8] < limit:
+            if row[4] != "USB-Agent":
+                continue
+            if row[8] < now - AGENT_REMOVE_AFTER:
+                gone.append(row.iter)
+            elif row[0] == ICON_AGENT and row[8] < now - AGENT_TIMEOUT:
                 row[0] = ICON_OFFLINE
-                self._update_image_button()
+        for it in gone:
+            ip, name = self.machine_store[it][2], self.machine_store[it][1]
+            self.agents.pop(ip, None)
+            if ip in manual:
+                # war manuell erfasst: wieder als manueller Eintrag zeigen
+                entry = next(e for e in self.cfg.machines if e.get("ip") == ip)
+                self.machine_store[it][0] = ICON_OFFLINE
+                self.machine_store[it][1] = entry.get("name") or "–"
+                self.machine_store[it][4] = "manuell"
+                self.machine_store[it][6] = self.machine_store[it][7] = ""
+            else:
+                self.machine_store.remove(it)
+            self.status(f"{name} ({ip}) entfernt – seit {AGENT_REMOVE_AFTER} s keine Meldung")
+        self._update_image_button()
         return True
 
     def _load_manual_machines(self) -> None:
@@ -754,9 +775,14 @@ class MainWindow(Gtk.ApplicationWindow):
         if isinstance(result, Exception):
             self.status(f"Scan fehlgeschlagen: {result}")
             return
+        found = {m.ip for m in result}
+        stale = [row.iter for row in self.machine_store if row[4] == "Scan" and row[2] not in found]
+        for it in stale:
+            self.machine_store.remove(it)
         for m in result:
             self._add_machine_row(m)
-        self.status(f"Scan fertig: {len(result)} Maschinen online")
+        removed = f", {len(stale)} nicht mehr erreichbare entfernt" if stale else ""
+        self.status(f"Scan fertig: {len(result)} Maschinen online{removed}")
 
     def on_add_machine(self, _btn) -> None:
         dlg = Gtk.Dialog(title="Maschine hinzufügen", transient_for=self, modal=True)

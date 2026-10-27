@@ -63,7 +63,7 @@ Button **„Agent-USB-Stick erstellen …“** oben rechts:
 
 ![Boot-Menü des Agent-Sticks](docs/grub-menu.png)
 
-**Ablauf an der Zielmaschine:** vom Stick booten (Boot-Menü, meist F12/F11/F8). Der Agent sendet alle 3 s ein Beacon auf **UDP 47811**, und zwar per Broadcast und zusätzlich direkt an die Server-IP aus dem Dialog. Das Tool antwortet, die Konsole zeigt „Verbunden“, und die Maschine erscheint rechts mit Hostname `okula-<MAC-Ende>`, Hersteller/Modell und Disks. Kommt 15 s lang kein Beacon, zeigt das Tool die Maschine als offline.
+**Ablauf an der Zielmaschine:** vom Stick booten (Boot-Menü, meist F12/F11/F8). Der Agent sendet alle 3 s ein Beacon auf **UDP 47811**, und zwar per Broadcast und zusätzlich direkt an die Server-IP aus dem Dialog. Das Tool antwortet, die Konsole zeigt „Verbunden“, und die Maschine erscheint rechts mit Hostname `okula-<MAC-Ende>`, Hersteller/Modell und Disks. Kommt 15 s lang kein Beacon, zeigt das Tool die Maschine als offline, nach 60 s entfernt es sie aus der Liste. Manuell erfasste Maschinen bleiben stehen. Scan-Einträge, die nicht mehr antworten, verschwinden beim nächsten Scan.
 
 - **Unbekannte IP:** Die IP muss niemand kennen. Die Zielmaschine bekommt im Live-System per DHCP eine neue IP, die alte Netzwerkeinstellung des installierten Systems spielt keine Rolle. Gibt es kein DHCP, setzt der Agent nach etwa 25 s eine feste Link-Local-Adresse `169.254.x.y` (aus der MAC) und meldet sich per Broadcast an `255.255.255.255`. Das Tool antwortet dann ebenfalls per Broadcast.
 - **Firewall auf dem Server:** UDP 47811 eingehend freigeben (z. B. `sudo ufw allow 47811/udp`).
