@@ -11,12 +11,14 @@ import json
 import os
 import shutil
 import socket
+import ssl
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
-from okula_recovery import __version__, discovery, network
+from okula_recovery import __version__, discovery, imaging, network, wire
 
 
 BANNER = """\
@@ -95,6 +97,65 @@ def ensure_network(server: str | None) -> None:
         return
 
 
+# ---------- Steuerdienst (Tool → Agent) ----------
+
+KEY_FILE = "/etc/okula-agent.key"
+job_lock = threading.Lock()
+
+
+def load_key(path: str) -> bytes | None:
+    try:
+        key = bytes.fromhex(Path(path).read_text().strip())
+    except (OSError, ValueError):
+        return None
+    return key if len(key) == wire.KEY_LEN else None
+
+
+def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
+    try:
+        with ctx.wrap_socket(conn, server_side=True) as tls:
+            tls.settimeout(900)
+            req = wire.recv_json(tls)
+            cmd = req.get("cmd")
+            if cmd == "info":
+                wire.send_json(tls, {"type": "info", "hostname": socket.gethostname(), "version": __version__,
+                                     "disks": imaging.list_disks(), "tools": imaging.tool_status(),
+                                     "busy": job_lock.locked()})
+            elif cmd == "image":
+                if not job_lock.acquire(blocking=False):
+                    wire.send_json(tls, {"type": "error", "message": "Agent ist mit einem anderen Auftrag beschäftigt"})
+                    return
+                disk = str(req.get("disk") or "")
+                try:
+                    log(f"Disk-Image von {disk} für {addr[0]} gestartet")
+                    imaging.stream_disk_image(tls, disk, log)
+                    log(f"Disk-Image von {disk} fertig")
+                except imaging.ImagingError as e:
+                    log(f"Disk-Image von {disk} fehlgeschlagen: {e}")
+                    wire.send_json(tls, {"type": "error", "message": str(e)})
+                finally:
+                    job_lock.release()
+            else:
+                wire.send_json(tls, {"type": "error", "message": f"Unbekannter Befehl: {cmd}"})
+    except ssl.SSLError:
+        log(f"Verbindung von {addr[0]} abgelehnt (falscher Schlüssel – Stick von anderem Tool?)")
+    except (OSError, wire.ProtocolError) as e:
+        log(f"Verbindung zu {addr[0]} beendet: {e}")
+
+
+def serve_control(key: bytes, port: int) -> None:
+    ctx = wire.server_context(key)
+    try:
+        server = socket.create_server(("", port))
+    except OSError as e:
+        log(f"Steuerdienst kann TCP {port} nicht öffnen: {e}")
+        return
+    log(f"Steuerdienst bereit (TCP {port})")
+    while True:
+        conn, addr = server.accept()
+        threading.Thread(target=handle_connection, args=(ctx, conn, addr), daemon=True).start()
+
+
 def broadcast_targets() -> list[str]:
     targets = {"255.255.255.255"}
     for iface in network.local_interfaces():
@@ -122,6 +183,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--interval", type=float, default=3.0, help="Sekunden zwischen Beacons")
     ap.add_argument("--server", help="IP des Tools, zusätzlich zum Broadcast (z. B. anderes Subnetz)")
     ap.add_argument("--no-broadcast", action="store_true", help="nur an --server senden")
+    ap.add_argument("--key-file", default=KEY_FILE, help="Schlüssel für den Steuerdienst (hex)")
+    ap.add_argument("--control-port", type=int, default=wire.PORT)
     args = ap.parse_args(argv)
     if args.server:
         ipaddress.IPv4Address(args.server)
@@ -132,10 +195,17 @@ def main(argv: list[str] | None = None) -> int:
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     sock.settimeout(args.interval)
 
+    print(BANNER, flush=True)
+    key = load_key(args.key_file)
+    if key:
+        threading.Thread(target=serve_control, args=(key, args.control_port), daemon=True).start()
+    else:
+        log(f"Kein Schlüssel in {args.key_file} – nur Anmeldung, keine Images möglich")
+    extra = lambda: {"control": args.control_port if key else 0, "busy": job_lock.locked()}  # noqa: E731
+
     server = None
     no_ip_since = time.monotonic()
     network_fixed = False
-    print(BANNER, flush=True)
     print(f"Okula Recovery Agent {__version__} – suche Recovery-Tool im LAN …", flush=True)
     while True:
         ip = primary_ip(args.server)
@@ -149,7 +219,7 @@ def main(argv: list[str] | None = None) -> int:
             time.sleep(args.interval)
             continue
         no_ip_since = time.monotonic()
-        beacon = json.dumps(discovery.build_beacon(ip, __version__)).encode()
+        beacon = json.dumps(discovery.build_beacon(ip, __version__, extra())).encode()
         targets = [] if args.no_broadcast else broadcast_targets()
         if args.server:
             targets.append(args.server)

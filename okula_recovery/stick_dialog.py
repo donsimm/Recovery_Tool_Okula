@@ -13,13 +13,13 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
-from okula_recovery import isofetch, network, stick  # noqa: E402
+from okula_recovery import agentclient, isofetch, network, stick  # noqa: E402
 
 HELPER = "/usr/local/sbin/okula-make-stick"
 
 
 def helper_command(device: str, iso: str, server: str) -> list[str]:
-    args = ["--device", device, "--iso", iso]
+    args = ["--device", device, "--iso", iso, "--key-stdin"]
     if server:
         args += ["--server", server]
     if os.geteuid() == 0:
@@ -186,13 +186,17 @@ class StickDialog(Gtk.Dialog):
             self.append_log(str(e))
             return
 
+        key_hex = agentclient.load_or_create_key().hex()
         self._set_busy(True)
         self.append_log(f"Erstelle Agent-Stick auf {device} …")
         cwd = str(Path(stick.__file__).resolve().parent.parent)
 
         def work():
             try:
-                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=cwd)
+                proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT, text=True, cwd=cwd)
+                proc.stdin.write(key_hex + "\n")
+                proc.stdin.close()
             except OSError as e:
                 GLib.idle_add(self._on_written, False, str(e))
                 return

@@ -28,7 +28,12 @@ from typing import Callable
 LABEL = "OKULAAGENT"  # FAT-Label, max. 11 Zeichen
 MIN_SIZE = 4 * 1000**3
 SYSTEM_MOUNTS = ("/", "/boot", "/boot/efi", "/usr", "/var", "/home", "[SWAP]")
-AGENT_MODULES = ("__init__.py", "agent.py", "discovery.py", "network.py")
+AGENT_MODULES = ("__init__.py", "agent.py", "discovery.py", "imaging.py", "network.py", "wire.py")
+# Werkzeuge, die dem Live-Image fehlen; werden samt fehlender Abhängigkeiten aus den
+# Debian-Paketen des Servers (gleiche Release) in den Agent-Layer entpackt
+BUNDLED_PACKAGES = ("partclone", "zstd")
+# Ohne Paketliste des ISO nie überlagern (Basis jedes Systems)
+NEVER_BUNDLE = ("libc6", "libgcc-s1", "libstdc++6", "gcc-")
 PACKAGE_DIR = Path(__file__).resolve().parent
 SERVICE_FILE = PACKAGE_DIR.parent / "packaging" / "okula-agent.service"
 GRUB_THEME_DIR = PACKAGE_DIR / "assets" / "grub"
@@ -60,6 +65,9 @@ if ! command -v python3 >/dev/null 2>&1; then
     echo "OKULA AGENT: python3 fehlt im Live-System - Agent kann nicht starten" > /dev/console
     exec sleep infinity
 fi
+# Mitgelieferte Bibliotheken (partclone) bekannt machen
+ldconfig 2>/dev/null || true
+
 cd /opt/okula-recovery || exit 1
 exec python3 -m okula_recovery.agent $AGENT_ARGS
 """
@@ -209,7 +217,79 @@ def copy_tree(src: Path, dst: Path, progress: Callable[[int, int], None]) -> Non
                 os.fsync(fout.fileno())  # damit der Fortschritt dem echten Schreiben folgt
 
 
-def build_agent_tree(tree: Path, server_ip: str = "") -> None:
+def read_installed_packages(path: Path) -> set[str] | None:
+    """Paketliste des Live-Systems (live/filesystem.packages im ISO): „name[:arch]<TAB>version“."""
+    try:
+        lines = path.read_text().splitlines()
+    except OSError:
+        return None
+    return {line.split()[0].split(":")[0] for line in lines if line.strip()}
+
+
+def parse_apt_depends(output: str) -> list[str]:
+    """Paketnamen aus `apt-cache depends --recurse …` (eingerückte Zeilen und <virtuelle> weg)."""
+    names = []
+    for line in output.splitlines():
+        if not line or line[0].isspace() or line.startswith("<"):
+            continue
+        name = line.strip().split(":")[0]
+        if name not in names:
+            names.append(name)
+    return names
+
+
+def packages_to_bundle(packages: tuple[str, ...], installed: set[str] | None) -> list[str]:
+    r = subprocess.run(["apt-cache", "depends", "--recurse", "--no-recommends", "--no-suggests",
+                        "--no-conflicts", "--no-breaks", "--no-replaces", "--no-enhances", *packages],
+                       capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        raise StickError(f"apt-cache: {r.stderr.strip()}")
+    names = parse_apt_depends(r.stdout)
+    if installed is not None:
+        return [n for n in names if n not in installed]
+    return [n for n in names if not n.startswith(NEVER_BUNDLE)]
+
+
+MERGED_USR_DIRS = ("bin", "sbin", "lib", "lib32", "lib64", "libx32")
+
+
+def merge_usr(tree: Path) -> None:
+    """Verschiebt /bin, /lib … der Pakete nach /usr/….
+
+    Im Live-System sind /bin, /lib usw. Symlinks nach usr/ (merged /usr). Ein echtes
+    Verzeichnis gleichen Namens im oberen Layer würde den Symlink verdecken und das
+    System unbrauchbar machen.
+    """
+    for name in MERGED_USR_DIRS:
+        src = tree / name
+        if src.is_symlink() or not src.is_dir():
+            continue
+        for root, _dirs, files in os.walk(src, topdown=False):
+            rel = Path(root).relative_to(src)
+            dst_dir = tree / "usr" / name / rel
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            for f in files:
+                os.replace(Path(root) / f, dst_dir / f)
+            for d in _dirs:
+                p = Path(root) / d
+                if p.is_symlink():
+                    os.replace(p, dst_dir / d)
+            Path(root).rmdir()
+
+
+def bundle_packages(names: list[str], tree: Path) -> None:
+    """Lädt die .deb-Dateien und entpackt sie in den Agent-Layer (ohne Installation)."""
+    with tempfile.TemporaryDirectory(prefix="okula-debs-") as tmp:
+        r = subprocess.run(["apt-get", "download", "-o", "APT::Sandbox::User=root", *names],
+                           cwd=tmp, capture_output=True, text=True, timeout=600)
+        if r.returncode != 0:
+            raise StickError(f"apt-get download: {(r.stderr or r.stdout).strip().splitlines()[-1:]}")
+        for deb in sorted(Path(tmp).glob("*.deb")):
+            _run(["dpkg-deb", "-x", str(deb), str(tree)])
+    merge_usr(tree)
+
+
+def build_agent_tree(tree: Path, server_ip: str = "", key: bytes | None = None) -> None:
     """Dateibaum, der als oberste Schicht über dem Live-System liegt."""
     app = tree / "opt" / "okula-recovery"
     pkg = app / "okula_recovery"
@@ -228,15 +308,36 @@ def build_agent_tree(tree: Path, server_ip: str = "") -> None:
     args = f"--server {server_ip}" if server_ip else ""
     (etc / "okula-agent.conf").write_text(f'AGENT_ARGS="{args}"\n')
     (etc / "issue").write_bytes((PACKAGE_DIR / "assets" / "issue").read_bytes())
+    if key:
+        fd = os.open(etc / "okula-agent.key", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(key.hex() + "\n")
 
 
-def install_agent(root: Path, server_ip: str = "") -> None:
-    """Legt /live/okula-agent.squashfs auf den Stick (braucht mksquashfs)."""
+def install_agent(root: Path, server_ip: str = "", key: bytes | None = None,
+                  installed: set[str] | None = None, bundle: bool = False,
+                  emit: Emit | None = None) -> None:
+    """Legt /live/okula-agent.squashfs auf den Stick (braucht mksquashfs).
+
+    bundle=True: partclone/zstd mitliefern; installed = Pakete des Live-Systems (None = unbekannt).
+    """
     live = root / "live"
     live.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="okula-layer-") as tmp:
         tree = Path(tmp) / "tree"
-        build_agent_tree(tree, server_ip)
+        build_agent_tree(tree, server_ip, key)
+        if bundle:
+            try:
+                names = packages_to_bundle(BUNDLED_PACKAGES, installed)
+                if names:
+                    bundle_packages(names, tree)
+                if emit:
+                    emit("WARN" if installed is None else "INFO",
+                         f"Mitgeliefert: {', '.join(names) or 'nichts nötig'}"
+                         + (" (Paketliste des ISO fehlt)" if installed is None else ""))
+            except (StickError, OSError, subprocess.TimeoutExpired) as e:
+                if emit:
+                    emit("WARN", f"partclone nicht mitgeliefert – Disk-Images nicht möglich: {e}")
         _run(["mksquashfs", str(tree), str(live / AGENT_LAYER), "-noappend", "-all-root", "-no-progress"])
     # Gibt es eine .module-Datei, lädt live-boot nur die dort gelisteten Images
     for module in (live / "filesystem.module", live / "filesystem.filesystem.module"):
@@ -261,7 +362,7 @@ def _run(cmd: list[str], input: str | None = None) -> None:
         raise StickError(f"{' '.join(cmd)}: {(r.stderr or r.stdout).strip()}")
 
 
-def prepare(device: str, iso: str, server_ip: str, emit: Emit) -> None:
+def prepare(device: str, iso: str, server_ip: str, emit: Emit, key: bytes | None = None) -> None:
     def progress(frac: float, msg: str) -> None:
         emit("PROGRESS", f"{frac:.3f} {msg}")
 
@@ -310,7 +411,9 @@ def prepare(device: str, iso: str, server_ip: str, emit: Emit) -> None:
                           lambda d, t: progress(0.10 + 0.78 * d / t, f"Kopiere Live-System ({d * 100 // t} %)"))
                 progress(0.89, "Schreibe Boot-Konfiguration und Agent")
                 write_boot_config(Path(stick_mnt), kernel, initrd)
-                install_agent(Path(stick_mnt), server_ip)
+                progress(0.90, "Lade partclone/zstd und baue Agent-Layer")
+                installed = read_installed_packages(Path(iso_mnt) / "live" / "filesystem.packages")
+                install_agent(Path(stick_mnt), server_ip, key, installed, bundle=True, emit=emit)
                 if BIOS_GRUB_DIR.is_dir() and shutil.which("grub-install"):
                     progress(0.91, "Installiere BIOS-Bootloader")
                     _run(["grub-install", "--target=i386-pc", f"--boot-directory={stick_mnt}/boot", device])
@@ -332,6 +435,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--device", required=True, help="z. B. /dev/sdb")
     ap.add_argument("--iso", required=True, help="Debian-Live-ISO")
     ap.add_argument("--server", default="", help="IP des Recovery-Tools (zusätzlich zum Broadcast)")
+    ap.add_argument("--key-stdin", action="store_true", help="Agent-Schlüssel (hex) von stdin lesen")
     args = ap.parse_args(argv)
 
     def emit(kind: str, text: str) -> None:
@@ -343,7 +447,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.server:
             ipaddress.IPv4Address(args.server)
-        prepare(args.device, args.iso, args.server, emit)
+        key = None
+        if args.key_stdin:
+            key = bytes.fromhex(sys.stdin.readline().strip())
+            if len(key) != 32:
+                raise ValueError("Schlüssel muss 32 Bytes lang sein")
+        prepare(args.device, args.iso, args.server, emit, key)
     except (StickError, ValueError, OSError) as e:
         emit("ERROR", str(e))
         return 1

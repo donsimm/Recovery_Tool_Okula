@@ -15,6 +15,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GdkPixbuf, GLib, GObject, Gtk, Pango  # noqa: E402
 
 from okula_recovery import __version__, config, discovery, nas, network  # noqa: E402
+from okula_recovery.image_dialog import ImageDialog  # noqa: E402
 from okula_recovery.stick_dialog import StickDialog  # noqa: E402
 
 ASSETS = Path(__file__).resolve().parent / "assets"
@@ -106,6 +107,7 @@ class MainWindow(Gtk.ApplicationWindow):
         super().__init__(application=app, title="Okula Recovery Tool")
         self.set_default_size(1280, 760)
         self.cfg = config.load()
+        self.agents: dict[str, discovery.AgentInfo] = {}  # IP → letzte Meldung
         self._auto_mount_tried = False
 
         header = Gtk.HeaderBar(title="Recovery Tool", subtitle=f"Version {__version__}",
@@ -405,12 +407,15 @@ class MainWindow(Gtk.ApplicationWindow):
 
         # Aktionen für die gewählte Maschine (Funktion folgt in späteren Schritten)
         actions = Gtk.Box(spacing=6)
-        self.machine_buttons = []
-        for label in ("Backup erstellen", "Disk-Image erstellen", "Image zurückspielen"):
-            b = Gtk.Button(label=label, sensitive=False)
-            b.set_tooltip_text("Noch nicht implementiert")
+        self.btn_backup = Gtk.Button(label="Backup erstellen", sensitive=False)
+        self.btn_backup.set_tooltip_text("Datei-Backup – folgt")
+        self.btn_image = Gtk.Button(label="Disk-Image erstellen", sensitive=False)
+        self.btn_image.set_tooltip_text("Ganze Disk der gewählten Maschine aufs NAS sichern (Maschine mit Agent-Stick)")
+        self.btn_image.connect("clicked", self.on_create_image)
+        self.btn_restore = Gtk.Button(label="Image zurückspielen", sensitive=False)
+        self.btn_restore.set_tooltip_text("Folgt")
+        for b in (self.btn_backup, self.btn_image, self.btn_restore):
             actions.pack_start(b, False, False, 0)
-            self.machine_buttons.append(b)
         self.btn_remove = Gtk.Button(label="Entfernen", sensitive=False)
         self.btn_remove.connect("clicked", self.on_remove_machine)
         actions.pack_end(self.btn_remove, False, False, 0)
@@ -448,11 +453,13 @@ class MainWindow(Gtk.ApplicationWindow):
         GLib.timeout_add_seconds(5, self._expire_agents)
 
     def _on_agent(self, info: discovery.AgentInfo) -> bool:
+        self.agents[info.ip] = info
         disks = ", ".join(f"{d.name} {nas.format_size(d.size)}" for d in info.disks) or "–"
         known = any(row[2] == info.ip and row[4] == "USB-Agent" and row[0] == ICON_AGENT
                     for row in self.machine_store)
         self._add_machine_row(network.Machine(ip=info.ip, name=info.hostname, mac=info.mac, online=True,
                                               source="USB-Agent", hardware=info.hardware, disks=disks))
+        self._update_image_button()
         if not known:
             note = " – Link-Local, im Netz gibt es kein DHCP" if info.ip.startswith("169.254.") else ""
             self.status(f"USB-Agent gemeldet: {info.hostname or info.ip} ({info.ip}){note}")
@@ -463,6 +470,7 @@ class MainWindow(Gtk.ApplicationWindow):
         for row in self.machine_store:
             if row[4] == "USB-Agent" and row[0] == ICON_AGENT and row[8] < limit:
                 row[0] = ICON_OFFLINE
+                self._update_image_button()
         return True
 
     def _load_manual_machines(self) -> None:
@@ -538,8 +546,31 @@ class MainWindow(Gtk.ApplicationWindow):
         model, it = selection.get_selected()
         has = it is not None
         self.btn_remove.set_sensitive(has)
+        self._update_image_button()
         if has:
             self.status(f"Ausgewählt: {model[it][1]} ({model[it][2]})")
+
+    def _selected_agent(self) -> discovery.AgentInfo | None:
+        model, it = self.machine_view.get_selection().get_selected()
+        if it is None or model[it][4] != "USB-Agent" or model[it][0] != ICON_AGENT:
+            return None
+        return self.agents.get(model[it][2])
+
+    def _update_image_button(self) -> None:
+        agent = self._selected_agent()
+        ok = agent is not None and agent.control_port > 0
+        self.btn_image.set_sensitive(ok)
+        if agent is not None and not agent.control_port:
+            self.btn_image.set_tooltip_text("Agent-Stick ist veraltet – mit aktuellem Tool neu erstellen")
+
+    def on_create_image(self, _btn) -> None:
+        agent = self._selected_agent()
+        if agent is None:
+            return
+        if agent.busy:
+            self.status("Agent ist mit einem anderen Auftrag beschäftigt")
+            return
+        ImageDialog(self, agent, self._nas_cfg_from_form().mount_point, on_done=self.refresh_images)
 
     def on_remove_machine(self, _btn) -> None:
         model, it = self.machine_view.get_selection().get_selected()

@@ -60,6 +60,23 @@ Button **„Agent-USB-Stick erstellen …“** oben rechts:
 - **Secure Boot:** Der Stick nutzt die signierte Boot-Kette des Debian-ISO.
 - **Hinweis:** Die Beacons sind nicht authentifiziert. Die spätere Steuerverbindung zum Agent bekommt eine Authentifizierung.
 
+## Disk-Image erstellen
+
+Rechts die Maschine wählen, die vom Agent-Stick gebootet wurde (Quelle *USB-Agent*), dann **„Disk-Image erstellen“**. Im Dialog Disk und Archivname wählen und auf **„Image erstellen“** klicken.
+
+- **Disk-Image oder Backup:** Das Disk-Image sichert die ganze Disk: Partitionstabelle, Bootloader und alle Partitionen. Zurückgespielt ist die Maschine wieder genau wie vorher. Ein Datei-Backup (folgt) sichert nur ausgewählte Ordner.
+- **Ablage:** `NAS/images/<Name>/<Datum_Zeit>_<disk>/` mit
+  - `okula-image.json` (Metadaten, SHA256 je Datei)
+  - `<disk>.sfdisk` (Partitionstabelle) sowie `-head.img` und `-tail.img` (erstes und letztes MiB, also MBR/GPT und Bootloader)
+  - pro Partition `<part>.<fs>.pcl.zst` (partclone, nur belegte Blöcke, zstd-komprimiert) oder `<part>.dd.img.zst` für unbekannte und verschlüsselte Partitionen (BitLocker, LUKS): Rohkopie aller Blöcke
+  - Swap wird nicht gesichert.
+- **Datenfluss:** Der Agent liest die Disk nur und streamt über **TCP 47812** (TLS 1.3 mit PSK) zum Tool. Das Tool prüft die SHA256-Summen und schreibt aufs eingehängte NAS. Der Agent bekommt keine NAS-Zugangsdaten.
+- **Abbruch und Fehler:** Während der Arbeit heisst der Ordner `….partial`. Bei Abbruch oder Fehler löscht das Tool ihn wieder, und in der Image-Liste erscheinen nur vollständige Images.
+- **Schlüssel:** Das Tool erzeugt beim ersten Stick `~/.config/okula-recovery/agent.key` und bettet ihn in jeden Stick ein. Ein Stick von einem anderen Tool wird abgewiesen. Wer den Stick hat, hat auch den Schlüssel, deshalb die Sticks wie Admin-Werkzeug aufbewahren.
+- **partclone auf dem Stick:** `partclone` und `zstd` fehlen im Debian-Live-Image. Das Tool lädt sie beim Erstellen des Sticks mit `apt-get download` aus den Paketquellen des Servers (gleiche Debian-Version) und legt nur die fehlenden Pakete in den Agent-Layer. Dafür braucht der Server Internetzugang.
+
+Tipp für Windows: Vorher vollständig herunterfahren (Shift + Herunterfahren), sonst meldet partclone ein „inkonsistentes“ NTFS (Schnellstart/Ruhezustand).
+
 ## Tests
 
 ```bash

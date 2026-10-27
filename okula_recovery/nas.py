@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import socket
 import subprocess
@@ -200,6 +201,26 @@ def _image_kind(name: str) -> str | None:
     return None
 
 
+OKULA_META = "okula-image.json"
+
+
+def _okula_image(path: Path, root: Path) -> ImageInfo | None:
+    """Ordner eines Okula-Disk-Images (Metadaten mit Dateiliste)."""
+    try:
+        meta = json.loads((path / OKULA_META).read_text())
+        size = sum(int(f.get("size", 0)) for f in meta.get("files", []))
+        mtime = datetime.fromisoformat(meta["completed"]) if meta.get("completed") \
+            else datetime.fromtimestamp(path.stat().st_mtime)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+    name = str(path.relative_to(root))
+    if name.startswith("images/"):
+        name = name[len("images/"):]
+    disk = meta.get("disk") or {}
+    model = disk.get("model") or ""
+    return ImageInfo(f"{name}  ({model})" if model else name, path, "Disk-Image", size, mtime)
+
+
 def _is_clonezilla_dir(path: Path) -> bool:
     return (path / "disk").is_file() and (path / "parts").is_file()
 
@@ -231,7 +252,13 @@ def list_images(root: str | Path, max_depth: int = 2) -> list[ImageInfo]:
             p = Path(e.path)
             try:
                 if e.is_dir(follow_symlinks=False):
-                    if _is_clonezilla_dir(p):
+                    if e.name.endswith(".partial"):
+                        continue  # Image wird gerade geschrieben oder ist abgebrochen
+                    if (p / OKULA_META).is_file():
+                        info = _okula_image(p, root)
+                        if info:
+                            found.append(info)
+                    elif _is_clonezilla_dir(p):
                         found.append(ImageInfo(str(p.relative_to(root)), p, "Clonezilla",
                                                _dir_size(p), datetime.fromtimestamp(e.stat().st_mtime)))
                     elif depth < max_depth:

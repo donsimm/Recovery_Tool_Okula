@@ -43,6 +43,8 @@ class AgentInfo:
     product: str = ""
     disks: list[Disk] = field(default_factory=list)
     version: str = ""
+    control_port: int = 0  # 0 = Agent ohne Steuerdienst (alter Stick)
+    busy: bool = False
     last_seen: float = 0.0
 
     @property
@@ -99,8 +101,9 @@ def primary_mac() -> str:
     return ""
 
 
-def build_beacon(ip: str, version: str) -> dict:
+def build_beacon(ip: str, version: str, extra: dict | None = None) -> dict:
     return {
+        **(extra or {}),
         "type": BEACON_TYPE,
         "proto": PROTOCOL_VERSION,
         "id": machine_id(),
@@ -138,7 +141,14 @@ def parse_beacon(data: bytes, sender_ip: str) -> AgentInfo | None:
     return AgentInfo(agent_id=str(msg.get("id") or sender_ip), hostname=str(msg.get("hostname") or ""),
                      ip=sender_ip, mac=str(msg.get("mac") or ""), vendor=str(msg.get("vendor") or ""),
                      product=str(msg.get("product") or ""), disks=disks, version=str(msg.get("version") or ""),
-                     last_seen=time.time())
+                     control_port=_int(msg.get("control")), busy=bool(msg.get("busy")), last_seen=time.time())
+
+
+def _int(v) -> int:
+    try:
+        return max(0, min(65535, int(v or 0)))
+    except (TypeError, ValueError):
+        return 0
 
 
 class Listener:

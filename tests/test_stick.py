@@ -109,6 +109,33 @@ class LayoutTest(unittest.TestCase):
                            capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_merge_usr_never_shadows_symlinks(self):
+        tree = self.root / "tree"
+        (tree / "lib/x86_64-linux-gnu").mkdir(parents=True)
+        (tree / "lib/x86_64-linux-gnu/libntfs-3g.so.89.0.0").write_text("x")
+        os.symlink("libntfs-3g.so.89.0.0", tree / "lib/x86_64-linux-gnu/libntfs-3g.so.89")
+        (tree / "usr/sbin").mkdir(parents=True)
+        (tree / "usr/sbin/partclone.ntfs").write_text("y")
+        (tree / "sbin").mkdir()
+        (tree / "sbin/tool").write_text("z")
+        stick.merge_usr(tree)
+        self.assertEqual(sorted(p.name for p in tree.iterdir()), ["usr"])
+        lib = tree / "usr/lib/x86_64-linux-gnu"
+        self.assertEqual((lib / "libntfs-3g.so.89.0.0").read_text(), "x")
+        self.assertEqual(os.readlink(lib / "libntfs-3g.so.89"), "libntfs-3g.so.89.0.0")
+        self.assertTrue((tree / "usr/sbin/tool").is_file())
+        self.assertTrue((tree / "usr/sbin/partclone.ntfs").is_file())
+
+    def test_parse_apt_depends(self):
+        out = "partclone\n  Depends: libc6\n  Depends: <libfoo>\nlibc6\n<libfoo>\nlibntfs-3g89t64:amd64\n"
+        self.assertEqual(stick.parse_apt_depends(out), ["partclone", "libc6", "libntfs-3g89t64"])
+
+    def test_read_installed_packages(self):
+        f = self.root / "filesystem.packages"
+        f.write_text("libc6:amd64\t2.41-12\nzstd\t1.5.7\n\n")
+        self.assertEqual(stick.read_installed_packages(f), {"libc6", "zstd"})
+        self.assertIsNone(stick.read_installed_packages(self.root / "missing"))
+
     @unittest.skipUnless(shutil.which("mksquashfs"), "mksquashfs fehlt")
     def test_install_agent_builds_layer_and_updates_module(self):
         (self.root / "live").mkdir()

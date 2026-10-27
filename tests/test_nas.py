@@ -43,6 +43,24 @@ class ListImagesTest(unittest.TestCase):
         self.assertEqual(images[0].kind, "Clonezilla")
         self.assertEqual(images[0].size, 100)
 
+    def test_detects_okula_images_and_skips_partial(self):
+        import json
+        d = self.root / "images/PC_Buero/2026-10-27_1030_sda"
+        d.mkdir(parents=True)
+        (d / "okula-image.json").write_text(json.dumps({
+            "completed": "2026-10-27T11:02:00", "disk": {"model": "SSD 860"},
+            "files": [{"name": "sda1.ntfs.pcl.zst", "size": 1000}, {"name": "sda.sfdisk", "size": 24}]}))
+        (d / "sda1.ntfs.pcl.zst").write_bytes(b"x" * 1000)
+        partial = self.root / "images/PC_Buero/2026-10-27_1100_sda.partial"
+        partial.mkdir()
+        (partial / "sda1.dd.img").touch()
+        images = nas.list_images(self.root)
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0].kind, "Disk-Image")
+        self.assertEqual(images[0].name, "PC_Buero/2026-10-27_1030_sda  (SSD 860)")
+        self.assertEqual(images[0].size, 1024)
+        self.assertEqual(images[0].mtime.hour, 11)
+
     def test_respects_max_depth(self):
         self.touch("a/b/c/deep.img")
         self.assertEqual(nas.list_images(self.root, max_depth=2), [])
