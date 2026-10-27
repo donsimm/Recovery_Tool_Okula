@@ -31,7 +31,8 @@ SYSTEM_MOUNTS = ("/", "/boot", "/boot/efi", "/usr", "/var", "/home", "[SWAP]")
 AGENT_MODULES = ("__init__.py", "agent.py", "discovery.py", "imaging.py", "network.py", "wire.py")
 # Werkzeuge, die dem Live-Image fehlen; werden samt fehlender Abhängigkeiten aus den
 # Debian-Paketen des Servers (gleiche Release) in den Agent-Layer entpackt
-BUNDLED_PACKAGES = ("partclone", "zstd")
+# lz4/lzop/pigz/bzip2: zum Zurückspielen von Clonezilla-Images
+BUNDLED_PACKAGES = ("partclone", "zstd", "pigz", "lz4", "lzop", "bzip2", "xz-utils")
 # Ohne Paketliste des ISO nie überlagern (Basis jedes Systems)
 NEVER_BUNDLE = ("libc6", "libgcc-s1", "libstdc++6", "gcc-")
 PACKAGE_DIR = Path(__file__).resolve().parent

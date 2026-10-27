@@ -286,10 +286,31 @@ def sfdisk_sector_size(dump: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
+DECOMPRESS = {"zstd": ["zstd", "-d", "-q", "-c"], "gzip": ["gzip", "-d", "-c"], "bzip2": ["bzip2", "-d", "-c"],
+              "xz": ["xz", "-d", "-c"], "lz4": ["lz4", "-d", "-c"], "lzop": ["lzop", "-d", "-c"]}
+
+
+def decompressor(step: dict) -> list[str] | None:
+    """Entpacker für einen Schritt; Okula-Images: „compressed“ = zstd, Clonezilla: „compression“."""
+    comp = step.get("compression")
+    if comp is None:
+        comp = "zstd" if step.get("compressed") else ""
+    if not comp:
+        return None
+    if comp not in DECOMPRESS:
+        raise ImagingError(f"Unbekannte Kompression: {comp}")
+    if comp == "gzip" and shutil.which("pigz"):
+        return ["pigz", "-d", "-c"]  # parallel, deutlich schneller
+    return DECOMPRESS[comp]
+
+
 def restore_command(step: dict, device: str) -> list[list[str]]:
     """Pipeline zum Zurückschreiben einer Partition (ohne die Daten-Quelle)."""
-    cmds = [["zstd", "-d", "-q", "-c"]] if step.get("compressed") else []
+    dec = decompressor(step)
+    cmds = [dec] if dec else []
     if step["kind"] == "pcl":
+        if not re.fullmatch(r"[a-z0-9+]+", step.get("variant", "")):
+            raise ImagingError(f"Ungültiges Dateisystem: {step.get('variant')}")
         cmds.append([f"partclone.{step['variant']}", "-r", "-s", "-", "-o", device])
     else:
         cmds.append(["dd", f"of={device}", "bs=4M", "conv=fsync", "status=none"])

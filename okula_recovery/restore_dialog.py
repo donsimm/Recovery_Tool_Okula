@@ -12,7 +12,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk, Pango  # noqa: E402
 
-from okula_recovery import agentclient, discovery, nas  # noqa: E402
+from okula_recovery import agentclient, clonezilla, discovery, nas  # noqa: E402
 
 
 def _gb(n: int) -> str:
@@ -28,7 +28,8 @@ class RestoreDialog(Gtk.Dialog):
         self.nas_root = nas_root
         self.preselect = preselect
         self.key = agentclient.load_or_create_key()
-        self.images: dict[str, dict] = {}   # Pfad → Metadaten
+        # Auswahl-ID („Pfad<TAB>Disk“) → {"path", "disk", "machine", "completed", "disk_info", "format"}
+        self.images: dict[str, dict] = {}
         self.disks: dict[str, dict] = {}
         self.cancel = threading.Event()
         self.busy = False
@@ -121,30 +122,49 @@ class RestoreDialog(Gtk.Dialog):
         root, agent, key = self.nas_root, self.agent, self.key
 
         def work():
-            images = {}
+            images, problems = {}, []
             for img in nas.list_images(root):
                 if img.kind == "Disk-Image":
                     try:
-                        images[str(img.path)] = agentclient.load_image(img.path)
+                        meta = agentclient.load_image(img.path)
                     except agentclient.AgentError:
                         continue
+                    disk = meta.get("disk", {})
+                    images[f"{img.path}\t{disk.get('name', '')}"] = {
+                        "path": str(img.path), "disk": None, "machine": meta.get("machine", "?"),
+                        "completed": meta.get("completed", ""), "disk_info": disk, "format": "Okula",
+                        "product": meta.get("source", {}).get("product", "")}
+                elif img.kind == "Clonezilla":
+                    for d in clonezilla.disks(img.path):
+                        try:
+                            src = clonezilla.build(img.path, d)
+                        except (clonezilla.ClonezillaError, OSError) as e:
+                            problems.append(f"{img.name} ({d}): {e}")
+                            continue
+                        images[f"{img.path}\t{d}"] = {
+                            "path": str(img.path), "disk": d, "machine": img.path.name,
+                            "completed": img.mtime.isoformat(timespec="minutes"), "disk_info": src["source"],
+                            "format": "Clonezilla", "product": ""}
             try:
                 info = agentclient.get_info(agent.ip, key, agent.control_port)
             except Exception as e:
                 info = e
-            GLib.idle_add(self._on_loaded, images, info)
+            GLib.idle_add(self._on_loaded, images, info, problems)
 
         threading.Thread(target=work, daemon=True).start()
 
-    def _on_loaded(self, images: dict, info) -> bool:
+    def _on_loaded(self, images: dict, info, problems: list[str]) -> bool:
         self.images = images
-        for path, meta in sorted(images.items(), key=lambda kv: kv[1].get("completed", ""), reverse=True):
-            d = meta.get("disk", {})
+        for key, meta in sorted(images.items(), key=lambda kv: kv[1].get("completed", ""), reverse=True):
+            d = meta["disk_info"]
             when = meta.get("completed", "")[:16].replace("T", " ")
-            self.image_combo.append(path, f"{meta.get('machine', '?')} – {d.get('name', '?')} "
-                                          f"{d.get('model', '')} ({_gb(int(d.get('size') or 0))}) – {when}")
-        if self.preselect in images:
-            self.image_combo.set_active_id(self.preselect)
+            self.image_combo.append(key, f"[{meta['format']}] {meta['machine']} – {d.get('name', '?')} "
+                                         f"{d.get('model', '')} ({_gb(int(d.get('size') or 0))}) – {when}")
+        for msg in problems:
+            self.append_log(f"Nicht zurückspielbar: {msg}")
+        match = [k for k in images if k.split("\t")[0] == self.preselect]
+        if match:
+            self.image_combo.set_active_id(match[0])
         elif images:
             self.image_combo.set_active(0)
         else:
@@ -167,11 +187,11 @@ class RestoreDialog(Gtk.Dialog):
         meta = self.images.get(self.image_combo.get_active_id() or "")
         disk = self.disks.get(self.disk_combo.get_active_id() or "")
         if meta:
-            d = meta.get("disk", {})
-            parts = ", ".join(f"{p['name']} {p['fstype'] or '?'}" for p in d.get("partitions", []))
-            src = meta.get("source", {})
-            self.source_info.set_text(f"Quelle: {src.get('product') or meta.get('machine')} · {d.get('model', '')} "
-                                      f"{_gb(int(d.get('size') or 0))} · {d.get('pttype', '')} · {parts}")
+            d = meta["disk_info"]
+            parts = ", ".join(f"{p['name']} {p.get('fstype') or 'roh'}" for p in d.get("partitions", []))
+            self.source_info.set_text(f"Quelle ({meta['format']}): {meta['product'] or meta['machine']} · "
+                                      f"{d.get('model', '')} {_gb(int(d.get('size') or 0))} · "
+                                      f"{d.get('pttype', '')} · {parts}")
         self.target_store.clear()
         if disk:
             for p in disk["partitions"] or [{"name": disk["name"], "fstype": disk["fstype"], "size": disk["size"],
@@ -181,7 +201,7 @@ class RestoreDialog(Gtk.Dialog):
             self.confirm_label.set_markup(f"Bestätigung: <b>{GLib.markup_escape_text(disk['name'])}</b> eintippen")
         ok = False
         if meta and disk:
-            need = int(meta.get("disk", {}).get("size") or 0)
+            need = int(meta["disk_info"].get("size") or 0)
             if disk["size"] < need:
                 self.check.set_markup(f"<b>Zieldisk zu klein:</b> {_gb(disk['size'])} &lt; {_gb(need)} "
                                       "(Image braucht mindestens die Grösse der Quelldisk)")
@@ -219,7 +239,8 @@ class RestoreDialog(Gtk.Dialog):
         if not os.path.ismount(self.nas_root):
             self.append_log("NAS ist nicht eingehängt.")
             return
-        image = self.image_combo.get_active_id()
+        chosen = self.images[self.image_combo.get_active_id()]
+        image, source_disk = chosen["path"], chosen["disk"]
         disk = self.disk_combo.get_active_id()
         verify = self.verify.get_active()
         self.cancel.clear()
@@ -232,7 +253,7 @@ class RestoreDialog(Gtk.Dialog):
         def work():
             try:
                 agentclient.restore_image(self.agent.ip, self.key, image, disk, progress, self.cancel,
-                                          self.agent.control_port, verify)
+                                          self.agent.control_port, verify, source_disk)
                 GLib.idle_add(self._on_finished, None)
             except Exception as e:
                 GLib.idle_add(self._on_finished, e)

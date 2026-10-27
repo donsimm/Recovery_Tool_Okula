@@ -22,7 +22,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-from okula_recovery import __version__, config, wire
+from okula_recovery import __version__, clonezilla, config, wire
 
 IMAGE_META = "okula-image.json"
 SAFE_FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$")
@@ -242,6 +242,14 @@ def verify_image(path: str | Path, meta: dict, progress: Progress, cancel: threa
             raise AgentError(f"Image beschädigt: Prüfsumme von {f['name']} stimmt nicht")
 
 
+def _read_pieces(pieces: list[Path]):
+    """Liest (gesplittete) Image-Dateien nacheinander als einen Datenstrom."""
+    for piece in pieces:
+        with open(piece, "rb") as fh:
+            while chunk := fh.read(wire.CHUNK):
+                yield chunk
+
+
 def _agent_error(sock) -> str | None:
     """Nach einem Sendefehler: hat der Agent noch eine Fehlermeldung geschickt?"""
     try:
@@ -263,12 +271,8 @@ def _expect(sock, wanted: str) -> dict:
     return msg
 
 
-def restore_image(ip: str, key: bytes, image_path: str | Path, target_disk: str, progress: Progress,
-                  cancel: threading.Event, port: int = wire.PORT, verify: bool = True) -> None:
-    image_path = Path(image_path)
+def okula_source(image_path: Path) -> dict:
     meta = load_image(image_path)
-    if verify:
-        verify_image(image_path, meta, progress, cancel)
     disk = meta.get("disk") or {}
     names = {f["name"] for f in meta["files"]}
     sfdisk_file = f"{disk.get('name')}.sfdisk"
@@ -276,9 +280,43 @@ def restore_image(ip: str, key: bytes, image_path: str | Path, target_disk: str,
     if head_file not in names:
         raise AgentError("Image ohne Kopfbereich – kann nicht zurückgespielt werden")
     steps = restore_steps(meta)
-    req = {"cmd": "restore", "disk": target_disk, "source": disk, "steps": steps,
-           "sfdisk": (image_path / sfdisk_file).read_text() if sfdisk_file in names else "",
-           "head": (image_path / head_file).read_bytes().hex()}
+    for st in steps:
+        if st.get("file"):
+            st["pieces"] = [image_path / st["file"]]
+    return {"source": disk, "steps": steps, "format": "okula",
+            "sfdisk": (image_path / sfdisk_file).read_text() if sfdisk_file in names else "",
+            "head": (image_path / head_file).read_bytes(),
+            "verify": lambda progress, cancel: verify_image(image_path, meta, progress, cancel)}
+
+
+def image_source(image_path: str | Path, disk: str | None = None) -> dict:
+    """Quelle für restore_image: Okula-Image oder Clonezilla-Image (disk = welche Disk daraus)."""
+    image_path = Path(image_path)
+    if clonezilla.is_clonezilla(image_path):
+        try:
+            src = clonezilla.build(image_path, disk or clonezilla.disks(image_path)[0])
+        except (clonezilla.ClonezillaError, IndexError) as e:
+            raise AgentError(str(e) or "Clonezilla-Image ohne Disk") from None
+
+        def verify(progress, cancel):
+            try:
+                clonezilla.verify(src, progress, cancel)
+            except clonezilla.ClonezillaError as e:
+                raise AgentError(str(e)) from None
+        src["verify"] = verify
+        return src
+    return okula_source(image_path)
+
+
+def restore_image(ip: str, key: bytes, image_path: str | Path, target_disk: str, progress: Progress,
+                  cancel: threading.Event, port: int = wire.PORT, verify: bool = True,
+                  source_disk: str | None = None) -> None:
+    src = image_source(image_path, source_disk)
+    if verify:
+        src["verify"](progress, cancel)
+    steps = src["steps"]
+    req = {"cmd": "restore", "disk": target_disk, "source": src["source"], "sfdisk": src["sfdisk"],
+           "head": src["head"].hex(), "steps": [{k: v for k, v in st.items() if k != "pieces"} for st in steps]}
 
     total = sum(s.get("size", 0) for s in steps) or 1
     sent = 0
@@ -298,18 +336,17 @@ def restore_image(ip: str, key: bytes, image_path: str | Path, target_disk: str,
             last = 0.0
             try:
                 wire.send_json(sock, {"type": "file", "file": s["file"]})
-                with open(image_path / s["file"], "rb") as fh:
-                    while chunk := fh.read(wire.CHUNK):
-                        if cancel.is_set():
-                            raise AgentError("Abgebrochen – die Zieldisk ist jetzt unvollständig")
-                        wire.send_data(sock, chunk)
-                        h.update(chunk)
-                        size += len(chunk)
-                        sent += len(chunk)
-                        if time.monotonic() - last >= 0.5:
-                            last = time.monotonic()
-                            progress({"phase": "data", "part": s["part"], "fraction": sent / total,
-                                      "total_bytes": sent, "speed": sent / max(time.monotonic() - started, 0.001)})
+                for chunk in _read_pieces(s["pieces"]):
+                    if cancel.is_set():
+                        raise AgentError("Abgebrochen – die Zieldisk ist jetzt unvollständig")
+                    wire.send_data(sock, chunk)
+                    h.update(chunk)
+                    size += len(chunk)
+                    sent += len(chunk)
+                    if time.monotonic() - last >= 0.5:
+                        last = time.monotonic()
+                        progress({"phase": "data", "part": s["part"], "fraction": sent / total,
+                                  "total_bytes": sent, "speed": sent / max(time.monotonic() - started, 0.001)})
                 wire.send_json(sock, {"type": "file_end", "file": s["file"], "size": size, "sha256": h.hexdigest()})
             except (BrokenPipeError, ConnectionResetError, ssl.SSLError) as e:
                 raise AgentError(_hint(_agent_error(sock) or f"Verbindung zum Agent abgebrochen: {e}")) from None
