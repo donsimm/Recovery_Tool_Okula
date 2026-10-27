@@ -6,6 +6,6 @@
   ####   #   #   ###   #####  #   #   Recovery Agent
 
  Diese Maschine meldet sich automatisch beim Okula Recovery Tool.
- Hostname: \n   IP: \4   Terminal: \l
+ Hostname: \n   Terminal: \l   (IP und Verbindung meldet der Agent unten)
  Status:   journalctl -u okula-agent
 
