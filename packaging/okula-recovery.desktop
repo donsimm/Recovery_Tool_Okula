@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Okula Recovery Tool
+Comment=Backups und Disk-Images von Maschinen im LAN
+Exec=python3 -m okula_recovery
+Path=/opt/okula-recovery
+Icon=drive-harddisk
+Terminal=false
+Categories=System;
