@@ -17,6 +17,7 @@ from gi.repository import Gdk, GdkPixbuf, GLib, GObject, Gtk, Pango  # noqa: E40
 
 from okula_recovery import __version__, config, discovery, nas, nasfiles, network  # noqa: E402
 from okula_recovery.image_dialog import ImageDialog  # noqa: E402
+from okula_recovery.restore_dialog import RestoreDialog  # noqa: E402
 from okula_recovery.stick_dialog import StickDialog  # noqa: E402
 
 ASSETS = Path(__file__).resolve().parent / "assets"
@@ -652,7 +653,8 @@ class MainWindow(Gtk.ApplicationWindow):
         self.btn_image.set_tooltip_text("Ganze Disk der gewählten Maschine aufs NAS sichern (Maschine mit Agent-Stick)")
         self.btn_image.connect("clicked", self.on_create_image)
         self.btn_restore = Gtk.Button(label="Image zurückspielen", sensitive=False)
-        self.btn_restore.set_tooltip_text("Folgt")
+        self.btn_restore.set_tooltip_text("Disk-Image vom NAS auf eine Disk der gewählten Maschine schreiben")
+        self.btn_restore.connect("clicked", self.on_restore_image)
         for b in (self.btn_backup, self.btn_image, self.btn_restore):
             actions.pack_start(b, False, False, 0)
         self.btn_remove = Gtk.Button(label="Entfernen", sensitive=False)
@@ -799,6 +801,7 @@ class MainWindow(Gtk.ApplicationWindow):
         agent = self._selected_agent()
         ok = agent is not None and agent.control_port > 0
         self.btn_image.set_sensitive(ok)
+        self.btn_restore.set_sensitive(ok)
         if agent is not None and not agent.control_port:
             self.btn_image.set_tooltip_text("Agent-Stick ist veraltet – mit aktuellem Tool neu erstellen")
 
@@ -810,6 +813,20 @@ class MainWindow(Gtk.ApplicationWindow):
             self.status("Agent ist mit einem anderen Auftrag beschäftigt")
             return
         ImageDialog(self, agent, self._nas_cfg_from_form().mount_point, on_done=self.refresh_images)
+
+    def on_restore_image(self, _btn) -> None:
+        agent = self._selected_agent()
+        if agent is None:
+            return
+        if agent.busy:
+            self.status("Agent ist mit einem anderen Auftrag beschäftigt")
+            return
+        root = self._nas_root()
+        if root is None:
+            self.status("NAS ist nicht eingehängt")
+            return
+        model, it = self.image_view.get_selection().get_selected()
+        RestoreDialog(self, agent, root, preselect=model[it][6] if it is not None else None)
 
     def on_remove_machine(self, _btn) -> None:
         model, it = self.machine_view.get_selection().get_selected()

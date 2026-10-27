@@ -135,6 +135,20 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
                     wire.send_json(tls, {"type": "error", "message": str(e)})
                 finally:
                     job_lock.release()
+            elif cmd == "restore":
+                if not job_lock.acquire(blocking=False):
+                    wire.send_json(tls, {"type": "error", "message": "Agent ist mit einem anderen Auftrag beschäftigt"})
+                    return
+                disk = str(req.get("disk") or "")
+                try:
+                    log(f"Image zurückspielen auf {disk} für {addr[0]} gestartet")
+                    imaging.restore_disk(tls, req, log)
+                    log(f"Image auf {disk} zurückgespielt")
+                except imaging.ImagingError as e:
+                    log(f"Zurückspielen auf {disk} fehlgeschlagen: {e}")
+                    wire.send_json(tls, {"type": "error", "message": str(e)})
+                finally:
+                    job_lock.release()
             else:
                 wire.send_json(tls, {"type": "error", "message": f"Unbekannter Befehl: {cmd}"})
     except ssl.SSLError:

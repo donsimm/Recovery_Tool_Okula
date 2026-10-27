@@ -55,15 +55,19 @@ def _partition(d: dict) -> dict:
     }
 
 
-def parse_disks(output: str) -> list[dict]:
-    """Disks mit Partitionen aus `lsblk -J -b -o …`; der Boot-Stick selbst fällt weg."""
+def parse_disks(output: str, types: tuple[str, ...] = ("disk",),
+                skip: tuple[str, ...] = ("loop", "zram", "ram", "sr")) -> list[dict]:
+    """Disks mit Partitionen aus `lsblk -J -b -o …`; der Boot-Stick selbst fällt weg.
+
+    types/skip nur für Tests mit Loop-Devices ändern.
+    """
     try:
         devices = json.loads(output).get("blockdevices", [])
     except (json.JSONDecodeError, AttributeError):
         return []
     disks = []
     for d in devices:
-        if d.get("type") != "disk" or d["name"].startswith(("loop", "zram", "ram", "sr")):
+        if d.get("type") not in types or d["name"].startswith(skip):
             continue
         if any(m.startswith(LIVE_MEDIUM) for m in _flatten_mounts(d)):
             continue  # davon läuft das Live-System
@@ -77,9 +81,11 @@ def parse_disks(output: str) -> list[dict]:
     return disks
 
 
+LSBLK_COLUMNS = "NAME,PATH,SIZE,TYPE,FSTYPE,LABEL,UUID,PARTTYPE,MODEL,SERIAL,TRAN,PTTYPE,MOUNTPOINTS"
+
+
 def list_disks() -> list[dict]:
-    out = subprocess.run(["lsblk", "-J", "-b", "-o",
-                          "NAME,PATH,SIZE,TYPE,FSTYPE,LABEL,UUID,PARTTYPE,MODEL,SERIAL,TRAN,PTTYPE,MOUNTPOINTS"],
+    out = subprocess.run(["lsblk", "-J", "-b", "-o", LSBLK_COLUMNS],
                          capture_output=True, text=True, timeout=15).stdout
     return parse_disks(out)
 
@@ -241,3 +247,205 @@ def stream_disk_image(sock, disk_path: str, log: Callable[[str], None] = print) 
                         if stream:
                             stream.close()
     wire.send_json(sock, {"type": "end"})
+
+
+# ---------- Zurückspielen ----------
+
+MBR_BOOTCODE = 440  # Bytes 0–439; danach Disk-Signatur und Tabelle (schreibt sfdisk)
+GPT_END = 34 * 512  # Schutz-MBR + GPT-Header + Einträge (512-Byte-Sektoren)
+
+
+def partition_number(disk_name: str, part_name: str) -> int:
+    rest = part_name[len(disk_name):] if part_name.startswith(disk_name) else part_name
+    m = re.search(r"(\d+)$", rest)
+    if not m:
+        raise ImagingError(f"Partitionsnummer von {part_name} unbekannt")
+    return int(m.group(1))
+
+
+def partition_device(disk_path: str, number: int) -> str:
+    return f"{disk_path}p{number}" if disk_path[-1].isdigit() else f"{disk_path}{number}"
+
+
+def prepare_sfdisk(dump: str, enlarge: bool) -> str:
+    """Dump für die Zieldisk: Gerätename weg, bei grösserer Disk auch last-lba (GPT-Ende neu)."""
+    lines = []
+    for line in dump.splitlines():
+        if line.startswith("device:") or (enlarge and line.startswith("last-lba:")):
+            continue
+        lines.append(line)
+    return "\n".join(lines) + "\n"
+
+
+def sfdisk_starts(dump: str) -> list[int]:
+    return [int(m) for m in re.findall(r"start=\s*(\d+)", dump)]
+
+
+def sfdisk_sector_size(dump: str) -> int | None:
+    m = re.search(r"^sector-size:\s*(\d+)", dump, re.M)
+    return int(m.group(1)) if m else None
+
+
+def restore_command(step: dict, device: str) -> list[list[str]]:
+    """Pipeline zum Zurückschreiben einer Partition (ohne die Daten-Quelle)."""
+    cmds = [["zstd", "-d", "-q", "-c"]] if step.get("compressed") else []
+    if step["kind"] == "pcl":
+        cmds.append([f"partclone.{step['variant']}", "-r", "-s", "-", "-o", device])
+    else:
+        cmds.append(["dd", f"of={device}", "bs=4M", "conv=fsync", "status=none"])
+    return cmds
+
+
+def _run_checked(cmd: list[str], input: str | None = None) -> None:
+    r = subprocess.run(cmd, input=input, capture_output=True, text=True, timeout=120)
+    if r.returncode != 0:
+        raise ImagingError(f"{' '.join(cmd)}: {(r.stderr or r.stdout).strip()}")
+
+
+def _wait_for(paths: list[str], timeout: float = 15.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if all(os.path.exists(p) for p in paths):
+            return
+        time.sleep(0.2)
+    missing = [p for p in paths if not os.path.exists(p)]
+    raise ImagingError(f"Partitionen erscheinen nicht: {', '.join(missing)}")
+
+
+def check_restore(target: dict, source: dict, steps: list[dict]) -> None:
+    mounted = [p["path"] for p in target["partitions"] if p["mounted"]]
+    if mounted:
+        raise ImagingError(f"Partition der Zieldisk ist eingehängt: {', '.join(mounted)}")
+    if target["size"] < int(source.get("size") or 0):
+        raise ImagingError(f"Zieldisk zu klein: {target['size'] / 1000**3:.1f} GB < "
+                           f"{int(source['size']) / 1000**3:.1f} GB")
+    needed = {c[0] for s in steps if s["kind"] in ("pcl", "dd") for c in restore_command(s, "/dev/null")}
+    missing = sorted(t for t in needed if not shutil.which(t))
+    if missing:
+        raise ImagingError(f"Werkzeuge fehlen auf dem Agent-Stick: {', '.join(missing)}")
+
+
+def write_partition_table(target: dict, source: dict, dump: str, head: bytes) -> None:
+    disk = target["path"]
+    for p in target["partitions"]:
+        subprocess.run(["wipefs", "-a", "-q", p["path"]], capture_output=True)
+    _run_checked(["wipefs", "-a", "-q", disk])
+    if not dump:
+        return  # Dateisystem direkt auf der Disk, keine Tabelle
+    enlarge = target["size"] > int(source.get("size") or 0)
+    _run_checked(["sfdisk", "-q", "--wipe", "always", disk], input=prepare_sfdisk(dump, enlarge))
+    # Bootcode und Bootloader-Lücke vor der ersten Partition aus dem Image zurückschreiben
+    starts = sfdisk_starts(dump)
+    first = min(starts) * (sfdisk_sector_size(dump) or 512) if starts else len(head)
+    gap_from = GPT_END if source.get("pttype") == "gpt" else 512
+    with open(disk, "r+b") as f:
+        f.write(head[:MBR_BOOTCODE])
+        if first > gap_from:
+            f.seek(gap_from)
+            f.write(head[gap_from:min(first, len(head))])
+        f.flush()
+        os.fsync(f.fileno())
+    subprocess.run(["partx", "-u", disk], capture_output=True)
+    subprocess.run(["udevadm", "settle"], capture_output=True)
+
+
+def _receive_into(sock, cmds: list[list[str]], expected: dict) -> None:
+    """Empfängt Daten-Frames bis file_end und schreibt sie in die Pipeline."""
+    procs = []
+    stdin = subprocess.PIPE
+    for i, argv in enumerate(cmds):
+        last = i == len(cmds) - 1
+        p = subprocess.Popen(argv, stdin=stdin, stdout=subprocess.DEVNULL if last else subprocess.PIPE,
+                             stderr=subprocess.PIPE if last else subprocess.DEVNULL)
+        if i > 0:
+            procs[-1].stdout.close()
+        procs.append(p)
+        stdin = p.stdout
+    progress = _Progress(procs[-1].stderr)
+    sink = procs[0].stdin
+    h = hashlib.sha256()
+    size = 0
+    try:
+        while True:
+            kind, payload = wire.recv_frame(sock)
+            if kind == wire.FRAME_DATA:
+                h.update(payload)
+                size += len(payload)
+                try:
+                    sink.write(payload)
+                except BrokenPipeError:
+                    break  # Prozess ist ausgestiegen, Exit-Code unten
+                continue
+            if payload.get("type") != "file_end":
+                raise ImagingError(f"Unerwartete Nachricht: {payload.get('type')}")
+            if payload.get("sha256") != h.hexdigest() or payload.get("size") != size:
+                raise ImagingError(f"Prüfsumme von {expected['file']} stimmt nicht – Übertragung fehlerhaft")
+            break
+        try:
+            sink.close()
+        except BrokenPipeError:
+            pass
+        codes = [p.wait() for p in procs]
+        progress.join()
+        if any(codes):
+            msg = progress.tail.decode(errors="replace").replace("\r", "\n").strip().splitlines()
+            raise ImagingError(f"Zurückschreiben von {expected['part']} fehlgeschlagen: {msg[-1] if msg else codes}")
+    finally:
+        for p in procs:
+            if p.poll() is None:
+                p.kill()
+            p.wait()
+        progress.join()
+        for p in procs:
+            for stream in (p.stdin, p.stdout, p.stderr):
+                if stream:
+                    try:
+                        stream.close()
+                    except BrokenPipeError:
+                        pass
+
+
+def restore_disk(sock, req: dict, log: Callable[[str], None] = print) -> None:
+    target = {d["path"]: d for d in list_disks()}.get(str(req.get("disk") or ""))
+    if target is None:
+        raise ImagingError(f"Zieldisk {req.get('disk')} nicht gefunden")
+    source = req.get("source") or {}
+    steps = req.get("steps") or []
+    check_restore(target, source, steps)
+    head = bytes.fromhex(req.get("head") or "")
+    if len(head) < MBR_BOOTCODE:
+        raise ImagingError("Image ohne Kopfbereich (head.img)")
+
+    log(f"Schreibe Partitionstabelle auf {target['path']} …")
+    write_partition_table(target, source, req.get("sfdisk") or "", head)
+    devices = {}
+    for s in steps:
+        if source.get("partitions"):
+            devices[s["part"]] = partition_device(target["path"], partition_number(source["name"], s["part"]))
+        else:
+            devices[s["part"]] = target["path"]
+    _wait_for(sorted(set(devices.values())))
+    wire.send_json(sock, {"type": "ready", "devices": devices})
+
+    by_file = {s["file"]: s for s in steps if s.get("file")}
+    while True:
+        msg = wire.recv_json(sock)
+        if msg.get("type") == "end":
+            break
+        if msg.get("type") != "file" or msg.get("file") not in by_file:
+            raise ImagingError(f"Unerwartete Datei: {msg.get('file')}")
+        step = by_file[msg["file"]]
+        log(f"Schreibe {step['part']} → {devices[step['part']]} …")
+        _receive_into(sock, restore_command(step, devices[step["part"]]), step)
+        wire.send_json(sock, {"type": "file_done", "file": step["file"]})
+
+    for s in steps:
+        if s["kind"] == "swap":
+            cmd = ["mkswap", "-q"]
+            if s.get("uuid"):
+                cmd += ["-U", s["uuid"]]
+            if s.get("label"):
+                cmd += ["-L", s["label"]]
+            subprocess.run(cmd + [devices[s["part"]]], capture_output=True)
+    subprocess.run(["sync"])
+    wire.send_json(sock, {"type": "done"})

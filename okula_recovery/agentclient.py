@@ -188,3 +188,138 @@ def create_image(ip: str, key: bytes, disk: str, nas_root: str | Path, machine: 
         sock.close()
         if work.exists():
             shutil.rmtree(work, ignore_errors=True)  # nur unser eigener .partial-Ordner
+
+
+# ---------- Zurückspielen ----------
+
+def load_image(path: str | Path) -> dict:
+    path = Path(path)
+    try:
+        meta = json.loads((path / IMAGE_META).read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        raise AgentError(f"Kein gültiges Okula-Image: {e}") from None
+    if meta.get("format") != "okula-image" or meta.get("version") != 1:
+        raise AgentError("Unbekanntes Image-Format")
+    for f in meta.get("files", []):
+        if not SAFE_FILE_RE.match(f.get("name", "")) or not (path / f["name"]).is_file():
+            raise AgentError(f"Datei fehlt im Image: {f.get('name')}")
+    return meta
+
+
+def restore_steps(meta: dict) -> list[dict]:
+    """Schritte für den Agent aus dem Sicherungsplan des Images."""
+    sizes = {f["name"]: f["size"] for f in meta.get("files", [])}
+    steps = []
+    for s in meta.get("plan", []):
+        if s.get("kind") == "skip":
+            steps.append({"kind": "swap", "part": s["part"], "uuid": s.get("uuid", ""), "label": s.get("label", "")})
+        elif s.get("kind") == "pipe":
+            tool = s["cmds"][0][0]
+            variant = tool.split(".", 1)[1] if tool.startswith("partclone.") else ""
+            steps.append({"kind": "dd" if variant == "dd" else "pcl", "variant": variant, "part": s["part"],
+                          "file": s["file"], "size": sizes.get(s["file"], 0),
+                          "compressed": s["file"].endswith(".zst")})
+    return steps
+
+
+def verify_image(path: str | Path, meta: dict, progress: Progress, cancel: threading.Event) -> None:
+    """Liest alle Dateien und vergleicht die SHA256 – bevor auf die Zieldisk geschrieben wird."""
+    total = sum(f["size"] for f in meta["files"]) or 1
+    done = 0
+    last = 0.0
+    for f in meta["files"]:
+        h = hashlib.sha256()
+        with open(Path(path) / f["name"], "rb") as fh:
+            while chunk := fh.read(wire.CHUNK):
+                if cancel.is_set():
+                    raise AgentError("Abgebrochen")
+                h.update(chunk)
+                done += len(chunk)
+                if time.monotonic() - last >= 0.5:
+                    last = time.monotonic()
+                    progress({"phase": "verify", "file": f["name"], "fraction": done / total})
+        if h.hexdigest() != f["sha256"]:
+            raise AgentError(f"Image beschädigt: Prüfsumme von {f['name']} stimmt nicht")
+
+
+def _agent_error(sock) -> str | None:
+    """Nach einem Sendefehler: hat der Agent noch eine Fehlermeldung geschickt?"""
+    try:
+        sock.settimeout(5)
+        while True:
+            kind, msg = wire.recv_frame(sock)
+            if kind == wire.FRAME_JSON and msg.get("type") == "error":
+                return str(msg.get("message"))
+    except (OSError, wire.ProtocolError, ssl.SSLError):
+        return None
+
+
+def _expect(sock, wanted: str) -> dict:
+    msg = wire.recv_json(sock)
+    if msg.get("type") == "error":
+        raise AgentError(_hint(str(msg.get("message", "Fehler auf dem Agent"))))
+    if msg.get("type") != wanted:
+        raise wire.ProtocolError(f"{wanted} erwartet, {msg.get('type')} erhalten")
+    return msg
+
+
+def restore_image(ip: str, key: bytes, image_path: str | Path, target_disk: str, progress: Progress,
+                  cancel: threading.Event, port: int = wire.PORT, verify: bool = True) -> None:
+    image_path = Path(image_path)
+    meta = load_image(image_path)
+    if verify:
+        verify_image(image_path, meta, progress, cancel)
+    disk = meta.get("disk") or {}
+    names = {f["name"] for f in meta["files"]}
+    sfdisk_file = f"{disk.get('name')}.sfdisk"
+    head_file = f"{disk.get('name')}-head.img"
+    if head_file not in names:
+        raise AgentError("Image ohne Kopfbereich – kann nicht zurückgespielt werden")
+    steps = restore_steps(meta)
+    req = {"cmd": "restore", "disk": target_disk, "source": disk, "steps": steps,
+           "sfdisk": (image_path / sfdisk_file).read_text() if sfdisk_file in names else "",
+           "head": (image_path / head_file).read_bytes().hex()}
+
+    total = sum(s.get("size", 0) for s in steps) or 1
+    sent = 0
+    started = time.monotonic()
+    sock = _connect(ip, key, port)
+    try:
+        sock.settimeout(900)
+        wire.send_json(sock, req)
+        progress({"phase": "table"})
+        _expect(sock, "ready")
+        for s in steps:
+            if s["kind"] == "swap":
+                continue
+            progress({"phase": "file", "file": s["file"], "part": s["part"]})
+            h = hashlib.sha256()
+            size = 0
+            last = 0.0
+            try:
+                wire.send_json(sock, {"type": "file", "file": s["file"]})
+                with open(image_path / s["file"], "rb") as fh:
+                    while chunk := fh.read(wire.CHUNK):
+                        if cancel.is_set():
+                            raise AgentError("Abgebrochen – die Zieldisk ist jetzt unvollständig")
+                        wire.send_data(sock, chunk)
+                        h.update(chunk)
+                        size += len(chunk)
+                        sent += len(chunk)
+                        if time.monotonic() - last >= 0.5:
+                            last = time.monotonic()
+                            progress({"phase": "data", "part": s["part"], "fraction": sent / total,
+                                      "total_bytes": sent, "speed": sent / max(time.monotonic() - started, 0.001)})
+                wire.send_json(sock, {"type": "file_end", "file": s["file"], "size": size, "sha256": h.hexdigest()})
+            except (BrokenPipeError, ConnectionResetError, ssl.SSLError) as e:
+                raise AgentError(_hint(_agent_error(sock) or f"Verbindung zum Agent abgebrochen: {e}")) from None
+            _expect(sock, "file_done")
+        wire.send_json(sock, {"type": "end"})
+        _expect(sock, "done")
+        progress({"phase": "done", "total_bytes": sent})
+    except wire.ProtocolError as e:
+        raise AgentError(f"Verbindung zum Agent gestört: {e}") from None
+    except (TimeoutError, ConnectionError) as e:
+        raise AgentError(f"Verbindung zum Agent abgebrochen: {e}") from None
+    finally:
+        sock.close()

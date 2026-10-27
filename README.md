@@ -87,6 +87,29 @@ Rechts die Maschine wählen, die vom Agent-Stick gebootet wurde (Quelle *USB-Age
 
 Tipp für Windows: Vorher vollständig herunterfahren (Shift + Herunterfahren), sonst meldet partclone ein „inkonsistentes“ NTFS (Schnellstart/Ruhezustand).
 
+## Image zurückspielen
+
+Die Zielmaschine vom Agent-Stick booten und rechts auswählen, dann **„Image zurückspielen“**. Ist links im Reiter *Images* ein Image markiert, ist es im Dialog schon vorgewählt.
+
+1. **Image wählen:** Der Dialog zeigt die Quelle, also Maschine, Disk, Grösse und Partitionen.
+2. **Zieldisk wählen:** Darunter steht, was auf ihr **vollständig überschrieben** wird.
+3. **Bestätigen:** Den Disk-Namen (z. B. `sda`) eintippen, erst dann wird **Zurückspielen** aktiv.
+
+**Ablauf:**
+1. **Image prüfen (empfohlen, Standard):** Das Tool liest alle Dateien vom NAS und vergleicht die SHA256-Summen. Ein beschädigtes Image wird erkannt, bevor etwas auf die Zieldisk geschrieben wird.
+2. **Zieldisk prüfen:** Der Agent kontrolliert, dass die Zieldisk mindestens so gross ist wie die Quelldisk, dass keine Partition eingehängt ist und dass es nicht der Boot-Stick ist.
+3. **Tabelle und Bootcode:** Alte Signaturen werden entfernt. Dann schreibt der Agent die Partitionstabelle (`sfdisk`), den MBR-Bootcode und die Bootloader-Lücke vor der ersten Partition. Bei einer grösseren Zieldisk wird die GPT-Backup-Tabelle ans neue Disk-Ende gesetzt.
+4. **Partitionen:** `zstd -d | partclone.<fs> -r` schreibt jede Partition zurück, Rohkopien gehen per `dd`. Der Agent prüft dabei nochmals die Prüfsumme jeder Datei.
+5. **Swap:** Swap wird mit der gleichen UUID und dem gleichen Label neu angelegt.
+
+**Abschluss:** Danach den Stick abziehen und die Maschine neu starten.
+
+**Einschränkungen:**
+- **Grösse:** Die Zieldisk muss mindestens so gross sein wie die Quelldisk. Verkleinern geht nicht.
+- **Grössere Zieldisk:** Der zusätzliche Platz bleibt unpartitioniert. Unter Windows kannst du die Partition danach in der Datenträgerverwaltung erweitern.
+- **Abbruch:** Ein Abbruch während des Schreibens hinterlässt eine unvollständige Zieldisk. Sie ist erst nach einem vollständigen Durchlauf wieder brauchbar.
+- **Gleiche Hardware:** Am besten zurück auf dieselbe oder baugleiche Hardware. Bei anderer Hardware braucht Windows unter Umständen andere Treiber.
+
 ## Tests
 
 ```bash
