@@ -8,9 +8,13 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import json
+import os
+import shutil
 import socket
+import subprocess
 import sys
 import time
+from pathlib import Path
 
 from okula_recovery import __version__, discovery, network
 
@@ -22,6 +26,73 @@ BANNER = """\
  #    #  #  #   #   #  #      #   #
   ####   #   #   ###   #####  #   #   Recovery Agent
 """
+
+
+# So lange ohne IPv4, dann DHCP nachfassen bzw. Link-Local-Adresse setzen
+LINK_LOCAL_AFTER = 25
+DHCP_CLIENTS = (
+    ["dhcpcd", "-1", "-4", "-t", "15"],
+    ["dhclient", "-1", "-4"],
+    ["udhcpc", "-n", "-q", "-t", "5", "-i"],
+)
+
+
+def log(msg: str) -> None:
+    print(msg, flush=True)
+
+
+def wired_interfaces(net_dir: Path = Path("/sys/class/net")) -> list[str]:
+    result = []
+    for iface in sorted(net_dir.iterdir()):
+        if iface.name == "lo" or not (iface / "device").exists() or (iface / "wireless").exists():
+            continue
+        result.append(iface.name)
+    return result
+
+
+def link_local_address(mac: str) -> str:
+    """Feste 169.254.x.y aus der MAC (RFC 3927: 169.254.1.0–169.254.254.255)."""
+    b = [int(x, 16) for x in mac.split(":")]
+    return f"169.254.{1 + b[4] % 254}.{b[5]}"
+
+
+def _try(cmd: list[str], timeout: int = 40) -> None:
+    try:
+        subprocess.run(cmd, capture_output=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def ensure_network(server: str | None) -> None:
+    """Kein DHCP-Lease: Interfaces hochfahren, DHCP nachfassen, sonst Link-Local.
+
+    Der Agent funktioniert damit in jedem Netz, auch ohne DHCP-Server; das Tool
+    findet ihn über den Broadcast an 255.255.255.255, egal welche IP er hat.
+    """
+    ifaces = wired_interfaces()
+    for name in ifaces:
+        _try(["ip", "link", "set", name, "up"], timeout=5)
+    time.sleep(3)
+    for name in ifaces:
+        try:
+            carrier = Path(f"/sys/class/net/{name}/carrier").read_text().strip()
+        except OSError:
+            carrier = ""
+        if carrier != "1":
+            continue  # kein Kabel
+        for cmd in DHCP_CLIENTS:
+            if shutil.which(cmd[0]):
+                log(f"Keine IP – frage DHCP mit {cmd[0]} auf {name} an …")
+                _try([*cmd, name])
+                break
+        if primary_ip(server):
+            return
+        addr = link_local_address(Path(f"/sys/class/net/{name}/address").read_text().strip())
+        log(f"Kein DHCP im Netz – verwende Link-Local-Adresse {addr} auf {name}")
+        _try(["ip", "addr", "add", f"{addr}/16", "dev", name], timeout=5)
+        # Ohne Route ist der Broadcast an 255.255.255.255 nicht sendbar
+        _try(["ip", "route", "add", "default", "dev", name, "metric", "9999"], timeout=5)
+        return
 
 
 def broadcast_targets() -> list[str]:
@@ -62,14 +133,22 @@ def main(argv: list[str] | None = None) -> int:
     sock.settimeout(args.interval)
 
     server = None
+    no_ip_since = time.monotonic()
+    network_fixed = False
     print(BANNER, flush=True)
     print(f"Okula Recovery Agent {__version__} – suche Recovery-Tool im LAN …", flush=True)
     while True:
         ip = primary_ip(args.server)
         if not ip:
-            print("Keine Netzwerkadresse, warte auf DHCP …", flush=True)
+            waited = time.monotonic() - no_ip_since
+            if waited > LINK_LOCAL_AFTER and not network_fixed and os.geteuid() == 0:
+                network_fixed = True
+                ensure_network(args.server)
+                continue
+            log("Keine Netzwerkadresse, warte auf DHCP … (Netzwerkkabel eingesteckt?)")
             time.sleep(args.interval)
             continue
+        no_ip_since = time.monotonic()
         beacon = json.dumps(discovery.build_beacon(ip, __version__)).encode()
         targets = [] if args.no_broadcast else broadcast_targets()
         if args.server:
@@ -91,9 +170,11 @@ def main(argv: list[str] | None = None) -> int:
                 msg = json.loads(data)
             except (json.JSONDecodeError, UnicodeDecodeError):
                 continue
-            if isinstance(msg, dict) and msg.get("type") == discovery.ACK_TYPE and server != sip:
-                server = sip
-                print(f"Verbunden: {ip} ist im Tool sichtbar (Server {msg.get('name', '')} / {sip})", flush=True)
+            if isinstance(msg, dict) and msg.get("type") == discovery.ACK_TYPE:
+                name = str(msg.get("name") or sip)
+                if server != name:  # pro Server nur einmal melden (Ack kommt per Uni- und Broadcast)
+                    server = name
+                    log(f"Verbunden: {ip} ist im Tool sichtbar (Server {name} / {sip})")
 
 
 if __name__ == "__main__":

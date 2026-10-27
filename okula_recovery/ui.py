@@ -454,7 +454,8 @@ class MainWindow(Gtk.ApplicationWindow):
         self._add_machine_row(network.Machine(ip=info.ip, name=info.hostname, mac=info.mac, online=True,
                                               source="USB-Agent", hardware=info.hardware, disks=disks))
         if not known:
-            self.status(f"USB-Agent gemeldet: {info.hostname or info.ip} ({info.ip})")
+            note = " – Link-Local, im Netz gibt es kein DHCP" if info.ip.startswith("169.254.") else ""
+            self.status(f"USB-Agent gemeldet: {info.hostname or info.ip} ({info.ip}){note}")
         return False
 
     def _expire_agents(self) -> bool:

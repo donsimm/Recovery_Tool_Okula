@@ -4,9 +4,10 @@ Läuft als root (über /usr/local/sbin/okula-make-stick). Fortschritt als Zeilen
     PROGRESS <0..1> <Text>  |  WARN <Text>  |  ERROR <Text>  |  DONE <Text>
 
 Aufbau des Sticks: MBR, eine FAT32-Partition mit dem Inhalt des Live-ISO, eigene
-grub.cfg (UEFI über den GRUB des ISO, BIOS über grub-install), Agent unter
-/live/okula und ein live-config-Hook (Bootparameter live-config.hooks=medium),
-der den Agent beim Start nach /opt kopiert und als Dienst startet.
+grub.cfg (UEFI über den GRUB des ISO, BIOS über grub-install) und ein zusätzliches
+Squashfs-Image /live/okula-agent.squashfs. live-boot legt alle *.squashfs in /live
+alphabetisch übereinander (spätere oben), so landen Agent, systemd-Dienst und
+Banner direkt im Live-System – ohne live-config-Hooks.
 """
 
 from __future__ import annotations
@@ -35,20 +36,12 @@ BIOS_GRUB_DIR = Path("/usr/lib/grub/i386-pc")
 
 Emit = Callable[[str, str], None]
 
-HOOK_SCRIPT = """#!/bin/sh
-# live-config-Hook vom Okula-Agent-Stick: Agent installieren und starten.
-SRC=/run/live/medium/live/okula
-[ -d "$SRC" ] || exit 0
-if ! command -v python3 >/dev/null; then
-    echo "Okula Agent: python3 fehlt im Live-System" > /dev/console
-    exit 0
-fi
-mkdir -p /opt/okula-recovery
-cp -r "$SRC/okula_recovery" /opt/okula-recovery/
-cp "$SRC/agent.conf" /etc/okula-agent.conf
-cp "$SRC/okula-agent.service" /etc/systemd/system/okula-agent.service
+AGENT_LAYER = "okula-agent.squashfs"
 
-# Eindeutiger Hostname aus der MAC, damit mehrere Sticks unterscheidbar sind
+START_SCRIPT = """#!/bin/sh
+# Startet den Okula-Agent im Live-System (aus okula-agent.squashfs des Agent-Sticks).
+
+# Eindeutiger Hostname aus der MAC, damit mehrere Maschinen unterscheidbar sind
 for i in /sys/class/net/*; do
     [ -e "$i/device" ] || continue
     MAC=$(tr -d ':' < "$i/address")
@@ -56,17 +49,19 @@ for i in /sys/class/net/*; do
 done
 if [ -n "$MAC" ]; then
     NAME="okula-$(echo "$MAC" | tail -c 7)"
-    echo "$NAME" > /etc/hostname
-    hostname "$NAME"
+    if [ "$(hostname)" != "$NAME" ]; then
+        echo "$NAME" > /etc/hostname
+        hostname "$NAME"
+        grep -q "$NAME" /etc/hosts || echo "127.0.1.1 $NAME" >> /etc/hosts
+    fi
 fi
 
-# Login-Bildschirm der Zielmaschine kennzeichnen
-cp "$SRC/issue" /etc/issue
-
-mkdir -p /etc/systemd/system/multi-user.target.wants
-ln -sf /etc/systemd/system/okula-agent.service /etc/systemd/system/multi-user.target.wants/okula-agent.service
-systemctl daemon-reload || true
-systemctl --no-block start okula-agent.service || true
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "OKULA AGENT: python3 fehlt im Live-System - Agent kann nicht starten" > /dev/console
+    exec sleep infinity
+fi
+cd /opt/okula-recovery || exit 1
+exec python3 -m okula_recovery.agent $AGENT_ARGS
 """
 
 GRUB_CFG = """# Okula Recovery Agent - erzeugt vom Okula Recovery Tool (nur ASCII)
@@ -107,7 +102,7 @@ menuentry "Okula Recovery Agent (nomodeset)" {{
 }}
 """
 
-BOOT_PARAMS = ("boot=live components live-config.hooks=medium "
+BOOT_PARAMS = ("boot=live components "
                "locales=de_CH.UTF-8 keyboard-layouts=ch timezone=Europe/Zurich quiet")
 
 
@@ -214,19 +209,41 @@ def copy_tree(src: Path, dst: Path, progress: Callable[[int, int], None]) -> Non
                 os.fsync(fout.fileno())  # damit der Fortschritt dem echten Schreiben folgt
 
 
-def install_agent(root: Path, server_ip: str = "") -> None:
-    okula = root / "live" / "okula"
-    pkg = okula / "okula_recovery"
+def build_agent_tree(tree: Path, server_ip: str = "") -> None:
+    """Dateibaum, der als oberste Schicht über dem Live-System liegt."""
+    app = tree / "opt" / "okula-recovery"
+    pkg = app / "okula_recovery"
     pkg.mkdir(parents=True, exist_ok=True)
     for name in AGENT_MODULES:
         (pkg / name).write_bytes((PACKAGE_DIR / name).read_bytes())
-    (okula / "okula-agent.service").write_bytes(SERVICE_FILE.read_bytes())
-    (okula / "issue").write_bytes((PACKAGE_DIR / "assets" / "issue").read_bytes())
+    (app / "start-agent.sh").write_text(START_SCRIPT)
+    (app / "start-agent.sh").chmod(0o755)
+
+    etc = tree / "etc"
+    units = etc / "systemd" / "system"
+    wants = units / "multi-user.target.wants"
+    wants.mkdir(parents=True, exist_ok=True)
+    (units / "okula-agent.service").write_bytes(SERVICE_FILE.read_bytes())
+    (wants / "okula-agent.service").symlink_to("/etc/systemd/system/okula-agent.service")
     args = f"--server {server_ip}" if server_ip else ""
-    (okula / "agent.conf").write_text(f'AGENT_ARGS="{args}"\n')
-    hooks = root / "live" / "config-hooks"
-    hooks.mkdir(parents=True, exist_ok=True)
-    (hooks / "9990-okula-agent").write_text(HOOK_SCRIPT)
+    (etc / "okula-agent.conf").write_text(f'AGENT_ARGS="{args}"\n')
+    (etc / "issue").write_bytes((PACKAGE_DIR / "assets" / "issue").read_bytes())
+
+
+def install_agent(root: Path, server_ip: str = "") -> None:
+    """Legt /live/okula-agent.squashfs auf den Stick (braucht mksquashfs)."""
+    live = root / "live"
+    live.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="okula-layer-") as tmp:
+        tree = Path(tmp) / "tree"
+        build_agent_tree(tree, server_ip)
+        _run(["mksquashfs", str(tree), str(live / AGENT_LAYER), "-noappend", "-all-root", "-no-progress"])
+    # Gibt es eine .module-Datei, lädt live-boot nur die dort gelisteten Images
+    for module in (live / "filesystem.module", live / "filesystem.filesystem.module"):
+        if module.is_file():
+            names = module.read_text().split()
+            if AGENT_LAYER not in names:
+                module.write_text("\n".join(names + [AGENT_LAYER]) + "\n")
 
 
 def write_boot_config(root: Path, kernel: str, initrd: str) -> None:
@@ -257,6 +274,9 @@ def prepare(device: str, iso: str, server_ip: str, emit: Emit) -> None:
     iso_path = Path(iso)
     if not iso_path.is_file():
         raise StickError(f"ISO nicht gefunden: {iso}")
+    missing = [t for t in ("mksquashfs", "sfdisk", "mkfs.vfat", "wipefs") if not shutil.which(t)]
+    if missing:
+        raise StickError(f"Werkzeuge fehlen: {', '.join(missing)} – install.sh erneut ausführen")
 
     for mp in sorted(disk.mountpoints, reverse=True):
         progress(0.02, f"Hänge {mp} aus")

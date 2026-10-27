@@ -22,7 +22,7 @@ apt-get update
 apt-get install -y --no-install-recommends \
     python3 python3-gi gir1.2-gtk-3.0 librsvg2-common \
     cifs-utils nfs-common smbclient iputils-ping iproute2 \
-    util-linux dosfstools grub-pc-bin grub2-common
+    util-linux dosfstools grub-pc-bin grub2-common squashfs-tools
 
 echo "==> Programm nach $APP_DIR kopieren"
 if [ "$SRC_DIR" != "$APP_DIR" ]; then

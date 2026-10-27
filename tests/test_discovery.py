@@ -71,5 +71,28 @@ class ListenerTest(unittest.TestCase):
         self.assertEqual(got[0].ip, "127.0.0.1")
 
 
+class AgentNetworkTest(unittest.TestCase):
+    def test_link_local_address(self):
+        from okula_recovery import agent
+        self.assertEqual(agent.link_local_address("3c:52:82:1a:4f:10"), "169.254.80.16")
+        addr = agent.link_local_address("00:00:00:00:fe:ff")
+        self.assertTrue(addr.startswith("169.254.") and 1 <= int(addr.split(".")[2]) <= 254)
+
+    def test_wired_interfaces(self):
+        import tempfile
+        from pathlib import Path
+        from okula_recovery import agent
+        with tempfile.TemporaryDirectory() as d:
+            for name, dev, wifi in (("lo", False, False), ("enp2s0", True, False), ("wlp3s0", True, True),
+                                    ("docker0", False, False)):
+                p = Path(d) / name
+                p.mkdir()
+                if dev:
+                    (p / "device").mkdir()
+                if wifi:
+                    (p / "wireless").mkdir()
+            self.assertEqual(agent.wired_interfaces(Path(d)), ["enp2s0"])
+
+
 if __name__ == "__main__":
     unittest.main()

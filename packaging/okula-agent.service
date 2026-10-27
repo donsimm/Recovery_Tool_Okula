@@ -1,5 +1,5 @@
 # Agent auf dem USB-Stick: meldet die Zielmaschine beim Recovery-Tool an.
-# Wird vom live-config-Hook des Agent-Sticks installiert und gestartet.
+# Liegt im Squashfs-Image okula-agent.squashfs des Agent-Sticks und ist dort aktiviert.
 [Unit]
 Description=Okula Recovery Agent (Anmeldung beim Recovery-Tool)
 Wants=network-online.target
@@ -7,9 +7,8 @@ After=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/okula-recovery
 EnvironmentFile=-/etc/okula-agent.conf
-ExecStart=/usr/bin/python3 -m okula_recovery.agent $AGENT_ARGS
+ExecStart=/bin/sh /opt/okula-recovery/start-agent.sh
 Restart=always
 RestartSec=3
 # Statusmeldungen auch auf der Konsole der Zielmaschine anzeigen

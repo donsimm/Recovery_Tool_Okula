@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -62,7 +63,7 @@ class LayoutTest(unittest.TestCase):
 
     def test_grub_cfg(self):
         cfg = stick.grub_cfg("vmlinuz", "initrd.img")
-        self.assertIn("linux /live/vmlinuz boot=live components live-config.hooks=medium", cfg)
+        self.assertIn("linux /live/vmlinuz boot=live components locales=de_CH.UTF-8", cfg)
         self.assertIn("initrd /live/initrd.img", cfg)
         self.assertIn("--label --set=root OKULAAGENT", cfg)
         self.assertEqual(cfg.count("menuentry"), 2)
@@ -90,19 +91,38 @@ class LayoutTest(unittest.TestCase):
         self.assertFalse((dst / "broken").exists())
         self.assertEqual(seen[-1], (2000, 2000))
 
-    def test_install_agent(self):
-        stick.install_agent(self.root, "192.168.1.20")
-        pkg = self.root / "live/okula/okula_recovery"
+    def test_agent_tree(self):
+        tree = self.root / "tree"
+        stick.build_agent_tree(tree, "192.168.1.20")
+        pkg = tree / "opt/okula-recovery/okula_recovery"
         self.assertEqual(sorted(p.name for p in pkg.iterdir()), sorted(stick.AGENT_MODULES))
-        self.assertEqual((self.root / "live/okula/agent.conf").read_text(), 'AGENT_ARGS="--server 192.168.1.20"\n')
-        self.assertIn("EnvironmentFile", (self.root / "live/okula/okula-agent.service").read_text())
-        self.assertIn("Recovery Agent", (self.root / "live/okula/issue").read_text())
-        hook = self.root / "live/config-hooks/9990-okula-agent"
-        self.assertEqual(subprocess.run(["sh", "-n", str(hook)]).returncode, 0)
-        # Agent-Module dürfen nichts ausserhalb der kopierten Dateien brauchen (kein GTK auf dem Stick)
-        r = subprocess.run(["python3", "-c", "import okula_recovery.agent"], cwd=self.root / "live/okula",
+        self.assertEqual((tree / "etc/okula-agent.conf").read_text(), 'AGENT_ARGS="--server 192.168.1.20"\n')
+        link = tree / "etc/systemd/system/multi-user.target.wants/okula-agent.service"
+        self.assertEqual(os.readlink(link), "/etc/systemd/system/okula-agent.service")
+        self.assertIn("start-agent.sh", (tree / "etc/systemd/system/okula-agent.service").read_text())
+        self.assertIn("Recovery Agent", (tree / "etc/issue").read_text())
+        start = tree / "opt/okula-recovery/start-agent.sh"
+        self.assertTrue(os.access(start, os.X_OK))
+        self.assertEqual(subprocess.run(["sh", "-n", str(start)]).returncode, 0)
+        # Agent darf auf dem Stick nichts ausser den kopierten Modulen brauchen (kein GTK)
+        r = subprocess.run(["python3", "-c", "import okula_recovery.agent"], cwd=tree / "opt/okula-recovery",
                            capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
+
+    @unittest.skipUnless(shutil.which("mksquashfs"), "mksquashfs fehlt")
+    def test_install_agent_builds_layer_and_updates_module(self):
+        (self.root / "live").mkdir()
+        (self.root / "live/filesystem.module").write_text("filesystem.squashfs\n")
+        stick.install_agent(self.root, "")
+        layer = self.root / "live" / stick.AGENT_LAYER
+        listing = subprocess.run(["unsquashfs", "-l", str(layer)], capture_output=True, text=True).stdout
+        for path in ("opt/okula-recovery/okula_recovery/agent.py", "opt/okula-recovery/start-agent.sh",
+                     "etc/systemd/system/multi-user.target.wants/okula-agent.service", "etc/issue"):
+            self.assertIn(path, listing)
+        self.assertEqual((self.root / "live/filesystem.module").read_text().split(),
+                         ["filesystem.squashfs", stick.AGENT_LAYER])
+        # Alphabetisch nach filesystem.squashfs → liegt im Overlay oben
+        self.assertGreater(stick.AGENT_LAYER, "filesystem.squashfs")
 
     def test_main_requires_root_or_reports(self):
         if os.geteuid() == 0:

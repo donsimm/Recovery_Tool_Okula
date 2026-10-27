@@ -154,6 +154,7 @@ class Listener:
     def start(self) -> None:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         sock.bind(("", self.port))
         sock.settimeout(1.0)
         self._sock = sock
@@ -175,9 +176,14 @@ class Listener:
             info = parse_beacon(data, ip)
             if info is None:
                 continue
-            try:
-                self._sock.sendto(ack, (ip, port))
-            except OSError:
-                pass
+            # Agent ohne DHCP (169.254.x.x) ist per Unicast meist nicht routbar → zusätzlich Broadcast
+            targets = [(ip, port)]
+            if ip.startswith("169.254."):
+                targets.append(("255.255.255.255", port))
+            for target in targets:
+                try:
+                    self._sock.sendto(ack, target)
+                except OSError:
+                    pass
             self.on_agent(info)
         self._sock.close()
