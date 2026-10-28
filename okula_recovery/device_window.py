@@ -97,8 +97,8 @@ class DeviceWindow(Gtk.Window):
         self.refresh()
         self.refresh_jobs()
         self.load_images()
+        self.set_focus(self.tabs)  # Name nicht gleich markiert – Bearbeiten erst per Klick
         self.show_all()
-        self.set_focus(None)  # Name nicht gleich markiert – Bearbeiten erst per Klick
 
     # ---------- Aufbau ----------
 
@@ -140,7 +140,8 @@ class DeviceWindow(Gtk.Window):
                                 wrap_mode=Gtk.WrapMode.WORD_CHAR)
         box.pack_start(scrolled(self.log), True, True, 0)
         self.no_jobs = Gtk.Label(label="Noch keine Aufträge in dieser Sitzung. Aufträge starten Sie oben über "
-                                       "„Disk-Image erstellen“ oder „Image zurückspielen“.", xalign=0, wrap=True)
+                                       "„Disk-Image erstellen“ oder „Image zurückspielen“.", xalign=0, wrap=True,
+                                 no_show_all=True)  # Sichtbarkeit steuert refresh_jobs, nicht show_all
         self.no_jobs.get_style_context().add_class("status-idle")
         box.pack_start(self.no_jobs, False, False, 0)
         return box
@@ -277,9 +278,11 @@ class DeviceWindow(Gtk.Window):
         all_jobs = self.main.jobs.for_device(self.dev.id)
         rows = {row[0]: row for row in self.job_store}
         for job in all_jobs:
-            rest = GLib.markup_escape_text(" · ".join(p for p in (jobs.eta_text(job.remaining), job.detail) if p))
-            text = f"<b>{job.fraction * 100:.0f} %</b>  {rest}"
-            values = [job.id, job.title, job.state, int(job.fraction * 100), text,
+            f = job.shown_fraction if job.running else job.fraction
+            rest = " · ".join(p for p in (job.phase if job.running else "", jobs.eta_text(job.remaining),
+                                          job.detail if job.running else "") if p)
+            text = f"<b>{f * 100:.0f} %</b>  {GLib.markup_escape_text(rest)}"
+            values = [job.id, job.title, job.state, int(f * 100), text,
                       datetime.fromtimestamp(job.started).strftime("%H:%M:%S")]
             if job.id in rows:
                 for i, v in enumerate(values):

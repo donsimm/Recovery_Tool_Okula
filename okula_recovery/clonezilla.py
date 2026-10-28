@@ -150,6 +150,28 @@ def build(path: str | Path, disk: str) -> dict:
             "label": f"Clonezilla {path.name} ({disk})"}
 
 
+class _Tail(threading.Thread):
+    """Liest stderr laufend mit (partclone schreibt ständig Fortschritt) und behält nur das Ende.
+
+    Ohne Mitlesen läuft die Pipe (64 KB) voll, der Prüfer blockiert und die Prüfung hängt.
+    """
+
+    KEEP = 8192
+
+    def __init__(self, stream):
+        super().__init__(daemon=True)
+        self.stream, self.tail = stream, b""
+        self.start()
+
+    def run(self) -> None:
+        while chunk := self.stream.read1(65536):
+            self.tail = (self.tail + chunk)[-self.KEEP:]
+
+    def text(self) -> str:
+        self.join()
+        return self.tail.decode(errors="replace").replace("\r", "\n").strip()
+
+
 def verify(source: dict, progress: Progress, cancel: threading.Event) -> None:
     """Entpackt jedes Partitions-Image auf dem Server und prüft es (partclone.chkimg bzw. Entpacker-CRC)."""
     steps = [s for s in source["steps"] if s.get("pieces")]
@@ -182,6 +204,7 @@ def verify(source: dict, progress: Progress, cancel: threading.Event) -> None:
                 procs[-1].stdout.close()
             procs.append(p)
             stdin = p.stdout
+        tails = [_Tail(p.stderr) for p in procs]
         last = 0.0
         try:
             for piece in s["pieces"]:
@@ -204,7 +227,7 @@ def verify(source: dict, progress: Progress, cancel: threading.Event) -> None:
             for p in procs:
                 if p.poll() is None and cancel.is_set():
                     p.kill()
-        errors = [(p.args[0], p.wait(), p.stderr.read().decode(errors="replace").strip()) for p in procs]
+        errors = [(p.args[0], p.wait(), t.text()) for p, t in zip(procs, tails)]
         for p in procs:
             p.stderr.close()
         failed = [(a, msg) for a, code, msg in errors if code]

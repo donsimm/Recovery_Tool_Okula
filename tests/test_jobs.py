@@ -146,5 +146,17 @@ class EtaTest(unittest.TestCase):
         jm = jobs.JobManager()
         jm.jobs.append(job)
         self.assertEqual(jm.status("dev"), ("Disk-Image 25 % · noch 30 min", 0.25))
-        job.detail = "Prüfe Image 40 %"
-        self.assertTrue(jm.summary("dev").startswith("Image prüfen 25 %"))
+
+    def test_restore_phases_shown_separately(self):
+        """Prüfung und Schreiben als eigene Schritte – wie am Agent-Bildschirm, nicht 29 % gesamt bei 96 % Prüfung."""
+        jm = jobs.JobManager()
+        job = jobs.Job(1, "dev", "restore", "/dev/sda", "Zurückspielen")
+        jm.jobs.append(job)
+        jm.progress(job, 0.96 * 0.3, "sda1.ntfs-ptcl-img.gz.aa", "Image prüfen (1/2)", 0.96)
+        self.assertEqual(jm.parts("dev")[:2], ("Image prüfen (1/2)", 0.96))
+        self.assertAlmostEqual(job.fraction, 0.288)
+        jm.progress(job, 0.3 + 0.7 * 0.5, "sda1 · 90 MB/s", "Zurückspielen (2/2)", 0.5)
+        self.assertEqual(jm.parts("dev")[:2], ("Zurückspielen (2/2)", 0.5))
+        self.assertIsNone(job.remaining)  # neuer Schritt: Restzeit erst nach einigen Sekunden
+        job.phase_started -= 60
+        self.assertAlmostEqual(job.remaining, 60, delta=2)

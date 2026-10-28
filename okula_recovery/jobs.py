@@ -33,6 +33,9 @@ class Job:
     ended: float | None = None
     result: str = ""
     cancel: threading.Event = field(default_factory=threading.Event)
+    phase: str = ""                # Schritt bei mehrstufigen Aufträgen, z. B. „Image prüfen (1/2)“
+    phase_fraction: float = 0.0    # Fortschritt innerhalb des Schritts
+    phase_started: float = 0.0
 
     @property
     def running(self) -> bool:
@@ -40,19 +43,23 @@ class Job:
 
     @property
     def label(self) -> str:
-        if self.detail.startswith("Prüfe Image"):
-            return "Image prüfen"
-        return "Disk-Image" if self.kind == "image" else "Zurückspielen"
+        return self.phase or ("Disk-Image" if self.kind == "image" else "Zurückspielen")
+
+    @property
+    def shown_fraction(self) -> float:
+        """Was der Balken zeigt: bei Schritten der Fortschritt des aktuellen Schritts (wie am Agent)."""
+        return self.phase_fraction if self.phase else self.fraction
 
     @property
     def remaining(self) -> float | None:
-        """Geschätzte Restzeit in Sekunden (aus bisheriger Dauer und Fortschritt), None = noch unklar."""
-        if not self.running or self.fraction < 0.02:
+        """Geschätzte Restzeit (des aktuellen Schritts) in Sekunden, None = noch unklar."""
+        fraction = self.shown_fraction
+        if not self.running or fraction < 0.02:
             return None
-        elapsed = time.time() - self.started
+        elapsed = time.time() - (self.phase_started if self.phase else self.started)
         if elapsed < 10:
             return None
-        return elapsed * (1 - self.fraction) / self.fraction
+        return elapsed * (1 - fraction) / fraction
 
 
 def eta_text(seconds: float | None) -> str:
@@ -97,8 +104,10 @@ class JobManager:
         if not active:
             return "", None, ""
         rests = [j.remaining for j in active]
-        return (active[0].label if len(active) == 1 else f"{len(active)} Aufträge",
-                sum(j.fraction for j in active) / len(active), eta_text(None if None in rests else max(rests)))
+        if len(active) == 1:
+            return active[0].label, active[0].shown_fraction, eta_text(rests[0])
+        return (f"{len(active)} Aufträge", sum(j.fraction for j in active) / len(active),
+                eta_text(None if None in rests else max(rests)))
 
     def start(self, device_id: str, kind: str, disk: str, title: str,
               work: Callable[["Job", "JobManager"], str]) -> Job:
@@ -128,8 +137,13 @@ class JobManager:
         job.log.append(time.strftime("%H:%M:%S ") + line)
         self.on_change(job)
 
-    def progress(self, job: Job, fraction: float, detail: str) -> None:
+    def progress(self, job: Job, fraction: float, detail: str, phase: str = "",
+                 phase_fraction: float = 0.0) -> None:
+        """fraction = Gesamtfortschritt; phase/phase_fraction = aktueller Schritt (Anzeige und Restzeit)."""
+        if phase != job.phase:
+            job.phase, job.phase_started = phase, time.time()
         job.fraction, job.detail = max(0.0, min(1.0, fraction)), detail
+        job.phase_fraction = max(0.0, min(1.0, phase_fraction))
         self.on_change(job)
 
 
@@ -180,16 +194,26 @@ def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source
             if phase == "note":
                 jm.log(job, ev.get("message", ""))
             elif phase == "verify":
-                jm.progress(job, ev.get("fraction", 0) * 0.3, f"Prüfe Image {ev.get('fraction', 0) * 100:.0f} %")
+                f = ev.get("fraction", 0)
+                if ev.get("file") and ev["file"] != state["file"]:
+                    state["file"] = ev["file"]
+                    jm.log(job, f"Prüfe {ev['file']}")
+                jm.progress(job, f * 0.3, ev.get("file", ""), "Image prüfen (1/2)", f)
             elif phase == "table":
-                jm.log(job, "Image geprüft – schreibe Partitionstabelle und Bootcode")
+                jm.log(job, ("Image geprüft. Schritt 2/2: " if verify else "") + "schreibe Partitionstabelle und Bootcode")
+                jm.progress(job, 0.3 if verify else 0.0, "Partitionstabelle", "Zurückspielen (2/2)" if verify else "", 0)
             elif phase == "file":
                 jm.log(job, f"Schreibe {ev.get('part')} ({ev.get('file')})")
             elif phase == "data":
-                # Prüfung = erste 30 %, Schreiben = Rest (ohne Prüfung: ganzer Balken)
+                # Gesamt: Prüfung = erste 30 %, Schreiben = Rest; angezeigt wird der Schritt
                 base = 0.3 if verify else 0.0
-                jm.progress(job, base + (1 - base) * ev.get("fraction", 0),
-                            f"{ev.get('part')} · {ev.get('speed', 0) / 1e6:.0f} MB/s")
+                f = ev.get("fraction", 0)
+                jm.progress(job, base + (1 - base) * f, f"{ev.get('part')} · {ev.get('speed', 0) / 1e6:.0f} MB/s",
+                            "Zurückspielen (2/2)" if verify else "", f)
+
+        state = {"file": ""}
+        if verify:
+            jm.log(job, "Schritt 1/2: Image auf dem NAS prüfen (Prüfsummen) – danach wird zurückgespielt")
 
         try:
             agentclient.restore_image(ip, key, image, target, progress, job.cancel, port, verify, source_disk)

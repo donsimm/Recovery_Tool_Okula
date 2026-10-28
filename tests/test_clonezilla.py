@@ -162,6 +162,32 @@ class ClonezillaRestoreTest(base.RestoreTest):
             clonezilla.verify(source, events.append, threading.Event())
         self.assertIn("nur die Kompression", events[0]["message"])
 
+    def test_verify_does_not_hang_on_chatty_checker(self):
+        """partclone.chkimg schreibt laufend Fortschritt nach stderr – die Pipe darf nicht volllaufen."""
+        src = self.build_source("gpt")
+        img = self.make_clonezilla(src, "gpt")
+        source = clonezilla.build(img, "sda")
+        chatty = Path(self.tmp.name) / "chkimg"
+        # 1 MB Ausgabe auf stderr, bevor die Daten gelesen werden (Pipe-Puffer: 64 KB)
+        chatty.write_text("#!/bin/sh\nhead -c 1048576 /dev/zero | tr '\\0' x >&2\ncat >/dev/null\n"
+                          "echo 'Checked successfully.' >&2\n")
+        chatty.chmod(0o755)
+        done = threading.Event()
+        errors = []
+
+        def run():
+            try:
+                with mock.patch.object(clonezilla, "find_tool",
+                                       lambda name: str(chatty) if name == "partclone.chkimg" else shutil.which(name)):
+                    clonezilla.verify(source, lambda e: None, threading.Event())
+            except Exception as e:
+                errors.append(e)
+            done.set()
+
+        threading.Thread(target=run, daemon=True).start()
+        self.assertTrue(done.wait(30), "Prüfung hängt – stderr von partclone.chkimg wird nicht gelesen")
+        self.assertEqual(errors, [])
+
     # Okula-spezifische Tests der Basisklasse hier nicht doppelt ausführen
     test_refuses_smaller_target = None
     test_corrupt_image_detected_before_writing = None
