@@ -17,6 +17,7 @@ from okula_recovery import (__version__, agentclient, archive, backups, clonezil
 from okula_recovery.backup_dialogs import (BackupDetailsDialog, BackupDialog, RestoreFilesDialog,  # noqa: E402
                                            edit_note)
 from okula_recovery.device_window import DeviceWindow  # noqa: E402
+from okula_recovery.loadbar import LoadBar  # noqa: E402
 from okula_recovery.image_dialog import ImageDialog  # noqa: E402
 from okula_recovery.nas_dialog import NasDialog  # noqa: E402
 from okula_recovery.os_dialogs import (BootStickDialog, InstallDialog, IsoDetailsDialog, UploadDialog,  # noqa: E402
@@ -44,6 +45,9 @@ CSS = b"""
 .status-idle { color: #757575; }
 .nas-bar { padding: 4px 8px; border-radius: 4px; background-color: alpha(currentColor, 0.06); }
 .device-name { font-weight: bold; font-size: 120%; }
+.load-name { color: #757575; font-size: 90%; }
+.load-value { font-weight: bold; font-size: 90%; font-feature-settings: "tnum"; }
+.load-high { color: #c62828; }
 """
 
 
@@ -197,7 +201,9 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _build_storage_pane(self) -> Gtk.Widget:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=12)
-        box.pack_start(pane_title("NAS – Images & Dateien"), False, False, 0)
+        # Auslastung des Servers statt Titel
+        self.loadbar = LoadBar()
+        box.pack_start(self.loadbar, False, False, 0)
 
         # Nur Status und freier Speicher; die Einrichtung steht unter Menü → NAS-Verbindung …
         bar = Gtk.Box(spacing=16)

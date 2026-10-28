@@ -67,6 +67,8 @@ Vor dem Löschen zeigt das Tool Anzahl und Grösse der Dateien und fragt nach. D
 
 Das Tool startet maximiert. **F11** schaltet auf Vollbild ohne Titelleiste und wieder zurück.
 
+**Serverlast:** Oben rechts zeigt das Tool die Auslastung des Servers – CPU, RAM (ohne Cache) und LAN (↓ empfangen, ↑ gesendet) mit Verlauf der letzten Minute, gemessen jede Sekunde aus `/proc`. Maus darüber: Kerne und Last, Swap, Netzwerkkarte und Verbindungsgeschwindigkeit. Ab 90 % wird der Wert rot. Für die Kurven braucht es `python3-gi-cairo` (installiert `install.sh`).
+
 ## Agent-USB-Stick
 
 Menü → **Agent-USB-Stick erstellen …**:
