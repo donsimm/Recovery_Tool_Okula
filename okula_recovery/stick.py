@@ -555,6 +555,9 @@ def main(argv: list[str] | None = None) -> int:
     if argv[:1] == ["iso-stick"]:  # Boot-Stick aus ISO (gleicher Root-Helfer, gleiche sudo-Regel)
         from okula_recovery import isostick
         return isostick.main(argv[1:])
+    if argv[:1] in (["usb-clone"], ["usb-format"]):  # Tools → USB klonen / formatieren
+        from okula_recovery import usbtools
+        return usbtools.main(argv)
     ap = argparse.ArgumentParser(description="Okula Agent-USB-Stick erstellen (löscht den Stick!)")
     ap.add_argument("--device", required=True, help="z. B. /dev/sdb")
     ap.add_argument("--iso", required=True, help="Debian-Live-ISO")

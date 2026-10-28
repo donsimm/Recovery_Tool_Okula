@@ -24,7 +24,12 @@ apt-get install -y --no-install-recommends \
     cifs-utils nfs-common smbclient iputils-ping iproute2 \
     util-linux dosfstools grub-pc-bin grub2-common squashfs-tools \
     partclone zstd pigz lz4 lzop bzip2 xz-utils \
-    xorriso wimtools e2fsprogs
+    xorriso wimtools e2fsprogs exfatprogs ntfs-3g
+# Formatieren: weitere Dateisysteme – einzeln, ein fehlendes Paket bricht die Installation nicht ab
+for pkg in btrfs-progs xfsprogs f2fs-tools hfsprogs udftools; do
+    apt-get install -y --no-install-recommends "$pkg" >/dev/null 2>&1 \
+        || echo "Hinweis: Paket $pkg nicht installiert – dieses Dateisystem fehlt beim Formatieren"
+done
 
 echo "==> Programm nach $APP_DIR kopieren"
 if [ "$SRC_DIR" != "$APP_DIR" ]; then

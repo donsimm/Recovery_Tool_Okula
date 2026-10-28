@@ -17,7 +17,9 @@ from okula_recovery import (__version__, agentclient, archive, backups, clonezil
 from okula_recovery.backup_dialogs import (BackupDetailsDialog, BackupDialog, RestoreFilesDialog,  # noqa: E402
                                            edit_note)
 from okula_recovery.device_window import DeviceWindow  # noqa: E402
+from okula_recovery.help_window import HelpWindow  # noqa: E402
 from okula_recovery.loadbar import LoadBar  # noqa: E402
+from okula_recovery.usb_dialogs import CloneDialog, FormatDialog  # noqa: E402
 from okula_recovery.image_dialog import ImageDialog  # noqa: E402
 from okula_recovery.nas_dialog import NasDialog  # noqa: E402
 from okula_recovery.os_dialogs import (BootStickDialog, InstallDialog, IsoDetailsDialog, UploadDialog,  # noqa: E402
@@ -115,6 +117,7 @@ class MainWindow(Gtk.ApplicationWindow):
         accel = Gtk.AccelGroup()
         self.add_accel_group(accel)
         self.menu_items: dict[str, Gtk.MenuItem] = {}
+        self.help_window: HelpWindow | None = None
 
         def menu(title: str, entries) -> Gtk.MenuItem:
             top = Gtk.MenuItem.new_with_mnemonic(title)
@@ -154,10 +157,14 @@ class MainWindow(Gtk.ApplicationWindow):
             ("_Restore-Stick aus Image …", lambda: self.on_restore_stick(None), None),
             ("IS_O hinzufügen …", self.on_add_iso, None),
             ("_Boot-Stick aus ISO …", self.on_boot_stick, None),
+            ("_USB klonen …", lambda: CloneDialog(self), None),
+            ("USB forma_tieren …", lambda: FormatDialog(self), None),
+            None,
             ("Images _aktualisieren", self.refresh_images, "F5"),
         ]))
         bar.append(menu("_Hilfe", [
-            ("_Tastenkürzel", self.show_shortcuts, "F1"),
+            ("_So funktioniert das Tool", self.show_help, "F1"),
+            ("_Tastenkürzel", self.show_shortcuts, None),
             ("Ü_ber Okula Recovery Tool", self.show_about, None),
         ]))
         return bar
@@ -173,8 +180,16 @@ class MainWindow(Gtk.ApplicationWindow):
         dlg.run()
         dlg.destroy()
 
+    def show_help(self) -> None:
+        if self.help_window is not None:
+            self.help_window.present()
+            return
+        self.help_window = HelpWindow(self)
+        self.help_window.connect("destroy", lambda _w: setattr(self, "help_window", None))
+
     def show_shortcuts(self) -> None:
-        text = ("Ctrl+N\tNAS-Verbindung\n"
+        text = ("F1\tSo funktioniert das Tool\n"
+                "Ctrl+N\tNAS-Verbindung\n"
                 "Ctrl+O\tGewähltes Gerät öffnen\n"
                 "F5\tImages aktualisieren\n"
                 "F11\tVollbild ein/aus\n"

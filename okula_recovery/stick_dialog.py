@@ -34,28 +34,57 @@ def helper_command(device: str, iso: str, server: str, image: str | None = None,
     return ["sudo", "-n", HELPER, *args]
 
 
-def iso_stick_command(args: list[str]) -> list[str]:
-    """Boot-Stick aus ISO: gleicher Root-Helfer, Unterbefehl „iso-stick“."""
+def helper_subcommand(sub: str, args: list[str]) -> list[str]:
+    """Weitere Aufgaben des gleichen Root-Helfers (gleiche sudo-Regel): iso-stick, usb-clone, usb-format."""
     if os.geteuid() == 0:
-        return [sys.executable, "-m", "okula_recovery.stick", "iso-stick", *args]
+        return [sys.executable, "-m", "okula_recovery.stick", sub, *args]
     if not Path(HELPER).exists():
         raise FileNotFoundError(f"{HELPER} fehlt – bitte install.sh ausführen")
-    return ["sudo", "-n", HELPER, "iso-stick", *args]
+    return ["sudo", "-n", HELPER, sub, *args]
 
 
-def run_helper(cmd: list[str], stdin_text: str, on_progress, on_line, on_done) -> None:
+def iso_stick_command(args: list[str]) -> list[str]:
+    """Boot-Stick aus ISO: gleicher Root-Helfer, Unterbefehl „iso-stick“."""
+    return helper_subcommand("iso-stick", args)
+
+
+class HelperRun:
+    """Laufender Root-Helfer. cancel() schickt „CANCEL“ über stdin – beenden darf der Benutzer ihn nicht."""
+
+    def __init__(self):
+        self.proc: subprocess.Popen | None = None
+
+    def cancel(self) -> None:
+        proc = self.proc
+        if proc is None or proc.poll() is not None or proc.stdin is None or proc.stdin.closed:
+            return
+        try:
+            proc.stdin.write("CANCEL\n")
+            proc.stdin.flush()
+        except (OSError, ValueError):
+            pass
+
+
+def run_helper(cmd: list[str], stdin_text: str, on_progress, on_line, on_done,
+               keep_stdin: bool = False) -> HelperRun:
     """Root-Helfer im Hintergrund starten und seine Ausgabe auswerten (PROGRESS/WARN/DONE/ERROR).
 
     Die Rückrufe laufen im GTK-Hauptthread: on_progress(anteil, text), on_line(zeile), on_done(ok, fehler).
+    keep_stdin: stdin offen lassen, damit HelperRun.cancel() abbrechen kann.
     """
     cwd = str(Path(stick.__file__).resolve().parent.parent)
+    handle = HelperRun()
 
     def work():
         try:
             proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT, text=True, cwd=cwd)
+            handle.proc = proc
             proc.stdin.write(stdin_text)
-            proc.stdin.close()
+            if keep_stdin:
+                proc.stdin.flush()
+            else:
+                proc.stdin.close()
         except OSError as e:
             GLib.idle_add(on_done, False, str(e))
             return
@@ -75,11 +104,16 @@ def run_helper(cmd: list[str], stdin_text: str, on_progress, on_line, on_done) -
                 last_error = text
             GLib.idle_add(on_line, line.rstrip("\n"))
         rc = proc.wait()
+        try:
+            proc.stdin.close()
+        except (OSError, ValueError):
+            pass
         if rc != 0 and not last_error:
             last_error = f"Hilfsprogramm beendet mit Code {rc} (sudo-Regel vorhanden? install.sh)"
         GLib.idle_add(on_done, ok and rc == 0, last_error)
 
     threading.Thread(target=work, daemon=True).start()
+    return handle
 
 
 class StickDialog(Gtk.Dialog):
