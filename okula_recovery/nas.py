@@ -115,6 +115,46 @@ def test_connection(cfg: NasConfig, timeout: float = 3.0) -> list[Check]:
     return checks
 
 
+LOW_SPACE = 100 * 1000**3  # unter 100 GB frei: Warnung im Hauptfenster
+
+
+@dataclass
+class Status:
+    """Kurzstatus für das Hauptfenster (ohne Schreibtest, für regelmässige Abfragen)."""
+    state: str           # "ok", "fail", "unconfigured"
+    reason: str = ""
+    free: int = 0
+    total: int = 0
+
+    @property
+    def low_space(self) -> bool:
+        return self.state == "ok" and self.free < LOW_SPACE
+
+
+def quick_status(cfg: NasConfig, auto_mount: bool = False) -> Status:
+    """Eingehängt? Wie viel Platz frei? Optional mit gespeicherten Zugangsdaten einhängen."""
+    if not cfg.host or not cfg.share:
+        return Status("unconfigured", "nicht eingerichtet")
+    if not os.path.ismount(cfg.mount_point):
+        if not auto_mount:
+            return Status("fail", "nicht eingehängt")
+        if cfg.protocol == "smb" and not has_credentials():
+            return Status("fail", "nicht eingehängt – Zugangsdaten fehlen")
+        ok, msg = mount(cfg)
+        if not ok:
+            return Status("fail", msg)
+    try:
+        st = os.statvfs(cfg.mount_point)
+    except OSError as e:
+        return Status("fail", f"nicht lesbar: {e.strerror or e}")
+    return Status("ok", "", st.f_bavail * st.f_frsize, st.f_blocks * st.f_frsize)
+
+
+def format_gb(n: int) -> str:
+    """Dezimale Angabe wie auf Disks und NAS (GB/TB)."""
+    return f"{n / 1000**4:.2f} TB" if n >= 1000**4 else f"{n / 1000**3:.0f} GB"
+
+
 def mount_error_hint(message: str) -> str:
     for needle, hint in MOUNT_HINTS:
         if needle in message:

@@ -5,8 +5,15 @@ Server: Debian 13 + Xfce, Python 3 + GTK 3.
 
 ![Oberfläche](docs/screenshot.png)
 
-- **Links (NAS):** Verbindung testen (Namensauflösung, Port, Einhängepunkt, Lese-/Schreibrecht, freier Platz), gespeicherte Images (Roh-/partclone-Images, auch komprimiert, sowie Clonezilla-Ordner).
-- **Rechts (Maschinen):** Maschinen, die vom USB-Stick gebootet wurden, erscheinen automatisch (Quelle *USB-Agent*). Dazu kommen der Ping-Scan des LAN und manuell erfasste Maschinen.
+- **Menüleiste:**
+  - **Menü:** NAS-Verbindung … (Ctrl+N), Agent-USB-Stick erstellen …, Beenden
+  - **Tools:** Netzwerk scannen (F5), Maschine hinzufügen, Disk-Image erstellen, Image zurückspielen, Maschine herunterfahren, Restore-Stick aus Image, Images aktualisieren
+  - **Hilfe:** Tastenkürzel (F1), Über
+- **Links (Maschinen im LAN):** Maschinen, die vom Agent-Stick gebootet wurden, erscheinen automatisch (Quelle *USB-Agent*, mit Status). Dazu kommen der Ping-Scan des LAN und manuell erfasste Maschinen.
+- **Rechts (NAS):**
+  - **Statuszeile:** ● grün = NAS verbunden, ● rot = nicht verbunden bzw. nicht eingerichtet. Daneben der freie Speicher: grün, wenn genug frei ist; rot, wenn weniger als 100 GB frei sind. Das Tool prüft den Status beim Start und danach alle 30 s.
+  - **Reiter:** *Images* (Liste, Löschen, Restore-Stick) und *Dateien* (Dateiverwaltung).
+- **NAS-Verbindung einrichten:** Menü → NAS-Verbindung … oder das Zahnrad in der Statuszeile. Das Fenster enthält Protokoll, Host, Freigabe (mit „Freigaben suchen“), Benutzer, Passwort, Einhängepunkt, die Buttons Testen, Einhängen, Aushängen und Speichern sowie die Prüfdetails.
 
 ## Server-Installation (Debian 13)
 
@@ -30,10 +37,10 @@ Im NAS (Synology DSM: Systemsteuerung):
 2. Eigenen **Benutzer** anlegen (nicht den Admin) und ihm Lese-/Schreibrecht nur auf diese Freigabe geben.
 3. **Dateidienste → SMB** aktivieren, Mindestversion SMB2 (Standard in DSM 7).
 
-Im Tool links:
+Im Tool unter Menü → NAS-Verbindung …:
 1. Host (IP des NAS), Benutzer und Passwort eingeben.
 2. **Freigaben suchen**, dann die Freigabe aus der Liste wählen.
-3. **Einhängen**. Bei Erfolg zeigt das Tool „NAS verbunden“ und listet die Images.
+3. **Einhängen**. Bei Erfolg zeigt die Statuszeile rechts „● NAS verbunden“, und das Tool listet die Images.
 
 Das Passwort speichert nur der Root-Helfer, in `/etc/okula-recovery/nas.cred` (root, `0600`). Es steht nie in der Konfiguration oder in Prozess-Argumenten. Nach dem nächsten Start hängt das Tool das NAS automatisch wieder ein. Fehlermeldungen von `mount` und `smbclient` werden als Hinweis angezeigt, etwa bei einem falschen Passwort, einer fehlenden Freigabe oder einer unpassenden SMB-Version.
 
@@ -41,7 +48,7 @@ Für NFS gibst du als Freigabe den Exportpfad an (z. B. `/volume1/recovery`) und
 
 ### Dateien auf dem NAS verwalten
 
-Links gibt es zwei Reiter:
+Rechts gibt es zwei Reiter:
 - **Images:** Alle gefundenen Images. Ein gewähltes Image löschst du mit **Löschen**.
 - **Dateien:** Dateiverwaltung der Freigabe. Ordner öffnest du per Doppelklick, ↑ oder Backspace führt eine Ebene zurück. Dazu kommen **Neuer Ordner**, **Umbenennen** (F2) und **Löschen** (Entf, mit Mehrfachauswahl).
 
@@ -51,7 +58,7 @@ Das Tool startet maximiert. **F11** schaltet auf Vollbild ohne Titelleiste und w
 
 ## Agent-USB-Stick
 
-Button **„Agent-USB-Stick erstellen …“** oben rechts:
+Menü → **Agent-USB-Stick erstellen …**:
 
 1. Stick einstecken und auswählen. Angeboten werden nur USB- und Wechseldatenträger, nie die Systemdisk.
 2. Debian-Live-ISO wählen oder **Herunterladen** klicken. Das Tool lädt das aktuelle `debian-live-…-amd64-standard.iso` von cdimage.debian.org und prüft es gegen `SHA512SUMS`. Die Datei liegt danach unter `~/.cache/okula-recovery/iso`. Einen anderen Mirror setzt du über die Umgebungsvariable `OKULA_DEBIAN_LIVE_URL`.
@@ -63,7 +70,7 @@ Button **„Agent-USB-Stick erstellen …“** oben rechts:
 
 ![Boot-Menü des Agent-Sticks](docs/grub-menu.png)
 
-**Ablauf an der Zielmaschine:** vom Stick booten (Boot-Menü, meist F12/F11/F8). Der Agent sendet alle 3 s ein Beacon auf **UDP 47811**, und zwar per Broadcast und zusätzlich direkt an die Server-IP aus dem Dialog. Das Tool antwortet, die Konsole zeigt „Verbunden“, und die Maschine erscheint rechts mit Hostname `okula-<MAC-Ende>`, Hersteller/Modell und Disks. Kommt 15 s lang kein Beacon, zeigt das Tool die Maschine als offline, nach 60 s entfernt es sie aus der Liste. Manuell erfasste Maschinen bleiben stehen. Scan-Einträge, die nicht mehr antworten, verschwinden beim nächsten Scan.
+**Ablauf an der Zielmaschine:** vom Stick booten (Boot-Menü, meist F12/F11/F8). Der Agent sendet alle 3 s ein Beacon auf **UDP 47811**, und zwar per Broadcast und zusätzlich direkt an die Server-IP aus dem Dialog. Das Tool antwortet, die Konsole zeigt „Verbunden“, und die Maschine erscheint links mit Hostname `okula-<MAC-Ende>`, Hersteller/Modell und Disks. Kommt 15 s lang kein Beacon, zeigt das Tool die Maschine als offline, nach 60 s entfernt es sie aus der Liste. Manuell erfasste Maschinen bleiben stehen. Scan-Einträge, die nicht mehr antworten, verschwinden beim nächsten Scan.
 
 - **Unbekannte IP:** Die IP muss niemand kennen. Die Zielmaschine bekommt im Live-System per DHCP eine neue IP, die alte Netzwerkeinstellung des installierten Systems spielt keine Rolle. Gibt es kein DHCP, setzt der Agent nach etwa 25 s eine feste Link-Local-Adresse `169.254.x.y` (aus der MAC) und meldet sich per Broadcast an `255.255.255.255`. Das Tool antwortet dann ebenfalls per Broadcast.
 - **Firewall auf dem Server:** UDP 47811 eingehend freigeben (z. B. `sudo ufw allow 47811/udp`).
@@ -72,7 +79,7 @@ Button **„Agent-USB-Stick erstellen …“** oben rechts:
 
 ## Disk-Image erstellen
 
-Rechts die Maschine wählen, die vom Agent-Stick gebootet wurde (Quelle *USB-Agent*), dann **„Disk-Image erstellen“**. Im Dialog Disk und Archivname wählen und auf **„Image erstellen“** klicken.
+Links die Maschine wählen, die vom Agent-Stick gebootet wurde (Quelle *USB-Agent*), dann **„Disk-Image erstellen“**. Im Dialog Disk und Archivname wählen und auf **„Image erstellen“** klicken.
 
 - **Disk-Image oder Backup:** Das Disk-Image sichert die ganze Disk: Partitionstabelle, Bootloader und alle Partitionen. Zurückgespielt ist die Maschine wieder genau wie vorher. Ein Datei-Backup (folgt) sichert nur ausgewählte Ordner.
 - **Ablage:** `NAS/images/<Name>/<Datum_Zeit>_<disk>/` mit
@@ -89,7 +96,7 @@ Tipp für Windows: Vorher vollständig herunterfahren (Shift + Herunterfahren), 
 
 ## Image zurückspielen
 
-Die Zielmaschine vom Agent-Stick booten und rechts auswählen, dann **„Image zurückspielen“**. Ist links im Reiter *Images* ein Image markiert, ist es im Dialog schon vorgewählt.
+Die Zielmaschine vom Agent-Stick booten und links auswählen, dann **„Image zurückspielen“**. Ist rechts im Reiter *Images* ein Image markiert, ist es im Dialog schon vorgewählt.
 
 1. **Image wählen:** Der Dialog zeigt die Quelle, also Maschine, Disk, Grösse und Partitionen.
 2. **Zieldisk wählen:** Darunter steht, was auf ihr **vollständig überschrieben** wird.
@@ -112,7 +119,7 @@ Die Zielmaschine vom Agent-Stick booten und rechts auswählen, dann **„Image z
 
 ### Clonezilla-Images zurückspielen
 
-Bestehende Clonezilla-Images (Modus „savedisk“) erkennt das Tool automatisch. Sie stehen links in der Image-Liste und im Dialog „Image zurückspielen“ mit der Kennzeichnung **[Clonezilla]**, bei mehreren gesicherten Disks mit einem Eintrag pro Disk. Den Image-Ordner einfach auf die NAS-Freigabe kopieren, Unterordner sind erlaubt.
+Bestehende Clonezilla-Images (Modus „savedisk“) erkennt das Tool automatisch. Sie stehen rechts in der Image-Liste und im Dialog „Image zurückspielen“ mit der Kennzeichnung **[Clonezilla]**, bei mehreren gesicherten Disks mit einem Eintrag pro Disk. Den Image-Ordner einfach auf die NAS-Freigabe kopieren, Unterordner sind erlaubt.
 
 - **Unterstützt:** partclone-Images aller Dateisysteme (`sda1.ntfs-ptcl-img.gz.aa …`) mit der Kompression gzip, zstd, bzip2, xz, lz4 oder lzop, gesplittet (`.aa`/`.ab`, `.aaa` …) oder nicht. Dazu Rohkopien (`dd-ptcl-img`), Swap (UUID/Label aus `swappt-*.info`), Partitionstabelle (`*-pt.sf`), MBR und die „hidden data“ nach dem MBR.
 - **Prüfung vor dem Schreiben:** Clonezilla speichert keine Prüfsummen. Das Tool entpackt deshalb jedes Partitions-Image auf dem Server und prüft es mit `partclone.chkimg` (interne Prüfsummen von partclone), Rohkopien über die CRC der Kompression. Ein beschädigtes Image wird erkannt, bevor die Zieldisk angefasst wird.
@@ -134,7 +141,7 @@ Bestehende Clonezilla-Images (Modus „savedisk“) erkennt das Tool automatisch
 
 ## Restore-Stick (ein Image, ohne Netzwerk)
 
-Links im Reiter *Images* ein Okula- oder Clonezilla-Image wählen und **„Restore-Stick …“** klicken. Dann Stick und Debian-Live-ISO wählen und **Stick vorbereiten**. Der Dialog zeigt, wie gross der Stick mindestens sein muss: Image plus etwa 2 GB. Zu kleine Sticks sind markiert.
+Rechts im Reiter *Images* (oder Tools → Restore-Stick aus Image …) ein Okula- oder Clonezilla-Image wählen und **„Restore-Stick …“** klicken. Dann Stick und Debian-Live-ISO wählen und **Stick vorbereiten**. Der Dialog zeigt, wie gross der Stick mindestens sein muss: Image plus etwa 2 GB. Zu kleine Sticks sind markiert.
 
 - **Aufbau:** Partition 1 ist FAT32 (`OKULA-REST`) mit Live-System, Boot-Menü „Okula Restore-Stick“ und Restore-Programm. Partition 2 ist ext4 (`OKULADATA`) mit dem Image unter `image/` und der Beschreibung `okula-restore.json`. ext4, weil Partitions-Images oft grösser als 4 GB sind.
 - **An der Zielmaschine:** vom Stick booten. Die Bildschirmführung zeigt das Image und alle Disks der Maschine, mit Modell, Grösse, Partitionen und dem Hinweis, ob eine Disk zu klein ist.

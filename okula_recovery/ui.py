@@ -1,27 +1,28 @@
-"""GTK-3-Oberfläche: links NAS und Images, rechts Maschinen im LAN."""
+"""GTK-3-Oberfläche: Menüleiste, links Maschinen im LAN, rechts NAS-Status mit Images und Dateien."""
 
 from __future__ import annotations
 
 import ipaddress
 import os
-import threading
 import time
 from pathlib import Path
 
 import gi
 
 gi.require_version("Gdk", "3.0")
-gi.require_version("GdkPixbuf", "2.0")
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gdk, GdkPixbuf, GLib, GObject, Gtk, Pango  # noqa: E402
+from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 
 from okula_recovery import __version__, agentclient, clonezilla, config, discovery, nas, nasfiles, network  # noqa: E402
 from okula_recovery.image_dialog import ImageDialog  # noqa: E402
+from okula_recovery.nas_dialog import NasDialog  # noqa: E402
 from okula_recovery.restore_dialog import RestoreDialog  # noqa: E402
 from okula_recovery.stick_dialog import StickDialog  # noqa: E402
+from okula_recovery.uikit import (ask_text, confirm, confirm_error, make_tree, pane_title, rgba_hex,  # noqa: E402
+                                  run_async, scrolled, svg_pixbuf)
 
 ASSETS = Path(__file__).resolve().parent / "assets"
-LOGO_COLOR = b"#0b1213"  # Füllfarbe im Original-SVG
+NAS_POLL = 30  # Sekunden zwischen den NAS-Statusabfragen
 
 # Agent gilt als offline, wenn so lange kein Beacon kam, und verschwindet nach AGENT_REMOVE_AFTER
 AGENT_TIMEOUT = 15
@@ -36,110 +37,8 @@ CSS = b"""
 .status-ok { color: #2e7d32; font-weight: bold; }
 .status-fail { color: #c62828; font-weight: bold; }
 .status-idle { color: #757575; }
+.nas-bar { padding: 4px 8px; border-radius: 4px; background-color: alpha(currentColor, 0.06); }
 """
-
-
-def svg_pixbuf(path: Path, height: int, color: str | None = None) -> GdkPixbuf.Pixbuf | None:
-    """Rendert ein SVG auf die gewünschte Höhe, optional mit anderer Füllfarbe (dunkles Theme)."""
-    try:
-        data = path.read_bytes()
-        if color:
-            data = data.replace(LOGO_COLOR, color.encode())
-        loader = GdkPixbuf.PixbufLoader.new_with_type("svg")
-        loader.connect("size-prepared", lambda ld, w, h: ld.set_size(max(1, round(w * height / h)), height))
-        loader.write(data)
-        loader.close()
-        return loader.get_pixbuf()
-    except (OSError, GLib.Error):
-        return None  # ohne SVG-Loader (librsvg2-common) eben ohne Logo
-
-
-def rgba_hex(c: Gdk.RGBA) -> str:
-    return "#{:02x}{:02x}{:02x}".format(*(round(v * 255) for v in (c.red, c.green, c.blue)))
-
-
-def confirm_error(parent: Gtk.Window, text: str) -> None:
-    dlg = Gtk.MessageDialog(transient_for=parent, modal=True, message_type=Gtk.MessageType.ERROR,
-                            buttons=Gtk.ButtonsType.CLOSE, text="Aktion fehlgeschlagen")
-    dlg.format_secondary_text(text)
-    dlg.run()
-    dlg.destroy()
-
-
-def run_async(work, done):
-    """Führt work() im Hintergrund aus und ruft done(result) im GTK-Thread auf."""
-    def target():
-        try:
-            result = work()
-        except Exception as e:  # Fehler sichtbar machen statt Thread still sterben lassen
-            result = e
-        GLib.idle_add(done, result)
-    threading.Thread(target=target, daemon=True).start()
-
-
-def make_tree(columns: list[tuple[str, int]], store: Gtk.ListStore, expand: int = 1) -> Gtk.TreeView:
-    """columns: (Titel, Spaltenindex im Store); Spaltenindex -1 = Status-Icon aus Spalte 0.
-
-    Nur die Spalte `expand` füllt die Breite und kürzt mit „…“, die übrigen bleiben vollständig.
-    """
-    view = Gtk.TreeView(model=store)
-    view.set_headers_clickable(True)
-    for title, idx in columns:
-        if idx < 0:
-            cell = Gtk.CellRendererPixbuf()
-            col = Gtk.TreeViewColumn(title, cell, icon_name=0)
-        else:
-            cell = Gtk.CellRendererText()
-            if idx == expand:
-                cell.set_property("ellipsize", Pango.EllipsizeMode.END)
-            col = Gtk.TreeViewColumn(title, cell, text=idx)
-            col.set_resizable(True)
-            col.set_expand(idx == expand)
-            col.set_sort_column_id(idx)
-        view.append_column(col)
-    return view
-
-
-def scrolled(child: Gtk.Widget) -> Gtk.ScrolledWindow:
-    sw = Gtk.ScrolledWindow(hexpand=True, vexpand=True)
-    sw.set_shadow_type(Gtk.ShadowType.IN)
-    sw.add(child)
-    return sw
-
-
-def confirm(parent: Gtk.Window, title: str, text: str, ok_label: str = "Löschen") -> bool:
-    dlg = Gtk.MessageDialog(transient_for=parent, modal=True, message_type=Gtk.MessageType.WARNING,
-                            buttons=Gtk.ButtonsType.NONE, text=title)
-    dlg.format_secondary_text(text)
-    dlg.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
-    btn = dlg.add_button(ok_label, Gtk.ResponseType.OK)
-    btn.get_style_context().add_class("destructive-action")
-    dlg.set_default_response(Gtk.ResponseType.CANCEL)
-    ok = dlg.run() == Gtk.ResponseType.OK
-    dlg.destroy()
-    return ok
-
-
-def ask_text(parent: Gtk.Window, title: str, label: str, initial: str = "") -> str | None:
-    dlg = Gtk.Dialog(title=title, transient_for=parent, modal=True)
-    dlg.add_buttons("Abbrechen", Gtk.ResponseType.CANCEL, "OK", Gtk.ResponseType.OK)
-    dlg.set_default_response(Gtk.ResponseType.OK)
-    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=12)
-    box.pack_start(Gtk.Label(label=label, xalign=0), False, False, 0)
-    entry = Gtk.Entry(text=initial, activates_default=True, width_chars=40)
-    box.pack_start(entry, False, False, 0)
-    dlg.get_content_area().add(box)
-    dlg.show_all()
-    entry.grab_focus()
-    text = entry.get_text() if dlg.run() == Gtk.ResponseType.OK else None
-    dlg.destroy()
-    return text
-
-
-def pane_title(text: str) -> Gtk.Label:
-    lbl = Gtk.Label(label=text, xalign=0)
-    lbl.get_style_context().add_class("pane-title")
-    return lbl
 
 
 class MainWindow(Gtk.ApplicationWindow):
@@ -152,7 +51,9 @@ class MainWindow(Gtk.ApplicationWindow):
         self.connect("window-state-event", self._on_window_state)
         self.cfg = config.load()
         self.agents: dict[str, discovery.AgentInfo] = {}  # IP → letzte Meldung
-        self._auto_mount_tried = False
+        self.nas_state = ""          # letzter NAS-Zustand, um Wechsel zu erkennen
+        self._nas_checking = False
+        self.nas_dialog: NasDialog | None = None
 
         header = Gtk.HeaderBar(title="Recovery Tool", subtitle=f"Version {__version__}",
                                show_close_button=True)
@@ -163,27 +64,101 @@ class MainWindow(Gtk.ApplicationWindow):
         if icon:
             self.set_icon(icon)
             Gtk.Window.set_default_icon(icon)
-        btn_stick = Gtk.Button(label="Agent-USB-Stick erstellen …")
-        btn_stick.set_tooltip_text("USB-Stick wählen und mit Live-System und Agent vorbereiten")
-        btn_stick.connect("clicked", lambda _b: StickDialog(self))
-        header.pack_end(btn_stick)
         self.set_titlebar(header)
 
         paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL, wide_handle=True)
-        paned.pack1(self._build_nas_pane(), resize=True, shrink=False)
-        paned.pack2(self._build_machine_pane(), resize=True, shrink=False)
-        paned.set_position(620)
+        paned.pack1(self._build_machine_pane(), resize=True, shrink=False)
+        paned.pack2(self._build_storage_pane(), resize=True, shrink=False)
+        paned.set_position(760)
 
         self.statusbar = Gtk.Statusbar()
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        root.pack_start(self._build_menubar(), False, False, 0)
         root.pack_start(paned, True, True, 0)
         root.pack_start(self.statusbar, False, False, 0)
         self.add(root)
 
-        self._update_nas_form()
         self._load_manual_machines()
         self._start_listener()
-        GLib.idle_add(self.on_test_nas, None)
+        self._update_image_button()
+        GLib.idle_add(self.refresh_nas_status, True)   # beim Start mit gespeicherten Zugangsdaten einhängen
+        GLib.timeout_add_seconds(NAS_POLL, self.refresh_nas_status)
+
+    # ---------- Menüleiste ----------
+
+    def _build_menubar(self) -> Gtk.MenuBar:
+        accel = Gtk.AccelGroup()
+        self.add_accel_group(accel)
+        self.menu_items: dict[str, Gtk.MenuItem] = {}
+
+        def menu(title: str, entries) -> Gtk.MenuItem:
+            top = Gtk.MenuItem.new_with_mnemonic(title)
+            sub = Gtk.Menu()
+            for entry in entries:
+                if entry is None:
+                    sub.append(Gtk.SeparatorMenuItem())
+                    continue
+                label, handler, shortcut = entry
+                item = Gtk.MenuItem.new_with_mnemonic(label)
+                item.connect("activate", lambda _i, h=handler: h())
+                if shortcut:
+                    key, mods = Gtk.accelerator_parse(shortcut)
+                    item.add_accelerator("activate", accel, key, mods, Gtk.AccelFlags.VISIBLE)
+                self.menu_items[label.replace("_", "")] = item
+                sub.append(item)
+            top.set_submenu(sub)
+            return top
+
+        bar = Gtk.MenuBar()
+        bar.append(menu("_Menü", [
+            ("_NAS-Verbindung …", self.open_nas_dialog, "<Control>n"),
+            ("_Agent-USB-Stick erstellen …", lambda: StickDialog(self), None),
+            None,
+            ("_Beenden", self.close, "<Control>q"),
+        ]))
+        bar.append(menu("_Tools", [
+            ("Netzwerk _scannen", lambda: self.on_scan(None), "F5"),
+            ("Maschine _hinzufügen …", lambda: self.on_add_machine(None), None),
+            None,
+            ("_Disk-Image erstellen …", lambda: self.on_create_image(None), None),
+            ("Image _zurückspielen …", lambda: self.on_restore_image(None), None),
+            ("Maschine _herunterfahren", lambda: self.on_power_off(None), None),
+            None,
+            ("_Restore-Stick aus Image …", lambda: self.on_restore_stick(None), None),
+            ("Images _aktualisieren", self.refresh_images, None),
+        ]))
+        bar.append(menu("_Hilfe", [
+            ("_Tastenkürzel", self.show_shortcuts, "F1"),
+            ("Ü_ber Okula Recovery Tool", self.show_about, None),
+        ]))
+        return bar
+
+    def show_about(self) -> None:
+        dlg = Gtk.AboutDialog(transient_for=self, modal=True, program_name="Okula Recovery Tool",
+                              version=__version__, website="https://www.okula.ch", website_label="okula.ch",
+                              comments="Disk-Images und Wiederherstellung von Maschinen im LAN – "
+                                       "mit Agent-Stick, Restore-Stick und NAS.")
+        logo = svg_pixbuf(ASSETS / "okula-logo.svg", 64)
+        if logo:
+            dlg.set_logo(logo)
+        dlg.run()
+        dlg.destroy()
+
+    def show_shortcuts(self) -> None:
+        text = ("Ctrl+N\tNAS-Verbindung\n"
+                "F5\tNetzwerk scannen\n"
+                "F11\tVollbild ein/aus\n"
+                "Ctrl+Q\tBeenden\n\n"
+                "Im Reiter „Dateien“:\n"
+                "Doppelklick\tOrdner öffnen\n"
+                "Backspace\tEine Ebene zurück\n"
+                "F2\tUmbenennen\n"
+                "Entf\tLöschen")
+        dlg = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.INFO,
+                                buttons=Gtk.ButtonsType.CLOSE, text="Tastenkürzel")
+        dlg.format_secondary_text(text)
+        dlg.run()
+        dlg.destroy()
 
     def _update_logo(self, header: Gtk.HeaderBar) -> None:
         """Logo in der Textfarbe der Titelleiste, damit es auch im dunklen Theme lesbar ist."""
@@ -192,84 +167,33 @@ class MainWindow(Gtk.ApplicationWindow):
             self._logo_color = color
             self.logo.set_from_pixbuf(svg_pixbuf(ASSETS / "okula-logo.svg", 22, color))
 
-    # ---------- linke Seite: NAS ----------
+    # ---------- rechte Seite: NAS-Status, Images, Dateien ----------
 
-    def _build_nas_pane(self) -> Gtk.Widget:
+    def _build_storage_pane(self) -> Gtk.Widget:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=12)
-        box.pack_start(pane_title("NAS – Images & Backups"), False, False, 0)
+        box.pack_start(pane_title("NAS – Images & Dateien"), False, False, 0)
 
-        grid = Gtk.Grid(column_spacing=8, row_spacing=6)
-        self.nas_protocol = Gtk.ComboBoxText()
-        self.nas_protocol.append("smb", "SMB / CIFS")
-        self.nas_protocol.append("nfs", "NFS")
-        self.nas_protocol.set_active_id(self.cfg.nas.protocol)
-        self.nas_protocol.connect("changed", lambda _c: self._update_nas_form())
-        self.nas_host = Gtk.Entry(text=self.cfg.nas.host, placeholder_text="z. B. nas.local oder 192.168.1.10",
-                                  hexpand=True)
-
-        # Freigabe: frei eingeben oder aus „Freigaben suchen“ wählen
-        share_box = Gtk.Box(spacing=6)
-        self.nas_share_combo = Gtk.ComboBoxText.new_with_entry()
-        self.nas_share_combo.set_hexpand(True)
-        self.nas_share = self.nas_share_combo.get_child()
-        self.nas_share.set_text(self.cfg.nas.share)
-        share_box.pack_start(self.nas_share_combo, True, True, 0)
-        self.btn_shares = Gtk.Button(label="Freigaben suchen")
-        self.btn_shares.set_tooltip_text("Freigaben des NAS mit Benutzer/Passwort auflisten (SMB)")
-        self.btn_shares.connect("clicked", self.on_find_shares)
-        share_box.pack_start(self.btn_shares, False, False, 0)
-
-        self.nas_user = Gtk.Entry(text=self.cfg.nas.username, placeholder_text="NAS-Benutzer")
-        self.nas_password = Gtk.Entry(visibility=False, input_purpose=Gtk.InputPurpose.PASSWORD)
-        self.nas_mount = Gtk.Entry(text=self.cfg.nas.mount_point)
-        self.nas_rows = {}
-        for row, (label, widget) in enumerate([("Protokoll", self.nas_protocol), ("Host", self.nas_host),
-                                               ("Freigabe", share_box), ("Benutzer", self.nas_user),
-                                               ("Passwort", self.nas_password), ("Einhängepunkt", self.nas_mount)]):
-            lbl = Gtk.Label(label=label, xalign=0)
-            grid.attach(lbl, 0, row, 1, 1)
-            grid.attach(widget, 1, row, 1, 1)
-            self.nas_rows[label] = (lbl, widget)
-        box.pack_start(grid, False, False, 0)
-
-        buttons = Gtk.Box(spacing=6)
-        self.btn_test = Gtk.Button(label="Verbindung testen")
-        self.btn_test.connect("clicked", self.on_test_nas)
-        btn_mount = Gtk.Button(label="Einhängen")
-        btn_mount.connect("clicked", self.on_mount_nas)
-        btn_umount = Gtk.Button(label="Aushängen")
-        btn_umount.connect("clicked", self.on_umount_nas)
-        btn_save = Gtk.Button(label="Speichern")
-        btn_save.connect("clicked", self.on_save_nas)
-        for b in (self.btn_test, btn_mount, btn_umount, btn_save):
-            buttons.pack_start(b, False, False, 0)
-        self.nas_spinner = Gtk.Spinner()
-        buttons.pack_start(self.nas_spinner, False, False, 0)
-        box.pack_start(buttons, False, False, 0)
-
-        self.nas_status = Gtk.Label(label="Nicht geprüft", xalign=0, wrap=True, selectable=True)
+        # Nur Status und freier Speicher; die Einrichtung steht unter Menü → NAS-Verbindung …
+        bar = Gtk.Box(spacing=16)
+        bar.get_style_context().add_class("nas-bar")
+        self.nas_status = Gtk.Label(label="● NAS wird geprüft …", xalign=0, ellipsize=Pango.EllipsizeMode.END)
         self.nas_status.get_style_context().add_class("status-idle")
-        box.pack_start(self.nas_status, False, False, 0)
-
-        # Ergebnis der Einzelprüfungen
-        self.check_store = Gtk.ListStore(str, str, str)  # icon, Prüfung, Detail
-        checks = make_tree([("", -1), ("Prüfung", 1), ("Detail", 2)], self.check_store, expand=2)
-        checks.set_headers_visible(False)
-        checks.get_selection().set_mode(Gtk.SelectionMode.NONE)
-        sw = scrolled(checks)
-        sw.set_vexpand(False)
-        sw.set_min_content_height(140)
-        # Bei Erfolg zugeklappt, damit die Dateiliste Platz hat; bei Fehlern offen
-        self.check_expander = Gtk.Expander(label="Prüfdetails", expanded=True)
-        self.check_expander.add(sw)
-        box.pack_start(self.check_expander, False, False, 0)
+        bar.pack_start(self.nas_status, True, True, 0)
+        self.nas_space = Gtk.Label(label="", xalign=0)
+        bar.pack_start(self.nas_space, False, False, 0)
+        btn_settings = Gtk.Button.new_from_icon_name("emblem-system-symbolic", Gtk.IconSize.BUTTON)
+        btn_settings.set_relief(Gtk.ReliefStyle.NONE)
+        btn_settings.set_tooltip_text("NAS-Verbindung einrichten (Menü → NAS-Verbindung …)")
+        btn_settings.connect("clicked", lambda _b: self.open_nas_dialog())
+        bar.pack_end(btn_settings, False, False, 0)
+        box.pack_start(bar, False, False, 0)
 
         # Reiter: Images (Übersicht) und Dateien (Dateiverwaltung des NAS)
         self.nas_tabs = Gtk.Notebook()
         self.nas_tabs.append_page(self._build_images_tab(), Gtk.Label(label="Images"))
         self.nas_tabs.append_page(self._build_files_tab(), Gtk.Label(label="Dateien"))
         self.nas_tabs.connect("switch-page", lambda _n, _p, num: num == 1 and self.refresh_files())
-        box.pack_start(self.nas_tabs, True, True, 4)
+        box.pack_start(self.nas_tabs, True, True, 0)
         return box
 
     def _build_images_tab(self) -> Gtk.Widget:
@@ -307,7 +231,8 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def on_restore_stick(self, _btn) -> None:
         model, it = self.image_view.get_selection().get_selected()
-        if it is None:
+        if it is None or model[it][2] not in ("Disk-Image", "Clonezilla"):
+            self.status("Zuerst rechts im Reiter „Images“ ein Disk- oder Clonezilla-Image wählen")
             return
         path = model[it][6]
         disks = clonezilla.disks(Path(path)) if model[it][2] == "Clonezilla" else None
@@ -362,7 +287,7 @@ class MainWindow(Gtk.ApplicationWindow):
     # ---------- Dateiverwaltung NAS ----------
 
     def _nas_root(self) -> str | None:
-        mp = self._nas_cfg_from_form().mount_point
+        mp = self.cfg.nas.mount_point
         return mp if os.path.ismount(mp) else None
 
     def _selected_files(self) -> list[str]:
@@ -371,7 +296,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _update_file_buttons(self) -> None:
         n = len(self._selected_files()) if hasattr(self, "file_view") else 0
-        root_ok = self._nas_root() is not None if hasattr(self, "nas_mount") else False
+        root_ok = self._nas_root() is not None
         self.file_buttons["Neuer Ordner"].set_sensitive(root_ok)
         self.file_buttons["Umbenennen"].set_sensitive(root_ok and n == 1)
         self.file_buttons["Löschen"].set_sensitive(root_ok and n > 0)
@@ -432,6 +357,7 @@ class MainWindow(Gtk.ApplicationWindow):
                 self.status(done_msg)
             self.refresh_files()
             self.refresh_images()
+            self.refresh_nas_status()
         run_async(op, finished)
 
     def on_new_folder(self, _btn) -> None:
@@ -488,137 +414,72 @@ class MainWindow(Gtk.ApplicationWindow):
 
         run_async(lambda: nasfiles.measure(root, rel, names), ask)
 
-    def _nas_cfg_from_form(self) -> config.NasConfig:
-        return config.NasConfig(protocol=self.nas_protocol.get_active_id() or "smb",
-                                host=self.nas_host.get_text().strip(),
-                                share=self.nas_share.get_text().strip().strip("/") if self._is_smb()
-                                else self.nas_share.get_text().strip(),
-                                mount_point=self.nas_mount.get_text().strip() or "/mnt/okula-nas",
-                                username=self.nas_user.get_text().strip())
+    # ---------- NAS-Status ----------
 
-    def _is_smb(self) -> bool:
-        return (self.nas_protocol.get_active_id() or "smb") == "smb"
+    def open_nas_dialog(self) -> None:
+        if self.nas_dialog is not None:
+            self.nas_dialog.present()
+            return
+        self.nas_dialog = NasDialog(self, self.cfg, self._on_nas_changed)
+        self.nas_dialog.connect("destroy", lambda _d: setattr(self, "nas_dialog", None))
 
-    def _update_nas_form(self) -> None:
-        """Benutzer/Passwort und Freigabensuche gibt es nur für SMB."""
-        smb = self._is_smb()
-        for key in ("Benutzer", "Passwort"):
-            for w in self.nas_rows.get(key, ()):
-                w.set_visible(smb)
-        if hasattr(self, "btn_shares"):
-            self.btn_shares.set_visible(smb)
-        self.nas_share.set_placeholder_text("z. B. recovery" if smb else "z. B. /volume1/recovery")
-        if smb and nas.has_credentials():
-            self.nas_password.set_placeholder_text("gespeichert – nur zum Ändern eingeben")
+    def _on_nas_changed(self, _cfg: config.NasConfig) -> None:
+        self.refresh_nas_status()
 
-    def _set_nas_status(self, text: str, state: str) -> None:
-        ctx = self.nas_status.get_style_context()
+    def refresh_nas_status(self, auto_mount: bool = False) -> bool:
+        """Kurzstatus abfragen (Timer: True = weiterlaufen). Läuft schon eine Abfrage, nicht doppelt."""
+        if not self._nas_checking:
+            self._nas_checking = True
+            cfg = self.cfg.nas
+            run_async(lambda: nas.quick_status(cfg, auto_mount), self._on_nas_status)
+        return True
+
+    def _on_nas_status(self, st) -> None:
+        self._nas_checking = False
+        if isinstance(st, Exception):
+            st = nas.Status("fail", str(st))
+        cfg = self.cfg.nas
+        where = f"{cfg.host}/{cfg.share.strip('/')}" if cfg.host else ""
+        if st.state == "ok":
+            text, state = f"● NAS verbunden  ({where})", "ok"
+        elif st.state == "unconfigured":
+            text, state = "● NAS nicht eingerichtet – Menü → NAS-Verbindung …", "fail"
+        else:
+            text, state = f"● NAS nicht verbunden – {st.reason}", "fail"
+        self._set_style(self.nas_status, state)
+        self.nas_status.set_text(text)
+        self.nas_status.set_tooltip_text(f"{text}\n{where} → {cfg.mount_point}" if where else text)
+        if st.state == "ok":
+            low = st.low_space
+            self.nas_space.set_text(f"Frei: {nas.format_gb(st.free)} von {nas.format_gb(st.total)}"
+                                    + (" – wenig Platz" if low else ""))
+            self.nas_space.set_tooltip_text("Unter 100 GB frei – Images vor dem nächsten Sichern aufräumen"
+                                            if low else "Genügend freier Speicher (mehr als 100 GB)")
+            self._set_style(self.nas_space, "fail" if low else "ok")
+        else:
+            self.nas_space.set_text("Frei: –")
+            self.nas_space.set_tooltip_text(None)
+            self._set_style(self.nas_space, "idle")
+        if st.state != self.nas_state:
+            self.nas_state = st.state
+            # Wechsel verbunden ↔ getrennt: Listen neu laden bzw. leeren
+            self.refresh_images()
+            self.refresh_files()
+            self._update_file_buttons()
+
+    @staticmethod
+    def _set_style(label: Gtk.Label, state: str) -> None:
+        ctx = label.get_style_context()
         for c in ("status-ok", "status-fail", "status-idle"):
             ctx.remove_class(c)
         ctx.add_class(f"status-{state}")
-        self.nas_status.set_text(text)
-
-    def on_save_nas(self, _btn) -> None:
-        self.cfg.nas = self._nas_cfg_from_form()
-        config.save(self.cfg)
-        self.status("Einstellungen gespeichert")
-
-    def on_test_nas(self, _btn) -> bool:
-        cfg = self._nas_cfg_from_form()
-        self.btn_test.set_sensitive(False)
-        self.nas_spinner.start()
-        self._set_nas_status("Prüfe Verbindung …", "idle")
-        run_async(lambda: nas.test_connection(cfg), self._on_nas_tested)
-        return False
-
-    def _on_nas_tested(self, result) -> None:
-        self.btn_test.set_sensitive(True)
-        self.nas_spinner.stop()
-        self.check_store.clear()
-        if isinstance(result, Exception):
-            self._set_nas_status(f"✗ Fehler: {result}", "fail")
-            return
-        for c in result:
-            self.check_store.append(["emblem-ok-symbolic" if c.ok else "dialog-error-symbolic", c.name, c.detail])
-        if all(c.ok for c in result):
-            self._set_nas_status("● NAS verbunden", "ok")
-            self.check_expander.set_expanded(False)
-            self.refresh_images()
-            self.refresh_files()
-        else:
-            failed = next(c for c in result if not c.ok)
-            self._set_nas_status(f"● Keine Verbindung – {failed.name}: {failed.detail}", "fail")
-            self.check_expander.set_expanded(True)
-            self.image_store.clear()
-            self.img_count.set_text("")
-            self.refresh_files()
-            if failed.name == "Eingehängt" and not self._auto_mount_tried and \
-                    (not self._is_smb() or nas.has_credentials()):
-                self._auto_mount_tried = True
-                self.on_mount_nas(None)
-
-    def on_mount_nas(self, _btn) -> bool:
-        cfg = self._nas_cfg_from_form()
-        if not cfg.host or not cfg.share:
-            self._set_nas_status("● Host und Freigabe eingeben", "fail")
-            return False
-        password = self.nas_password.get_text() if self._is_smb() else ""
-        self.cfg.nas = cfg
-        config.save(self.cfg)
-        self.nas_spinner.start()
-        self._set_nas_status("Hänge NAS ein …", "idle")
-        run_async(lambda: nas.mount(cfg, password), self._on_mounted)
-        return False
-
-    def _on_mounted(self, result) -> None:
-        self.nas_spinner.stop()
-        ok, msg = (False, str(result)) if isinstance(result, Exception) else result
-        self.status(f"Einhängen: {msg}")
-        if ok:
-            self.nas_password.set_text("")
-            self._update_nas_form()
-            self.on_test_nas(None)
-        else:
-            self._set_nas_status(f"● Einhängen fehlgeschlagen: {msg}", "fail")
-
-    def on_umount_nas(self, _btn) -> None:
-        cfg = self._nas_cfg_from_form()
-        self.nas_spinner.start()
-        run_async(lambda: nas.umount(cfg), self._on_umounted)
-
-    def _on_umounted(self, result) -> None:
-        self.nas_spinner.stop()
-        ok, msg = (False, str(result)) if isinstance(result, Exception) else result
-        self.status(f"Aushängen: {msg}")
-        self.on_test_nas(None)
-
-    def on_find_shares(self, _btn) -> None:
-        cfg = self._nas_cfg_from_form()
-        password = self.nas_password.get_text()
-        if not cfg.host or not cfg.username or not password:
-            self._set_nas_status("● Für die Suche Host, Benutzer und Passwort eingeben", "fail")
-            return
-        self.btn_shares.set_sensitive(False)
-        self.nas_spinner.start()
-        run_async(lambda: nas.list_smb_shares(cfg.host, cfg.username, password), self._on_shares)
-
-    def _on_shares(self, result) -> None:
-        self.btn_shares.set_sensitive(True)
-        self.nas_spinner.stop()
-        if isinstance(result, Exception):
-            self._set_nas_status(f"● Freigaben nicht lesbar: {result}", "fail")
-            return
-        current = self.nas_share.get_text()
-        self.nas_share_combo.remove_all()
-        for name in result:
-            self.nas_share_combo.append_text(name)
-        if current not in result:
-            self.nas_share_combo.set_active(0)
-            self.nas_share_combo.popup()
-        self.status(f"{len(result)} Freigaben gefunden: {', '.join(result)}")
 
     def refresh_images(self) -> None:
-        mp = self._nas_cfg_from_form().mount_point
+        mp = self._nas_root()
+        if mp is None:
+            self.image_store.clear()
+            self.img_count.set_text("NAS nicht verbunden")
+            return
         run_async(lambda: nas.list_images(mp), self._on_images)
 
     def _on_images(self, result) -> None:
@@ -631,7 +492,7 @@ class MainWindow(Gtk.ApplicationWindow):
                                      img.mtime.strftime("%d.%m.%Y %H:%M"), img.size, str(img.path)])
         self.img_count.set_text(f"{len(result)} Images")
 
-    # ---------- rechte Seite: Maschinen ----------
+    # ---------- linke Seite: Maschinen ----------
 
     def _build_machine_pane(self) -> Gtk.Widget:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=12)
@@ -854,6 +715,9 @@ class MainWindow(Gtk.ApplicationWindow):
         self.btn_image.set_sensitive(ok)
         self.btn_restore.set_sensitive(ok)
         self.btn_power.set_sensitive(ok)
+        for label in ("Disk-Image erstellen …", "Image zurückspielen …", "Maschine herunterfahren"):
+            if label in getattr(self, "menu_items", {}):
+                self.menu_items[label].set_sensitive(ok)
         if agent is not None and not agent.control_port:
             self.btn_image.set_tooltip_text("Agent-Stick ist veraltet – mit aktuellem Tool neu erstellen")
 
@@ -864,7 +728,15 @@ class MainWindow(Gtk.ApplicationWindow):
         if agent.busy:
             self.status("Agent ist mit einem anderen Auftrag beschäftigt")
             return
-        ImageDialog(self, agent, self._nas_cfg_from_form().mount_point, on_done=self.refresh_images)
+        root = self._nas_root()
+        if root is None:
+            self.status("NAS ist nicht verbunden – Menü → NAS-Verbindung …")
+            return
+        ImageDialog(self, agent, root, on_done=self._after_job)
+
+    def _after_job(self) -> None:
+        self.refresh_images()
+        self.refresh_nas_status()  # freier Speicher hat sich geändert
 
     def on_power_off(self, _btn) -> None:
         agent = self._selected_agent()
@@ -924,7 +796,6 @@ class App(Gtk.Application):
                                                  Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         win = self.get_active_window() or MainWindow(self)
         win.show_all()
-        win._update_nas_form()  # show_all würde die SMB-Felder bei NFS wieder einblenden
         win.present()
 
 

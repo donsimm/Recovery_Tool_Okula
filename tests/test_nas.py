@@ -85,6 +85,54 @@ class ConnectionTest(unittest.TestCase):
         self.assertEqual([c.ok for c in checks], [True, False])
 
 
+class QuickStatusTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.cfg = NasConfig(host="192.168.110.154", share="recovery", username="u", mount_point=self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_unconfigured(self):
+        self.assertEqual(nas.quick_status(NasConfig()).state, "unconfigured")
+
+    def test_not_mounted_without_auto_mount(self):
+        from unittest import mock
+        with mock.patch.object(nas.os.path, "ismount", lambda p: False), \
+                mock.patch.object(nas, "mount", lambda *a: self.fail("darf nicht einhängen")):
+            st = nas.quick_status(self.cfg)
+        self.assertEqual((st.state, st.reason), ("fail", "nicht eingehängt"))
+
+    def test_auto_mount_needs_credentials_then_mounts(self):
+        from unittest import mock
+        calls = []
+        with mock.patch.object(nas.os.path, "ismount", lambda p: bool(calls)), \
+                mock.patch.object(nas, "has_credentials", lambda: False):
+            self.assertIn("Zugangsdaten fehlen", nas.quick_status(self.cfg, auto_mount=True).reason)
+        with mock.patch.object(nas.os.path, "ismount", lambda p: False), \
+                mock.patch.object(nas, "has_credentials", lambda: True), \
+                mock.patch.object(nas, "mount", lambda cfg: (calls.append(cfg), (True, "ok"))[1]):
+            st = nas.quick_status(self.cfg, auto_mount=True)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(st.state, "ok")
+        self.assertGreater(st.total, 0)
+
+    def test_mount_failure_reason(self):
+        from unittest import mock
+        with mock.patch.object(nas.os.path, "ismount", lambda p: False), \
+                mock.patch.object(nas, "has_credentials", lambda: True), \
+                mock.patch.object(nas, "mount", lambda cfg: (False, "mount error(13): Permission denied")):
+            st = nas.quick_status(self.cfg, auto_mount=True)
+        self.assertEqual((st.state, st.reason), ("fail", "mount error(13): Permission denied"))
+
+    def test_low_space_threshold(self):
+        self.assertTrue(nas.Status("ok", free=99 * 1000**3, total=1).low_space)
+        self.assertFalse(nas.Status("ok", free=100 * 1000**3, total=1).low_space)
+        self.assertFalse(nas.Status("fail").low_space)
+        self.assertEqual(nas.format_gb(64 * 1000**3), "64 GB")
+        self.assertEqual(nas.format_gb(3_200_000_000_000), "3.20 TB")
+
+
 class FormatSizeTest(unittest.TestCase):
     def test_units(self):
         self.assertEqual(nas.format_size(512), "512 B")
