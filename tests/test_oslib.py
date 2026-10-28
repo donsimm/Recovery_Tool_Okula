@@ -112,8 +112,11 @@ class LibraryTest(unittest.TestCase):
         rel = oslib.make_folder(self.nas, "Linux", "Ubuntu")
         moved = oslib.move_iso(self.nas, p, rel)
         self.assertTrue(oslib.meta_path(moved).is_file())  # Beschreibung zieht mit
-        renamed = oslib.rename_iso(self.nas, moved, "noble")
-        self.assertEqual(renamed.name, "noble.iso")
+        renamed = oslib.rename_iso(self.nas, moved, "Ubuntu Kasse")
+        self.assertEqual(renamed.name, "Ubuntu Kasse.iso")
+        info = next(i for f in oslib.scan(self.nas) for i in f.all_isos())
+        self.assertEqual(info.display, "Ubuntu Kasse")       # neuer Name in der Übersicht
+        self.assertEqual(info.title, "Ubuntu 24.04.1 LTS")   # Erkennung bleibt erhalten
         with self.assertRaisesRegex(oslib.OsLibError, "nicht leer"):
             oslib.delete_folder(self.nas, rel)
         with self.assertRaisesRegex(oslib.OsLibError, "Kategorien"):

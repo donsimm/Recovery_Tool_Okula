@@ -927,8 +927,8 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _iso_row(self, iso: oslib.IsoInfo) -> list:
         sha = iso.meta.get("sha256", "")
-        tip = f"{iso.name}\n{oslib.describe(iso.meta)}" + (f"\nSHA-256 {sha}" if sha else "")
-        return [OS_ICONS.get(iso.family, "okula-os-other"), iso.title, oslib.describe(iso.meta),
+        tip = f"{iso.name}\n{iso.title} · {oslib.describe(iso.meta)}" + (f"\nSHA-256 {sha}" if sha else "")
+        return [OS_ICONS.get(iso.family, "okula-os-other"), iso.display, oslib.describe(iso.meta),
                 nas.format_size(iso.size), iso.mtime.strftime("%d.%m.%Y %H:%M"), iso.size, str(iso.path), "iso",
                 iso.rel, "os", tip]
 

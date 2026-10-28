@@ -300,6 +300,11 @@ class IsoInfo:
     def title(self) -> str:
         return self.meta.get("title") or self.path.stem
 
+    @property
+    def display(self) -> str:
+        """Name in der Übersicht: selbst vergebener Name (Umbenennen), sonst das erkannte Medium."""
+        return self.meta.get("label") or self.title
+
 
 @dataclass
 class OsFolder:
@@ -482,13 +487,25 @@ def rename_iso(root: str | Path, iso_path: str | Path, new_name: str) -> Path:
     if not is_iso_name(new_name):
         new_name += "".join(s for s in SUFFIXES if src.name.lower().endswith(s))[-8:] or ".iso"
     target = src.with_name(new_name)
-    if target.exists():
+    if target.exists() and target != src:
         raise OsLibError(f"„{new_name}“ existiert bereits")
+    old_meta = _old_meta(src)
     meta = meta_path(src)
     src.rename(target)
     if meta.exists():
         meta.rename(meta_path(target))
+    if old_meta:  # der neue Name erscheint in der Übersicht (statt des erkannten Titels)
+        old_meta["label"] = _strip_suffix(new_name)
+        save_meta(target, old_meta)
     return target
+
+
+def _strip_suffix(name: str) -> str:
+    low = name.lower()
+    for s in sorted(SUFFIXES, key=len, reverse=True):
+        if low.endswith(s):
+            return name[:-len(s)]
+    return name
 
 
 def delete_iso(root: str | Path, iso_path: str | Path) -> None:

@@ -1,10 +1,10 @@
 """Boot-Stick aus ISO auf echten Loop-Geräten (root). FAT32 fehlt im Test-Kernel: dort ext4 statt FAT32."""
 
-import hashlib
 import os
 import shutil
 import subprocess
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -121,6 +121,39 @@ class IsoStickTest(unittest.TestCase):
             sh("umount", str(mnt))
         with open(dev, "rb") as f:
             self.assertIn(b"GRUB", f.read(512), "BIOS-Bootcode fehlt im MBR")
+
+    def test_split_does_not_hang_on_chatty_wimlib(self):
+        """wimlib-imagex meldet laufend Fortschritt – bei grossen WIMs mehr als der Pipe-Puffer (64 KB)."""
+        dev, _backing = self.stick(96)
+        iso = self.on_nas(windows_iso(self.d, payload=3_000_000))
+        bindir = self.d / "bin"
+        bindir.mkdir()
+        fake = bindir / "wimlib-imagex"
+        pidfile = self.d / "wimlib.pid"
+        fake.write_text(f"#!/bin/sh\necho $$ > {pidfile}\nhead -c 300000 /dev/zero\n"
+                        f"exec {shutil.which('wimlib-imagex')} \"$@\"\n")
+        fake.chmod(0o755)
+        done, errors = threading.Event(), []
+
+        def run():
+            try:
+                with mock.patch.object(isostick, "_format", mkfs_ext4), \
+                        mock.patch.object(isostick, "FAT32_MAX", 1_000_000), \
+                        mock.patch.object(isostick, "SPLIT_MB", 1), \
+                        mock.patch.dict(os.environ, {"PATH": f"{bindir}:{os.environ['PATH']}"}):
+                    isostick.prepare(dev, str(iso), "windows", self.emit, check="none")
+            except Exception as e:
+                errors.append(e)
+            done.set()
+
+        threading.Thread(target=run, daemon=True).start()
+        finished = done.wait(60)
+        if not finished:
+            if pidfile.exists():  # nur den hängenden Split beenden
+                subprocess.run(["kill", pidfile.read_text().strip()], capture_output=True)
+            done.wait(10)
+        self.assertTrue(finished, "Splitten hängt – Ausgabe von wimlib-imagex wird nicht gelesen")
+        self.assertEqual(errors, [])
 
     def test_capacity_test_detects_fake_stick(self):
         fake = self.d / "fake.bin"

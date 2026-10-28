@@ -20,6 +20,7 @@ import hashlib
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -55,6 +56,22 @@ StickError = stick.StickError
 
 def _run(cmd: list[str], input: str | None = None) -> None:
     stick._run(cmd, input)
+
+
+class _drain(threading.Thread):
+    """Liest eine Ausgabe-Pipe laufend leer und behält nur das Ende (für Fehlermeldungen)."""
+
+    def __init__(self, stream, keep: int = 8192):
+        super().__init__(daemon=True)
+        self.stream, self.keep, self.tail = stream, keep, b""
+        self.start()
+
+    def run(self) -> None:
+        while chunk := self.stream.read1(65536):
+            self.tail = (self.tail + chunk)[-self.keep:]
+
+    def text(self) -> str:
+        return self.tail.decode(errors="replace").replace("\r", "\n").strip()
 
 
 def fat_label(meta: dict) -> str:
@@ -306,15 +323,23 @@ def copy_windows(iso: Path, dest: Path, unattend: str | None, progress: Progress
                 swm = dest / "sources" / "install.swm"
                 proc = subprocess.Popen(["wimlib-imagex", "split", str(src), str(swm), str(SPLIT_MB)],
                                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                # wimlib meldet laufend Fortschritt: mitlesen, sonst läuft die Pipe voll und wimlib hängt
+                tail = _drain(proc.stdout)
                 while proc.poll() is None:
                     written = sum(p.stat().st_size for p in swm.parent.glob("install*.swm"))
                     progress(0.9 * (base + 0.3 * wim.size + 0.7 * min(written, wim.size)) / total,
-                             "Splitte install.wim in install.swm-Teile")
+                             f"Splitte install.wim in install.swm-Teile ({written / 1000**3:.1f} / "
+                             f"{wim.size / 1000**3:.1f} GB)")
                     time.sleep(0.5)
-                out = proc.communicate()[0].decode(errors="replace")
+                tail.join()
+                proc.stdout.close()
                 if proc.returncode != 0:
-                    raise StickError(f"wimlib-imagex split: {out.strip().splitlines()[-1:] or proc.returncode}")
+                    msg = tail.text().splitlines()
+                    raise StickError(f"wimlib-imagex split: {msg[-1] if msg else proc.returncode}")
             finally:
+                if "proc" in locals() and proc.poll() is None:  # Abbruch: wimlib mit beenden
+                    proc.kill()
+                    proc.wait()
                 if mounted:
                     subprocess.run(["umount", str(mounted)], capture_output=True)
     if unattend:
@@ -445,6 +470,8 @@ def main(argv: list[str] | None = None) -> int:
     if os.geteuid() != 0:
         emit("ERROR", "Muss als root laufen (sudo okula-make-stick iso-stick …)")
         return 1
+    # Abbruch von aussen (kill): wie ein Fehler behandeln, damit Einhängepunkte aufgeräumt werden
+    signal.signal(signal.SIGTERM, lambda *_a: sys.exit("Abgebrochen"))
     try:
         unattend = sys.stdin.read() if args.unattend_stdin else None
         if unattend is not None and not unattend.lstrip().startswith("<?xml"):
