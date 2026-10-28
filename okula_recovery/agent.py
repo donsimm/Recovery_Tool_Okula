@@ -18,7 +18,7 @@ import threading
 import time
 from pathlib import Path
 
-from okula_recovery import __version__, discovery, imaging, inventory, network, wire
+from okula_recovery import __version__, discovery, imaging, inventory, network, wininstall, wire
 
 
 # So lange ohne IPv4, dann DHCP nachfassen bzw. Link-Local-Adresse setzen
@@ -284,9 +284,10 @@ _job_ids = iter(range(1, 1 << 62))
 
 
 def run_job(tls, addr, req: dict, kind: str) -> None:
-    """Disk-Image („image“) oder Zurückspielen („restore“) – parallel zu Aufträgen auf anderen Disks."""
+    """Disk-Image („image“), Zurückspielen („restore“) oder Windows-Installation („install“) –
+    parallel zu Aufträgen auf anderen Disks."""
     disk = str(req.get("disk") or "")
-    label = "Disk-Image" if kind == "image" else "Zurückspielen"
+    label = {"image": "Disk-Image", "restore": "Zurückspielen", "install": "Windows-Installation"}[kind]
     if not disk_locks.acquire(disk, kind):
         wire.send_json(tls, {"type": "error", "message": f"Auf {disk} läuft bereits ein Auftrag"})
         return
@@ -300,8 +301,9 @@ def run_job(tls, addr, req: dict, kind: str) -> None:
         if kind == "restore":
             job_state.end_notice("Image im Tool geprüft – Zurückspielen startet")
             job_state.clear_notice()
-        title = (f"Disk-Image von {disk} läuft" if kind == "image"
-                 else f"Image wird auf {disk} zurückgespielt") + " – Maschine nicht ausschalten"
+        title = {"image": f"Disk-Image von {disk} läuft",
+                 "restore": f"Image wird auf {disk} zurückgespielt",
+                 "install": f"Windows-Installation wird auf {disk} vorbereitet"}[kind] + " – Maschine nicht ausschalten"
         # Mehrere parallele Aufträge: keine Balken (würden sich überschreiben), nur Meldungen
         bar = ConsoleBar(console, title) if console and alone else None
         job_state.update(job, label, 0.0)
@@ -314,22 +316,32 @@ def run_job(tls, addr, req: dict, kind: str) -> None:
 
         if kind == "image":
             imaging.stream_disk_image(tls, disk, log, report)
+        elif kind == "install":
+            entry = wininstall.install(tls, req, log, report)
+            wire.send_json(tls, {"type": "done", "boot": entry})
         else:
             imaging.restore_disk(tls, req, log, report)
         ok = True
         log(f"{label} auf {disk} fertig", show=not bar)
-    except imaging.ImagingError as e:
+    except (imaging.ImagingError, OSError) as e:
         log(f"{label} auf {disk} fehlgeschlagen: {e}", show=not bar)
         wire.send_json(tls, {"type": "error", "message": str(e)})
     finally:
         if bar:
-            result = ("fertig" if kind == "image" else "zurückgespielt – Stick abziehen und neu starten") if ok \
-                else ("abgebrochen" if kind == "image" else "abgebrochen – Disk ist unvollständig")
+            done_text = {"image": "fertig", "restore": "zurückgespielt – Stick abziehen und neu starten",
+                         "install": "vorbereitet – Neustart, Windows wird installiert (Stick abziehen)"}[kind]
+            result = done_text if ok else ("abgebrochen" if kind == "image" else "abgebrochen – Disk ist unvollständig")
             bar.finish(f"» {label} auf {disk}: {result}")
         job_state.finish(job)
         disk_locks.release(disk)
     if ok and kind == "restore":
         threading.Thread(target=inventory_state.collect, daemon=True).start()  # neues Betriebssystem erfassen
+    if ok and kind == "install" and req.get("reboot"):
+        if disk_locks.busy():
+            log("Kein Neustart – auf einer anderen Disk läuft noch ein Auftrag. Danach neu starten.", show=True)
+        else:
+            log("Neustart in 10 s – Windows wird danach von der Setup-Partition installiert", show=True)
+            threading.Timer(10, power_action, args=("reboot",)).start()
 
 
 def load_key(path: str) -> bytes | None:
@@ -350,7 +362,7 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
                 wire.send_json(tls, {"type": "info", "hostname": socket.gethostname(), "version": __version__,
                                      "disks": imaging.list_disks(), "tools": imaging.tool_status(),
                                      "busy": disk_locks.busy(), "active": disk_locks.active()})
-            elif cmd in ("image", "restore"):
+            elif cmd in ("image", "restore", "install"):
                 run_job(tls, addr, req, cmd)
             elif cmd == "inventory":
                 if req.get("refresh") and disk_locks.busy():

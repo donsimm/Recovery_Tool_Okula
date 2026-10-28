@@ -68,13 +68,14 @@ class DeviceWindow(Gtk.Window):
         for key, label, handler in (
                 ("image", "Disk-Image erstellen …", lambda: main.start_image(self.dev)),
                 ("restore", "Image zurückspielen …", lambda: main.start_restore(self.dev)),
+                ("install", "Windows installieren …", lambda: main.start_install(self.dev)),
                 ("inventory", "Inventar neu einlesen", lambda: main.refresh_inventory(self.dev)),
                 ("poweroff", "Herunterfahren", lambda: main.power(self.dev, "poweroff")),
                 ("reboot", "Neu starten", lambda: main.power(self.dev, "reboot"))):
             b = Gtk.Button(label=label)
             b.connect("clicked", lambda _b, h=handler: h())
             self.buttons[key] = b
-        for key in ("image", "restore", "inventory"):
+        for key in ("image", "restore", "install", "inventory"):
             actions.pack_start(self.buttons[key], False, False, 0)
         for key in ("reboot", "poweroff"):  # rechts, abgesetzt von den Aufträgen
             actions.pack_end(self.buttons[key], False, False, 0)

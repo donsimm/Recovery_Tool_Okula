@@ -43,7 +43,7 @@ class Job:
 
     @property
     def label(self) -> str:
-        return self.phase or ("Disk-Image" if self.kind == "image" else "Zurückspielen")
+        return self.phase or {"image": "Disk-Image", "install": "Windows-Installation"}.get(self.kind, "Zurückspielen")
 
     @property
     def shown_fraction(self) -> float:
@@ -222,5 +222,57 @@ def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source
             raise
         after(job, image, None)
         return f"{target} zurückgespielt"
+
+    return work
+
+
+def install_work(ip: str, key: bytes, port: int, iso: str, index: int, opts, disk: str,
+                 after: Callable[[Job, str | None, Exception | None], None]):
+    """Windows-Direktinstallation: Übertragen (1/2), Teilen der install.wim (2/2, falls nötig)."""
+    from okula_recovery import winsetup, winunattend
+
+    def work(job: Job, jm: JobManager) -> str:
+        state = {"files": 0}
+        try:
+            jm.log(job, "Lese das Windows-Medium auf dem NAS")
+            plan = winsetup.plan(iso, index, opts)
+        except Exception as e:
+            after(job, None, e)
+            raise
+        for line in winsetup.describe(plan) + winunattend.summary(opts):
+            jm.log(job, "  · " + line)
+        phase_send = "Übertragen (1/2)" if plan.split else "Übertragen"
+
+        def progress(ev: dict) -> None:
+            phase = ev.get("phase")
+            if phase == "prepare":
+                jm.log(job, f"Agent partitioniert {disk}: EFI · MSR · Windows · Setup-Partition")
+            elif phase == "file":
+                state["files"] += 1
+                if state["files"] == 1:
+                    jm.log(job, "Übertrage die Setup-Dateien aus der ISO")
+                if ev.get("file", "").lower().startswith("sources/install."):
+                    jm.log(job, f"Übertrage {ev['file']}")
+            elif phase == "data":
+                f = ev.get("fraction", 0)
+                jm.progress(job, f * (0.8 if plan.split else 1.0),
+                            f"{state['files']}/{len(plan.files)} Dateien · {ev.get('speed', 0) / 1e6:.0f} MB/s",
+                            phase_send, f)
+            elif phase == "split":
+                f = ev.get("fraction", 0)
+                if job.phase != "Teilen (2/2)":
+                    jm.log(job, "Agent teilt install.wim in install.swm-Teile (FAT32: max. 4 GB je Datei)")
+                jm.progress(job, 0.8 + 0.2 * f, "install.swm", "Teilen (2/2)", f)
+            elif phase == "done":
+                jm.log(job, "Setup-Partition bereit – das Gerät startet neu und installiert Windows selbständig "
+                            "(Agent-Stick jetzt abziehen)")
+
+        try:
+            boot = agentclient.install_windows(ip, key, iso, plan, disk, progress, job.cancel, port)
+        except Exception as e:
+            after(job, None, e)
+            raise
+        after(job, boot, None)
+        return f"Windows-Installation auf {disk} gestartet (Boot{boot})"
 
     return work

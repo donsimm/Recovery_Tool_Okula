@@ -17,7 +17,8 @@ from okula_recovery import (__version__, agentclient, archive, clonezilla, confi
 from okula_recovery.device_window import DeviceWindow  # noqa: E402
 from okula_recovery.image_dialog import ImageDialog  # noqa: E402
 from okula_recovery.nas_dialog import NasDialog  # noqa: E402
-from okula_recovery.os_dialogs import BootStickDialog, IsoDetailsDialog, UploadDialog, choose_isos  # noqa: E402
+from okula_recovery.os_dialogs import (BootStickDialog, InstallDialog, IsoDetailsDialog, UploadDialog,  # noqa: E402
+                                       choose_isos)
 from okula_recovery.restore_dialog import RestoreDialog  # noqa: E402
 from okula_recovery.stick_dialog import StickDialog  # noqa: E402
 from okula_recovery.uikit import (ask_text, confirm, confirm_error, make_tree, pane_title, rgba_hex,  # noqa: E402
@@ -138,6 +139,7 @@ class MainWindow(Gtk.ApplicationWindow):
             ("Gerät ö_ffnen …", self.on_open_device, "<Control>o"),
             ("_Disk-Image erstellen …", lambda: self._with_device(self.start_image), None),
             ("Image _zurückspielen …", lambda: self._with_device(self.start_restore), None),
+            ("_Windows installieren …", lambda: self._with_device(self.start_install), None),
             ("_Inventar neu einlesen", lambda: self._with_device(self.refresh_inventory), None),
             ("Gerät _herunterfahren", lambda: self._with_device(lambda d: self.power(d, "poweroff")), None),
             None,
@@ -416,6 +418,8 @@ class MainWindow(Gtk.ApplicationWindow):
             iso = self._selected_iso()
             add("Details und Prüfsummen …", lambda: iso and IsoDetailsDialog(self, iso), iso is not None)
             add("Boot-Stick erstellen …", self.on_boot_stick, iso is not None and bool(oslib.stick_modes(iso.meta)))
+            add("Auf Gerät installieren …", lambda: self.install_iso_on_device(iso),
+                iso is not None and iso.family == "windows" and oslib.installable(iso.meta))
             menu.append(Gtk.SeparatorMenuItem())
             add("Umbenennen …", lambda: self.on_rename_archive_folder(None))
             add("Löschen …", lambda: self.on_delete_image(None))
@@ -1258,8 +1262,8 @@ class MainWindow(Gtk.ApplicationWindow):
             b.set_sensitive(ready)
         self.dev_buttons["rename"].set_sensitive(kind in ("folder", "device"))
         self.dev_buttons["delete"].set_sensitive(kind == "folder" or (dev is not None and agent is None))
-        for label in ("Gerät öffnen …", "Disk-Image erstellen …", "Image zurückspielen …", "Inventar neu einlesen",
-                      "Gerät herunterfahren"):
+        for label in ("Gerät öffnen …", "Disk-Image erstellen …", "Image zurückspielen …", "Windows installieren …",
+                      "Inventar neu einlesen", "Gerät herunterfahren"):
             if label in getattr(self, "menu_items", {}):
                 self.menu_items[label].set_sensitive(dev is not None if label == "Gerät öffnen …" else ready)
 
@@ -1294,6 +1298,7 @@ class MainWindow(Gtk.ApplicationWindow):
             add("Öffnen …", self.on_open_device)
             add("Disk-Image erstellen …", lambda: self.start_image(dev), ready)
             add("Image zurückspielen …", lambda: self.start_restore(dev), ready)
+            add("Windows installieren …", lambda: self.start_install(dev), ready)
             add("Inventar neu einlesen", lambda: self.refresh_inventory(dev), ready)
             add("Herunterfahren", lambda: self.power(dev, "poweroff"), ready)
             add("Neu starten", lambda: self.power(dev, "reboot"), ready)
@@ -1613,12 +1618,73 @@ class MainWindow(Gtk.ApplicationWindow):
 
         RestoreDialog(parent, agent, root, start_job=start, preselect=preselect, device_name=dev.name)
 
+    def start_install(self, dev: devices.Device, preselect: str | None = None) -> None:
+        """Windows direkt aufs Gerät installieren (Medium aus „Betriebssysteme“ auf dem NAS)."""
+        parent = self._parent_for(dev)
+        agent = self._ready_agent(dev, parent)
+        if agent is None:
+            return
+        if self._nas_root() is None:
+            confirm_error(parent, "NAS ist nicht verbunden – Menü → NAS-Verbindung …")
+            return
+        isos = [i for i in self._isos.values() if i.family == "windows" and oslib.installable(i.meta)]
+        if not isos:
+            confirm_error(parent, "Keine Windows-10/11-ISO unter „Betriebssysteme“ – zuerst rechts "
+                                  "„ISO hinzufügen …“.")
+            return
+        if preselect is None:
+            iso = self._selected_iso()
+            preselect = str(iso.path) if iso else None
+
+        def start(iso: oslib.IsoInfo, index: int, disk: str, opts) -> None:
+            edition = next((e["name"] for e in iso.meta["windows"]["editions"] if e["index"] == index), "")
+            what = f"Windows-Installation {edition} → {disk}"
+
+            def after(job, boot, error) -> None:
+                GLib.idle_add(self._after_job, dev.id, job, what, boot, error, False)
+
+            work = jobs.install_work(agent.ip, self.key, agent.control_port, str(iso.path), index, opts, disk, after)
+            self.jobs.start(dev.id, "install", disk, what, work)
+            self.open_device(dev).show_jobs()
+
+        InstallDialog(parent, agent, isos, dev.name, start, preselect)
+
+    def install_iso_on_device(self, iso: oslib.IsoInfo | None) -> None:
+        """Rechtsklick auf eine ISO: auf welches verbundene Gerät?"""
+        if iso is None:
+            return
+        online = [self.store.devices[d] for d in self.online if d in self.store.devices]
+        if not online:
+            confirm_error(self, "Kein Gerät verbunden – Zielgerät mit dem Agent-Stick starten.")
+            return
+        dev = online[0]
+        if len(online) > 1:
+            dlg = Gtk.Dialog(title="Zielgerät wählen", transient_for=self, modal=True)
+            dlg.add_buttons("Abbrechen", Gtk.ResponseType.CANCEL, "Weiter", Gtk.ResponseType.OK)
+            combo = Gtk.ComboBoxText(margin=12)
+            for d in online:
+                agent = self.online_agent(d)
+                combo.append(d.id, f"{d.name}  ({agent.ip if agent else ''})")
+            combo.set_active(0)
+            dlg.get_content_area().add(combo)
+            dlg.show_all()
+            answer = dlg.run()
+            chosen = combo.get_active_id()
+            dlg.destroy()
+            if answer != Gtk.ResponseType.OK:
+                return
+            dev = self.store.devices[chosen]
+        self.start_install(dev, str(iso.path))
+
     def _after_job(self, dev_id: str, job: jobs.Job, what: str, path: str | None, error: Exception | None,
                    shutdown: bool) -> bool:
         """Ergebnis eines Auftrags: Verlauf, Image-Liste, freier Speicher, evtl. herunterfahren."""
         dev = self.store.devices.get(dev_id)
         if dev is not None:
-            if error is None:
+            if error is None and job.kind == "install":
+                self.store.add_history(dev, job.kind, f"{what}: vorbereitet, Gerät startet neu und installiert "
+                                                      "Windows selbständig", ok=True)
+            elif error is None:
                 where = ""
                 if job.kind == "image" and path and self._nas_root():
                     where = f" → NAS: /{os.path.relpath(path, self._nas_root())}"

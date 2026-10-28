@@ -197,7 +197,21 @@ Rechts im Reiter *Images* steht der Ast **„Betriebssysteme“**. Das Tool legt
 - **Windows-Anpassung** (`autounattend.xml` auf dem Stick): Anforderungen umgehen (TPM 2.0, Secure Boot, RAM, CPU), lokales Konto statt Microsoft-Konto (Name, optional Passwort – sonst beim ersten Anmelden setzen), Datenschutz-Fragen überspringen, keine automatische BitLocker-Verschlüsselung, **Region Schweiz** (Formate de-CH, Tastatur Schweiz-Deutsch, Zeitzone Zürich), optional Computername. Die Windows-Sprache bleibt die des Mediums.
 - Der Stick wird über den bestehenden Root-Helfer geschrieben (`sudo okula-make-stick iso-stick …`); ISOs werden nur vom eingehängten NAS (`/mnt/…`) akzeptiert.
 - Nicht übernommen von Rufus: ReFS/MS-DOS (unter Linux nicht erstellbar), FFU-Abbilder (nur mit Microsoft DISM), Windows To Go, Download von Windows-ISOs (ISOs lädst du selbst hoch).
-- **Direkt auf ein Gerät installieren** (ohne Stick, über den Agent): folgt als nächster Schritt.
+
+### Windows direkt auf ein Gerät installieren
+
+Gerät mit dem Agent-Stick starten, dann im Gerätefenster (oder Rechtsklick auf das Gerät bzw. auf eine Windows-ISO) **„Windows installieren …“**. Im Dialog Medium, Edition (Standard: Pro), Zieldisk und die Windows-Anpassung wählen (Computername = Gerätename), Disk-Namen zur Bestätigung eintippen.
+
+![Windows installieren](docs/windows-installieren.png)
+
+1. Der Agent legt auf der Zieldisk an (GPT): EFI (FAT32) · MSR · Windows · **Setup-Partition** (FAT32, am Ende).
+2. Das Tool liest die Setup-Dateien direkt aus der ISO auf dem NAS und überträgt sie verschlüsselt (SHA-256 je Datei). Eine `install.wim` über 4 GB teilt der Agent in `install.swm`-Teile.
+3. Der Agent setzt per `efibootmgr` den **einmaligen** Start (BootNext) auf die Setup-Partition und startet neu – **Agent-Stick dann abziehen**.
+4. Die Windows-Setup-Umgebung (von Microsoft signiert, Secure Boot geht) startet über `sources\autounattend.xml` nur `okula\install.cmd`: `dism` spielt die gewählte Edition auf, `bcdboot` richtet den Start ein. Der Setup-Assistent läuft nicht (keine TPM-/Secure-Boot-Prüfung, keine Klicks). Bei einem Fehler öffnet sich das Protokoll `okula\install.log`.
+5. Erster Start: Windows richtet sich mit den Anpassungen ein (Konto, Region Schweiz, Computername …). Danach löscht `SetupComplete.cmd` die Setup-Partition und vergrössert C: auf die ganze Disk.
+
+Im Tool ist der Auftrag fertig, sobald die Setup-Partition bereit ist (Schritt 3); der Verlauf des Geräts vermerkt die Installation. Voraussetzungen: Gerät startet im **UEFI-Modus** (sonst Boot-Stick verwenden), Zieldisk mind. 40 GB, Windows 10/11 x64. Neuere Intel-Laptops mit **VMD/RST** zeigen die Disk in der Setup-Umgebung evtl. nicht – dann im BIOS auf AHCI stellen oder den Boot-Stick verwenden. Linux-Direktinstallation folgt (Secure Boot verhindert das direkte Starten fremder Kernel aus dem Agent heraus); Linux bitte per Boot-Stick.
+
 
 ## Restore-Stick (ein Image, ohne Netzwerk)
 

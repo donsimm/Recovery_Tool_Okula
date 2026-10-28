@@ -486,3 +486,205 @@ class BootStickDialog(Gtk.Dialog):
                 self._log(f"Fehler: {error}")
         self.refresh_disks()
         return False
+
+
+def _gb(n: int) -> str:
+    return f"{n / 1000**3:.1f} GB"
+
+
+class InstallDialog(Gtk.Dialog):
+    """Windows direkt auf ein Gerät installieren (über den Agent, ohne Stick)."""
+
+    def __init__(self, parent: Gtk.Window, agent, isos: list[oslib.IsoInfo], device_name: str,
+                 start_job: Callable[[oslib.IsoInfo, int, str, winunattend.WinOptions], None],
+                 preselect: str | None = None):
+        super().__init__(title="Windows installieren", transient_for=parent, modal=True)
+        self.set_default_size(760, 720)
+        self.agent, self.start_job = agent, start_job
+        self.isos = {str(i.path): i for i in isos}
+        self.disks: dict[str, dict] = {}
+        self.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
+        self.btn_start = self.add_button("Installieren", Gtk.ResponseType.APPLY)
+        self.btn_start.get_style_context().add_class("destructive-action")
+        self.btn_start.set_sensitive(False)
+        self.connect("response", self._on_response)
+
+        grid = Gtk.Grid(column_spacing=8, row_spacing=8, margin=12)
+        r = 0
+        head = Gtk.Label(xalign=0, wrap=True)
+        head.set_markup(f"Zielgerät: <b>{GLib.markup_escape_text(device_name)}</b>  ({agent.ip})  "
+                        f"{GLib.markup_escape_text(agent.hardware)}")
+        grid.attach(head, 0, r, 2, 1)
+        r += 1
+        grid.attach(Gtk.Label(label="Windows-Medium", xalign=0), 0, r, 1, 1)
+        self.iso_combo = Gtk.ComboBoxText(hexpand=True)
+        for path, iso in sorted(self.isos.items(), key=lambda kv: kv[1].display.lower()):
+            self.iso_combo.append(path, f"{iso.display}  ({nas.format_size(iso.size)})")
+        self.iso_combo.connect("changed", lambda _c: self._on_iso())
+        grid.attach(self.iso_combo, 1, r, 1, 1)
+        r += 1
+        grid.attach(Gtk.Label(label="Edition", xalign=0), 0, r, 1, 1)
+        self.edition = Gtk.ComboBoxText()
+        self.edition.connect("changed", lambda _c: self._update())
+        grid.attach(self.edition, 1, r, 1, 1)
+        r += 1
+        grid.attach(Gtk.Label(label="Zieldisk", xalign=0), 0, r, 1, 1)
+        self.disk_combo = Gtk.ComboBoxText()
+        self.disk_combo.connect("changed", lambda _c: self._update())
+        grid.attach(self.disk_combo, 1, r, 1, 1)
+        r += 1
+        warn = Gtk.Label(xalign=0)
+        warn.set_markup("<b>Wird vollständig gelöscht:</b>")
+        warn.get_style_context().add_class("status-fail")
+        grid.attach(warn, 0, r, 2, 1)
+        r += 1
+        self.part_store = Gtk.ListStore(str, str, str, str)
+        view = Gtk.TreeView(model=self.part_store)
+        for i, t in enumerate(("Partition", "Dateisystem", "Grösse", "Label")):
+            col = Gtk.TreeViewColumn(t, Gtk.CellRendererText(), text=i)
+            col.set_expand(i == 3)
+            view.append_column(col)
+        view.get_selection().set_mode(Gtk.SelectionMode.NONE)
+        sw = scrolled(view)
+        sw.set_min_content_height(90)
+        grid.attach(sw, 0, r, 2, 1)
+        r += 1
+
+        exp = Gtk.Expander(label="Windows-Anpassung", expanded=True)
+        wbox = Gtk.Grid(column_spacing=8, row_spacing=4, margin_start=12, margin_top=4)
+        self.w_account = Gtk.CheckButton(label="Lokales Konto statt Microsoft-Konto", active=True)
+        self.w_user = Gtk.Entry(text="Benutzer", width_chars=16)
+        self.w_pass = Gtk.Entry(visibility=False, placeholder_text="leer = beim ersten Anmelden setzen", width_chars=26)
+        self.w_privacy = Gtk.CheckButton(label="Datenschutz-Fragen überspringen (alles aus)", active=True)
+        self.w_bitlocker = Gtk.CheckButton(label="Keine automatische BitLocker-Verschlüsselung", active=True)
+        self.w_swiss = Gtk.CheckButton(label="Region Schweiz: Formate de-CH, Tastatur Schweiz (Deutsch), Zeitzone Zürich",
+                                       active=True)
+        self.w_name = Gtk.Entry(text=winunattend.computer_name(device_name), width_chars=26,
+                                placeholder_text="leer = Windows wählt (max. 15 Zeichen)")
+        wbox.attach(self.w_account, 0, 0, 3, 1)
+        wbox.attach(Gtk.Label(label="Benutzername", xalign=0, margin_start=24), 0, 1, 1, 1)
+        wbox.attach(self.w_user, 1, 1, 1, 1)
+        wbox.attach(Gtk.Label(label="Passwort", xalign=0, margin_start=24), 0, 2, 1, 1)
+        wbox.attach(self.w_pass, 1, 2, 1, 1)
+        for i, w in enumerate((self.w_privacy, self.w_bitlocker, self.w_swiss)):
+            wbox.attach(w, 0, 3 + i, 3, 1)
+        wbox.attach(Gtk.Label(label="Computername", xalign=0), 0, 6, 1, 1)
+        wbox.attach(self.w_name, 1, 6, 1, 1)
+        self.w_account.connect("toggled", lambda _c: self._update())
+        exp.add(wbox)
+        grid.attach(exp, 0, r, 2, 1)
+        r += 1
+
+        info = Gtk.Label(xalign=0, wrap=True)
+        info.set_markup(
+            "<small>Ablauf: Der Agent legt EFI-, Windows- und eine Setup-Partition an, das Tool überträgt die "
+            "Setup-Dateien vom NAS. Danach startet das Gerät neu und installiert Windows selbständig "
+            "(ohne Setup-Assistent, daher auch ohne TPM-/Secure-Boot-Prüfung). Am Ende entfernt Windows die "
+            "Setup-Partition. <b>Gerät muss im UEFI-Modus laufen. Agent-Stick nach dem Neustart abziehen.</b>"
+            "</small>")
+        grid.attach(info, 0, r, 2, 1)
+        r += 1
+        self.check = Gtk.Label(xalign=0, wrap=True)
+        grid.attach(self.check, 0, r, 2, 1)
+        r += 1
+        self.confirm_label = Gtk.Label(xalign=0)
+        grid.attach(self.confirm_label, 0, r, 1, 1)
+        self.confirm = Gtk.Entry(placeholder_text="Disk-Namen eintippen")
+        self.confirm.connect("changed", lambda _e: self._update())
+        grid.attach(self.confirm, 1, r, 1, 1)
+        r += 1
+        self.status = Gtk.Label(label="Lese Disks vom Agent …", xalign=0, wrap=True)
+        self.status.get_style_context().add_class("status-idle")
+        grid.attach(self.status, 0, r, 2, 1)
+        self.get_content_area().add(scrolled(grid))
+        self.show_all()
+        if preselect in self.isos:
+            self.iso_combo.set_active_id(preselect)
+        elif self.isos:
+            self.iso_combo.set_active(0)
+        self._load_disks()
+
+    def _load_disks(self) -> None:
+        from okula_recovery import agentclient  # Kreisimport vermeiden
+        agent = self.agent
+        key = agentclient.load_or_create_key()
+
+        def work():
+            try:
+                result = agentclient.get_info(agent.ip, key, agent.control_port)
+            except Exception as e:
+                result = e
+            GLib.idle_add(self._on_disks, result)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_disks(self, result) -> bool:
+        if isinstance(result, Exception):
+            self.status.set_text(f"Agent nicht erreichbar: {result}")
+            return False
+        self.disks = {d["path"]: d for d in result.get("disks", [])}
+        for path, d in self.disks.items():
+            self.disk_combo.append(path, f"{d['name']} – {d['model'] or 'Disk'} ({_gb(d['size'])})")
+        if self.disks:
+            self.disk_combo.set_active(0)
+            self.status.set_text("")
+        else:
+            self.status.set_text("Der Agent meldet keine interne Disk.")
+        return False
+
+    def _on_iso(self) -> None:
+        iso = self.isos.get(self.iso_combo.get_active_id() or "")
+        self.edition.remove_all()
+        if iso:
+            eds = iso.meta.get("windows", {}).get("editions", [])
+            for e in eds:
+                self.edition.append(str(e["index"]), e["name"])
+            pro = next((e for e in eds if e.get("edition_id") == "Professional"), eds[0] if eds else None)
+            if pro:
+                self.edition.set_active_id(str(pro["index"]))
+        self._update()
+
+    def _update(self) -> None:
+        for w in (self.w_user, self.w_pass):
+            w.set_sensitive(self.w_account.get_active())
+        disk = self.disks.get(self.disk_combo.get_active_id() or "")
+        self.part_store.clear()
+        ok = bool(self.iso_combo.get_active_id() and self.edition.get_active_id() and disk)
+        if disk:
+            for p in disk["partitions"] or [{"name": disk["name"], "fstype": "", "size": disk["size"], "label": ""}]:
+                self.part_store.append([p["name"], p.get("fstype") or "leer/unbekannt", nas.format_size(p["size"]),
+                                        p.get("label", "")])
+            self.confirm_label.set_markup(f"Bestätigung: <b>{GLib.markup_escape_text(disk['name'])}</b> eintippen")
+            if disk["size"] < 40 * 1000**3:
+                self.check.set_markup(f"<b>Disk zu klein:</b> {_gb(disk['size'])} (mind. 40 GB)")
+                ok = False
+            elif any(p.get("mounted") for p in disk["partitions"]):
+                self.check.set_markup("<b>Eine Partition der Zieldisk ist eingehängt.</b>")
+                ok = False
+            else:
+                self.check.set_text(f"Disk passt: {_gb(disk['size'])}")
+        typed = disk is not None and self.confirm.get_text().strip() == disk["name"]
+        self.btn_start.set_sensitive(ok and typed)
+
+    def options(self) -> winunattend.WinOptions:
+        iso = self.isos[self.iso_combo.get_active_id()]
+        w = iso.meta.get("windows", {})
+        return winunattend.WinOptions(
+            bypass_requirements=False,  # Direktinstallation läuft ohne Setup-Assistent
+            local_account=self.w_user.get_text().strip() if self.w_account.get_active() else "",
+            password=self.w_pass.get_text() if self.w_account.get_active() else "",
+            skip_privacy=self.w_privacy.get_active(), no_bitlocker=self.w_bitlocker.get_active(),
+            swiss_region=self.w_swiss.get_active(), ui_language=(w.get("languages") or ["de-DE"])[0],
+            computer_name=self.w_name.get_text().strip(), arch=w.get("arch") or "amd64", skip_network=True)
+
+    def _on_response(self, _dlg, response: int) -> None:
+        if response != Gtk.ResponseType.APPLY:
+            self.destroy()
+            return
+        iso = self.isos[self.iso_combo.get_active_id()]
+        try:
+            self.start_job(iso, int(self.edition.get_active_id()), self.disk_combo.get_active_id(), self.options())
+        except Exception as e:
+            self.status.set_text(f"Nicht gestartet: {e}")
+            return
+        self.destroy()

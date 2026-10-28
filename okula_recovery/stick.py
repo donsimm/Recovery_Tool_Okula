@@ -31,13 +31,15 @@ DATA_LABEL = "OKULADATA"      # ext4-Datenpartition des Restore-Sticks (Image, D
 IMAGE_ROOT = Path("/mnt")     # Images nur von eingehängten Freigaben (sudo-Helfer)
 MIN_SIZE = 4 * 1000**3
 SYSTEM_MOUNTS = ("/", "/boot", "/boot/efi", "/usr", "/var", "/home", "[SWAP]")
-AGENT_MODULES = ("__init__.py", "agent.py", "discovery.py", "imaging.py", "inventory.py", "network.py", "wire.py")
+AGENT_MODULES = ("__init__.py", "agent.py", "discovery.py", "imaging.py", "inventory.py", "network.py",
+                 "wininstall.py", "wire.py")
 # Werkzeuge, die dem Live-Image fehlen; werden samt fehlender Abhängigkeiten aus den
 # Debian-Paketen des Servers (gleiche Release) in den Agent-Layer entpackt
 # lz4/lzop/pigz/bzip2: zum Zurückspielen von Clonezilla-Images
 # smartmontools/libhivex-bin/ntfs-3g: Geräte-Erfassung (SMART, Windows-Version, NTFS lesend)
 BUNDLED_PACKAGES = ("partclone", "zstd", "pigz", "lz4", "lzop", "bzip2", "xz-utils",
-                    "smartmontools", "libhivex-bin", "ntfs-3g")
+                    "smartmontools", "libhivex-bin", "ntfs-3g",
+                    "efibootmgr", "dosfstools", "wimtools")  # Windows-Direktinstallation
 # Ohne Paketliste des ISO nie überlagern (Basis jedes Systems)
 NEVER_BUNDLE = ("libc6", "libgcc-s1", "libstdc++6", "gcc-")
 PACKAGE_DIR = Path(__file__).resolve().parent

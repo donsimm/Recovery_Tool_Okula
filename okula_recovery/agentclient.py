@@ -429,3 +429,62 @@ def restore_image(ip: str, key: bytes, image_path: str | Path, target_disk: str,
         raise AgentError(f"Verbindung zum Agent abgebrochen: {e}") from None
     finally:
         sock.close()
+
+
+def install_windows(ip: str, key: bytes, iso_path: str | Path, plan, disk: str, progress: Progress,
+                    cancel: threading.Event, port: int = wire.PORT) -> str:
+    """Windows-Direktinstallation: Setup-Dateien aus der ISO (NAS) an den Agent schicken.
+
+    plan: winsetup.Plan. Gibt die Boot-Nummer zurück; danach startet der Agent neu und Windows wird installiert.
+    """
+    from okula_recovery import udf  # nur hier gebraucht
+
+    total = sum(e.size for _p, e in plan.files) or 1
+    sent = 0
+    started = time.monotonic()
+    sock = _connect(ip, key, port)
+    try:
+        with udf.UdfImage.open(str(iso_path)) as img:
+            sock.settimeout(1800)
+            wire.send_json(sock, plan.request(disk))
+            progress({"phase": "prepare"})
+            _expect(sock, "ready")
+            for path, entry in plan.files:
+                progress({"phase": "file", "file": path})
+                h = hashlib.sha256()
+                size, last = 0, 0.0
+                try:
+                    wire.send_json(sock, {"type": "file", "path": path})
+                    for chunk in img.chunks(entry, chunk=wire.CHUNK):
+                        if cancel.is_set():
+                            raise AgentError("Abgebrochen – die Zieldisk ist jetzt leer bzw. unvollständig")
+                        wire.send_data(sock, chunk)
+                        h.update(chunk)
+                        size += len(chunk)
+                        sent += len(chunk)
+                        if time.monotonic() - last >= 0.5:
+                            last = time.monotonic()
+                            progress({"phase": "data", "fraction": sent / total, "file": path,
+                                      "speed": sent / max(time.monotonic() - started, 0.001)})
+                    wire.send_json(sock, {"type": "file_end", "file": path, "size": size, "sha256": h.hexdigest()})
+                except (BrokenPipeError, ConnectionResetError, ssl.SSLError) as e:
+                    raise AgentError(_agent_error(sock) or f"Verbindung zum Agent abgebrochen: {e}") from None
+                _expect(sock, "file_done")
+            wire.send_json(sock, {"type": "end"})
+            while True:  # Teilen der install.wim meldet Fortschritt, dann „done“
+                msg = wire.recv_json(sock)
+                if msg.get("type") == "progress":
+                    progress({"phase": "split", "fraction": float(msg.get("fraction") or 0)})
+                    continue
+                if msg.get("type") == "error":
+                    raise AgentError(str(msg.get("message", "Fehler auf dem Agent")))
+                if msg.get("type") != "done":
+                    raise wire.ProtocolError(f"done erwartet, {msg.get('type')} erhalten")
+                progress({"phase": "done"})
+                return str(msg.get("boot") or "")
+    except wire.ProtocolError as e:
+        raise AgentError(f"Verbindung zum Agent gestört: {e}") from None
+    except (TimeoutError, ConnectionError) as e:
+        raise AgentError(f"Verbindung zum Agent abgebrochen: {e}") from None
+    finally:
+        sock.close()

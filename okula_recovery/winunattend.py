@@ -35,6 +35,7 @@ class WinOptions:
     ui_language: str = "de-DE"         # Sprache des Mediums
     computer_name: str = ""            # leer = Windows wählt
     arch: str = "amd64"
+    skip_network: bool = False         # Netzwerk-Seite im Willkommens-Assistenten überspringen
 
 
 def encode_password(password: str, kind: str = "Password") -> str:
@@ -97,17 +98,25 @@ def _international(b: _Builder, pass_name: str, opts: WinOptions, winpe: bool) -
     b.sub(comp, "UserLocale", SWISS_LOCALE if opts.swiss_region else opts.ui_language)
 
 
-def build(opts: WinOptions) -> str:
+def build(opts: WinOptions, pe: bool = True, system: bool = True, launch: str | None = None) -> str:
+    """pe: Setup-Umgebung (windowsPE); system: erster Start (specialize, oobeSystem);
+    launch: Befehl, der in der Setup-Umgebung statt des Setup-Assistenten läuft (Direktinstallation)."""
     b = _Builder(opts.arch)
 
     # --- windowsPE: Setup selbst ---
-    _international(b, "windowsPE", opts, winpe=True)
-    setup = b.component("windowsPE", "Microsoft-Windows-Setup")
-    if opts.bypass_requirements:
-        b.commands(setup, "RunSynchronous", "RunSynchronousCommand",
-                   [f"reg add HKLM\\SYSTEM\\Setup\\LabConfig /v {v} /t REG_DWORD /d 1 /f" for v in LABCONFIG])
-    user = b.sub(setup, "UserData")
-    b.sub(user, "AcceptEula", "true")
+    if pe:
+        _international(b, "windowsPE", opts, winpe=True)
+        setup = b.component("windowsPE", "Microsoft-Windows-Setup")
+        cmds = [f"reg add HKLM\\SYSTEM\\Setup\\LabConfig /v {v} /t REG_DWORD /d 1 /f"
+                for v in LABCONFIG] if opts.bypass_requirements else []
+        if launch:
+            cmds.append(launch)
+        if cmds:
+            b.commands(setup, "RunSynchronous", "RunSynchronousCommand", cmds)
+        user = b.sub(setup, "UserData")
+        b.sub(user, "AcceptEula", "true")
+    if not system:
+        return b.xml()
 
     # --- specialize: Name, Zeitzone, Registry ---
     shell = b.component("specialize", "Microsoft-Windows-Shell-Setup")
@@ -138,6 +147,8 @@ def build(opts: WinOptions) -> str:
     if opts.local_account:
         b.sub(oobe, "HideOnlineAccountScreens", "true")
         b.sub(oobe, "HideLocalAccountScreen", "true")
+    if opts.skip_network:
+        b.sub(oobe, "HideWirelessSetupInOOBE", "true")
     if opts.skip_privacy:
         b.sub(oobe, "ProtectYourPC", "3")
     if opts.local_account:
