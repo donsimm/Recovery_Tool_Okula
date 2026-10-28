@@ -1066,6 +1066,7 @@ class MainWindow(Gtk.ApplicationWindow):
             add("Image zurückspielen …", lambda: self.start_restore(dev), ready)
             add("Inventar neu einlesen", lambda: self.refresh_inventory(dev), ready)
             add("Herunterfahren", lambda: self.power(dev, "poweroff"), ready)
+            add("Neu starten", lambda: self.power(dev, "reboot"), ready)
             menu.append(Gtk.SeparatorMenuItem())
             add("Umbenennen …", lambda: self.on_rename_device_entry(None))
             if dev.folder:

@@ -73,8 +73,11 @@ class DeviceWindow(Gtk.Window):
                 ("reboot", "Neu starten", lambda: main.power(self.dev, "reboot"))):
             b = Gtk.Button(label=label)
             b.connect("clicked", lambda _b, h=handler: h())
-            actions.pack_start(b, False, False, 0)
             self.buttons[key] = b
+        for key in ("image", "restore", "inventory"):
+            actions.pack_start(self.buttons[key], False, False, 0)
+        for key in ("reboot", "poweroff"):  # rechts, abgesetzt von den Aufträgen
+            actions.pack_end(self.buttons[key], False, False, 0)
         root.pack_start(actions, False, False, 0)
 
         self.tabs = Gtk.Notebook()
