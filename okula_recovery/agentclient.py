@@ -88,6 +88,17 @@ def get_info(ip: str, key: bytes, port: int = wire.PORT) -> dict:
     return reply
 
 
+def get_inventory(ip: str, key: bytes, port: int = wire.PORT, refresh: bool = False) -> dict:
+    """Inventar des Geräts (Hardware, Disks, Betriebssystem); refresh = neu sammeln lassen."""
+    with _connect(ip, key, port) as sock:
+        sock.settimeout(180)  # das erste Sammeln hängt Partitionen ein und dauert etwas
+        wire.send_json(sock, {"cmd": "inventory", "refresh": refresh})
+        reply = wire.recv_json(sock)
+    if reply.get("type") != "inventory":
+        raise AgentError(reply.get("message", "Agent liefert kein Inventar"))
+    return reply.get("data") or {}
+
+
 def power(ip: str, key: bytes, action: str = "poweroff", port: int = wire.PORT, delay: int = 5) -> None:
     """Zielmaschine herunterfahren („poweroff“) oder neu starten („reboot“)."""
     with _connect(ip, key, port) as sock:

@@ -5,12 +5,12 @@ from __future__ import annotations
 import os
 import threading
 import time
-from datetime import datetime
+from typing import Callable
 
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gtk, Pango  # noqa: E402
+from gi.repository import GLib, Gtk  # noqa: E402
 
 from okula_recovery import agentclient, archive, clonezilla, discovery, nas  # noqa: E402
 
@@ -21,8 +21,11 @@ def _gb(n: int) -> str:
 
 class RestoreDialog(Gtk.Dialog):
     def __init__(self, parent: Gtk.Window, agent: discovery.AgentInfo, nas_root: str,
-                 preselect: str | None = None):
+                 start_job: Callable[[str, str | None, str, bool, bool, str], None], preselect: str | None = None,
+                 device_name: str = ""):
+        """start_job(image, quelldisk, zieldisk, prüfen, herunterfahren, bezeichnung) startet den Auftrag."""
         super().__init__(title="Image zurückspielen", transient_for=parent, modal=True)
+        self.start_job = start_job
         self.set_default_size(820, 640)
         self.agent = agent
         self.nas_root = nas_root
@@ -31,15 +34,11 @@ class RestoreDialog(Gtk.Dialog):
         # Auswahl-ID („Pfad<TAB>Disk“) → {"path", "disk", "machine", "completed", "disk_info", "format"}
         self.images: dict[str, dict] = {}
         self.disks: dict[str, dict] = {}
-        self.cancel = threading.Event()
-        self.busy = False
-
-        self.btn_close = self.add_button("Schliessen", Gtk.ResponseType.CLOSE)
+        self.btn_close = self.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
         self.btn_start = self.add_button("Zurückspielen", Gtk.ResponseType.APPLY)
         self.btn_start.get_style_context().add_class("destructive-action")
         self.btn_start.set_sensitive(False)
         self.connect("response", self.on_response)
-        self.connect("delete-event", lambda *_a: self.busy)
 
         grid = Gtk.Grid(column_spacing=8, row_spacing=8, margin=12)
         row = 0
@@ -53,7 +52,7 @@ class RestoreDialog(Gtk.Dialog):
 
         row += 1
         title = Gtk.Label(xalign=0)
-        title.set_markup(f"Zielmaschine: <b>{GLib.markup_escape_text(agent.hostname or agent.ip)}</b> "
+        title.set_markup(f"Zielgerät: <b>{GLib.markup_escape_text(device_name or agent.hostname or agent.ip)}</b> "
                          f"({agent.ip}) {GLib.markup_escape_text(agent.hardware)}")
         grid.attach(title, 0, row, 2, 1)
         row += 1
@@ -215,99 +214,24 @@ class RestoreDialog(Gtk.Dialog):
                 self.check.set_text(f"Grösse passt: {_gb(disk['size'])}{extra}")
                 ok = True
         typed = disk is not None and self.confirm.get_text().strip() == disk["name"]
-        if not self.busy:
-            self.btn_start.set_sensitive(ok and typed)
+        self.btn_start.set_sensitive(ok and typed)
 
     # ---------- Zurückspielen ----------
 
     def on_response(self, _dlg, response: int) -> None:
-        if response == Gtk.ResponseType.APPLY:
-            if self.busy:
-                self.cancel.set()
-                self.append_log("Abbruch angefordert – die Zieldisk bleibt unvollständig.")
-            else:
-                self.start()
-        elif not self.busy:
+        if response != Gtk.ResponseType.APPLY:
             self.destroy()
-
-    def _set_busy(self, busy: bool) -> None:
-        self.busy = busy
-        for w in (self.image_combo, self.disk_combo, self.verify, self.shutdown, self.confirm, self.btn_close):
-            w.set_sensitive(not busy)
-        self.btn_start.set_label("Abbrechen" if busy else "Zurückspielen")
-        if not busy:
-            self._update()
-
-    def start(self) -> None:
+            return
         if not os.path.ismount(self.nas_root):
             self.append_log("NAS ist nicht eingehängt.")
             return
         chosen = self.images[self.image_combo.get_active_id()]
-        image, source_disk = chosen["path"], chosen["disk"]
-        disk = self.disk_combo.get_active_id()
-        verify = self.verify.get_active()
-        self.cancel.clear()
-        self._set_busy(True)
-        self.append_log(f"Spiele {os.path.basename(image)} auf {disk} zurück …")
-
-        def progress(ev: dict) -> None:
-            GLib.idle_add(self._on_progress, ev)
-
-        def work():
-            try:
-                agentclient.restore_image(self.agent.ip, self.key, image, disk, progress, self.cancel,
-                                          self.agent.control_port, verify, source_disk)
-                GLib.idle_add(self._on_finished, None)
-            except Exception as e:
-                GLib.idle_add(self._on_finished, e)
-
-        threading.Thread(target=work, daemon=True).start()
-
-    def _on_progress(self, ev: dict) -> bool:
-        phase = ev.get("phase")
-        if phase == "note":
-            self.append_log(ev.get("message", ""))
-        elif phase == "verify":
-            self.progress.set_fraction(ev.get("fraction", 0))
-            self.progress.set_text(f"Prüfe Image: {ev.get('fraction', 0) * 100:.0f} %")
-        elif phase == "table":
-            self.append_log("Image geprüft – schreibe Partitionstabelle und Bootcode")
-            self.progress.set_fraction(0)
-        elif phase == "file":
-            self.append_log(f"Schreibe {ev.get('part')} ({ev.get('file')})")
-        elif phase == "data":
-            frac = ev.get("fraction", 0)
-            self.progress.set_fraction(frac)
-            self.progress.set_text(f"{frac * 100:.0f} %  –  {ev.get('part')}  –  "
-                                   f"{ev.get('speed', 0) / 1e6:.0f} MB/s")
-        return False
-
-    def _on_finished(self, error) -> bool:
-        self._set_busy(False)
-        if error:
-            self.progress.set_text("Abgebrochen" if self.cancel.is_set() else "Fehlgeschlagen")
-            self.append_log(f"Fehler: {error}")
-        else:
-            self.progress.set_fraction(1.0)
-            self.progress.set_text("Zurückgespielt")
-            self.append_log(f"Fertig {datetime.now():%H:%M}. Stick abziehen und die Maschine neu starten.")
-            self._power_off_after()
-        self.confirm.set_text("")
-        return False
-
-    def _power_off_after(self) -> None:
-        """Nach erfolgreichem Auftrag: Zielmaschine herunterfahren, wenn gewünscht."""
-        if not self.shutdown.get_active():
+        target = self.disk_combo.get_active_id()
+        label = f"{chosen['machine']} ({chosen['disk_info'].get('name', '?')})"
+        try:
+            self.start_job(chosen["path"], chosen["disk"], target, self.verify.get_active(),
+                           self.shutdown.get_active(), label)
+        except Exception as e:
+            self.append_log(f"Nicht gestartet: {e}")
             return
-        agent, key = self.agent, self.key
-
-        def work():
-            try:
-                agentclient.power(agent.ip, key, "poweroff", agent.control_port)
-                msg = "Maschine wird heruntergefahren."
-            except Exception as e:
-                msg = f"Herunterfahren fehlgeschlagen: {e}"
-            GLib.idle_add(self.append_log, msg)
-
-        threading.Thread(target=work, daemon=True).start()
-
+        self.destroy()

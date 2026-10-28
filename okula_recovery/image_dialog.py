@@ -1,10 +1,11 @@
-"""Dialog „Disk-Image erstellen“: Disk der Zielmaschine wählen, Image aufs NAS schreiben."""
+"""Dialog „Disk-Image erstellen“: Disk und Name wählen – der Auftrag läuft danach im Hintergrund."""
 
 from __future__ import annotations
 
 import os
 import threading
 import time
+from typing import Callable
 
 import gi
 
@@ -30,34 +31,33 @@ def default_name(info: discovery.AgentInfo) -> str:
 
 
 class ImageDialog(Gtk.Dialog):
-    def __init__(self, parent: Gtk.Window, agent: discovery.AgentInfo, nas_root: str, on_done=None):
+    def __init__(self, parent: Gtk.Window, agent: discovery.AgentInfo, nas_root: str,
+                 start_job: Callable[[dict, str, bool], None], name: str = ""):
+        """start_job(disk, archivname, danach_herunterfahren) startet den Hintergrund-Auftrag."""
         super().__init__(title="Disk-Image erstellen", transient_for=parent, modal=True)
-        self.set_default_size(760, 560)
+        self.set_default_size(760, 520)
         self.agent = agent
         self.nas_root = nas_root
-        self.on_done = on_done
+        self.start_job = start_job
         self.key = agentclient.load_or_create_key()
         self.disks: dict[str, dict] = {}
-        self.cancel = threading.Event()
-        self.busy = False
 
-        self.btn_close = self.add_button("Schliessen", Gtk.ResponseType.CLOSE)
+        self.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
         self.btn_start = self.add_button("Image erstellen", Gtk.ResponseType.APPLY)
         self.btn_start.get_style_context().add_class("suggested-action")
         self.btn_start.set_sensitive(False)
         self.connect("response", self.on_response)
-        self.connect("delete-event", lambda *_a: self.busy)
 
         grid = Gtk.Grid(column_spacing=8, row_spacing=8, margin=12)
         row = 0
         title = Gtk.Label(xalign=0, wrap=True)
-        title.set_markup(f"<b>{GLib.markup_escape_text(agent.hostname or agent.ip)}</b>  ({agent.ip})  "
+        title.set_markup(f"<b>{GLib.markup_escape_text(name or agent.hostname or agent.ip)}</b>  ({agent.ip})  "
                          f"{GLib.markup_escape_text(agent.hardware)}")
         grid.attach(title, 0, row, 2, 1)
 
         row += 1
         grid.attach(Gtk.Label(label="Name im Archiv", xalign=0), 0, row, 1, 1)
-        self.name = Gtk.Entry(text=default_name(agent), hexpand=True,
+        self.name = Gtk.Entry(text=agentclient.safe_name(name) if name else default_name(agent), hexpand=True,
                               placeholder_text="z. B. PC-Buchhaltung")
         self.name.set_tooltip_text("Ordnername auf dem NAS (Gerät oder Inventarnummer)")
         self.name.connect("changed", lambda _e: self._update_target())
@@ -97,6 +97,8 @@ class ImageDialog(Gtk.Dialog):
         row += 1
         self.progress = Gtk.ProgressBar(show_text=True)
         self.progress.set_text("Lese Disks vom Agent …")
+        self.progress.set_tooltip_text("Der Auftrag läuft nach dem Start im Hintergrund – Fortschritt und Log "
+                                       "im Gerätefenster")
         grid.attach(self.progress, 0, row, 2, 1)
 
         row += 1
@@ -164,112 +166,21 @@ class ImageDialog(Gtk.Dialog):
         disk = self.disk_combo.get_active_id() or "<disk>"
         path = agentclient.image_dir(self.nas_root, self.name.get_text().strip() or "maschine", disk)
         self.target.set_text(f"{path.parent}/{path.name[:16]}…")
-        if not self.busy:
-            self.btn_start.set_sensitive(bool(self.disks) and bool(self.name.get_text().strip()))
+        self.btn_start.set_sensitive(bool(self.disks) and bool(self.name.get_text().strip()))
 
     # ---------- Image erstellen ----------
 
     def on_response(self, _dlg, response: int) -> None:
-        if response == Gtk.ResponseType.APPLY:
-            if self.busy:
-                self.cancel.set()
-                self.append_log("Abbruch angefordert …")
-            else:
-                self.start()
-        elif not self.busy:
+        if response != Gtk.ResponseType.APPLY:
             self.destroy()
-
-    def start(self) -> None:
+            return
         if not os.path.ismount(self.nas_root):
-            self.append_log(f"NAS ist nicht eingehängt ({self.nas_root}) – links „Einhängen“ klicken.")
+            self.append_log(f"NAS ist nicht eingehängt ({self.nas_root}) – Menü → NAS-Verbindung …")
             return
-        disk_path = self.disk_combo.get_active_id()
-        disk = self.disks[disk_path]
-        machine = self.name.get_text().strip()
-        self.busy = True
-        self.cancel.clear()
-        for w in (self.name, self.disk_combo, self.shutdown, self.btn_close):
-            w.set_sensitive(False)
-        self.btn_start.set_label("Abbrechen")
-        self.btn_start.get_style_context().remove_class("suggested-action")
-        self.btn_start.get_style_context().add_class("destructive-action")
-        self.append_log(f"Starte Disk-Image von {disk['name']} ({disk['model']}) …")
-
-        sizes = {p["name"]: p["size"] for p in disk["partitions"] if p["fstype"] != "swap"}
-        total = sum(sizes.values()) or 1
-        done_parts: set[str] = set()
-        state = {"part": ""}
-
-        def progress(ev: dict) -> None:
-            GLib.idle_add(self._on_progress, ev, sizes, total, done_parts, state)
-
-        source = {"hostname": self.agent.hostname, "mac": self.agent.mac, "vendor": self.agent.vendor,
-                  "product": self.agent.product, "agent_id": self.agent.agent_id}
-
-        def work():
-            try:
-                path = agentclient.create_image(self.agent.ip, self.key, disk_path, self.nas_root, machine,
-                                                progress, self.cancel, self.agent.control_port, source)
-                GLib.idle_add(self._on_finished, path, None)
-            except Exception as e:
-                GLib.idle_add(self._on_finished, None, e)
-
-        threading.Thread(target=work, daemon=True).start()
-
-    def _on_progress(self, ev: dict, sizes, total, done_parts, state) -> bool:
-        phase = ev.get("phase")
-        if phase == "file":
-            if state["part"] and state["part"] != ev.get("part"):
-                done_parts.add(state["part"])
-            state["part"] = ev.get("part", "")
-            self.append_log(f"Übertrage {ev.get('file')}")
-            return False
-        if phase in ("begin", "done"):
-            return False
-        part = ev.get("part") or state["part"]
-        pct = ev.get("pct")
-        done = sum(sizes.get(p, 0) for p in done_parts)
-        if part in sizes and pct is not None:
-            done += sizes[part] * pct / 100
-        frac = min(done / total, 1.0)
-        speed = ev.get("speed", 0) / 1e6
-        self.progress.set_fraction(frac)
-        self.progress.set_text(f"{frac * 100:.0f} %  –  {part or 'Partitionstabelle'}  –  "
-                               f"{nas.format_size(ev.get('total_bytes', 0))} übertragen  –  {speed:.0f} MB/s")
-        return False
-
-    def _on_finished(self, path, error) -> bool:
-        self.busy = False
-        for w in (self.name, self.disk_combo, self.shutdown, self.btn_close):
-            w.set_sensitive(True)
-        self.btn_start.set_label("Image erstellen")
-        self.btn_start.get_style_context().remove_class("destructive-action")
-        self.btn_start.get_style_context().add_class("suggested-action")
-        if error:
-            self.progress.set_text("Fehlgeschlagen" if not self.cancel.is_set() else "Abgebrochen")
-            self.append_log(f"Fehler: {error}")
-        else:
-            self.progress.set_fraction(1.0)
-            self.progress.set_text("Image fertig")
-            self.append_log(f"Fertig: {path}")
-            if self.on_done:
-                self.on_done()
-            self._power_off_after()
-        return False
-
-    def _power_off_after(self) -> None:
-        """Nach erfolgreichem Auftrag: Zielmaschine herunterfahren, wenn gewünscht."""
-        if not self.shutdown.get_active():
+        disk = self.disks[self.disk_combo.get_active_id()]
+        try:
+            self.start_job(disk, self.name.get_text().strip(), self.shutdown.get_active())
+        except Exception as e:
+            self.append_log(f"Nicht gestartet: {e}")
             return
-        agent, key = self.agent, self.key
-
-        def work():
-            try:
-                agentclient.power(agent.ip, key, "poweroff", agent.control_port)
-                msg = "Maschine wird heruntergefahren."
-            except Exception as e:
-                msg = f"Herunterfahren fehlgeschlagen: {e}"
-            GLib.idle_add(self.append_log, msg)
-
-        threading.Thread(target=work, daemon=True).start()
-
+        self.destroy()

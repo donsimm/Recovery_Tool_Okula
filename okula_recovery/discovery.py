@@ -46,6 +46,7 @@ class AgentInfo:
     control_port: int = 0  # 0 = Agent ohne Steuerdienst (alter Stick)
     busy: bool = False
     job: str = ""                   # was gerade läuft, z. B. „Zurückspielen“
+    inventory_version: int = 0      # ändert sich, wenn der Agent das Inventar neu gesammelt hat
     progress: float | None = None   # 0..1
     last_seen: float = 0.0
 
@@ -151,6 +152,7 @@ def parse_beacon(data: bytes, sender_ip: str) -> AgentInfo | None:
                      product=str(msg.get("product") or ""), disks=disks, version=str(msg.get("version") or ""),
                      control_port=_int(msg.get("control")), busy=bool(msg.get("busy")),
                      job=str(msg.get("job") or "")[:40], progress=_fraction(msg.get("progress")),
+                     inventory_version=_int(msg.get("inv")),
                      last_seen=time.time())
 
 

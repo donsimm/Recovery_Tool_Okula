@@ -1,8 +1,7 @@
-"""GTK-3-Oberfläche: Menüleiste, links Maschinen im LAN, rechts NAS-Status mit Images und Dateien."""
+"""GTK-3-Oberfläche: Menüleiste, links erfasste Geräte, rechts NAS-Status mit Images und Dateien."""
 
 from __future__ import annotations
 
-import ipaddress
 import os
 import time
 from pathlib import Path
@@ -13,8 +12,9 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 
-from okula_recovery import (__version__, agentclient, archive, clonezilla, config, discovery, nas,  # noqa: E402
-                            nasfiles, network)
+from okula_recovery import (__version__, agentclient, archive, clonezilla, config, devices, discovery,  # noqa: E402
+                            jobs, nas, nasfiles)
+from okula_recovery.device_window import DeviceWindow  # noqa: E402
 from okula_recovery.image_dialog import ImageDialog  # noqa: E402
 from okula_recovery.nas_dialog import NasDialog  # noqa: E402
 from okula_recovery.restore_dialog import RestoreDialog  # noqa: E402
@@ -29,13 +29,8 @@ NAS_POLL = 30  # Sekunden zwischen den NAS-Statusabfragen
 IMAGE_ICONS = {"Disk-Image": "okula-image", "Clonezilla": "okula-image-clonezilla"}
 FILE_IMAGE_ICON = "text-x-generic-symbolic"
 
-# Agent gilt als offline, wenn so lange kein Beacon kam, und verschwindet nach AGENT_REMOVE_AFTER
+# Gerät gilt als getrennt, wenn so lange kein Beacon seines Agents kam
 AGENT_TIMEOUT = 15
-AGENT_REMOVE_AFTER = 60
-
-ICON_ONLINE = "network-transmit-receive-symbolic"
-ICON_OFFLINE = "network-offline-symbolic"
-ICON_AGENT = "media-removable-symbolic"
 
 CSS = b"""
 .pane-title { font-weight: bold; font-size: 115%; }
@@ -43,6 +38,7 @@ CSS = b"""
 .status-fail { color: #c62828; font-weight: bold; }
 .status-idle { color: #757575; }
 .nas-bar { padding: 4px 8px; border-radius: 4px; background-color: alpha(currentColor, 0.06); }
+.device-name { font-weight: bold; font-size: 120%; }
 """
 
 
@@ -54,8 +50,20 @@ class MainWindow(Gtk.ApplicationWindow):
         self._fullscreen = False
         self.connect("key-press-event", self._on_key)
         self.connect("window-state-event", self._on_window_state)
+        self.connect("delete-event", self._on_delete)
         self.cfg = config.load()
-        self.agents: dict[str, discovery.AgentInfo] = {}  # IP → letzte Meldung
+        self.key = agentclient.load_or_create_key()
+        self.store = devices.DeviceStore()          # erfasste Geräte, lokal auf dem Server
+        self.jobs = jobs.JobManager(on_change=lambda job: GLib.idle_add(self._on_job_change, job))
+        self.agents: dict[str, discovery.AgentInfo] = {}  # Agent-ID → letzter Beacon (nur verbundene)
+        self.device_of_agent: dict[str, str] = {}   # Agent-ID → Geräte-ID
+        self.online: dict[str, str] = {}            # Geräte-ID → Agent-ID der verbundenen Geräte
+        self.inv_seen: dict[str, int] = {}          # Agent-ID → zuletzt geholte Inventar-Version
+        self.inv_pending: set[str] = set()
+        self.device_windows: dict[str, DeviceWindow] = {}
+        self._win_state: dict[str, tuple] = {}
+        self._devices_loaded = False
+        self._dev_expand_after: str | None = None
         self.nas_state = ""          # letzter NAS-Zustand, um Wechsel zu erkennen
         self._nas_checking = False
         self.nas_dialog: NasDialog | None = None
@@ -76,7 +84,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.set_titlebar(header)
 
         paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL, wide_handle=True)
-        paned.pack1(self._build_machine_pane(), resize=True, shrink=False)
+        paned.pack1(self._build_device_pane(), resize=True, shrink=False)
         paned.pack2(self._build_storage_pane(), resize=True, shrink=False)
         paned.set_position(760)
 
@@ -87,9 +95,8 @@ class MainWindow(Gtk.ApplicationWindow):
         root.pack_start(self.statusbar, False, False, 0)
         self.add(root)
 
-        self._load_manual_machines()
+        self.refresh_devices()
         self._start_listener()
-        self._update_image_button()
         GLib.idle_add(self.refresh_nas_status, True)   # beim Start mit gespeicherten Zugangsdaten einhängen
         GLib.timeout_add_seconds(NAS_POLL, self.refresh_nas_status)
 
@@ -126,15 +133,14 @@ class MainWindow(Gtk.ApplicationWindow):
             ("_Beenden", self.close, "<Control>q"),
         ]))
         bar.append(menu("_Tools", [
-            ("Netzwerk _scannen", lambda: self.on_scan(None), "F5"),
-            ("Maschine _hinzufügen …", lambda: self.on_add_machine(None), None),
-            None,
-            ("_Disk-Image erstellen …", lambda: self.on_create_image(None), None),
-            ("Image _zurückspielen …", lambda: self.on_restore_image(None), None),
-            ("Maschine _herunterfahren", lambda: self.on_power_off(None), None),
+            ("Gerät ö_ffnen …", self.on_open_device, "<Control>o"),
+            ("_Disk-Image erstellen …", lambda: self._with_device(self.start_image), None),
+            ("Image _zurückspielen …", lambda: self._with_device(self.start_restore), None),
+            ("_Inventar neu einlesen", lambda: self._with_device(self.refresh_inventory), None),
+            ("Gerät _herunterfahren", lambda: self._with_device(lambda d: self.power(d, "poweroff")), None),
             None,
             ("_Restore-Stick aus Image …", lambda: self.on_restore_stick(None), None),
-            ("Images _aktualisieren", self.refresh_images, None),
+            ("Images _aktualisieren", self.refresh_images, "F5"),
         ]))
         bar.append(menu("_Hilfe", [
             ("_Tastenkürzel", self.show_shortcuts, "F1"),
@@ -155,7 +161,8 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def show_shortcuts(self) -> None:
         text = ("Ctrl+N\tNAS-Verbindung\n"
-                "F5\tNetzwerk scannen\n"
+                "Ctrl+O\tGewähltes Gerät öffnen\n"
+                "F5\tImages aktualisieren\n"
                 "F11\tVollbild ein/aus\n"
                 "Ctrl+Q\tBeenden\n\n"
                 "Im Reiter „Dateien“:\n"
@@ -765,81 +772,407 @@ class MainWindow(Gtk.ApplicationWindow):
         self.img_count.set_text(f"{len(tree.all_images())} Images · {len(tree.unsorted)} nicht einsortiert")
         self._on_image_selected(self.image_view.get_selection())
 
+    # ---------- linke Seite: Geräte ----------
 
-    # ---------- linke Seite: Maschinen ----------
+    # Spalten des Gerätebaums: LED bzw. Ordner-Icon, Name, Status, Betriebssystem, zuletzt verbunden, IP,
+    # Geräte-ID, Art (unsorted/folder/device), Ordner-rel
+    D_ICON, D_NAME, D_STATUS, D_OS, D_SEEN, D_IP, D_ID, D_KIND, D_REL = range(9)
+    DEV_DND_TARGET = "okula/device-row"
 
-    def _build_machine_pane(self) -> Gtk.Widget:
+    def _build_device_pane(self) -> Gtk.Widget:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=12)
-        box.pack_start(pane_title("Geräte"), False, False, 0)
+        head = Gtk.Box(spacing=6)
+        head.pack_start(pane_title("Geräte"), False, False, 0)
+        self.dev_count = Gtk.Label(label="", xalign=0, ellipsize=Pango.EllipsizeMode.END, margin_start=8)
+        self.dev_count.get_style_context().add_class("status-idle")
+        head.pack_start(self.dev_count, True, True, 0)
+        self.dev_buttons = {}
+        for key, icon, tip, handler in (
+                ("folder", "folder-new-symbolic", "Neuer Ordner (im gewählten Ordner, max. 3 Ebenen)",
+                 self.on_new_device_folder),
+                ("rename", "document-edit-symbolic", "Umbenennen (Ordner oder Gerät)", self.on_rename_device_entry),
+                ("delete", "user-trash-symbolic", "Löschen (leerer Ordner bzw. nicht verbundenes Gerät)",
+                 self.on_delete_device_entry)):
+            b = Gtk.Button.new_from_icon_name(icon, Gtk.IconSize.BUTTON)
+            b.set_tooltip_text(tip)
+            b.connect("clicked", handler)
+            head.pack_start(b, False, False, 0)
+            self.dev_buttons[key] = b
+        box.pack_start(head, False, False, 0)
 
-        bar = Gtk.Box(spacing=6)
-        bar.pack_start(Gtk.Label(label="Netz"), False, False, 0)
-        default = self.cfg.scan_network or str(network.default_scan_network() or "")
-        self.scan_net = Gtk.Entry(text=default, placeholder_text="z. B. 192.168.1.0/24", width_chars=18)
-        bar.pack_start(self.scan_net, False, False, 0)
-        self.btn_scan = Gtk.Button(label="Netzwerk scannen")
-        self.btn_scan.connect("clicked", self.on_scan)
-        bar.pack_start(self.btn_scan, False, False, 0)
-        btn_add = Gtk.Button(label="Hinzufügen …")
-        btn_add.connect("clicked", self.on_add_machine)
-        bar.pack_start(btn_add, False, False, 0)
-        box.pack_start(bar, False, False, 0)
+        self.device_store = Gtk.TreeStore(str, str, str, str, str, str, str, str, str)
+        view = Gtk.TreeView(model=self.device_store)
+        col = Gtk.TreeViewColumn("Gerät")
+        icon = Gtk.CellRendererPixbuf()
+        col.pack_start(icon, False)
+        col.add_attribute(icon, "icon-name", self.D_ICON)
+        text = Gtk.CellRendererText(ellipsize=Pango.EllipsizeMode.END)
+        col.pack_start(text, True)
+        col.add_attribute(text, "text", self.D_NAME)
+        col.set_expand(True)
+        col.set_resizable(True)
+        col.set_min_width(200)
+        view.append_column(col)
+        for title, idx, chars in (("Status", self.D_STATUS, 16), ("Betriebssystem", self.D_OS, 18),
+                                  ("Zuletzt verbunden", self.D_SEEN, 16), ("IP", self.D_IP, 14)):
+            cell = Gtk.CellRendererText(ellipsize=Pango.EllipsizeMode.END, width_chars=chars)
+            c = Gtk.TreeViewColumn(title, cell, text=idx)
+            c.set_resizable(True)
+            view.append_column(c)
+        view.set_enable_tree_lines(True)
+        view.get_selection().connect("changed", lambda _s: self._on_device_selected())
+        view.connect("row-activated", self._on_device_activated)
+        view.connect("button-press-event", self._on_device_button)
+        target = [Gtk.TargetEntry.new(self.DEV_DND_TARGET, Gtk.TargetFlags.SAME_WIDGET, 0)]
+        view.enable_model_drag_source(Gdk.ModifierType.BUTTON1_MASK, target, Gdk.DragAction.MOVE)
+        view.enable_model_drag_dest(target, Gdk.DragAction.MOVE)
+        view.connect("drag-data-get", self._on_drag_get)
+        view.connect("drag-data-received", self._on_device_drag_received)
+        self.device_view = view
+        box.pack_start(scrolled(view), True, True, 0)
 
-        self.scan_progress = Gtk.ProgressBar(show_text=True, no_show_all=True)
-        box.pack_start(self.scan_progress, False, False, 0)
-
-        # icon, Name, IP, MAC, Quelle, IP als Zahl (Sortierung), Hardware, Disks, zuletzt gesehen, Status
-        self.machine_store = Gtk.ListStore(str, str, str, str, str, GObject.TYPE_INT64, str, str, float, str)
-        self.machine_view = make_tree([("", -1), ("Name", 1), ("IP-Adresse", 2), ("Status", 9), ("Quelle", 4),
-                                       ("Hardware", 6), ("Disks", 7), ("MAC", 3)], self.machine_store)
-        self.machine_view.get_column(2).set_sort_column_id(5)
-        self.machine_view.get_column(1).set_min_width(190)
-        self.machine_store.set_sort_column_id(5, Gtk.SortType.ASCENDING)
-        self.machine_view.get_selection().connect("changed", self._on_machine_selected)
-        box.pack_start(scrolled(self.machine_view), True, True, 0)
-
-        # Aktionen für die gewählte Maschine (Funktion folgt in späteren Schritten)
         actions = Gtk.Box(spacing=6)
-        self.btn_backup = Gtk.Button(label="Backup erstellen", sensitive=False)
-        self.btn_backup.set_tooltip_text("Datei-Backup – folgt")
-        self.btn_image = Gtk.Button(label="Disk-Image erstellen", sensitive=False)
-        self.btn_image.set_tooltip_text("Ganze Disk der gewählten Maschine aufs NAS sichern (Maschine mit Agent-Stick)")
-        self.btn_image.connect("clicked", self.on_create_image)
-        self.btn_restore = Gtk.Button(label="Image zurückspielen", sensitive=False)
-        self.btn_restore.set_tooltip_text("Disk-Image vom NAS auf eine Disk der gewählten Maschine schreiben")
-        self.btn_restore.connect("clicked", self.on_restore_image)
-        for b in (self.btn_backup, self.btn_image, self.btn_restore):
+        self.btn_open = Gtk.Button(label="Gerät öffnen …", sensitive=False)
+        self.btn_open.set_tooltip_text("Alle Infos, Aufträge mit Log, Verlauf und Notizen (auch Doppelklick)")
+        self.btn_open.connect("clicked", lambda _b: self.on_open_device())
+        self.btn_image = Gtk.Button(label="Disk-Image erstellen …", sensitive=False)
+        self.btn_image.set_tooltip_text("Ganze Disk des gewählten Geräts aufs NAS sichern (läuft im Hintergrund)")
+        self.btn_image.connect("clicked", lambda _b: self._with_device(self.start_image))
+        self.btn_restore = Gtk.Button(label="Image zurückspielen …", sensitive=False)
+        self.btn_restore.set_tooltip_text("Disk-Image vom NAS auf eine Disk des gewählten Geräts schreiben")
+        self.btn_restore.connect("clicked", lambda _b: self._with_device(self.start_restore))
+        for b in (self.btn_open, self.btn_image, self.btn_restore):
             actions.pack_start(b, False, False, 0)
         self.btn_power = Gtk.Button(label="Herunterfahren", sensitive=False)
-        self.btn_power.set_tooltip_text("Gewählte Maschine mit Agent-Stick herunterfahren")
-        self.btn_power.connect("clicked", self.on_power_off)
-        actions.pack_start(self.btn_power, False, False, 0)
-        self.btn_remove = Gtk.Button(label="Entfernen", sensitive=False)
-        self.btn_remove.connect("clicked", self.on_remove_machine)
-        actions.pack_end(self.btn_remove, False, False, 0)
+        self.btn_power.set_tooltip_text("Gewähltes Gerät herunterfahren (Agent-Stick)")
+        self.btn_power.connect("clicked", lambda _b: self._with_device(lambda d: self.power(d, "poweroff")))
+        actions.pack_end(self.btn_power, False, False, 0)
         box.pack_start(actions, False, False, 0)
+
+        legend = Gtk.Box(spacing=12)
+        for icon, label in (("okula-led-on", "verbunden"), ("okula-led-off", "nicht verbunden")):
+            item = Gtk.Box(spacing=4)
+            item.pack_start(Gtk.Image.new_from_icon_name(icon, Gtk.IconSize.MENU), False, False, 0)
+            lbl = Gtk.Label(label=label)
+            lbl.get_style_context().add_class("status-idle")
+            item.pack_start(lbl, False, False, 0)
+            legend.pack_start(item, False, False, 0)
+        hint = Gtk.Label(xalign=1, wrap=True)
+        hint.set_markup("<small>Doppelklick öffnet das Gerät · per Maus in Ordner ziehen</small>")
+        hint.get_style_context().add_class("status-idle")
+        legend.pack_end(hint, False, False, 0)
+        box.pack_start(legend, False, False, 0)
         return box
 
-    def _add_machine_row(self, m: network.Machine) -> None:
-        """Fügt eine Maschine hinzu oder ergänzt die bestehende Zeile mit derselben IP."""
-        now = time.time() if m.source == "USB-Agent" else 0.0
-        for row in self.machine_store:
-            if row[2] == m.ip:
-                if m.source == "USB-Agent":
-                    row[0], row[4], row[8] = ICON_AGENT, m.source, now
-                elif m.online and row[4] != "USB-Agent":
-                    row[0] = ICON_ONLINE
-                if m.name:
-                    row[1] = m.name
-                for idx, value in ((3, m.mac), (6, m.hardware), (7, m.disks)):
-                    if value:
-                        row[idx] = value
-                return
-        icon = ICON_AGENT if m.source == "USB-Agent" else ICON_ONLINE if m.online else ICON_OFFLINE
-        self.machine_store.append([icon, m.name or "–", m.ip, m.mac or "–", m.source,
-                                   int(ipaddress.IPv4Address(m.ip)), m.hardware, m.disks, now, ""])
+    # ---------- Geräte: Anzeige ----------
 
-    # ---------- USB-Agent ----------
+    def online_agent(self, dev: devices.Device) -> discovery.AgentInfo | None:
+        aid = self.online.get(dev.id)
+        return self.agents.get(aid) if aid else None
+
+    def device_status(self, dev: devices.Device) -> str:
+        """Was mit dem Gerät gerade passiert – Aufträge des Tools zuerst, dann die Meldung des Agents."""
+        summary = self.jobs.summary(dev.id)
+        agent = self.online_agent(dev)
+        if agent is None:
+            return summary or "nicht verbunden"
+        if summary:
+            return summary
+        if agent.agent_id in self.inv_pending:
+            return "Inventar wird gelesen …"
+        if not agent.control_port:
+            return "Agent-Stick veraltet"
+        return agent.status
+
+    def _device_values(self, dev: devices.Device) -> list[str]:
+        agent = self.online_agent(dev)
+        return ["okula-led-on" if agent else "okula-led-off", dev.name, self.device_status(dev),
+                dev.os_name or "–", "jetzt" if agent else devices.short_time(dev.last_seen) or "–",
+                agent.ip if agent else dev.last_ip, dev.id, "device", dev.folder]
+
+    def refresh_devices(self) -> None:
+        """Baum neu aufbauen (neue Geräte, Ordner, Umbenennen) – Auf- und Zuklappen bleibt erhalten."""
+        view, store = self.device_view, self.device_store
+        keys = self._dev_expanded() if self._devices_loaded else {"unsorted:"}
+        if self._dev_expand_after is not None:
+            parts = self._dev_expand_after.split("/") if self._dev_expand_after else []
+            keys |= {"folder:" + "/".join(parts[:i]) for i in range(1, len(parts) + 1)}
+            self._dev_expand_after = None
+        model, it = view.get_selection().get_selected()
+        selected = (model[it][self.D_KIND], model[it][self.D_ID] or model[it][self.D_REL]) if it else None
+        store.clear()
+        new = sorted(self.store.in_folder(""), key=lambda d: d.first_seen, reverse=True)  # neueste zuerst
+        unsorted = store.append(None, ["folder-download-symbolic", f"Neu / nicht einsortiert ({len(new)})",
+                                       "", "", "", "", "", "unsorted", ""])
+        for dev in new:
+            store.append(unsorted, self._device_values(dev))
+
+        def count(rel: str) -> int:
+            return sum(1 for d in self.store.devices.values() if d.folder == rel or d.folder.startswith(rel + "/"))
+
+        def add(parent, rel: str) -> None:
+            it = store.append(parent, ["folder-symbolic", f"{rel.rsplit('/', 1)[-1]} ({count(rel)})", "", "", "",
+                                       "", "", "folder", rel])
+            for sub in self.store.folders:
+                if sub.rsplit("/", 1)[0] == rel and "/" in sub:
+                    add(it, sub)
+            for dev in self.store.in_folder(rel):
+                store.append(it, self._device_values(dev))
+
+        for rel in self.store.folders:
+            if "/" not in rel:
+                add(None, rel)
+
+        def walk(it):
+            while it is not None:
+                row = store[it]
+                if row[self.D_KIND] + ":" + row[self.D_REL] in keys and row[self.D_KIND] != "device":
+                    view.expand_row(store.get_path(it), False)
+                if selected and (row[self.D_KIND], row[self.D_ID] or row[self.D_REL]) == selected:
+                    view.expand_to_path(store.get_path(it))
+                    view.get_selection().select_iter(it)
+                walk(store.iter_children(it))
+                it = store.iter_next(it)
+        walk(store.get_iter_first())
+        self._devices_loaded = True
+        self.update_device_rows()
+
+    def update_device_rows(self) -> None:
+        """LED, Status und IP der Zeilen nachführen (bei jedem Beacon und Auftrags-Fortschritt)."""
+        store = self.device_store
+
+        def walk(it):
+            while it is not None:
+                row = store[it]
+                dev = self.store.devices.get(row[self.D_ID]) if row[self.D_KIND] == "device" else None
+                if dev is not None:
+                    for i, v in enumerate(self._device_values(dev)):
+                        if row[i] != v:
+                            row[i] = v
+                walk(store.iter_children(it))
+                it = store.iter_next(it)
+        walk(store.get_iter_first())
+        total, online = len(self.store.devices), len(self.online)
+        self.dev_count.set_text(f"{total} Gerät{'e' if total != 1 else ''} · {online} verbunden")
+        for dev_id, win in list(self.device_windows.items()):
+            dev = self.store.devices.get(dev_id)
+            if dev is not None:
+                state = (dev.id in self.online, self.device_status(dev))
+                if self._win_state.get(dev_id) != state:
+                    self._win_state[dev_id] = state
+                    win.refresh_head()
+        self._on_device_selected()
+
+    def _dev_expanded(self) -> set[str]:
+        keys = set()
+
+        def walk(it):
+            while it is not None:
+                row = self.device_store[it]
+                if self.device_view.row_expanded(self.device_store.get_path(it)):
+                    keys.add(row[self.D_KIND] + ":" + row[self.D_REL])
+                walk(self.device_store.iter_children(it))
+                it = self.device_store.iter_next(it)
+        walk(self.device_store.get_iter_first())
+        return keys
+
+    def _selected_device_row(self):
+        return self.device_view.get_selection().get_selected()
+
+    def _selected_device(self) -> devices.Device | None:
+        model, it = self._selected_device_row()
+        if it is None or model[it][self.D_KIND] != "device":
+            return None
+        return self.store.devices.get(model[it][self.D_ID])
+
+    def _with_device(self, action) -> None:
+        dev = self._selected_device()
+        if dev is None:
+            self.status("Zuerst links ein Gerät wählen")
+            return
+        action(dev)
+
+    def _on_device_selected(self) -> None:
+        model, it = self._selected_device_row()
+        kind = model[it][self.D_KIND] if it is not None else ""
+        dev = self._selected_device()
+        agent = self.online_agent(dev) if dev else None
+        ready = agent is not None and agent.control_port > 0
+        self.btn_open.set_sensitive(dev is not None)
+        for b in (self.btn_image, self.btn_restore, self.btn_power):
+            b.set_sensitive(ready)
+        self.dev_buttons["rename"].set_sensitive(kind in ("folder", "device"))
+        self.dev_buttons["delete"].set_sensitive(kind == "folder" or (dev is not None and agent is None))
+        for label in ("Gerät öffnen …", "Disk-Image erstellen …", "Image zurückspielen …", "Inventar neu einlesen",
+                      "Gerät herunterfahren"):
+            if label in getattr(self, "menu_items", {}):
+                self.menu_items[label].set_sensitive(dev is not None if label == "Gerät öffnen …" else ready)
+
+    def _on_device_activated(self, view, path, _col) -> None:
+        row = self.device_store[path]
+        if row[self.D_KIND] == "device":
+            self.on_open_device()
+        elif view.row_expanded(path):
+            view.collapse_row(path)
+        else:
+            view.expand_row(path, False)
+
+    def _on_device_button(self, view, event) -> bool:
+        if event.button != 3:
+            return False
+        hit = view.get_path_at_pos(int(event.x), int(event.y))
+        if hit:
+            view.get_selection().select_path(hit[0])
+        model, it = self._selected_device_row()
+        kind = model[it][self.D_KIND] if it is not None else ""
+        dev = self._selected_device()
+        agent = self.online_agent(dev) if dev else None
+        ready = agent is not None and agent.control_port > 0
+        menu = Gtk.Menu()
+
+        def add(label, handler, sensitive=True):
+            item = Gtk.MenuItem(label=label, sensitive=sensitive)
+            item.connect("activate", lambda _i: handler())
+            menu.append(item)
+
+        if dev is not None:
+            add("Öffnen …", self.on_open_device)
+            add("Disk-Image erstellen …", lambda: self.start_image(dev), ready)
+            add("Image zurückspielen …", lambda: self.start_restore(dev), ready)
+            add("Inventar neu einlesen", lambda: self.refresh_inventory(dev), ready)
+            add("Herunterfahren", lambda: self.power(dev, "poweroff"), ready)
+            menu.append(Gtk.SeparatorMenuItem())
+            add("Umbenennen …", lambda: self.on_rename_device_entry(None))
+            if dev.folder:
+                add("Nach „Neu / nicht einsortiert“", lambda: self._device_op(
+                    lambda: self.store.move_device(dev, ""), "Nach „Neu / nicht einsortiert“ verschoben"))
+            add("Aus der Liste löschen …", lambda: self.on_delete_device_entry(None), agent is None)
+            menu.append(Gtk.SeparatorMenuItem())
+        add("Neuer Ordner …", lambda: self.on_new_device_folder(None))
+        if kind == "folder":
+            add("Ordner umbenennen …", lambda: self.on_rename_device_entry(None))
+            add("Ordner löschen (nur leer)", lambda: self.on_delete_device_entry(None))
+        menu.show_all()
+        menu.popup_at_pointer(event)
+        return True
+
+    # ---------- Geräte: Ordner, Umbenennen, Löschen, Ziehen ----------
+
+    def _device_op(self, op, done_msg: str) -> bool:
+        try:
+            op()
+        except (devices.DeviceError, nasfiles.FileError, OSError) as e:
+            self.status(f"Fehler: {e}")
+            confirm_error(self, str(e))
+            return False
+        self.status(done_msg)
+        self.refresh_devices()
+        return True
+
+    def _device_target_folder(self) -> str:
+        model, it = self._selected_device_row()
+        if it is None:
+            return ""
+        return model[it][self.D_REL] if model[it][self.D_KIND] in ("folder", "device") else ""
+
+    def on_new_device_folder(self, _btn) -> None:
+        parent = self._device_target_folder()
+        if parent and len(parent.split("/")) >= devices.MAX_DEPTH:
+            confirm_error(self, f"„{parent}“ liegt schon auf Ebene {devices.MAX_DEPTH} – "
+                                "dort sind keine weiteren Unterordner möglich.")
+            return
+        where = f" in „{parent}“" if parent else " (oberste Ebene)"
+        name = ask_text(self, "Neuer Ordner", f"Name des neuen Ordners{where}:")
+        if name:
+            self._dev_expand_after = parent
+            self._device_op(lambda: self.store.make_folder(parent, name), f"Ordner „{name.strip()}“ angelegt")
+
+    def on_rename_device_entry(self, _btn) -> None:
+        model, it = self._selected_device_row()
+        if it is None:
+            return
+        dev = self._selected_device()
+        if dev is not None:
+            new = ask_text(self, "Gerät umbenennen", f"Neuer Name für „{dev.name}“:", dev.name)
+            if new and new.strip() != dev.name:
+                self._device_op(lambda: self.store.update(dev, name=new), f"Umbenannt in „{new.strip()}“")
+                win = self.device_windows.get(dev.id)
+                if win:
+                    win.name.set_text(dev.name)
+                    win.refresh_head()
+            return
+        if model[it][self.D_KIND] != "folder":
+            return
+        rel = model[it][self.D_REL]
+        old = rel.rsplit("/", 1)[-1]
+        new = ask_text(self, "Ordner umbenennen", f"Neuer Name für „{old}“:", old)
+        if new and new.strip() != old:
+            self._dev_expand_after = rel.rsplit("/", 1)[0] if "/" in rel else ""
+            self._device_op(lambda: self.store.rename_folder(rel, new), f"Umbenannt in „{new.strip()}“")
+
+    def on_delete_device_entry(self, _btn) -> None:
+        model, it = self._selected_device_row()
+        if it is None:
+            return
+        if model[it][self.D_KIND] == "folder":
+            rel = model[it][self.D_REL]
+            self._device_op(lambda: self.store.delete_folder(rel), f"Ordner „{rel}“ gelöscht")
+            return
+        dev = self._selected_device()
+        if dev is None:
+            return
+        if self.online_agent(dev) is not None or self.jobs.summary(dev.id):
+            self.status("Verbundene Geräte und Geräte mit laufenden Aufträgen können nicht gelöscht werden")
+            return
+        if confirm(self, f"„{dev.name}“ aus der Geräteliste löschen?",
+                   "Inventar, Verlauf und Notizen dieses Geräts gehen verloren. Images auf dem NAS bleiben.\n"
+                   "Beim nächsten Start mit dem Agent-Stick wird das Gerät neu erfasst.", ok_label="Löschen"):
+            win = self.device_windows.pop(dev.id, None)
+            if win:
+                win.destroy()
+            self._device_op(lambda: self.store.delete(dev), f"„{dev.name}“ gelöscht")
+
+    def _on_device_drag_received(self, view, context, x, y, selection, _info, time_) -> None:
+        view.stop_emission_by_name("drag-data-received")
+        Gtk.drag_finish(context, True, False, time_)
+        data = selection.get_data()
+        if not data:
+            return
+        model = self.device_store
+        try:
+            src = model.get_iter_from_string(data.decode())
+        except (ValueError, TypeError):
+            return
+        hit = view.get_dest_row_at_pos(x, y)
+        if hit is None:
+            dest_kind, dest_rel = "folder", ""  # leere Fläche: oberste Ebene
+        else:
+            row = model[hit[0]]
+            dest_kind, dest_rel = row[self.D_KIND], row[self.D_REL]
+            if dest_kind == "device" and not dest_rel:
+                dest_kind = "unsorted"
+        self.drop_device(model[src][self.D_KIND], model[src][self.D_ID], model[src][self.D_REL], dest_kind, dest_rel)
+
+    def drop_device(self, kind: str, dev_id: str, rel: str, dest_kind: str, dest_rel: str) -> None:
+        """Ziel einer Maus-Verschiebung im Gerätebaum (auch für Tests ohne echte Maus)."""
+        if kind == "device":
+            dev = self.store.devices.get(dev_id)
+            target = "" if dest_kind == "unsorted" else dest_rel
+            if dev is None or dev.folder == target:
+                return
+            self._dev_expand_after = target
+            self._device_op(lambda: self.store.move_device(dev, target),
+                            f"Verschoben nach „{target or 'Neu / nicht einsortiert'}“")
+        elif kind == "folder":
+            parent = rel.rsplit("/", 1)[0] if "/" in rel else ""
+            if dest_kind == "unsorted":
+                self.status("Ordner können nicht nach „Neu / nicht einsortiert“ verschoben werden")
+            elif dest_rel not in (parent, rel):
+                self._dev_expand_after = dest_rel
+                self._device_op(lambda: self.store.move_folder(rel, dest_rel),
+                                f"Ordner „{rel.rsplit('/', 1)[-1]}“ verschoben")
+
+    # ---------- USB-Agent: Erkennen und Erfassen ----------
 
     def _start_listener(self) -> None:
         self.listener = discovery.Listener(lambda info: GLib.idle_add(self._on_agent, info))
@@ -850,214 +1183,308 @@ class MainWindow(Gtk.ApplicationWindow):
             return
         GLib.timeout_add_seconds(5, self._expire_agents)
 
+    def _device_for_agent(self, info: discovery.AgentInfo) -> devices.Device | None:
+        dev = self.store.devices.get(self.device_of_agent.get(info.agent_id, ""))
+        if dev is None:
+            # Ohne Inventar nur über die Agent-ID (Board-UUID) – eine MAC kann von einem geteilten
+            # USB-Netzwerkadapter stammen. Alte Sticks liefern kein Inventar: dort auch über die MAC.
+            dev = self.store.match(agent_id=info.agent_id, mac="" if info.control_port else info.mac)
+            if dev is not None:
+                self.device_of_agent[info.agent_id] = dev.id
+        return dev
+
     def _on_agent(self, info: discovery.AgentInfo) -> bool:
-        self.agents[info.ip] = info
-        disks = ", ".join(f"{d.name} {nas.format_size(d.size)}" for d in info.disks) or "–"
-        known = any(row[2] == info.ip and row[4] == "USB-Agent" and row[0] == ICON_AGENT
-                    for row in self.machine_store)
-        self._add_machine_row(network.Machine(ip=info.ip, name=info.hostname, mac=info.mac, online=True,
-                                              source="USB-Agent", hardware=info.hardware, disks=disks))
-        for row in self.machine_store:
-            if row[2] == info.ip:
-                row[9] = info.status
-        self._update_image_button()
-        if not known:
-            note = " – Link-Local, im Netz gibt es kein DHCP" if info.ip.startswith("169.254.") else ""
-            self.status(f"USB-Agent gemeldet: {info.hostname or info.ip} ({info.ip}){note}")
+        aid = info.agent_id
+        self.agents[aid] = info
+        dev = self._device_for_agent(info)
+        if dev is not None and self.online.get(dev.id) != aid:
+            self._set_online(dev, aid)
+        if info.control_port and aid not in self.inv_pending and self.inv_seen.get(aid) != info.inventory_version:
+            self.fetch_inventory(info)
+        elif not info.control_port and dev is None:
+            # alter Stick ohne Steuerdienst: mit dem erfassen, was der Beacon meldet
+            dev, _new = self.store.register(aid, info.ip, info.mac, beacon_inventory(info), info.hardware or info.ip)
+            self.device_of_agent[aid] = dev.id
+            self._set_online(dev, aid)
+            self.refresh_devices()
+        self.update_device_rows()
         return False
 
-    def _expire_agents(self) -> bool:
-        """Agents ohne Meldung: nach 15 s offline, nach 60 s aus der Liste (manuelle bleiben)."""
-        now = time.time()
-        manual = {e.get("ip") for e in self.cfg.machines}
-        gone = []
-        for row in self.machine_store:
-            if row[4] != "USB-Agent":
-                continue
-            if row[8] < now - AGENT_REMOVE_AFTER:
-                gone.append(row.iter)
-            elif row[0] == ICON_AGENT and row[8] < now - AGENT_TIMEOUT:
-                row[0] = ICON_OFFLINE
-                row[9] = "offline"
-        for it in gone:
-            ip, name = self.machine_store[it][2], self.machine_store[it][1]
-            self.agents.pop(ip, None)
-            if ip in manual:
-                # war manuell erfasst: wieder als manueller Eintrag zeigen
-                entry = next(e for e in self.cfg.machines if e.get("ip") == ip)
-                self.machine_store[it][0] = ICON_OFFLINE
-                self.machine_store[it][1] = entry.get("name") or "–"
-                self.machine_store[it][4] = "manuell"
-                self.machine_store[it][6] = self.machine_store[it][7] = self.machine_store[it][9] = ""
+    def fetch_inventory(self, info: discovery.AgentInfo, refresh: bool = False) -> None:
+        aid, version, key = info.agent_id, info.inventory_version, self.key
+        self.inv_pending.add(aid)
+        self.update_device_rows()
+
+        def done(result) -> None:
+            self.inv_pending.discard(aid)
+            self.inv_seen[aid] = version
+            current = self.agents.get(aid, info)
+            if isinstance(result, Exception):
+                self.status(f"Inventar von {current.ip} nicht lesbar: {result}")
+                if self._device_for_agent(current) is not None:
+                    self.update_device_rows()
+                    return
+                inv = beacon_inventory(current)
             else:
-                self.machine_store.remove(it)
-            self.status(f"{name} ({ip}) entfernt – seit {AGENT_REMOVE_AFTER} s keine Meldung")
-        self._update_image_button()
+                inv = result
+            dev, new = self.store.register(aid, current.ip, current.mac, inv, current.hardware or current.ip)
+            for dev_id, a in list(self.online.items()):
+                if a == aid and dev_id != dev.id:  # vorläufige Zuordnung war falsch
+                    del self.online[dev_id]
+            self.device_of_agent[aid] = dev.id
+            if aid in self.agents and self.online.get(dev.id) != aid:
+                self._set_online(dev, aid)
+            if new:
+                self._dev_expand_after = ""
+                self.status(f"Neues Gerät erfasst: {dev.name} ({current.ip}) – unter „Neu / nicht einsortiert“")
+            elif refresh:
+                self.status(f"Inventar von {dev.name} neu eingelesen")
+            self.refresh_devices()
+            win = self.device_windows.get(dev.id)
+            if win:
+                win.refresh()
+
+        run_async(lambda: agentclient.get_inventory(info.ip, key, info.control_port, refresh), done)
+
+    def _set_online(self, dev: devices.Device, aid: str) -> None:
+        self.online[dev.id] = aid
+        info = self.agents[aid]
+        self.store.touch(dev, info.ip, True)
+        note = " – Link-Local, im Netz gibt es kein DHCP" if info.ip.startswith("169.254.") else ""
+        self.status(f"Gerät verbunden: {dev.name} ({info.ip}){note}")
+        win = self.device_windows.get(dev.id)
+        if win:
+            win.refresh()
+
+    def _expire_agents(self) -> bool:
+        """Agents ohne Beacon gelten nach AGENT_TIMEOUT als getrennt – das Gerät bleibt in der Liste."""
+        limit = time.time() - AGENT_TIMEOUT
+        for aid, info in list(self.agents.items()):
+            if info.last_seen >= limit:
+                continue
+            del self.agents[aid]
+            self.inv_seen.pop(aid, None)  # beim nächsten Start Inventar neu holen
+            for dev_id, a in list(self.online.items()):
+                if a != aid:
+                    continue
+                del self.online[dev_id]
+                dev = self.store.devices.get(dev_id)
+                if dev is not None:
+                    self.store.touch(dev, "", False)
+                    self.status(f"{dev.name} getrennt – seit {AGENT_TIMEOUT} s keine Meldung")
+                    win = self.device_windows.get(dev_id)
+                    if win:
+                        win.refresh()
+        self.update_device_rows()
         return True
 
-    def _load_manual_machines(self) -> None:
-        for entry in self.cfg.machines:
-            try:
-                self._add_machine_row(network.Machine(ip=entry["ip"], name=entry.get("name", ""), source="manuell"))
-            except (KeyError, ValueError):
-                continue
+    # ---------- Geräte: Aktionen (auch aus dem Gerätefenster) ----------
 
-    def on_scan(self, _btn) -> None:
-        try:
-            net = ipaddress.IPv4Network(self.scan_net.get_text().strip(), strict=False)
-        except ValueError:
-            self.status("Ungültiges Netz, Format z. B. 192.168.1.0/24")
-            return
-        if net.num_addresses > 1024:
-            self.status("Netz zu gross (max. /22)")
-            return
-        self.btn_scan.set_sensitive(False)
-        self.scan_progress.set_fraction(0)
-        self.scan_progress.show()
-        self.status(f"Scanne {net} …")
+    def on_open_device(self) -> None:
+        dev = self._selected_device()
+        if dev is not None:
+            self.open_device(dev)
 
-        def progress(done, total):
-            GLib.idle_add(self._on_scan_progress, done, total)
+    def open_device(self, dev: devices.Device) -> DeviceWindow:
+        win = self.device_windows.get(dev.id)
+        if win is None:
+            win = DeviceWindow(self, dev)
+            self.device_windows[dev.id] = win
+        win.present()
+        return win
 
-        run_async(lambda: network.scan(net, progress), self._on_scanned)
-
-    def _on_scan_progress(self, done: int, total: int) -> None:
-        self.scan_progress.set_fraction(done / total if total else 1)
-        self.scan_progress.set_text(f"{done} / {total}")
-
-    def _on_scanned(self, result) -> None:
-        self.btn_scan.set_sensitive(True)
-        self.scan_progress.hide()
-        if isinstance(result, Exception):
-            self.status(f"Scan fehlgeschlagen: {result}")
-            return
-        found = {m.ip for m in result}
-        stale = [row.iter for row in self.machine_store if row[4] == "Scan" and row[2] not in found]
-        for it in stale:
-            self.machine_store.remove(it)
-        for m in result:
-            self._add_machine_row(m)
-        removed = f", {len(stale)} nicht mehr erreichbare entfernt" if stale else ""
-        self.status(f"Scan fertig: {len(result)} Maschinen online{removed}")
-
-    def on_add_machine(self, _btn) -> None:
-        dlg = Gtk.Dialog(title="Maschine hinzufügen", transient_for=self, modal=True)
-        dlg.add_buttons("Abbrechen", Gtk.ResponseType.CANCEL, "Hinzufügen", Gtk.ResponseType.OK)
-        dlg.set_default_response(Gtk.ResponseType.OK)
-        grid = Gtk.Grid(column_spacing=8, row_spacing=6, margin=12)
-        name = Gtk.Entry(activates_default=True)
-        ip = Gtk.Entry(activates_default=True, placeholder_text="192.168.1.50")
-        grid.attach(Gtk.Label(label="Name", xalign=0), 0, 0, 1, 1)
-        grid.attach(name, 1, 0, 1, 1)
-        grid.attach(Gtk.Label(label="IP-Adresse", xalign=0), 0, 1, 1, 1)
-        grid.attach(ip, 1, 1, 1, 1)
-        dlg.get_content_area().add(grid)
-        dlg.show_all()
-        while dlg.run() == Gtk.ResponseType.OK:
-            try:
-                addr = str(ipaddress.IPv4Address(ip.get_text().strip()))
-            except ValueError:
-                self.status("Ungültige IP-Adresse")
-                continue
-            m = network.Machine(ip=addr, name=name.get_text().strip(), source="manuell")
-            self.cfg.machines = [e for e in self.cfg.machines if e.get("ip") != addr]
-            self.cfg.machines.append({"name": m.name, "ip": addr})
-            config.save(self.cfg)
-            self._add_machine_row(m)
-            run_async(lambda: network.ping(addr), lambda ok: self._add_machine_row(
-                network.Machine(ip=addr, online=bool(ok) and not isinstance(ok, Exception))))
-            break
-        dlg.destroy()
-
-    def _on_machine_selected(self, selection: Gtk.TreeSelection) -> None:
-        model, it = selection.get_selected()
-        has = it is not None
-        self.btn_remove.set_sensitive(has)
-        self._update_image_button()
-        if has:
-            self.status(f"Ausgewählt: {model[it][1]} ({model[it][2]})")
-
-    def _selected_agent(self) -> discovery.AgentInfo | None:
-        model, it = self.machine_view.get_selection().get_selected()
-        if it is None or model[it][4] != "USB-Agent" or model[it][0] != ICON_AGENT:
-            return None
-        return self.agents.get(model[it][2])
-
-    def _update_image_button(self) -> None:
-        agent = self._selected_agent()
-        ok = agent is not None and agent.control_port > 0
-        self.btn_image.set_sensitive(ok)
-        self.btn_restore.set_sensitive(ok)
-        self.btn_power.set_sensitive(ok)
-        for label in ("Disk-Image erstellen …", "Image zurückspielen …", "Maschine herunterfahren"):
-            if label in getattr(self, "menu_items", {}):
-                self.menu_items[label].set_sensitive(ok)
-        if agent is not None and not agent.control_port:
-            self.btn_image.set_tooltip_text("Agent-Stick ist veraltet – mit aktuellem Tool neu erstellen")
-
-    def on_create_image(self, _btn) -> None:
-        agent = self._selected_agent()
+    def _ready_agent(self, dev: devices.Device, parent: Gtk.Window) -> discovery.AgentInfo | None:
+        agent = self.online_agent(dev)
         if agent is None:
-            return
-        if agent.busy:
-            self.status("Agent ist mit einem anderen Auftrag beschäftigt")
+            confirm_error(parent, f"„{dev.name}“ ist nicht verbunden – Gerät mit dem Agent-Stick starten.")
+        elif not agent.control_port:
+            confirm_error(parent, "Der Agent-Stick dieses Geräts ist veraltet – Stick mit dem aktuellen Tool "
+                                  "neu erstellen.")
+        else:
+            return agent
+        return None
+
+    def _parent_for(self, dev: devices.Device) -> Gtk.Window:
+        return self.device_windows.get(dev.id) or self
+
+    def start_image(self, dev: devices.Device) -> None:
+        parent = self._parent_for(dev)
+        agent = self._ready_agent(dev, parent)
+        if agent is None:
             return
         root = self._nas_root()
         if root is None:
-            self.status("NAS ist nicht verbunden – Menü → NAS-Verbindung …")
+            confirm_error(parent, "NAS ist nicht verbunden – Menü → NAS-Verbindung …")
             return
-        ImageDialog(self, agent, root, on_done=self._after_job)
+        ImageDialog(parent, agent, root, name=dev.name,
+                    start_job=lambda disk, name, shutdown: self._start_image_job(dev, agent, root, disk, name,
+                                                                                  shutdown))
 
-    def _after_job(self) -> None:
-        self.refresh_images()
-        self.refresh_nas_status()  # freier Speicher hat sich geändert
+    def _start_image_job(self, dev, agent, root, disk: dict, name: str, shutdown: bool) -> None:
+        source = {"hostname": agent.hostname, "mac": agent.mac, "vendor": agent.vendor, "product": agent.product,
+                  "agent_id": agent.agent_id, "device_id": dev.id, "device_name": dev.name}
 
-    def on_power_off(self, _btn) -> None:
-        agent = self._selected_agent()
+        def after(job, path, error) -> None:
+            GLib.idle_add(self._after_job, dev.id, job, f"Disk-Image {disk['name']}", path, error, shutdown)
+
+        work = jobs.image_work(agent.ip, self.key, agent.control_port, disk, root, name, source, after)
+        self.jobs.start(dev.id, "image", disk["path"], f"Disk-Image {disk['name']} → {name}", work)
+        self.open_device(dev).show_jobs()
+
+    def start_restore(self, dev: devices.Device, preselect: str | None = None) -> None:
+        parent = self._parent_for(dev)
+        agent = self._ready_agent(dev, parent)
         if agent is None:
             return
-        if not confirm(self, f"{agent.hostname or agent.ip} herunterfahren?",
-                       f"{agent.hardware} ({agent.ip})\n\nDanach kann der Stick abgezogen werden.",
-                       ok_label="Herunterfahren"):
+        root = self._nas_root()
+        if root is None:
+            confirm_error(parent, "NAS ist nicht verbunden – Menü → NAS-Verbindung …")
             return
-        key = agentclient.load_or_create_key()
+        if preselect is None:
+            model, it = self.image_view.get_selection().get_selected()
+            if it is not None and model[it][self.C_KIND] == "image":
+                preselect = model[it][self.C_PATH]
+
+        def start(image, source_disk, target, verify, shutdown, label) -> None:
+            def after(job, path, error) -> None:
+                GLib.idle_add(self._after_job, dev.id, job, f"Zurückspielen {label} → {target}", path, error,
+                              shutdown)
+
+            work = jobs.restore_work(agent.ip, self.key, agent.control_port, image, target, source_disk, verify,
+                                     after)
+            self.jobs.start(dev.id, "restore", target, f"Zurückspielen {label} → {target}", work)
+            self.open_device(dev).show_jobs()
+
+        RestoreDialog(parent, agent, root, start_job=start, preselect=preselect, device_name=dev.name)
+
+    def _after_job(self, dev_id: str, job: jobs.Job, what: str, path: str | None, error: Exception | None,
+                   shutdown: bool) -> bool:
+        """Ergebnis eines Auftrags: Verlauf, Image-Liste, freier Speicher, evtl. herunterfahren."""
+        dev = self.store.devices.get(dev_id)
+        if dev is not None:
+            if error is None:
+                where = ""
+                if job.kind == "image" and path and self._nas_root():
+                    where = f" → NAS: /{os.path.relpath(path, self._nas_root())}"
+                self.store.add_history(dev, job.kind, f"{what} erfolgreich{where}", ok=True)
+            else:
+                state = "abgebrochen" if job.cancel.is_set() else f"fehlgeschlagen: {error}"
+                self.store.add_history(dev, job.kind, f"{what} {state}", ok=False)
+        self.refresh_images()
+        self.refresh_nas_status()  # freier Speicher hat sich geändert
+        win = self.device_windows.get(dev_id)
+        if win:
+            win.load_images()
+        if error is None and shutdown and dev is not None:
+            self._power_after(dev, job)
+        return False
+
+    def _power_after(self, dev: devices.Device, job: jobs.Job) -> None:
+        """Nach dem Auftrag herunterfahren – aber nicht, solange noch ein anderer Auftrag läuft."""
+        others = [j for j in self.jobs.running() if j.device_id == dev.id and j is not job]
+        agent = self.online_agent(dev)
+        if others or agent is None:
+            self.jobs.log(job, "Nicht heruntergefahren – " + ("weitere Aufträge laufen" if others
+                                                               else "Gerät nicht mehr verbunden"))
+            return
+        key = self.key
+
+        def work():
+            for _ in range(10):  # der Agent gibt die Disk erst kurz nach dem letzten Block frei
+                try:
+                    agentclient.power(agent.ip, key, "poweroff", agent.control_port)
+                    return "Gerät wird heruntergefahren"
+                except agentclient.AgentError as e:
+                    if "beschäftigt" not in str(e):
+                        raise
+                    time.sleep(2)
+            raise agentclient.AgentError("Agent ist noch beschäftigt")
+
+        def done(result) -> None:
+            ok = not isinstance(result, Exception)
+            self.jobs.log(job, result if ok else f"Herunterfahren fehlgeschlagen: {result}")
+            self.store.add_history(dev, "power", "Nach dem Auftrag heruntergefahren" if ok
+                                   else f"Herunterfahren fehlgeschlagen: {result}", ok=ok)
+            win = self.device_windows.get(dev.id)
+            if win:
+                win.refresh()
+
+        run_async(work, done)
+
+    def refresh_inventory(self, dev: devices.Device) -> None:
+        agent = self._ready_agent(dev, self._parent_for(dev))
+        if agent is None:
+            return
+        if self.jobs.summary(dev.id) or agent.busy:
+            confirm_error(self._parent_for(dev), "Während ein Auftrag läuft, kann das Inventar nicht neu "
+                                                 "eingelesen werden (Partitionen werden dafür eingehängt).")
+            return
+        if agent.agent_id not in self.inv_pending:
+            self.fetch_inventory(agent, refresh=True)
+
+    def power(self, dev: devices.Device, action: str) -> None:
+        parent = self._parent_for(dev)
+        agent = self._ready_agent(dev, parent)
+        if agent is None:
+            return
+        what = "herunterfahren" if action == "poweroff" else "neu starten"
+        if self.jobs.summary(dev.id) or agent.busy:
+            confirm_error(parent, f"Auf „{dev.name}“ läuft ein Auftrag – erst danach {what}.")
+            return
+        if not confirm(parent, f"„{dev.name}“ {what}?",
+                       f"{dev.hardware or agent.hardware} ({agent.ip})"
+                       + ("\n\nDanach kann der Stick abgezogen werden." if action == "poweroff" else ""),
+                       ok_label=what.capitalize()):
+            return
+        key = self.key
 
         def done(result) -> None:
             if isinstance(result, Exception):
-                self.status(f"Herunterfahren fehlgeschlagen: {result}")
-                confirm_error(self, str(result))
-            else:
-                self.status(f"{agent.hostname or agent.ip} wird heruntergefahren")
+                self.status(f"{what.capitalize()} fehlgeschlagen: {result}")
+                confirm_error(parent, str(result))
+                return
+            text = "Heruntergefahren" if action == "poweroff" else "Neu gestartet"
+            self.store.add_history(dev, "power", f"{text} (vom Tool)", ok=True)
+            self.status(f"{dev.name}: {text.lower()}")
+            win = self.device_windows.get(dev.id)
+            if win:
+                win.refresh()
 
-        run_async(lambda: agentclient.power(agent.ip, key, "poweroff", agent.control_port), done)
+        run_async(lambda: agentclient.power(agent.ip, key, action, agent.control_port), done)
 
-    def on_restore_image(self, _btn) -> None:
-        agent = self._selected_agent()
-        if agent is None:
-            return
-        if agent.busy:
-            self.status("Agent ist mit einem anderen Auftrag beschäftigt")
-            return
-        root = self._nas_root()
-        if root is None:
-            self.status("NAS ist nicht eingehängt")
-            return
-        model, it = self.image_view.get_selection().get_selected()
-        pre = model[it][self.C_PATH] if it is not None and model[it][self.C_KIND] == "image" else None
-        RestoreDialog(self, agent, root, preselect=pre)
+    def _on_job_change(self, job: jobs.Job) -> bool:
+        self.update_device_rows()
+        win = self.device_windows.get(job.device_id)
+        if win:
+            win.refresh_jobs(job)
+        return False
 
-    def on_remove_machine(self, _btn) -> None:
-        model, it = self.machine_view.get_selection().get_selected()
-        if it is None:
-            return
-        ip = model[it][2]
-        self.cfg.machines = [e for e in self.cfg.machines if e.get("ip") != ip]
-        config.save(self.cfg)
-        model.remove(it)
+    def _on_delete(self, *_a) -> bool:
+        """Beim Beenden warnen, wenn noch Aufträge laufen (sie würden abbrechen)."""
+        running = self.jobs.running()
+        if not running:
+            return False
+        names = "\n".join(f"• {self.store.devices[j.device_id].name if j.device_id in self.store.devices else '?'}"
+                          f": {j.title} ({j.fraction * 100:.0f} %)" for j in running)
+        what = "1 Auftrag läuft" if len(running) == 1 else f"{len(running)} Aufträge laufen"
+        if confirm(self, f"{what} noch – trotzdem beenden?",
+                   f"{names}\n\nLaufende Images und Restores werden abgebrochen. Ein abgebrochenes Restore "
+                   "hinterlässt eine unbrauchbare Zieldisk.", ok_label="Trotzdem beenden"):
+            for j in running:
+                j.cancel.set()
+            return False
+        return True
 
     def status(self, text: str) -> None:
         self.statusbar.pop(0)
         self.statusbar.push(0, text)
+
+
+def beacon_inventory(info: discovery.AgentInfo) -> dict:
+    """Notbehelf ohne Inventar (alter Stick, Fehler): das, was der Beacon meldet."""
+    return {"dmi": {k: v for k, v in (("sys_vendor", info.vendor), ("product_name", info.product)) if v},
+            "network": [{"name": "", "mac": info.mac}] if info.mac else [],
+            "disks": [{"name": d.name, "size": d.size, "model": d.model, "serial": d.serial} for d in info.disks]}
 
 
 class App(Gtk.Application):

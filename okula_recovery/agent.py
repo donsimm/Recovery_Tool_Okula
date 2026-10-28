@@ -18,7 +18,7 @@ import threading
 import time
 from pathlib import Path
 
-from okula_recovery import __version__, discovery, imaging, network, wire
+from okula_recovery import __version__, discovery, imaging, inventory, network, wire
 
 
 # So lange ohne IPv4, dann DHCP nachfassen bzw. Link-Local-Adresse setzen
@@ -159,40 +159,105 @@ def power_action(action: str) -> None:
 # ---------- Steuerdienst (Tool → Agent) ----------
 
 KEY_FILE = "/etc/okula-agent.key"
-job_lock = threading.Lock()
+class DiskLocks:
+    """Pro Disk höchstens ein Auftrag; verschiedene Disks (und Geräte) laufen parallel."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._active: dict[str, str] = {}  # Disk → Auftragsart
+
+    def acquire(self, disk: str, kind: str) -> bool:
+        with self._lock:
+            if disk in self._active:
+                return False
+            self._active[disk] = kind
+            return True
+
+    def release(self, disk: str) -> None:
+        with self._lock:
+            self._active.pop(disk, None)
+
+    def active(self) -> dict[str, str]:
+        with self._lock:
+            return dict(self._active)
+
+    def busy(self) -> bool:
+        return bool(self.active())
+
+
+disk_locks = DiskLocks()
+inspect_lock = threading.Lock()  # Inventar hängt Partitionen kurz ein – Aufträge warten darauf
+
+
+class Inventory:
+    """Inventar des Geräts: einmal beim Start gesammelt, nach einem Restore und auf Wunsch neu."""
+
+    def __init__(self):
+        self.data: dict | None = None
+        self.version = 0
+
+    def collect(self) -> dict:
+        with inspect_lock:
+            data = inventory.collect(with_os=os.geteuid() == 0, skip=set(disk_locks.active()))
+            self.data, self.version = data, self.version + 1
+        log(f"Inventar gesammelt (Version {self.version})")
+        return data
+
+    def get(self, refresh: bool = False) -> dict:
+        if not refresh and self.data is None:
+            with inspect_lock:  # das Sammeln beim Start läuft evtl. noch – darauf warten statt doppelt
+                pass
+        return self.collect() if refresh or self.data is None else self.data
+
+
+inventory_state = Inventory()
 
 
 class JobState:
     """Was gerade läuft – für die Beacons (Status-Spalte im Tool) und den Bildschirm.
 
-    Ein Auftrag kann hier laufen (Image, Zurückspielen) oder im Tool vorbereitet werden
-    (Image-Prüfung, per „notify“ gemeldet). Meldungen aus dem Tool verfallen nach NOTICE_TTL.
+    Aufträge laufen hier (Image, Zurückspielen; mehrere parallel) oder werden im Tool
+    vorbereitet (Image-Prüfung, per „notify“ gemeldet). Meldungen aus dem Tool verfallen
+    nach NOTICE_TTL, damit ein abgestürztes Tool keinen ewigen Status hinterlässt.
     """
 
     NOTICE_TTL = 30
 
     def __init__(self):
         self.lock = threading.Lock()
-        self.text = ""
-        self.fraction: float | None = None
+        self.jobs: dict[int, tuple[str, float | None]] = {}
+        self.notice_text = ""
+        self.notice_fraction: float | None = None
         self.updated = 0.0
-        self.from_tool = False
         self.bar: ConsoleBar | None = None
         self.bar_title = ""
 
-    def set(self, text: str, fraction: float | None = None, from_tool: bool = False) -> None:
+    def update(self, job: int, kind: str, fraction: float | None) -> None:
         with self.lock:
-            self.text, self.fraction, self.from_tool, self.updated = text, fraction, from_tool, time.monotonic()
+            self.jobs[job] = (kind, fraction)
 
-    def clear(self) -> None:
+    def finish(self, job: int) -> None:
         with self.lock:
-            self.text, self.fraction, self.from_tool = "", None, False
+            self.jobs.pop(job, None)
+
+    def set_notice(self, text: str, fraction: float | None) -> None:
+        with self.lock:
+            self.notice_text, self.notice_fraction, self.updated = text, fraction, time.monotonic()
+
+    def clear_notice(self) -> None:
+        with self.lock:
+            self.notice_text, self.notice_fraction = "", None
 
     def beacon(self) -> dict:
         with self.lock:
-            if self.from_tool and time.monotonic() - self.updated > self.NOTICE_TTL:
-                self.text, self.fraction, self.from_tool = "", None, False
-            return {"job": self.text, "progress": self.fraction}
+            if len(self.jobs) == 1:
+                kind, fraction = next(iter(self.jobs.values()))
+                return {"job": kind, "progress": fraction}
+            if self.jobs:
+                return {"job": f"{len(self.jobs)} Aufträge", "progress": None}
+            if self.notice_text and time.monotonic() - self.updated <= self.NOTICE_TTL:
+                return {"job": self.notice_text, "progress": self.notice_fraction}
+            return {"job": "", "progress": None}
 
     # Bildschirm für Meldungen aus dem Tool (eigene Aufträge haben ihren eigenen Balken)
     def notice(self, title: str, fraction: float | None, label: str, result: str = "") -> None:
@@ -215,15 +280,56 @@ class JobState:
 
 
 job_state = JobState()
+_job_ids = iter(range(1, 1 << 62))
 
 
-def tracked(kind: str, bar: "ConsoleBar | None"):
-    """Fortschritt eines Auftrags an Bildschirm-Balken und Beacon-Status weitergeben."""
-    def report(fraction: float, label: str, transferred: int) -> None:
-        job_state.set(kind, fraction)
+def run_job(tls, addr, req: dict, kind: str) -> None:
+    """Disk-Image („image“) oder Zurückspielen („restore“) – parallel zu Aufträgen auf anderen Disks."""
+    disk = str(req.get("disk") or "")
+    label = "Disk-Image" if kind == "image" else "Zurückspielen"
+    if not disk_locks.acquire(disk, kind):
+        wire.send_json(tls, {"type": "error", "message": f"Auf {disk} läuft bereits ein Auftrag"})
+        return
+    job = next(_job_ids)
+    ok = False
+    bar = None
+    try:
+        with inspect_lock:
+            pass  # läuft gerade das Inventar, erst danach beginnen
+        alone = len(disk_locks.active()) == 1
+        if kind == "restore":
+            job_state.end_notice("Image im Tool geprüft – Zurückspielen startet")
+            job_state.clear_notice()
+        title = (f"Disk-Image von {disk} läuft" if kind == "image"
+                 else f"Image wird auf {disk} zurückgespielt") + " – Maschine nicht ausschalten"
+        # Mehrere parallele Aufträge: keine Balken (würden sich überschreiben), nur Meldungen
+        bar = ConsoleBar(console, title) if console and alone else None
+        job_state.update(job, label, 0.0)
+        log(f"{label} auf {disk} für {addr[0]} gestartet", show=not bar)
+
+        def report(fraction: float, part: str, transferred: int) -> None:
+            job_state.update(job, label, fraction)
+            if bar:
+                bar(fraction, part, transferred)
+
+        if kind == "image":
+            imaging.stream_disk_image(tls, disk, log, report)
+        else:
+            imaging.restore_disk(tls, req, log, report)
+        ok = True
+        log(f"{label} auf {disk} fertig", show=not bar)
+    except imaging.ImagingError as e:
+        log(f"{label} auf {disk} fehlgeschlagen: {e}", show=not bar)
+        wire.send_json(tls, {"type": "error", "message": str(e)})
+    finally:
         if bar:
-            bar(fraction, label, transferred)
-    return report
+            result = ("fertig" if kind == "image" else "zurückgespielt – Stick abziehen und neu starten") if ok \
+                else ("abgebrochen" if kind == "image" else "abgebrochen – Disk ist unvollständig")
+            bar.finish(f"» {label} auf {disk}: {result}")
+        job_state.finish(job)
+        disk_locks.release(disk)
+    if ok and kind == "restore":
+        threading.Thread(target=inventory_state.collect, daemon=True).start()  # neues Betriebssystem erfassen
 
 
 def load_key(path: str) -> bytes | None:
@@ -243,55 +349,15 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
             if cmd == "info":
                 wire.send_json(tls, {"type": "info", "hostname": socket.gethostname(), "version": __version__,
                                      "disks": imaging.list_disks(), "tools": imaging.tool_status(),
-                                     "busy": job_lock.locked()})
-            elif cmd == "image":
-                if not job_lock.acquire(blocking=False):
-                    wire.send_json(tls, {"type": "error", "message": "Agent ist mit einem anderen Auftrag beschäftigt"})
-                    return
-                disk = str(req.get("disk") or "")
-                job_state.end_notice("")
-                job_state.set("Disk-Image", 0.0)
-                bar = ConsoleBar(console, f"Disk-Image von {disk} läuft – Maschine nicht ausschalten") \
-                    if console else None
-                result = "abgebrochen"
-                try:
-                    log(f"Disk-Image von {disk} für {addr[0]} gestartet")
-                    imaging.stream_disk_image(tls, disk, log, tracked("Disk-Image", bar))
-                    result = "fertig"
-                    log(f"Disk-Image von {disk} fertig", show=not bar)
-                except imaging.ImagingError as e:
-                    result = f"fehlgeschlagen: {e}"
-                    log(f"Disk-Image von {disk} fehlgeschlagen: {e}", show=not bar)
-                    wire.send_json(tls, {"type": "error", "message": str(e)})
-                finally:
-                    if bar:
-                        bar.finish(f"» Disk-Image von {disk} {result}")
-                    job_state.clear()
-                    job_lock.release()
-            elif cmd == "restore":
-                if not job_lock.acquire(blocking=False):
-                    wire.send_json(tls, {"type": "error", "message": "Agent ist mit einem anderen Auftrag beschäftigt"})
-                    return
-                disk = str(req.get("disk") or "")
-                job_state.end_notice("Image im Tool geprüft – Zurückspielen startet")
-                job_state.set("Zurückspielen", 0.0)
-                bar = ConsoleBar(console, f"Image wird auf {disk} zurückgespielt – Maschine nicht ausschalten") \
-                    if console else None
-                result = "abgebrochen – Disk ist unvollständig"
-                try:
-                    log(f"Zurückspielen auf {disk} für {addr[0]} gestartet")
-                    imaging.restore_disk(tls, req, log, tracked("Zurückspielen", bar))
-                    result = "zurückgespielt – Stick abziehen und neu starten"
-                    log(f"Image auf {disk} zurückgespielt", show=not bar)
-                except imaging.ImagingError as e:
-                    result = f"fehlgeschlagen: {e}"
-                    log(f"Zurückspielen auf {disk} fehlgeschlagen: {e}", show=not bar)
-                    wire.send_json(tls, {"type": "error", "message": str(e)})
-                finally:
-                    if bar:
-                        bar.finish(f"» Image auf {disk} {result}")
-                    job_state.clear()
-                    job_lock.release()
+                                     "busy": disk_locks.busy(), "active": disk_locks.active()})
+            elif cmd in ("image", "restore"):
+                run_job(tls, addr, req, cmd)
+            elif cmd == "inventory":
+                if req.get("refresh") and disk_locks.busy():
+                    wire.send_json(tls, {"type": "error", "message": "Während eines Auftrags nicht möglich"})
+                else:
+                    data = inventory_state.get(bool(req.get("refresh")))
+                    wire.send_json(tls, {"type": "inventory", "data": data, "version": inventory_state.version})
             elif cmd == "notify":
                 # Das Tool bereitet einen Auftrag vor (z. B. Image-Prüfung) – am Bildschirm zeigen
                 title = str(req.get("title") or "Auftrag wird im Tool vorbereitet")[:120]
@@ -302,17 +368,17 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
                 except (TypeError, ValueError):
                     fraction = None
                 if result:
-                    job_state.clear()
+                    job_state.clear_notice()
                     log(result)
-                elif not job_lock.locked():
-                    job_state.set(job, fraction, from_tool=True)
+                else:
+                    job_state.set_notice(job, fraction)
                 job_state.notice(title, fraction, str(req.get("label") or "")[:40], result)
                 wire.send_json(tls, {"type": "ok"})
             elif cmd == "power":
                 action = req.get("action")
                 if action not in ("poweroff", "reboot"):
                     wire.send_json(tls, {"type": "error", "message": f"Unbekannte Aktion: {action}"})
-                elif job_lock.locked():
+                elif disk_locks.busy():
                     wire.send_json(tls, {"type": "error", "message": "Agent ist beschäftigt – nicht herunterfahren"})
                 else:
                     delay = max(0, min(60, int(req.get("delay") or 0)))
@@ -386,10 +452,11 @@ def main(argv: list[str] | None = None) -> int:
     key = load_key(args.key_file)
     if key:
         threading.Thread(target=serve_control, args=(key, args.control_port), daemon=True).start()
+        threading.Thread(target=inventory_state.collect, daemon=True).start()  # Geräte-Erfassung
     else:
         log(f"Kein Schlüssel in {args.key_file} – nur Anmeldung, keine Images möglich", show=True)
     extra = lambda: {"control": args.control_port if key else 0,  # noqa: E731
-                     "busy": job_lock.locked(), **job_state.beacon()}
+                     "busy": disk_locks.busy(), "inv": inventory_state.version, **job_state.beacon()}
 
     server = None
     no_ip_since = time.monotonic()

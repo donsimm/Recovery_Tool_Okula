@@ -1,0 +1,134 @@
+import json
+import socket
+import tempfile
+import threading
+import time
+import unittest
+from pathlib import Path
+from unittest import mock
+
+from okula_recovery import agent, agentclient, imaging, jobs, wire
+
+
+def fake_disk(root: Path, name: str, data: bytes) -> dict:
+    part = root / f"{name}1.bin"
+    part.write_bytes(data)
+    disk = root / f"{name}.bin"
+    disk.write_bytes(b"\0" * 4 * 1024 * 1024)
+    return {"name": name, "path": str(disk), "size": disk.stat().st_size, "model": f"Disk {name}", "serial": "",
+            "transport": "", "pttype": "gpt", "fstype": "",
+            "partitions": [{"name": f"{name}1", "path": str(part), "size": len(data), "fstype": "",
+                            "label": "", "uuid": "", "parttype": "", "mounted": False}]}
+
+
+
+class ParallelJobsTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        self.nas = root / "nas"
+        self.nas.mkdir()
+        self.disks = [fake_disk(root, "sda", b"A" * 3_000_000), fake_disk(root, "sdb", b"B" * 3_000_000)]
+        self.key = bytes(range(32))
+        self.patches = [
+            mock.patch.object(imaging, "list_disks", lambda: self.disks),
+            mock.patch.object(imaging.shutil, "which", lambda n: None if n == "zstd" else n),
+            # langsam lesen (pv-artig), damit sich beide Aufträge überlappen
+            mock.patch.object(imaging, "partition_command",
+                              lambda p: ("dd.img", ["sh", "-c", f"sleep 1; cat '{p['path']}'"])),
+            mock.patch.object(agent, "log", lambda *a, **k: None),
+            mock.patch.object(agent.inventory, "collect",
+                              lambda with_os=True, skip=frozenset(): {"dmi": {"product_name": "Test"}, "skip": sorted(skip)}),
+        ]
+        for p in self.patches:
+            p.start()
+        self.server = socket.create_server(("127.0.0.1", 0))
+        self.port = self.server.getsockname()[1]
+        ctx = wire.server_context(self.key)
+
+        def serve():
+            while True:
+                try:
+                    conn, addr = self.server.accept()
+                except OSError:
+                    return
+                threading.Thread(target=agent.handle_connection, args=(ctx, conn, addr), daemon=True).start()
+
+        threading.Thread(target=serve, daemon=True).start()
+
+    def tearDown(self):
+        self.server.close()
+        for p in self.patches:
+            p.stop()
+        self.tmp.cleanup()
+
+    def test_two_disks_in_parallel_same_disk_refused(self):
+        changes = []
+        jm = jobs.JobManager(on_change=changes.append)
+        results = {}
+
+        def after(job, path, error):
+            results[job.disk] = (path, error)
+
+        def start(disk):
+            return jm.start("dev1", "image", disk["path"], f"Disk-Image {disk['name']}",
+                            jobs.image_work("127.0.0.1", self.key, self.port, disk, str(self.nas), "PC",
+                                            {"device_id": "dev1"}, after))
+
+        j1, j2 = start(self.disks[0]), start(self.disks[1])
+        with self.assertRaisesRegex(agentclient.AgentError, "läuft bereits"):
+            start(self.disks[0])  # gleiche Disk: abgelehnt
+        time.sleep(0.5)
+        self.assertEqual(len(jm.running()), 2, "beide Aufträge sollten gleichzeitig laufen")
+        self.assertEqual(jm.summary("dev1"), "2 Aufträge")
+        deadline = time.time() + 30
+        while jm.running() and time.time() < deadline:
+            time.sleep(0.1)
+        self.assertEqual([j1.state, j2.state], [jobs.DONE, jobs.DONE], j1.log + j2.log)
+        for disk, job in zip(self.disks, (j1, j2)):
+            path, error = results[disk["path"]]
+            self.assertIsNone(error)
+            meta = json.loads((Path(path) / "okula-image.json").read_text())
+            self.assertEqual(meta["source"]["device_id"], "dev1")
+            self.assertTrue(any("Übertrage" in line for line in job.log))
+        self.assertGreater(j2.started, 0)
+        self.assertLess(abs(j1.started - j2.started), 1.0)
+
+    def test_agent_refuses_same_disk_twice(self):
+        self.assertTrue(agent.disk_locks.acquire(self.disks[0]["path"], "image"))
+        try:
+            with self.assertRaisesRegex(agentclient.AgentError, "läuft bereits"):
+                agentclient.create_image("127.0.0.1", self.key, self.disks[0]["path"], self.nas, "PC",
+                                         lambda e: None, threading.Event(), self.port)
+        finally:
+            agent.disk_locks.release(self.disks[0]["path"])
+
+    def test_inventory_cached_and_refresh_blocked_during_job(self):
+        agent.inventory_state.data = None
+        data = agentclient.get_inventory("127.0.0.1", self.key, self.port)
+        self.assertEqual(data["dmi"]["product_name"], "Test")
+        version = agent.inventory_state.version
+        agentclient.get_inventory("127.0.0.1", self.key, self.port)
+        self.assertEqual(agent.inventory_state.version, version, "zweiter Abruf sollte den Cache nutzen")
+        self.assertTrue(agent.disk_locks.acquire("/dev/sdz", "image"))
+        try:
+            with self.assertRaisesRegex(agentclient.AgentError, "Auftrags"):
+                agentclient.get_inventory("127.0.0.1", self.key, self.port, refresh=True)
+        finally:
+            agent.disk_locks.release("/dev/sdz")
+
+    def test_failed_job_logged(self):
+        jm = jobs.JobManager()
+        bad = dict(self.disks[0], path="/does/not/exist")
+        job = jm.start("dev1", "image", bad["path"], "kaputt",
+                       jobs.image_work("127.0.0.1", self.key, self.port, bad, str(self.nas), "PC", {},
+                                       lambda *a: None))
+        deadline = time.time() + 10
+        while job.running and time.time() < deadline:
+            time.sleep(0.05)
+        self.assertEqual(job.state, jobs.FAILED)
+        self.assertIn("nicht gefunden", job.log[-1])
+
+
+if __name__ == "__main__":
+    unittest.main()

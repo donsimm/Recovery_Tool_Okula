@@ -1,0 +1,166 @@
+"""Aufträge im Hintergrund: Disk-Images und Zurückspielen, mehrere parallel.
+
+Pro Gerät und Disk höchstens ein Auftrag. Jeder Auftrag hat Fortschritt, Log und Abbrechen;
+das Ergebnis landet im Verlauf des Geräts. Kein GTK hier – die Oberfläche hängt sich über
+on_change ein (wird aus dem Auftrags-Thread aufgerufen).
+"""
+
+from __future__ import annotations
+
+import itertools
+import threading
+import time
+from dataclasses import dataclass, field
+from typing import Callable
+
+from okula_recovery import agentclient, nas
+
+RUNNING, DONE, FAILED, CANCELLED = "läuft", "fertig", "fehlgeschlagen", "abgebrochen"
+
+
+@dataclass
+class Job:
+    id: int
+    device_id: str
+    kind: str              # "image" | "restore"
+    disk: str
+    title: str
+    state: str = RUNNING
+    fraction: float = 0.0
+    detail: str = ""
+    log: list[str] = field(default_factory=list)
+    started: float = field(default_factory=time.time)
+    ended: float | None = None
+    result: str = ""
+    cancel: threading.Event = field(default_factory=threading.Event)
+
+    @property
+    def running(self) -> bool:
+        return self.state == RUNNING
+
+
+class JobManager:
+    def __init__(self, on_change: Callable[[Job], None] = lambda job: None):
+        self.on_change = on_change
+        self.jobs: list[Job] = []
+        self.lock = threading.Lock()
+        self._ids = itertools.count(1)
+
+    def for_device(self, device_id: str) -> list[Job]:
+        with self.lock:
+            return [j for j in self.jobs if j.device_id == device_id]
+
+    def running(self) -> list[Job]:
+        with self.lock:
+            return [j for j in self.jobs if j.running]
+
+    def summary(self, device_id: str) -> str:
+        """Kurzstatus für die Geräteliste, z. B. „Disk-Image 45 %“ oder „2 Aufträge“."""
+        active = [j for j in self.running() if j.device_id == device_id]
+        if not active:
+            return ""
+        if len(active) > 1:
+            return f"{len(active)} Aufträge"
+        j = active[0]
+        return f"{'Disk-Image' if j.kind == 'image' else 'Zurückspielen'} {j.fraction * 100:.0f} %"
+
+    def start(self, device_id: str, kind: str, disk: str, title: str,
+              work: Callable[["Job", "JobManager"], str]) -> Job:
+        with self.lock:
+            if any(j.running and j.device_id == device_id and j.disk == disk for j in self.jobs):
+                raise agentclient.AgentError(f"Auf {disk} läuft bereits ein Auftrag")
+            job = Job(next(self._ids), device_id, kind, disk, title)
+            self.jobs.append(job)
+        self.log(job, f"{title} gestartet")
+
+        def run() -> None:
+            try:
+                job.result = work(job, self) or ""
+                job.state, job.fraction = DONE, 1.0
+                self.log(job, f"Fertig{': ' + job.result if job.result else ''}")
+            except Exception as e:  # jeder Fehler gehört ins Log des Auftrags
+                job.state = CANCELLED if job.cancel.is_set() else FAILED
+                self.log(job, f"{'Abgebrochen' if job.cancel.is_set() else 'Fehler'}: {e}")
+            finally:
+                job.ended = time.time()
+                self.on_change(job)
+
+        threading.Thread(target=run, daemon=True, name=f"job-{job.id}").start()
+        return job
+
+    def log(self, job: Job, line: str) -> None:
+        job.log.append(time.strftime("%H:%M:%S ") + line)
+        self.on_change(job)
+
+    def progress(self, job: Job, fraction: float, detail: str) -> None:
+        job.fraction, job.detail = max(0.0, min(1.0, fraction)), detail
+        self.on_change(job)
+
+
+# ---------- Arbeitsfunktionen (laufen im Auftrags-Thread) ----------
+
+def image_work(ip: str, key: bytes, port: int, disk: dict, nas_root: str, machine: str, source: dict,
+               after: Callable[[Job, str | None, Exception | None], None]):
+    """Disk-Image erstellen; after(job, pfad, fehler) trägt das Ergebnis ein (Verlauf, Herunterfahren)."""
+    sizes = {p["name"]: p["size"] for p in disk["partitions"] if p.get("fstype") != "swap"}
+    total = sum(sizes.values()) or 1
+
+    def work(job: Job, jm: JobManager) -> str:
+        done_parts: set[str] = set()
+        state = {"part": ""}
+
+        def progress(ev: dict) -> None:
+            phase = ev.get("phase")
+            if phase == "file":
+                if state["part"] and state["part"] != ev.get("part"):
+                    done_parts.add(state["part"])
+                state["part"] = ev.get("part", "")
+                jm.log(job, f"Übertrage {ev.get('file')}")
+            elif phase == "data":
+                part, pct = ev.get("part") or state["part"], ev.get("pct")
+                done = sum(sizes.get(p, 0) for p in done_parts)
+                if part in sizes and pct is not None:
+                    done += sizes[part] * pct / 100
+                jm.progress(job, done / total, f"{part or 'Partitionstabelle'} · "
+                            f"{nas.format_size(ev.get('total_bytes', 0))} · {ev.get('speed', 0) / 1e6:.0f} MB/s")
+
+        try:
+            path = agentclient.create_image(ip, key, disk["path"], nas_root, machine, progress, job.cancel,
+                                            port, source)
+        except Exception as e:
+            after(job, None, e)
+            raise
+        after(job, str(path), None)
+        return str(path)
+
+    return work
+
+
+def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source_disk: str | None, verify: bool,
+                 after: Callable[[Job, str | None, Exception | None], None]):
+    def work(job: Job, jm: JobManager) -> str:
+        def progress(ev: dict) -> None:
+            phase = ev.get("phase")
+            if phase == "note":
+                jm.log(job, ev.get("message", ""))
+            elif phase == "verify":
+                jm.progress(job, ev.get("fraction", 0) * 0.3, f"Prüfe Image {ev.get('fraction', 0) * 100:.0f} %")
+            elif phase == "table":
+                jm.log(job, "Image geprüft – schreibe Partitionstabelle und Bootcode")
+            elif phase == "file":
+                jm.log(job, f"Schreibe {ev.get('part')} ({ev.get('file')})")
+            elif phase == "data":
+                # Prüfung = erste 30 %, Schreiben = Rest (ohne Prüfung: ganzer Balken)
+                base = 0.3 if verify else 0.0
+                jm.progress(job, base + (1 - base) * ev.get("fraction", 0),
+                            f"{ev.get('part')} · {ev.get('speed', 0) / 1e6:.0f} MB/s")
+
+        try:
+            agentclient.restore_image(ip, key, image, target, progress, job.cancel, port, verify, source_disk)
+        except Exception as e:
+            after(job, None, e)
+            raise
+        after(job, image, None)
+        return f"{target} zurückgespielt"
+
+    return work

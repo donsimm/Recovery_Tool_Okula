@@ -62,13 +62,19 @@ class StatusTest(unittest.TestCase):
         from unittest import mock
         from okula_recovery import agent
         st = agent.JobState()
-        st.set("Image prüfen", 0.4, from_tool=True)
+        st.set_notice("Image prüfen", 0.4)
         self.assertEqual(st.beacon(), {"job": "Image prüfen", "progress": 0.4})
         with mock.patch.object(agent.time, "monotonic", lambda: st.updated + agent.JobState.NOTICE_TTL + 1):
             self.assertEqual(st.beacon(), {"job": "", "progress": None})
-        st.set("Zurückspielen", 0.1)  # eigener Auftrag verfällt nicht
+        st.update(1, "Zurückspielen", 0.1)  # eigener Auftrag verfällt nicht
         with mock.patch.object(agent.time, "monotonic", lambda: st.updated + 999):
             self.assertEqual(st.beacon()["job"], "Zurückspielen")
+        st.update(2, "Disk-Image", 0.5)    # zwei parallele Aufträge
+        self.assertEqual(st.beacon(), {"job": "2 Aufträge", "progress": None})
+        st.finish(1)
+        st.finish(2)
+        st.clear_notice()  # beim Restore-Start entfernt der Agent die Prüf-Meldung
+        self.assertEqual(st.beacon()["job"], "")
 
     def test_notifier_gives_up_quietly(self):
         from okula_recovery import agentclient

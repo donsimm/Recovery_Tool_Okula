@@ -232,7 +232,7 @@ class ConsoleAndPowerTest(EndToEndTest):
             self.image()
             text = Path(tty.name).read_text()
         self.assertIn("Disk-Image von", text)
-        self.assertIn("» Disk-Image von", text)
+        self.assertIn("» Disk-Image auf", text)
         self.assertIn("fertig", text)
 
     def test_power_off(self):
@@ -246,12 +246,12 @@ class ConsoleAndPowerTest(EndToEndTest):
 
     def test_power_refused_while_busy_or_unknown(self):
         with mock.patch.object(agent, "power_action", lambda a: self.fail("darf nicht ausschalten")):
-            self.assertTrue(agent.job_lock.acquire(blocking=False))
+            self.assertTrue(agent.disk_locks.acquire("/dev/sdz", "image"))
             try:
                 with self.assertRaisesRegex(agentclient.AgentError, "beschäftigt"):
                     agentclient.power("127.0.0.1", self.key, "poweroff", self.port, delay=0)
             finally:
-                agent.job_lock.release()
+                agent.disk_locks.release("/dev/sdz")
             with self.assertRaisesRegex(agentclient.AgentError, "Unbekannte Aktion"):
                 agentclient.power("127.0.0.1", self.key, "halt; rm -rf /", self.port, delay=0)
 
