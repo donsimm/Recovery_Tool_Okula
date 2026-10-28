@@ -34,6 +34,19 @@ class RulesTest(unittest.TestCase):
         self.assertIsNone(plan.target("sda5/x"))
 
 
+    def test_note(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            b = Path(tmp) / backups.BACKUP_DIR / "PC" / "2026-10-28_1000"
+            b.mkdir(parents=True)
+            (b / backups.MANIFEST).write_text(json.dumps({"device_name": "PC", "files": 2}))
+            self.assertEqual(backups.list_backups(tmp)[0].note, "")
+            backups.set_note(b, "  vor Neuinstallation\nTicket 1234 & Co  ")
+            info = backups.list_backups(tmp)[0]
+            self.assertEqual(info.note, "vor Neuinstallation\nTicket 1234 & Co")
+            self.assertEqual(info.manifest["files"], 2)  # Rest bleibt erhalten
+            self.assertFalse(list(b.glob("*.tmp")))
+
+
 @unittest.skipUnless(can_run(), "braucht root und Loop-Devices")
 class BackupE2ETest(unittest.TestCase):
     def setUp(self):
@@ -112,9 +125,10 @@ class BackupE2ETest(unittest.TestCase):
             events = []
             path = backups.run_backup("127.0.0.1", self.key, self.port, self.dev, sources, self.nas,
                                       {"id": "dev1", "name": "PC Empfang"}, "profiles", storage, ["Test"],
-                                      events.append, threading.Event())
+                                      events.append, threading.Event(), note=" vor Neuinstallation ")
             manifest = json.loads((path / backups.MANIFEST).read_text())
-            self.assertEqual((manifest["files"], manifest["storage"], manifest["device_id"]), (3, storage, "dev1"))
+            self.assertEqual((manifest["files"], manifest["storage"], manifest["device_id"], manifest["note"]),
+                             (3, storage, "dev1", "vor Neuinstallation"))
             index = {r[0]: r for r in backups.read_index(path)}
             self.assertIn(f"{name}/Users/Anna/Documents/Offerte.docx", index)
             if storage == "files":

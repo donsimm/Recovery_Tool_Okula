@@ -45,10 +45,10 @@ def _set_children(store: Gtk.TreeStore, it, col: int, value: bool) -> None:
 
 
 class BackupDialog(Gtk.Dialog):
-    """start_job(disk, quellen, art, ablage, beschreibung)."""
+    """start_job(disk, quellen, art, ablage, beschreibung, notiz)."""
 
     def __init__(self, parent: Gtk.Window, agent, device, nas_root: str,
-                 start_job: Callable[[str, list[dict], str, str, list[str]], None]):
+                 start_job: Callable[[str, list[dict], str, str, list[str], str], None]):
         super().__init__(title="Backup erstellen", transient_for=parent, modal=True)
         self.set_default_size(820, 760)
         self.agent, self.device, self.nas_root, self.start_job = agent, device, nas_root, start_job
@@ -80,6 +80,12 @@ class BackupDialog(Gtk.Dialog):
         store_box.pack_start(self.as_files, False, False, 0)
         store_box.pack_start(self.as_tar, False, False, 0)
         box.pack_start(store_box, False, False, 0)
+
+        note_box = Gtk.Box(spacing=12)
+        note_box.pack_start(Gtk.Label(label="Notiz:"), False, False, 0)
+        self.note = Gtk.Entry(placeholder_text="optional, z. B. „vor Neuinstallation“ oder Ticketnummer")
+        note_box.pack_start(self.note, True, True, 0)
+        box.pack_start(note_box, False, False, 0)
 
         est = Gtk.Box(spacing=8)
         self.btn_estimate = Gtk.Button(label="Grösse berechnen")
@@ -316,7 +322,7 @@ class BackupDialog(Gtk.Dialog):
         sources, desc = self.selection()
         try:
             self.start_job(self._disk(sources), sources, self.mode(), "files" if self.as_files.get_active() else "tar",
-                           desc)
+                           desc, self.note.get_text().strip())
         except Exception as e:
             self.status.set_text(f"Nicht gestartet: {e}")
             return
@@ -521,7 +527,10 @@ class BackupDetailsDialog(Gtk.Dialog):
         self.connect("response", lambda *_a: self.destroy())
         m = backup.manifest
         lines = [f"Gerät: {backup.device}", f"Erstellt: {backup.created:%d.%m.%Y %H:%M}", backup.summary,
-                 f"Grösse: {nas.format_size(backup.size)}", f"Ordner: {backup.path}", ""] + m.get("description", [])
+                 f"Grösse: {nas.format_size(backup.size)}", f"Ordner: {backup.path}", ""]
+        if backup.note:
+            lines += ["Notiz:"] + [f"  {line}" for line in backup.note.splitlines()] + [""]
+        lines += m.get("description", [])
         if m.get("skipped_count"):
             lines += ["", f"Übersprungen bzw. nicht lesbar: {m['skipped_count']}"] + \
                 [f"  {s.get('path')}: {s.get('reason')}" for s in m.get("skipped", [])[:200]]
@@ -530,3 +539,24 @@ class BackupDetailsDialog(Gtk.Dialog):
                                                                                     ensure_ascii=False))
         self.get_content_area().pack_start(scrolled(view), True, True, 0)
         self.show_all()
+
+
+def edit_note(parent: Gtk.Window, backup: backups.BackupInfo) -> str | None:
+    """Notiz bearbeiten; None = abgebrochen."""
+    dlg = Gtk.Dialog(title=f"Notiz – {backup.device} {backup.created:%d.%m.%Y %H:%M}", transient_for=parent,
+                     modal=True)
+    dlg.add_buttons("Abbrechen", Gtk.ResponseType.CANCEL, "Speichern", Gtk.ResponseType.OK)
+    dlg.set_default_size(520, 280)
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=12)
+    box.pack_start(Gtk.Label(label="Notiz zum Backup (wird beim Backup auf dem NAS gespeichert):", xalign=0),
+                   False, False, 0)
+    view = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR)
+    buf = view.get_buffer()
+    buf.set_text(backup.note)
+    box.pack_start(scrolled(view), True, True, 0)
+    dlg.get_content_area().pack_start(box, True, True, 0)
+    dlg.show_all()
+    view.grab_focus()
+    text = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False) if dlg.run() == Gtk.ResponseType.OK else None
+    dlg.destroy()
+    return text

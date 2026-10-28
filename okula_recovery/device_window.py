@@ -168,16 +168,19 @@ class DeviceWindow(Gtk.Window):
 
     def _build_backups(self) -> Gtk.Widget:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=6)
-        self.backup_view, self.backup_store = table(["Datum", "Inhalt", "Grösse", "Ablage"], (str, str, str, str, str),
-                                                    expand=1)
+        self.backup_view, self.backup_store = table(["Datum", "Notiz", "Inhalt", "Grösse", "Ablage"],
+                                                    (str, str, str, str, str, str), expand=1)
         self.backup_view.connect("row-activated", lambda *_a: self._restore_backup())
         box.pack_start(scrolled(self.backup_view), True, True, 0)
         bar = Gtk.Box(spacing=6)
         for label, handler in (("Zurückspielen / herunterladen …", self._restore_backup),
-                               ("Details …", self._backup_details)):
+                               ("Notiz …", self._backup_note), ("Details …", self._backup_details)):
             b = Gtk.Button(label=label)
             b.connect("clicked", lambda _b, h=handler: h())
             bar.pack_start(b, False, False, 0)
+        delete = Gtk.Button(label="Löschen …")
+        delete.connect("clicked", lambda _b: self._backup_delete())
+        bar.pack_end(delete, False, False, 0)
         box.pack_start(bar, False, False, 0)
         return box
 
@@ -186,17 +189,28 @@ class DeviceWindow(Gtk.Window):
         mine = [b for b in self.main._backups.values()
                 if b.manifest.get("device_id") == self.dev.id or b.device == self.dev.name]
         for b in sorted(mine, key=lambda b: b.created, reverse=True):
-            self.backup_store.append([b.created.strftime("%d.%m.%Y %H:%M"), b.summary, nas.format_size(b.size),
-                                      "Dateien" if b.storage == "files" else "tar.zst", str(b.path)])
+            self.backup_store.append([b.created.strftime("%d.%m.%Y %H:%M"), " ".join(b.note.split()), b.summary,
+                                      nas.format_size(b.size), "Dateien" if b.storage == "files" else "tar.zst",
+                                      str(b.path)])
 
     def _sel_backup(self):
         model, it = self.backup_view.get_selection().get_selected()
-        return self.main._backups.get(model[it][4]) if it is not None else None
+        return self.main._backups.get(model[it][5]) if it is not None else None
 
     def _restore_backup(self) -> None:
         b = self._sel_backup()
         if b is not None:
             self.main.start_file_restore(b, self.dev)
+
+    def _backup_note(self) -> None:
+        b = self._sel_backup()
+        if b is not None:
+            self.main.edit_backup_note(b, self)
+
+    def _backup_delete(self) -> None:
+        b = self._sel_backup()
+        if b is not None:
+            self.main.delete_backup(b, self)
 
     def _backup_details(self) -> None:
         from okula_recovery.backup_dialogs import BackupDetailsDialog

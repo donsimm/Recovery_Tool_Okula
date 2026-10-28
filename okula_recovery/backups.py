@@ -204,6 +204,10 @@ class BackupInfo:
         return self.manifest.get("storage", "files")
 
     @property
+    def note(self) -> str:
+        return str(self.manifest.get("note") or "")
+
+    @property
     def summary(self) -> str:
         m = self.manifest
         mode = {"profiles": "Benutzerdaten", "partitions": "Partitionen", "folders": "Ordner"}.get(m.get("mode"), "")
@@ -228,6 +232,16 @@ def list_backups(root: str | Path) -> list[BackupInfo]:
     return found
 
 
+def set_note(backup: str | Path, note: str) -> None:
+    """Notiz im Manifest speichern; Manifest wird atomar ersetzt (bricht nie halb geschrieben ab)."""
+    path = Path(backup) / MANIFEST
+    manifest = json.loads(path.read_text())
+    manifest["note"] = note.strip()
+    tmp = path.with_name(MANIFEST + ".tmp")
+    tmp.write_text(json.dumps(manifest, indent=2, ensure_ascii=False))
+    tmp.replace(path)
+
+
 def read_index(backup: Path) -> list[tuple[str, int, int, str]]:
     """[(Pfad, Grösse, mtime, sha256)] aus dateien.tsv."""
     rows = []
@@ -244,7 +258,7 @@ def read_index(backup: Path) -> list[tuple[str, int, int, str]]:
 
 def run_backup(ip: str, key: bytes, port: int, disk: str, sources: list[dict], root: str | Path, device: dict,
                mode: str, storage: str, description: list[str], progress: Progress,
-               cancel: threading.Event) -> Path:
+               cancel: threading.Event, note: str = "") -> Path:
     """Backup vom Agent holen und auf dem NAS ablegen. device: {id, name}. Gibt den Backup-Ordner zurück."""
     final = backup_root(root, device.get("name", "")) / time.strftime("%Y-%m-%d_%H%M")
     if final.exists():
@@ -296,7 +310,7 @@ def run_backup(ip: str, key: bytes, port: int, disk: str, sources: list[dict], r
         manifest = {"format": "okula-backup", "version": 1, "device_id": device.get("id", ""),
                     "device_name": device.get("name", ""), "created": datetime.now().isoformat(timespec="seconds"),
                     "mode": mode, "storage": storage, "sources": sources, "description": description,
-                    "files": len(index_lines), "bytes": received, "skipped_count": int(done.get("skipped_count") or 0)
+                    "note": note.strip(), "files": len(index_lines), "bytes": received, "skipped_count": int(done.get("skipped_count") or 0)
                     + len(defective), "skipped": skipped[:500], "tool_version": agentclient.__version__}
         (work / MANIFEST).write_text(json.dumps(manifest, indent=2, ensure_ascii=False))
         work.rename(final)

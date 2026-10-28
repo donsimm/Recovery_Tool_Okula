@@ -14,7 +14,8 @@ from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 
 from okula_recovery import (__version__, agentclient, archive, backups, clonezilla, config, devices,  # noqa: E402
                             discovery, jobs, nas, nasfiles, oslib)
-from okula_recovery.backup_dialogs import BackupDetailsDialog, BackupDialog, RestoreFilesDialog  # noqa: E402
+from okula_recovery.backup_dialogs import (BackupDetailsDialog, BackupDialog, RestoreFilesDialog,  # noqa: E402
+                                           edit_note)
 from okula_recovery.device_window import DeviceWindow  # noqa: E402
 from okula_recovery.image_dialog import ImageDialog  # noqa: E402
 from okula_recovery.nas_dialog import NasDialog  # noqa: E402
@@ -238,7 +239,7 @@ class MainWindow(Gtk.ApplicationWindow):
                 ("folder", "folder-new-symbolic", "Neuer Ordner (im gewählten Ordner, max. 3 Ebenen)",
                  self.on_new_archive_folder),
                 ("rename", "document-edit-symbolic", "Umbenennen (Ordner bzw. ISO)", self.on_rename_archive_folder),
-                ("delete", "user-trash-symbolic", "Löschen (Image, ISO bzw. leerer Ordner)", self.on_delete_image)):
+                ("delete", "user-trash-symbolic", "Löschen (Image, ISO, Backup bzw. leerer Ordner)", self.on_delete_image)):
             b = Gtk.Button.new_from_icon_name(icon, Gtk.IconSize.BUTTON)
             b.set_tooltip_text(tip)
             b.connect("clicked", handler)
@@ -407,6 +408,7 @@ class MainWindow(Gtk.ApplicationWindow):
         if kind == "backup":
             b = self._selected_backup()
             add("Zurückspielen / herunterladen …", lambda _x: b and self.start_file_restore(b), b is not None)
+            add("Notiz …", lambda _x: b and self.edit_backup_note(b), b is not None)
             add("Details …", lambda _x: b and BackupDetailsDialog(self, b), b is not None)
             menu.append(Gtk.SeparatorMenuItem())
             add("Löschen …", self.on_delete_image)
@@ -832,9 +834,9 @@ class MainWindow(Gtk.ApplicationWindow):
             self._archive_op(lambda: oslib.delete_folder(root, rel), f"Ordner „{rel}“ gelöscht")
             return
         if model[it][self.C_KIND] == "backup":
-            rel_path = os.path.relpath(model[it][self.C_PATH], root)
-            if not rel_path.startswith(".."):
-                self._confirm_delete(root, nasfiles.parent(rel_path), [os.path.basename(rel_path)])
+            b = self._selected_backup()
+            if b is not None:
+                self.delete_backup(b)
             return
         if model[it][self.C_KIND] == "iso":
             path = model[it][self.C_PATH]
@@ -853,7 +855,8 @@ class MainWindow(Gtk.ApplicationWindow):
             return
         self._confirm_delete(root, nasfiles.parent(rel_path), [os.path.basename(rel_path)])
 
-    def _confirm_delete(self, root: str, rel: str, names: list[str]) -> None:
+    def _confirm_delete(self, root: str, rel: str, names: list[str], parent: Gtk.Window | None = None,
+                        extra: str = "") -> None:
         """Erst Umfang zählen (kann bei Images dauern), dann nachfragen, dann löschen."""
         self.status("Ermittle Umfang …")
 
@@ -863,8 +866,8 @@ class MainWindow(Gtk.ApplicationWindow):
                 return
             files, size = result
             what = f"„{names[0]}“" if len(names) == 1 else f"{len(names)} Einträge"
-            if not confirm(self, f"{what} endgültig löschen?",
-                           f"{files} Datei(en), {nas.format_size(size)} in NAS: /{rel}\n\n"
+            if not confirm(parent or self, f"{what} endgültig löschen?",
+                           extra + f"{files} Datei(en), {nas.format_size(size)} in NAS: /{rel}\n\n"
                            "Das NAS hat keinen Papierkorb für das Tool – gelöschte Daten sind weg."):
                 self.status("Löschen abgebrochen")
                 return
@@ -1017,11 +1020,34 @@ class MainWindow(Gtk.ApplicationWindow):
             it = store.append(root, ["folder-symbolic", f"{device} ({len(items)})", "Gerät", nas.format_size(size), "",
                                      size, "", "bkdevice", device, "backups", ""])
             for b in items:
+                note = b.note.splitlines()[0] if b.note else ""
+                tip = (f"Notiz: {b.note}\n\n" if b.note else "") + "\n".join(b.manifest.get("description", []))
                 store.append(it, ["package-x-generic-symbolic" if b.storage == "tar" else "folder-documents-symbolic",
-                                  f"{b.created:%d.%m.%Y %H:%M}", b.summary, nas.format_size(b.size),
-                                  b.created.strftime("%d.%m.%Y %H:%M"), b.size, str(b.path), "backup", device,
-                                  "backups", "\n".join(b.manifest.get("description", []))])
+                                  f"{b.created:%d.%m.%Y %H:%M}" + (f" – {note}" if note else ""), b.summary,
+                                  nas.format_size(b.size), b.created.strftime("%d.%m.%Y %H:%M"), b.size, str(b.path),
+                                  "backup", device, "backups", GLib.markup_escape_text(tip)])
         return len(saved)
+
+    def edit_backup_note(self, b: backups.BackupInfo, parent: Gtk.Window | None = None) -> None:
+        text = edit_note(parent or self, b)
+        if text is not None and text.strip() != b.note:
+            path = b.path
+            self._archive_op(lambda: backups.set_note(path, text), "Notiz gespeichert")
+
+    def delete_backup(self, b: backups.BackupInfo, parent: Gtk.Window | None = None) -> None:
+        root = self._nas_root()
+        if root is None:
+            confirm_error(parent or self, "NAS ist nicht verbunden – Menü → NAS-Verbindung …")
+            return
+        rel_path = os.path.relpath(b.path, root)
+        if rel_path.startswith(".."):
+            return
+        busy = [j for j in self.jobs.jobs if j.running and j.source == str(b.path)]
+        if busy:
+            confirm_error(parent or self, "Dieses Backup wird gerade zurückgespielt bzw. heruntergeladen.")
+            return
+        extra = f"{b.device} · {b.created:%d.%m.%Y %H:%M} · {b.summary}\n" + (f"Notiz: {b.note}\n" if b.note else "")
+        self._confirm_delete(root, nasfiles.parent(rel_path), [os.path.basename(rel_path)], parent, extra + "\n")
 
     def _selected_backup(self) -> backups.BackupInfo | None:
         model, it = self._selected_image_row()
@@ -1061,6 +1087,8 @@ class MainWindow(Gtk.ApplicationWindow):
             add(None, folder)
         n_isos = self._add_os_tree(systems, keys)
         n_backups = self._add_backup_tree(saved)
+        for win in self.device_windows.values():
+            win.load_backups()
         self._restore_expanded(keys)
         self._images_loaded = True
         self.img_count.set_text(f"{len(tree.all_images())} Images · {len(tree.unsorted)} nicht einsortiert · "
@@ -1732,14 +1760,15 @@ class MainWindow(Gtk.ApplicationWindow):
             confirm_error(parent, "NAS ist nicht verbunden – Menü → NAS-Verbindung …")
             return
 
-        def start(disk: str, sources: list[dict], mode: str, storage: str, description: list[str]) -> None:
+        def start(disk: str, sources: list[dict], mode: str, storage: str, description: list[str],
+                  note: str = "") -> None:
             what = f"Backup ({description[0].split(':')[0]})"
 
             def after(job, path, error) -> None:
                 GLib.idle_add(self._after_job, dev.id, job, what, path, error, False)
 
             work = jobs.backup_work(agent.ip, self.key, agent.control_port, disk, sources, root,
-                                    {"id": dev.id, "name": dev.name}, mode, storage, description, after)
+                                    {"id": dev.id, "name": dev.name}, mode, storage, description, after, note)
             self.jobs.start(dev.id, "backup", disk, what, work)
             self.open_device(dev).show_jobs()
 
@@ -1774,7 +1803,7 @@ class MainWindow(Gtk.ApplicationWindow):
                 GLib.idle_add(self._after_job, dev.id, job, what, None, error, False)
 
             work = jobs.filerestore_work(agent.ip, self.key, agent.control_port, disk, str(backup.path), plan, after)
-            self.jobs.start(dev.id, "filerestore", disk, what, work)
+            self.jobs.start(dev.id, "filerestore", disk, what, work).source = str(backup.path)
             self.open_device(dev).show_jobs()
 
         def download(target: str, prefixes: list[str]) -> None:
@@ -1787,7 +1816,7 @@ class MainWindow(Gtk.ApplicationWindow):
                     GLib.idle_add(self.status, f"Backup heruntergeladen nach {path}")
 
             self.jobs.start(owner, "download", f"download:{target}", what,
-                            jobs.download_work(str(backup.path), target, prefixes, after))
+                            jobs.download_work(str(backup.path), target, prefixes, after)).source = str(backup.path)
             if owner in self.store.devices:
                 self.open_device(self.store.devices[owner]).show_jobs()
             else:

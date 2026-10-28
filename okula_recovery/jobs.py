@@ -37,6 +37,7 @@ class Job:
     phase: str = ""                # Schritt bei mehrstufigen Aufträgen, z. B. „Image prüfen (1/2)“
     phase_fraction: float = 0.0    # Fortschritt innerhalb des Schritts
     phase_started: float = 0.0
+    source: str = ""               # gelesener Backup-Ordner (darf währenddessen nicht gelöscht werden)
 
     @property
     def running(self) -> bool:
@@ -347,15 +348,17 @@ def _transfer_progress(jm: JobManager, job: Job, what: str):
 
 def backup_work(ip: str, key: bytes, port: int, disk: str, sources: list[dict], root: str, device: dict,
                 mode: str, storage: str, description: list[str],
-                after: Callable[[Job, str | None, Exception | None], None]):
+                after: Callable[[Job, str | None, Exception | None], None], note: str = ""):
     from okula_recovery import backups
 
     def work(job: Job, jm: JobManager) -> str:
+        if note:
+            jm.log(job, "  Notiz: " + note)
         for line in description:
             jm.log(job, "  · " + line)
         try:
             path = backups.run_backup(ip, key, port, disk, sources, root, device, mode, storage, description,
-                                      _transfer_progress(jm, job, "Gesichert"), job.cancel)
+                                      _transfer_progress(jm, job, "Gesichert"), job.cancel, note)
         except Exception as e:
             after(job, None, e)
             raise
