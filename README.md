@@ -200,7 +200,7 @@ Rechts im Reiter *Images* steht der Ast **„Betriebssysteme“**. Das Tool legt
 
 ### Betriebssystem direkt auf ein Gerät installieren
 
-Gerät mit dem Agent-Stick starten, dann im Gerätefenster (oder Rechtsklick auf das Gerät bzw. auf eine ISO → „Auf Gerät installieren …“) **„OS installieren …“**. Im Dialog Betriebssystem, Zieldisk und Einstellungen wählen (Computername = Gerätename), Disk-Namen zur Bestätigung eintippen. Direkt installierbar: **Windows 10/11** (x64), **Ubuntu Desktop ab 24.04**, **Debian**. Das Gerät muss im **UEFI-Modus** laufen; Secure Boot darf eingeschaltet bleiben. Beim Neustart (15 s nach „vorbereitet“) den **Agent-Stick abziehen**.
+Gerät mit dem Agent-Stick starten, dann im Gerätefenster (oder Rechtsklick auf das Gerät bzw. auf eine ISO → „Auf Gerät installieren …“) **„OS installieren …“**. Im Dialog Betriebssystem, Zieldisk und Einstellungen wählen (Computername = Gerätename), Disk-Namen zur Bestätigung eintippen. Direkt installierbar: **Windows 10/11** (x64), **Ubuntu ab 24.04**, **Debian**, **Fedora** sowie andere Systeme mit Anaconda-Installer (Rocky, Alma – DVD-ISO). Der Dialog zeigt alle ISOs; nicht direkt installierbare sind mit „nur Boot-Stick“ markiert und nennen den Grund (z. B. Nobara/Fedora Live mit Calamares bzw. Live-Installer, Zorin/Kubuntu ohne Autoinstall, 32-Bit-Windows). Das Gerät muss im **UEFI-Modus** laufen; Secure Boot darf eingeschaltet bleiben. Beim Neustart (15 s nach „vorbereitet“) den **Agent-Stick abziehen**.
 
 ![OS installieren](docs/windows-installieren.png)
 
@@ -223,6 +223,12 @@ Neuere Intel-Laptops mit **VMD/RST** zeigen die Disk in der Setup-Umgebung evtl.
 **Debian**
 - EFI-Partition mit den Bootdateien der ISO und dem **Debian-Netzwerk-Installer** (Kernel/initrd lädt der Server einmal von deb.debian.org, geprüft gegen `SHA256SUMS`, Zwischenspeicher `~/.cache/okula-recovery/netboot`).
 - **Preseed** (im zweiten initrd): Partitionierung im freien Platz, Benutzer, Passwort, Computername, Region Schweiz, wahlweise mit GNOME-Desktop. **Das Gerät braucht Internet**, die Pakete kommen von deb.debian.org.
+
+**Fedora / Anaconda** (Fedora Everything/Server, Rocky, Alma …)
+- Kernel/initrd der ISO auf der EFI-Partition, die ISO als Datei auf einer Setup-Partition am Disk-Ende (`inst.repo`/`inst.stage2=hd:LABEL=OKULASETUP:/fedora.iso`), Kickstart (`inst.ks`).
+- Kickstart: Benutzer (Administrator), Passwort, Computername, Region Schweiz, `autopart` im freien Platz, wahlweise Desktop (Workstation/GNOME).
+- DVD-ISO ohne Desktop installiert offline von der ISO; Fedora-Netzwerk-ISO oder Desktop laden die Pakete aus dem Internet.
+- Beim ersten Start entfernt `okula-cleanup` die Setup-Partition und vergrössert das System (ext4, btrfs, xfs).
 
 Im Tool ist der Auftrag fertig, sobald das Gerät neu startet; den Rest erledigt der Installer am Gerät. Der Verlauf des Geräts vermerkt die Installation.
 

@@ -1,4 +1,4 @@
-"""Linux direkt auf ein Gerät installieren (Tool-Seite): Ubuntu Desktop (ab 24.04) und Debian.
+"""Linux direkt auf ein Gerät installieren (Tool-Seite): Ubuntu (ab 24.04), Debian, Fedora/Anaconda.
 
 Gemeinsam: Der Agent legt eine EFI-Partition an (Bootdateien der ISO: signiertes shim + grub, Secure Boot geht),
 setzt BootNext darauf und startet neu. Der Platz dahinter bleibt frei – dorthin installiert der offizielle
@@ -10,6 +10,9 @@ Ubuntu: Die ISO liegt als Datei auf einer Setup-Partition am Disk-Ende (ext4), G
         Partitionen und vergrössert die Systempartition.
 Debian: Netzwerk-Installer (Kernel + initrd von deb.debian.org, gegen SHA256SUMS geprüft) mit Preseed,
         Partitionierung im grössten freien Bereich; Pakete aus dem Internet.
+Fedora (und Anaconda-Abkömmlinge wie Rocky/Alma): Kernel/initrd der ISO auf der EFI-Partition, die ISO als
+        Datei auf der Setup-Partition (inst.repo/inst.stage2=hd:…), Kickstart (autopart in den freien Platz).
+        Live-Medien (Fedora Workstation Live, Nobara mit Calamares) haben keinen automatisierbaren Installer.
 """
 
 from __future__ import annotations
@@ -113,17 +116,47 @@ def hash_password(password: str) -> str:
 
 
 def kind(meta: dict) -> str:
-    """„ubuntu“, „debian“ oder „“ (nicht direkt installierbar)."""
+    """„ubuntu“, „debian“, „fedora“ (Anaconda) oder „“ (nicht direkt installierbar) – Grund siehe reason()."""
+    if reason(meta):
+        return ""
+    return {"casper": "ubuntu", "debian-installer": "debian", "anaconda": "fedora"}[(meta.get("linux") or {})["kind"]]
+
+
+def _version(lx: dict) -> tuple[int, int]:
+    try:
+        major, minor = (int(x) for x in (lx.get("version") or "0.0").split(".")[:2])
+    except ValueError:
+        return (0, 0)
+    return major, minor
+
+
+def reason(meta: dict) -> str:
+    """Warum ein Linux-Medium nicht direkt installierbar ist („“ = geht)."""
     lx = meta.get("linux") or {}
-    if lx.get("kind") == "casper" and lx.get("distro") == "ubuntu":
-        try:
-            major, minor = (int(x) for x in (lx.get("version") or "0.0").split(".")[:2])
-        except ValueError:
-            return ""
-        return "ubuntu" if (major, minor) >= (24, 4) else ""
-    if lx.get("kind") == "debian-installer" and lx.get("distro") == "debian" and codename(meta):
-        return "debian"
-    return ""
+    name = meta.get("title") or "Dieses Medium"
+    info = (lx.get("info") or "").strip()
+    if lx.get("kind") == "casper":
+        # nur das echte Ubuntu (Desktop/Server) hat den Installer mit Autoinstall; Abkömmlinge (Zorin, Mint,
+        # Kubuntu …) nutzen Ubiquity oder Calamares
+        if not info.startswith("Ubuntu "):
+            return f"{name}: Installer ohne automatische Installation (Ubiquity/Calamares)"
+        if _version(lx) < (24, 4):
+            return "Ubuntu älter als 24.04 – Installer ohne Autoinstall"
+        return ""
+    if lx.get("kind") == "debian-installer" and lx.get("distro") == "debian":
+        return "" if codename(meta) else "Debian-Version (Codename) nicht erkannt"
+    if lx.get("kind") == "anaconda":
+        if not (lx.get("kernel") and lx.get("initrd")):
+            return f"{name}: Kernel/initrd (images/pxeboot) nicht gefunden"
+        if not lx.get("repo") and lx.get("distro") != "fedora":
+            return f"{name}: Netzwerk-Installer – bitte die DVD-ISO verwenden (Pakete auf der ISO)"
+        return ""
+    if lx.get("kind") == "fedora-live":
+        if lx.get("calamares") or lx.get("distro") == "nobara":
+            return f"{name}: Live-Medium mit Calamares-Installer – keine automatische Installation"
+        return (f"{name}: Live-Medium (Installer läuft im Live-System) – für die Direktinstallation die "
+                "Fedora-Everything- oder Server-ISO verwenden")
+    return f"{name}: kein unterstützter Installer erkannt"
 
 
 def codename(meta: dict) -> str:
@@ -137,8 +170,8 @@ def _align_down(n: int) -> int:
     return n // ALIGN * ALIGN
 
 
-def table(disk_size: int, setup_size: int = 0) -> tuple[str, list[dict]]:
-    """EFI vorne, (Ubuntu:) Setup + CIDATA am Ende, dazwischen frei für das System."""
+def table(disk_size: int, setup_size: int = 0, cidata: bool = True) -> tuple[str, list[dict]]:
+    """EFI vorne, (Ubuntu/Fedora:) Setup (+ CIDATA) am Ende, dazwischen frei für das System."""
     sectors = disk_size // SECTOR
     last = sectors - 34                                   # GPT-Kopie am Ende
     esp_end = ALIGN + ESP_MIB * MIB // SECTOR
@@ -147,14 +180,15 @@ def table(disk_size: int, setup_size: int = 0) -> tuple[str, list[dict]]:
     parts = [{"number": 1, "fs": "fat32", "label": ESP_LABEL, "key": "esp"}]
     gap_end = last
     if setup_size:
-        cidata_size = CIDATA_MIB * MIB // SECTOR
+        cidata_size = CIDATA_MIB * MIB // SECTOR if cidata else 0
         setup_sectors = -(-setup_size // (MIB)) * MIB // SECTOR
         cidata_start = _align_down(last + 1 - cidata_size)
         setup_start = _align_down(cidata_start - setup_sectors)
-        lines += [f'start={setup_start}, size={cidata_start - setup_start}, type={GPT_LINUX}, name="Okula Setup"',
-                  f'start={cidata_start}, size={cidata_size}, type={GPT_DATA}, name="CIDATA"']
-        parts += [{"number": 2, "fs": "ext4", "label": SETUP_LABEL, "key": "setup"},
-                  {"number": 3, "fs": "fat32", "label": CIDATA_LABEL, "key": "cidata"}]
+        lines.append(f'start={setup_start}, size={cidata_start - setup_start}, type={GPT_LINUX}, name="Okula Setup"')
+        parts.append({"number": 2, "fs": "ext4", "label": SETUP_LABEL, "key": "setup"})
+        if cidata:
+            lines.append(f'start={cidata_start}, size={cidata_size}, type={GPT_DATA}, name="CIDATA"')
+            parts.append({"number": 3, "fs": "fat32", "label": CIDATA_LABEL, "key": "cidata"})
         gap_end = setup_start
     if (gap_end - esp_end) * SECTOR < MIN_GAP:
         raise LinuxSetupError(f"Zieldisk zu klein: {disk_size / 1000**3:.0f} GB "
@@ -196,7 +230,8 @@ def _grub_copies(cfg: str, part: str = "esp") -> list[dict]:
 CLEANUP_SCRIPT = """#!/bin/sh
 # Okula Recovery Tool: nach der Direktinstallation die Setup-Partitionen entfernen und / vergrössern
 set -u
-root=$(findmnt -no SOURCE /)
+root=$(findmnt -no SOURCE / | sed 's/\\[.*\\]$//')   # btrfs: „/dev/sda4[/root]“
+fstype=$(findmnt -no FSTYPE /)
 disk=/dev/$(lsblk -no PKNAME "$root" | head -n1)
 for label in OKULASETUP CIDATA; do
     dev=$(blkid -L "$label" 2>/dev/null) || continue
@@ -206,7 +241,14 @@ for label in OKULASETUP CIDATA; do
 done
 partx -u "$disk" 2>/dev/null
 num=$(cat "/sys/class/block/$(basename "$root")/partition")
-parted -s "$disk" resizepart "$num" 100% && resize2fs "$root"
+# Systempartition bis zum Disk-Ende vergrössern (Tabelle, dann dem Kernel melden), danach das Dateisystem
+echo ", +" | sfdisk --no-reread -N "$num" "$disk"
+resizepart "$disk" "$num" "$(partx -g -o SECTORS -n "$num" "$disk" | tr -d ' ')"
+case "$fstype" in
+    ext4) resize2fs "$root" ;;
+    btrfs) btrfs filesystem resize max / ;;
+    xfs) xfs_growfs / ;;
+esac
 for b in $(efibootmgr | sed -n 's/^Boot\\([0-9A-Fa-f]\\{4\\}\\)\\*\\{0,1\\} Okula.*/\\1/p'); do efibootmgr -q -B -b "$b"; done
 rm -rf /boot/efi/boot /boot/efi/.disk /boot/efi/okula
 systemctl disable okula-cleanup.service
@@ -295,6 +337,53 @@ d-i grub-installer/only_debian boolean true
 d-i grub-installer/bootdev string {disk}
 d-i finish-install/reboot_in_progress note
 d-i preseed/late_command string {late}
+"""
+
+
+FEDORA_MIRROR = "https://mirrors.fedoraproject.org/mirrorlist?repo={repo}$releasever&arch=$basearch"
+
+
+def kickstart(opts: LinuxOptions, password_hash: str, disk: str, meta: dict) -> str:
+    """Kickstart für Anaconda (Fedora, Rocky, Alma …): Installation in den freien Platz der Zieldisk."""
+    lx = meta.get("linux") or {}
+    fedora = lx.get("distro") == "fedora"
+    online = fedora and (opts.desktop or not lx.get("repo"))   # Netzwerk-Installer oder Desktop: aus dem Internet
+    if opts.desktop:
+        env = "workstation-product-environment"
+    else:
+        env = "server-product-environment" if fedora else "minimal-environment"
+    if online:
+        source = (f'url --mirrorlist="{FEDORA_MIRROR.format(repo="fedora-")}"\n'
+                  f'repo --name=updates --mirrorlist="{FEDORA_MIRROR.format(repo="updates-released-f")}"')
+    else:
+        source = "# Pakete von der ISO (inst.repo)"
+    post = "\n".join([
+        f"echo {_b64(CLEANUP_SCRIPT)} | base64 -d > /usr/local/sbin/okula-cleanup",
+        "chmod 755 /usr/local/sbin/okula-cleanup",
+        f"echo {_b64(CLEANUP_SERVICE)} | base64 -d > /etc/systemd/system/okula-cleanup.service",
+        "systemctl enable okula-cleanup.service"])
+    name = username(opts.username)
+    return f"""# Okula Recovery Tool – Anaconda-Direktinstallation
+text
+lang {"de_CH.UTF-8" if opts.swiss_region else "en_US.UTF-8"}
+keyboard --xlayouts='{"ch" if opts.swiss_region else "us"}'
+timezone {"Europe/Zurich" if opts.swiss_region else "UTC"} --utc
+network --bootproto=dhcp --activate --hostname={hostname(opts.hostname)}
+{source}
+rootpw --lock
+user --name={name} --gecos="{opts.username}" --groups=wheel --iscrypted --password={password_hash}
+ignoredisk --only-use={disk.removeprefix("/dev/")}
+clearpart --none
+autopart
+bootloader --boot-drive={disk.removeprefix("/dev/")}
+firstboot --disable
+%packages
+@^{env}
+%end
+%post
+{post}
+%end
+reboot
 """
 
 
@@ -393,6 +482,36 @@ menuentry "Okula: Ubuntu automatisch installieren" {{
                 {"part": "cidata", "path": "meta-data", "text": f"instance-id: okula-{install_id}\n"}]
             lines = [f"Ubuntu: ISO ({size / 1000**3:.1f} GB) auf die Setup-Partition, Autoinstall in den freien "
                      "Platz (use_gap)", f"Benutzer {username(opts.username)}, Computername {hostname(opts.hostname)}"]
+        elif which == "fedora":
+            lx = meta["linux"]
+            _extract(iso, boot, ["/EFI"])
+            pxe = root / "pxe"
+            _extract(iso, pxe, [lx["kernel"], lx["initrd"]])
+            kernel = next(pxe.rglob("vmlinuz"))
+            initrd = next(pxe.rglob("initrd.img"))
+            size = iso.stat().st_size
+            tbl, parts = table(disk_size, size + SETUP_RESERVE, cidata=False)
+            ks = kickstart(opts, pw, disk, meta)
+            source = f"hd:LABEL={SETUP_LABEL}:/fedora.iso"
+            repo = f"inst.repo={source}" if lx.get("repo") and "url --mirrorlist" not in ks else f"inst.stage2={source}"
+            cfg = f"""# Okula Recovery Tool – Anaconda-Direktinstallation ({install_id})
+set timeout=3
+set default=0
+search --no-floppy --label --set=root {ESP_LABEL}
+menuentry "Okula: {meta.get('title') or 'Fedora'} automatisch installieren" {{
+    linux /okula/vmlinuz {repo} inst.ks=hd:LABEL={ESP_LABEL}:/okula/ks.cfg inst.text quiet
+    initrd /okula/initrd.img
+}}
+"""
+            files = _tree(boot, "esp") + [("esp", "okula/vmlinuz", kernel.stat().st_size, kernel),
+                                          ("esp", "okula/initrd.img", initrd.stat().st_size, initrd),
+                                          ("setup", "fedora.iso", size, iso)]
+            extra = _grub_copies(cfg) + [{"part": "esp", "path": "okula/ks.cfg", "text": ks}]
+            online = "url --mirrorlist" in ks
+            lines = [f"{meta.get('title') or 'Fedora'}: Anaconda mit Kickstart, Partitionen im freien Platz"
+                     + (" – Pakete aus dem Internet (Gerät braucht Internet)" if online else " – Pakete von der ISO"),
+                     "Desktop: Workstation (GNOME)" if opts.desktop else "ohne Desktop",
+                     f"Benutzer {username(opts.username)} (Administrator), Computername {hostname(opts.hostname)}"]
         else:
             _extract(iso, boot, ["/EFI", "/boot/grub", "/.disk"])
             linux, initrd = netboot(codename(meta))

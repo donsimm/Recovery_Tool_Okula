@@ -35,7 +35,7 @@ CATEGORIES = {"windows": "Windows", "linux": "Linux", "other": "Sonstige"}
 MAX_DEPTH = 3                      # Kategorie + 2 eigene Ebenen
 SUFFIXES = (".iso", ".img", ".img.xz", ".img.gz", ".img.zst", ".img.bz2")
 META_SUFFIX = ".okula.json"
-META_VERSION = 2                   # erhöhen, wenn sich die Erkennung ändert → neu prüfen
+META_VERSION = 3                   # erhöhen, wenn sich die Erkennung ändert → neu prüfen
 
 # Build-Nummer → Version (Installationsmedien tragen die Basis-Build)
 WINDOWS_RELEASES = {10240: "1507", 10586: "1511", 14393: "1607", 15063: "1703", 16299: "1709", 17134: "1803",
@@ -198,14 +198,23 @@ def _inspect_linux(path: Path) -> dict | None:
         kind = "debian-installer"
     elif "/live" in lower:
         kind = "debian-live"
-    elif "/.treeinfo" in lower or "/images/pxeboot" in lower:
-        kind = "anaconda"
+    elif "/images/install.img" in lower:
+        kind = "anaconda"  # Fedora Everything/Server, Rocky, Alma … – Installer mit Kickstart
+    elif "/liveos/squashfs.img" in lower:
+        kind = "fedora-live"  # Live-Medium (Fedora Workstation Live, Nobara …): Installer im Live-System
+    extra = {}
+    if kind in ("anaconda", "fedora-live"):
         tree = _xorriso_read(path, next((p for p in paths if p.lower() == "/.treeinfo"), "/.treeinfo"))
         names = dict(re.findall(r"^(name|version)\s*=\s*(.+)$", tree, re.M))
         if names:
             info = info or f"{names.get('name', '')} {names.get('version', '')}".strip()
+        info = info or _volume_name(path)
+        extra = {"repo": any(p.endswith("/repodata") for p in lower),  # DVD: Pakete auf der ISO
+                 "kernel": next((p for p in paths if p.lower() == "/images/pxeboot/vmlinuz"), ""),
+                 "initrd": next((p for p in paths if p.lower() == "/images/pxeboot/initrd.img"), ""),
+                 "calamares": any("calamares" in p for p in lower)}
     low = info.lower()
-    for d in ("ubuntu", "kubuntu", "xubuntu", "debian", "fedora", "linux mint", "rocky", "almalinux",
+    for d in ("ubuntu", "kubuntu", "xubuntu", "debian", "nobara", "fedora", "linux mint", "rocky", "almalinux",
               "red hat", "centos", "opensuse", "proxmox", "kali"):
         if d in low:
             distro = d
@@ -218,7 +227,14 @@ def _inspect_linux(path: Path) -> dict | None:
     if not linux_like:
         return {"family": "other", "title": "", "uefi": uefi, "bios": bios, "format": "iso9660"}
     return {"family": "linux", "title": linux_title(info) if info else "", "uefi": uefi, "bios": bios,
-            "format": "iso9660", "linux": {"distro": distro, "kind": kind, "version": version, "info": info.strip()}}
+            "format": "iso9660", "linux": {"distro": distro, "kind": kind, "version": version, "info": info.strip(),
+                                           **extra}}
+
+
+def _volume_name(path: Path) -> str:
+    """Volume-ID lesbar: „Fedora-E-dvd-x86_64-42“ → „Fedora E dvd x86_64 42“."""
+    with open(path, "rb") as fh:
+        return _volume_id(fh).replace("-", " ").replace("_", " ").strip()
 
 
 def inspect(path: str | Path) -> dict:
@@ -246,12 +262,22 @@ def inspect(path: str | Path) -> dict:
 
 def installable(meta: dict) -> bool:
     """Lässt sich direkt aus dem Tool auf ein Gerät installieren (Windows 10/11, Ubuntu, Debian)."""
+    return not install_reason(meta)
+
+
+def install_reason(meta: dict) -> str:
+    """Warum ein Medium nicht direkt installierbar ist („“ = geht) – für Dialog und Details."""
     if meta.get("family") == "windows":
-        return meta["windows"].get("product") in ("Windows 10", "Windows 11") and meta["windows"].get("arch") == "amd64"
+        w = meta.get("windows") or {}
+        if w.get("product") not in ("Windows 10", "Windows 11"):
+            return f"{w.get('product') or 'Windows'}: nur Windows 10/11 lassen sich direkt installieren"
+        if w.get("arch") != "amd64":
+            return f"{w.get('arch') or 'unbekannte'} Architektur – direkt nur 64-Bit (x64)"
+        return ""
     if meta.get("family") == "linux":
         from okula_recovery import linuxsetup  # Ubuntu ab 24.04 (Autoinstall), Debian mit Netzwerk-Installer
-        return bool(linuxsetup.kind(meta))
-    return False
+        return linuxsetup.reason(meta)
+    return "Kein erkanntes Betriebssystem – nur als Boot-Stick"
 
 
 def stick_modes(meta: dict) -> list[str]:
@@ -387,8 +413,8 @@ def scan(root: str | Path, inspect_missing: bool = True) -> list[OsFolder]:
                     try:
                         meta = inspect(p)
                         old = _old_meta(p)
-                        if old.get("sha256") and old.get("size") == meta["size"]:
-                            meta["sha256"] = old["sha256"]
+                        if old.get("size") == meta["size"]:  # Prüfsumme und eigener Name bleiben erhalten
+                            meta.update({k: old[k] for k in ("sha256", "label") if old.get(k)})
                         save_meta(p, meta)
                     except OSError:
                         meta = {}

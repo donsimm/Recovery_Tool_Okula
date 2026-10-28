@@ -10,8 +10,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from okula_recovery import agent, agentclient, jobs, linuxsetup, oslib, wininstall, wire
-from tests.isofixtures import HAVE_TOOLS, linux_iso
+from okula_recovery import agent, jobs, linuxsetup, oslib, wininstall, wire
+from tests.isofixtures import HAVE_TOOLS, fedora_iso, linux_iso
 from tests.test_restore import can_run, loop_disks, sh
 
 try:
@@ -38,6 +38,48 @@ def read_cpio(data: bytes) -> dict[str, bytes]:
         pos += size + (-size % 4)
 
 
+@unittest.skipUnless(HAVE_TOOLS, "genisoimage oder xorriso fehlt")
+class FedoraDetectTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_dvd_netinst_live_nobara(self):
+        dvd = oslib.inspect(fedora_iso(self.d))
+        self.assertEqual(dvd["linux"]["kind"], "anaconda")
+        self.assertTrue(dvd["linux"]["repo"])
+        self.assertEqual(linuxsetup.kind(dvd), "fedora")
+        net = oslib.inspect(fedora_iso(self.d, "Fedora-Everything-netinst-x86_64-42.iso", "netinst"))
+        self.assertFalse(net["linux"]["repo"])
+        self.assertEqual(linuxsetup.kind(net), "fedora")
+        live = oslib.inspect(fedora_iso(self.d, "Fedora-Workstation-Live-42.iso", "live",
+                                        "Fedora-WS-Live-42", treeinfo=False))
+        self.assertEqual(live["linux"]["kind"], "fedora-live")
+        self.assertIn("Everything- oder Server-ISO", oslib.install_reason(live))
+        nobara = oslib.inspect(fedora_iso(self.d, "Nobara-44-KDE.iso", "live", "Nobara-44-KDE", treeinfo=False))
+        self.assertEqual(nobara["linux"]["distro"], "nobara")
+        self.assertIn("Calamares", oslib.install_reason(nobara))
+
+    def test_kickstart(self):
+        dvd = oslib.inspect(fedora_iso(self.d))
+        opts = linuxsetup.LinuxOptions("Okula", "pw1234", "Empfang 2", desktop=False)
+        ks = linuxsetup.kickstart(opts, "$6$x$y", "/dev/nvme0n1", dvd)
+        self.assertIn("ignoredisk --only-use=nvme0n1", ks)
+        self.assertIn("clearpart --none\nautopart", ks)
+        self.assertIn("user --name=okula --gecos=\"Okula\" --groups=wheel --iscrypted --password=$6$x$y", ks)
+        self.assertIn("@^server-product-environment", ks)
+        self.assertIn("# Pakete von der ISO", ks)          # DVD ohne Desktop: offline
+        self.assertIn("keyboard --xlayouts='ch'", ks)
+        self.assertIn("network --bootproto=dhcp --activate --hostname=empfang-2", ks)
+        online = linuxsetup.kickstart(linuxsetup.LinuxOptions("Okula", "pw1234", "x"), "$6$x$y", "/dev/sda", dvd)
+        self.assertIn("repo=fedora-$releasever&arch=$basearch", online)
+        self.assertIn("repo=updates-released-f$releasever", online)
+        self.assertIn("@^workstation-product-environment", online)
+
+
 class PartsTest(unittest.TestCase):
     def test_names_and_password(self):
         self.assertEqual(linuxsetup.hostname("DoNs_EliteBook 2 Zürich"), "dons-elitebook-2-zuerich")
@@ -59,6 +101,21 @@ class PartsTest(unittest.TestCase):
         self.assertEqual(linuxsetup.kind(deb), "debian")
         self.assertEqual(linuxsetup.codename(deb), "trixie")
         self.assertTrue(oslib.installable(ub) and oslib.installable(deb))
+
+    def test_reasons_for_not_installable(self):
+        def lx(info, kind="casper", distro="ubuntu", version="24.04.1", title="X"):
+            return {"family": "linux", "title": title,
+                    "linux": {"kind": kind, "distro": distro, "version": version, "info": info}}
+        zorin = lx('Zorin OS 18.1 "Core" - amd64', title="Zorin-OS 18.1 Core 64bit")
+        self.assertIn("Ubiquity/Calamares", oslib.install_reason(zorin))
+        kubuntu = lx('Kubuntu 24.04.1 LTS "Noble Numbat" - Release amd64', distro="ubuntu")
+        self.assertFalse(oslib.installable(kubuntu))
+        self.assertIn("älter als 24.04", oslib.install_reason(lx('Ubuntu 22.04.4 LTS "Jammy"', version="22.04.4")))
+        nobara = lx("Nobara 44 KDE", kind="fedora-live", distro="nobara", version="44", title="Nobara-44-KDE")
+        self.assertIn("Calamares", oslib.install_reason(nobara))
+        win32 = {"family": "windows", "windows": {"product": "Windows 10", "arch": "x86"}}
+        self.assertIn("64-Bit", oslib.install_reason(win32))
+        self.assertIn("nur als Boot-Stick", oslib.install_reason({"family": "other"}))
 
     def test_table_gap_and_sizes(self):
         tbl, parts = linuxsetup.table(256 * 1000**3, 7 * 1024**3)
@@ -212,6 +269,27 @@ class BootprepTest(unittest.TestCase):
             self.assertTrue((cidata / "meta-data").read_text().startswith("instance-id: okula-"))
         finally:
             sh("umount", str(cidata))
+
+    def test_fedora(self):
+        iso = fedora_iso(self.d)
+        meta = oslib.inspect(iso)
+        self.run_job(iso, meta, linuxsetup.LinuxOptions("Okula", "pw1234", "Kasse 1", desktop=False))
+        table = sh("sfdisk", "-d", self.dev)
+        self.assertEqual(len(re.findall(rf"^{self.dev}p\d", table, re.M)), 2)  # EFI + Setup, kein CIDATA
+        esp = self.mounted(1)
+        try:
+            self.assertEqual((esp / "okula/vmlinuz").read_bytes(), b"KERNEL" * 1000)
+            cfg = (esp / "EFI/BOOT/grub.cfg").read_text()
+            self.assertIn("inst.repo=hd:LABEL=OKULASETUP:/fedora.iso", cfg)
+            self.assertIn("inst.ks=hd:LABEL=OKULAEFI:/okula/ks.cfg", cfg)
+            self.assertIn(f"ignoredisk --only-use={self.dev.removeprefix('/dev/')}", (esp / "okula/ks.cfg").read_text())
+        finally:
+            sh("umount", str(esp))
+        setup = self.mounted(2)
+        try:
+            self.assertEqual((setup / "fedora.iso").read_bytes(), iso.read_bytes())
+        finally:
+            sh("umount", str(setup))
 
     def test_debian(self):
         iso = linux_iso(self.d, "debian-13.0.0-amd64-netinst.iso", DEBIAN_INFO, kind="install.amd")

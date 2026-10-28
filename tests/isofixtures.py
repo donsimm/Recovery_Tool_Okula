@@ -75,3 +75,29 @@ def linux_iso(work: Path, name: str = "ubuntu-24.04.1-desktop-amd64.iso",
             fh.seek(510)
             fh.write(b"\x55\xaa")
     return out
+
+
+def fedora_iso(work: Path, name: str = "Fedora-Server-dvd-x86_64-42.iso", variant: str = "dvd",
+               volume: str = "Fedora-S-dvd-x86_64-42", treeinfo: bool = True) -> Path:
+    """variant: dvd (Installer + Pakete), netinst (nur Installer), live (Live-System ohne Installer-Abbild)."""
+    src = work / f"src-{name}"
+    (src / "EFI" / "BOOT").mkdir(parents=True, exist_ok=True)
+    (src / "EFI" / "BOOT" / "BOOTX64.EFI").write_bytes(b"MZ-shim")
+    (src / "EFI" / "BOOT" / "grubx64.efi").write_bytes(b"MZ-grub")
+    (src / "images" / "pxeboot").mkdir(parents=True, exist_ok=True)
+    (src / "images" / "pxeboot" / "vmlinuz").write_bytes(b"KERNEL" * 1000)
+    (src / "images" / "pxeboot" / "initrd.img").write_bytes(b"INITRD" * 1000)
+    if variant in ("dvd", "netinst"):
+        (src / "images" / "install.img").write_bytes(b"STAGE2" * 1000)
+    if variant == "dvd":
+        (src / "repodata").mkdir(exist_ok=True)
+        (src / "repodata" / "repomd.xml").write_text("<repomd/>")
+    if variant == "live":
+        (src / "LiveOS").mkdir(exist_ok=True)
+        (src / "LiveOS" / "squashfs.img").write_bytes(b"SQUASH" * 1000)
+    if treeinfo:
+        (src / ".treeinfo").write_text("[general]\nfamily = Fedora\nname = Fedora 42\nversion = 42\n"
+                                       "[release]\nname = Fedora\nversion = 42\n")
+    out = work / name
+    subprocess.run(["genisoimage", "-quiet", "-R", "-J", "-V", volume, "-o", str(out), str(src)], check=True)
+    return out

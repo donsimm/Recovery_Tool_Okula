@@ -176,7 +176,7 @@ class IsoDetailsDialog(Gtk.Dialog):
             _row(grid, r, "Distribution", lx.get("info", ""))
             r += 1
         _row(grid, r, "Direkt installierbar", "ja – Rechtsklick „Auf Gerät installieren …“" if oslib.installable(meta)
-             else "nein – nur als Boot-Stick (direkt: Windows 10/11, Ubuntu ab 24.04, Debian)")
+             else f"nein – {oslib.install_reason(meta)}. Als Boot-Stick verwenden.")
         r += 1
         sep = Gtk.Separator(margin_top=8, margin_bottom=8)
         grid.attach(sep, 0, r, 2, 1)
@@ -525,8 +525,11 @@ class InstallDialog(Gtk.Dialog):
         r += 1
         grid.attach(Gtk.Label(label="Betriebssystem", xalign=0), 0, r, 1, 1)
         self.iso_combo = Gtk.ComboBoxText(hexpand=True)
-        for path, iso in sorted(self.isos.items(), key=lambda kv: (kv[1].family != "windows", kv[1].display.lower())):
-            self.iso_combo.append(path, f"{iso.display}  ({nas.format_size(iso.size)})")
+        order = sorted(self.isos.items(), key=lambda kv: (not oslib.installable(kv[1].meta), kv[1].family != "windows",
+                                                          kv[1].display.lower()))
+        for path, iso in order:
+            note = "" if oslib.installable(iso.meta) else "  – nur Boot-Stick"
+            self.iso_combo.append(path, f"{iso.display}  ({nas.format_size(iso.size)}){note}")
         self.iso_combo.connect("changed", lambda _c: self._on_iso())
         grid.attach(self.iso_combo, 1, r, 1, 1)
         r += 1
@@ -671,7 +674,8 @@ class InstallDialog(Gtk.Dialog):
     def _on_iso(self) -> None:
         iso = self._iso()
         self.edition.remove_all()
-        windows = iso is not None and iso.family == "windows"
+        why = oslib.install_reason(iso.meta) if iso else ""
+        windows = iso is not None and iso.family == "windows" and not why
         if windows:
             eds = iso.meta.get("windows", {}).get("editions", [])
             for e in eds:
@@ -685,9 +689,13 @@ class InstallDialog(Gtk.Dialog):
         self.edition.set_visible(windows)
         self.edition_label.set_visible(windows)
         self.win.set_visible(windows)
-        self.lin.set_visible(not windows)
+        self.lin.set_visible(not windows and not why)
+        self.swiss.set_visible(not why)
+        self.name.set_sensitive(not why)
         kind = self.linuxsetup.kind(iso.meta) if iso and not windows else ""
-        self.l_desktop.set_visible(kind == "debian")
+        self.l_desktop.set_visible(kind in ("debian", "fedora"))
+        self.l_desktop.set_label("Desktop (GNOME) installieren" if kind == "debian" else
+                                 "Desktop (Workstation/GNOME) installieren – Pakete aus dem Internet")
         texts = {
             "windows": "Ablauf: EFI-, Windows- und Setup-Partition anlegen, Setup-Dateien vom NAS übertragen, Neustart. "
                        "Windows installiert sich selbständig (ohne Setup-Assistent, ohne TPM-/Secure-Boot-Prüfung) und "
@@ -697,14 +705,28 @@ class InstallDialog(Gtk.Dialog):
                       "entfernt und das System vergrössert.",
             "debian": "Ablauf: EFI-Partition mit dem Debian-Netzwerk-Installer anlegen, Neustart. Die Installation "
                       "läuft automatisch (Preseed) – <b>das Gerät braucht Internet</b> (deb.debian.org).",
+            "fedora": "Ablauf: EFI-Partition mit dem Installer der ISO und Setup-Partition mit der ISO anlegen, "
+                      "Neustart. Anaconda installiert automatisch (Kickstart) in den freien Platz; beim ersten Start "
+                      "wird die Setup-Partition entfernt. Netzwerk-ISO oder Desktop: <b>Gerät braucht Internet</b>.",
         }
         which = "windows" if windows else kind
-        self.info.set_markup(f"<small>{texts.get(which, '')} <b>Gerät muss im UEFI-Modus laufen. Agent-Stick beim "
-                             "Neustart abziehen.</b></small>")
+        if why:
+            self.info.set_markup(f"<b>Nicht direkt installierbar:</b> {GLib.markup_escape_text(why)}.\n"
+                                 "<small>Dieses Medium als Boot-Stick verwenden (rechts: Rechtsklick auf die ISO → "
+                                 "„Boot-Stick erstellen …“). Direkt installierbar sind Windows 10/11 (x64), Ubuntu "
+                                 "ab 24.04, Debian sowie Fedora/Rocky/Alma mit Anaconda-Installer.</small>")
+        else:
+            self.info.set_markup(f"<small>{texts.get(which, '')} <b>Gerät muss im UEFI-Modus laufen. Agent-Stick "
+                                 "beim Neustart abziehen.</b></small>")
         self._update()
 
     def _update(self) -> None:
         iso = self._iso()
+        if iso is not None and not oslib.installable(iso.meta):
+            self.part_store.clear()
+            self.check.set_text("")
+            self.btn_start.set_sensitive(False)
+            return
         windows = iso is not None and iso.family == "windows"
         for w in (self.w_user, self.w_pass):
             w.set_sensitive(self.w_account.get_active())

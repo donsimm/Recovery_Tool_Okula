@@ -1627,10 +1627,9 @@ class MainWindow(Gtk.ApplicationWindow):
         if self._nas_root() is None:
             confirm_error(parent, "NAS ist nicht verbunden – Menü → NAS-Verbindung …")
             return
-        isos = [i for i in self._isos.values() if oslib.installable(i.meta)]
+        isos = list(self._isos.values())  # alle – nicht installierbare mit Grund („nur Boot-Stick“)
         if not isos:
-            confirm_error(parent, "Keine installierbare ISO unter „Betriebssysteme“ (Windows 10/11, Ubuntu Desktop "
-                                  "ab 24.04, Debian) – zuerst rechts „ISO hinzufügen …“.")
+            confirm_error(parent, "Keine ISO unter „Betriebssysteme“ – zuerst rechts „ISO hinzufügen …“.")
             return
         if preselect is None:
             iso = self._selected_iso()
