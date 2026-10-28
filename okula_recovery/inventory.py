@@ -218,10 +218,24 @@ def operating_systems(disks: list[dict], skip: set[str] = frozenset()) -> list[d
     return found
 
 
+KEY_RE = re.compile(r"^[0-9A-Z]{5}(-[0-9A-Z]{5}){4}$")
+
+
+def oem_key(path: Path = Path("/sys/firmware/acpi/tables/MSDM")) -> str:
+    """Windows-Produktschlüssel aus dem BIOS (ACPI-Tabelle MSDM, ab Windows 8 bei OEM-Geräten)."""
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return ""
+    key = data[56:85].decode("ascii", errors="replace") if len(data) >= 85 else ""
+    return key if KEY_RE.match(key) else ""
+
+
 def collect(with_os: bool = True, skip: set[str] = frozenset()) -> dict:
     disks = imaging.list_disks()
     for d in disks:
         d["smart"] = smart(d["path"])
     systems = operating_systems(disks, skip) if with_os else []
     return {"collected": time.strftime("%Y-%m-%dT%H:%M:%S"), "dmi": dmi(), "cpu": cpu(), "memory": memory(),
-            "batteries": batteries(), "network": network(), "disks": disks, "systems": systems}
+            "batteries": batteries(), "network": network(), "disks": disks, "systems": systems,
+            "oem_key": oem_key()}

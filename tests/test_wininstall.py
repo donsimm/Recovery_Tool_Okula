@@ -130,7 +130,7 @@ class DirectInstallTest(unittest.TestCase):
                     break
                 threading.Event().wait(0.1)
         self.assertEqual(boot, "0007")
-        self.assertEqual(timers[0][0], 10)  # Neustart geplant (hier nicht ausgeführt)
+        self.assertEqual(timers[0][0], 15)  # Neustart geplant (hier nicht ausgeführt)
         self.assertIn("split", [e["phase"] for e in events])
         table = sh("sfdisk", "-d", self.dev)
         self.assertIn("label: gpt", table)
@@ -194,7 +194,7 @@ class DirectInstallTest(unittest.TestCase):
                 threading.Event().wait(0.1)
         self.assertEqual(job.state, jobs.DONE, job.log)
         self.assertEqual(results, [("0007", None)])
-        self.assertTrue(any("Stick jetzt abziehen" in line for line in job.log))
+        self.assertTrue(any("Stick JETZT abziehen" in line for line in job.log))
 
 
 if __name__ == "__main__":

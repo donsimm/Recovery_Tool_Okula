@@ -287,7 +287,8 @@ def run_job(tls, addr, req: dict, kind: str) -> None:
     """Disk-Image („image“), Zurückspielen („restore“) oder Windows-Installation („install“) –
     parallel zu Aufträgen auf anderen Disks."""
     disk = str(req.get("disk") or "")
-    label = {"image": "Disk-Image", "restore": "Zurückspielen", "install": "Windows-Installation"}[kind]
+    label = {"image": "Disk-Image", "restore": "Zurückspielen", "install": "Windows-Installation",
+             "bootprep": "Installation"}[kind]
     if not disk_locks.acquire(disk, kind):
         wire.send_json(tls, {"type": "error", "message": f"Auf {disk} läuft bereits ein Auftrag"})
         return
@@ -303,7 +304,8 @@ def run_job(tls, addr, req: dict, kind: str) -> None:
             job_state.clear_notice()
         title = {"image": f"Disk-Image von {disk} läuft",
                  "restore": f"Image wird auf {disk} zurückgespielt",
-                 "install": f"Windows-Installation wird auf {disk} vorbereitet"}[kind] + " – Maschine nicht ausschalten"
+                 "install": f"Windows-Installation wird auf {disk} vorbereitet",
+                 "bootprep": f"Installation wird auf {disk} vorbereitet"}[kind] + " – Maschine nicht ausschalten"
         # Mehrere parallele Aufträge: keine Balken (würden sich überschreiben), nur Meldungen
         bar = ConsoleBar(console, title) if console and alone else None
         job_state.update(job, label, 0.0)
@@ -316,8 +318,8 @@ def run_job(tls, addr, req: dict, kind: str) -> None:
 
         if kind == "image":
             imaging.stream_disk_image(tls, disk, log, report)
-        elif kind == "install":
-            entry = wininstall.install(tls, req, log, report)
+        elif kind in ("install", "bootprep"):
+            entry = (wininstall.install if kind == "install" else wininstall.bootprep)(tls, req, log, report)
             wire.send_json(tls, {"type": "done", "boot": entry})
         else:
             imaging.restore_disk(tls, req, log, report)
@@ -329,19 +331,20 @@ def run_job(tls, addr, req: dict, kind: str) -> None:
     finally:
         if bar:
             done_text = {"image": "fertig", "restore": "zurückgespielt – Stick abziehen und neu starten",
-                         "install": "vorbereitet – Neustart, Windows wird installiert (Stick abziehen)"}[kind]
+                         "install": "vorbereitet – Neustart, Windows wird installiert (Stick abziehen)",
+                         "bootprep": "vorbereitet – Neustart, Installation startet (Stick JETZT abziehen)"}[kind]
             result = done_text if ok else ("abgebrochen" if kind == "image" else "abgebrochen – Disk ist unvollständig")
             bar.finish(f"» {label} auf {disk}: {result}")
         job_state.finish(job)
         disk_locks.release(disk)
     if ok and kind == "restore":
         threading.Thread(target=inventory_state.collect, daemon=True).start()  # neues Betriebssystem erfassen
-    if ok and kind == "install" and req.get("reboot"):
+    if ok and kind in ("install", "bootprep") and req.get("reboot"):
         if disk_locks.busy():
             log("Kein Neustart – auf einer anderen Disk läuft noch ein Auftrag. Danach neu starten.", show=True)
         else:
-            log("Neustart in 10 s – Windows wird danach von der Setup-Partition installiert", show=True)
-            threading.Timer(10, power_action, args=("reboot",)).start()
+            log("Neustart in 15 s – Agent-Stick jetzt abziehen, danach startet die Installation", show=True)
+            threading.Timer(15, power_action, args=("reboot",)).start()
 
 
 def load_key(path: str) -> bytes | None:
@@ -362,7 +365,7 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
                 wire.send_json(tls, {"type": "info", "hostname": socket.gethostname(), "version": __version__,
                                      "disks": imaging.list_disks(), "tools": imaging.tool_status(),
                                      "busy": disk_locks.busy(), "active": disk_locks.active()})
-            elif cmd in ("image", "restore", "install"):
+            elif cmd in ("image", "restore", "install", "bootprep"):
                 run_job(tls, addr, req, cmd)
             elif cmd == "inventory":
                 if req.get("refresh") and disk_locks.busy():

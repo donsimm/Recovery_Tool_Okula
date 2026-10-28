@@ -175,8 +175,8 @@ class IsoDetailsDialog(Gtk.Dialog):
         if lx:
             _row(grid, r, "Distribution", lx.get("info", ""))
             r += 1
-        _row(grid, r, "Direkt installierbar", "ja (folgt: „Auf Gerät installieren“)" if oslib.installable(meta)
-             else "nein – nur als Boot-Stick")
+        _row(grid, r, "Direkt installierbar", "ja – Rechtsklick „Auf Gerät installieren …“" if oslib.installable(meta)
+             else "nein – nur als Boot-Stick (direkt: Windows 10/11, Ubuntu ab 24.04, Debian)")
         r += 1
         sep = Gtk.Separator(margin_top=8, margin_bottom=8)
         grid.attach(sep, 0, r, 2, 1)
@@ -492,17 +492,24 @@ def _gb(n: int) -> str:
     return f"{n / 1000**3:.1f} GB"
 
 
-class InstallDialog(Gtk.Dialog):
-    """Windows direkt auf ein Gerät installieren (über den Agent, ohne Stick)."""
+EDITION_NAMES = {"Core": "Home", "Professional": "Pro", "Education": "Education", "Enterprise": "Enterprise",
+                 "CoreSingleLanguage": "Home Single Language", "ProfessionalWorkstation": "Pro for Workstations"}
 
-    def __init__(self, parent: Gtk.Window, agent, isos: list[oslib.IsoInfo], device_name: str,
-                 start_job: Callable[[oslib.IsoInfo, int, str, winunattend.WinOptions], None],
+
+class InstallDialog(Gtk.Dialog):
+    """Betriebssystem direkt auf ein Gerät installieren (über den Agent, ohne Stick): Windows, Ubuntu, Debian."""
+
+    def __init__(self, parent: Gtk.Window, agent, isos: list[oslib.IsoInfo], device, start_job,
                  preselect: str | None = None):
-        super().__init__(title="Windows installieren", transient_for=parent, modal=True)
-        self.set_default_size(760, 720)
-        self.agent, self.start_job = agent, start_job
+        """start_job(iso, disk_info, edition_index|None, optionen) – Optionen: WinOptions oder LinuxOptions."""
+        from okula_recovery import linuxsetup
+        self.linuxsetup = linuxsetup
+        super().__init__(title="OS installieren", transient_for=parent, modal=True)
+        self.set_default_size(780, 760)
+        self.agent, self.start_job, self.device = agent, start_job, device
         self.isos = {str(i.path): i for i in isos}
         self.disks: dict[str, dict] = {}
+        self.key, self.key_source = device.windows_key
         self.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
         self.btn_start = self.add_button("Installieren", Gtk.ResponseType.APPLY)
         self.btn_start.get_style_context().add_class("destructive-action")
@@ -512,18 +519,19 @@ class InstallDialog(Gtk.Dialog):
         grid = Gtk.Grid(column_spacing=8, row_spacing=8, margin=12)
         r = 0
         head = Gtk.Label(xalign=0, wrap=True)
-        head.set_markup(f"Zielgerät: <b>{GLib.markup_escape_text(device_name)}</b>  ({agent.ip})  "
+        head.set_markup(f"Zielgerät: <b>{GLib.markup_escape_text(device.name)}</b>  ({agent.ip})  "
                         f"{GLib.markup_escape_text(agent.hardware)}")
         grid.attach(head, 0, r, 2, 1)
         r += 1
-        grid.attach(Gtk.Label(label="Windows-Medium", xalign=0), 0, r, 1, 1)
+        grid.attach(Gtk.Label(label="Betriebssystem", xalign=0), 0, r, 1, 1)
         self.iso_combo = Gtk.ComboBoxText(hexpand=True)
-        for path, iso in sorted(self.isos.items(), key=lambda kv: kv[1].display.lower()):
+        for path, iso in sorted(self.isos.items(), key=lambda kv: (kv[1].family != "windows", kv[1].display.lower())):
             self.iso_combo.append(path, f"{iso.display}  ({nas.format_size(iso.size)})")
         self.iso_combo.connect("changed", lambda _c: self._on_iso())
         grid.attach(self.iso_combo, 1, r, 1, 1)
         r += 1
-        grid.attach(Gtk.Label(label="Edition", xalign=0), 0, r, 1, 1)
+        self.edition_label = Gtk.Label(label="Edition", xalign=0)
+        grid.attach(self.edition_label, 0, r, 1, 1)
         self.edition = Gtk.ComboBoxText()
         self.edition.connect("changed", lambda _c: self._update())
         grid.attach(self.edition, 1, r, 1, 1)
@@ -546,43 +554,65 @@ class InstallDialog(Gtk.Dialog):
             view.append_column(col)
         view.get_selection().set_mode(Gtk.SelectionMode.NONE)
         sw = scrolled(view)
-        sw.set_min_content_height(90)
+        sw.set_min_content_height(80)
         grid.attach(sw, 0, r, 2, 1)
         r += 1
 
-        exp = Gtk.Expander(label="Windows-Anpassung", expanded=True)
+        # --- Windows ---
+        self.win = Gtk.Expander(label="Windows-Anpassung", expanded=True)
         wbox = Gtk.Grid(column_spacing=8, row_spacing=4, margin_start=12, margin_top=4)
+        self.w_key = Gtk.CheckButton(active=bool(self.key))
+        self.w_key.set_label(f"Produktschlüssel verwenden: {self._masked()}  ({self.key_source})" if self.key
+                             else "Kein Produktschlüssel bekannt (im Gerätefenster hinterlegen)")
+        self.w_key.set_sensitive(bool(self.key))
+        self.w_key.connect("toggled", lambda _c: self._update())
         self.w_account = Gtk.CheckButton(label="Lokales Konto statt Microsoft-Konto", active=True)
         self.w_user = Gtk.Entry(text="Benutzer", width_chars=16)
         self.w_pass = Gtk.Entry(visibility=False, placeholder_text="leer = beim ersten Anmelden setzen", width_chars=26)
         self.w_privacy = Gtk.CheckButton(label="Datenschutz-Fragen überspringen (alles aus)", active=True)
         self.w_bitlocker = Gtk.CheckButton(label="Keine automatische BitLocker-Verschlüsselung", active=True)
-        self.w_swiss = Gtk.CheckButton(label="Region Schweiz: Formate de-CH, Tastatur Schweiz (Deutsch), Zeitzone Zürich",
-                                       active=True)
-        self.w_name = Gtk.Entry(text=winunattend.computer_name(device_name), width_chars=26,
-                                placeholder_text="leer = Windows wählt (max. 15 Zeichen)")
-        wbox.attach(self.w_account, 0, 0, 3, 1)
-        wbox.attach(Gtk.Label(label="Benutzername", xalign=0, margin_start=24), 0, 1, 1, 1)
-        wbox.attach(self.w_user, 1, 1, 1, 1)
-        wbox.attach(Gtk.Label(label="Passwort", xalign=0, margin_start=24), 0, 2, 1, 1)
-        wbox.attach(self.w_pass, 1, 2, 1, 1)
-        for i, w in enumerate((self.w_privacy, self.w_bitlocker, self.w_swiss)):
-            wbox.attach(w, 0, 3 + i, 3, 1)
-        wbox.attach(Gtk.Label(label="Computername", xalign=0), 0, 6, 1, 1)
-        wbox.attach(self.w_name, 1, 6, 1, 1)
         self.w_account.connect("toggled", lambda _c: self._update())
-        exp.add(wbox)
-        grid.attach(exp, 0, r, 2, 1)
+        rows = [(self.w_key, None), (self.w_account, None), ("Benutzername", self.w_user), ("Passwort", self.w_pass),
+                (self.w_privacy, None), (self.w_bitlocker, None)]
+        for i, (a, b) in enumerate(rows):
+            if b is None:
+                wbox.attach(a, 0, i, 3, 1)
+            else:
+                wbox.attach(Gtk.Label(label=a, xalign=0, margin_start=24), 0, i, 1, 1)
+                wbox.attach(b, 1, i, 1, 1)
+        self.win.add(wbox)
+        grid.attach(self.win, 0, r, 2, 1)
         r += 1
 
-        info = Gtk.Label(xalign=0, wrap=True)
-        info.set_markup(
-            "<small>Ablauf: Der Agent legt EFI-, Windows- und eine Setup-Partition an, das Tool überträgt die "
-            "Setup-Dateien vom NAS. Danach startet das Gerät neu und installiert Windows selbständig "
-            "(ohne Setup-Assistent, daher auch ohne TPM-/Secure-Boot-Prüfung). Am Ende entfernt Windows die "
-            "Setup-Partition. <b>Gerät muss im UEFI-Modus laufen. Agent-Stick nach dem Neustart abziehen.</b>"
-            "</small>")
-        grid.attach(info, 0, r, 2, 1)
+        # --- Linux ---
+        self.lin = Gtk.Expander(label="Linux-Einstellungen", expanded=True)
+        lbox = Gtk.Grid(column_spacing=8, row_spacing=4, margin_start=12, margin_top=4)
+        self.l_user = Gtk.Entry(text="benutzer", width_chars=16)
+        self.l_pass = Gtk.Entry(visibility=False, width_chars=26, placeholder_text="mind. 4 Zeichen")
+        self.l_pass2 = Gtk.Entry(visibility=False, width_chars=26, placeholder_text="wiederholen")
+        self.l_desktop = Gtk.CheckButton(label="Desktop (GNOME) installieren", active=True)
+        for w in (self.l_user, self.l_pass, self.l_pass2):
+            w.connect("changed", lambda _e: self._update())
+        for i, (label, w) in enumerate((("Benutzername", self.l_user), ("Passwort", self.l_pass),
+                                        ("Passwort bestätigen", self.l_pass2))):
+            lbox.attach(Gtk.Label(label=label, xalign=0), 0, i, 1, 1)
+            lbox.attach(w, 1, i, 1, 1)
+        lbox.attach(self.l_desktop, 0, 3, 3, 1)
+        self.lin.add(lbox)
+        grid.attach(self.lin, 0, r, 2, 1)
+        r += 1
+
+        # --- gemeinsam ---
+        self.swiss = Gtk.CheckButton(label="Region Schweiz: Formate de-CH, Tastatur Schweiz (Deutsch), Zeitzone Zürich",
+                                     active=True)
+        grid.attach(self.swiss, 0, r, 2, 1)
+        r += 1
+        grid.attach(Gtk.Label(label="Computername", xalign=0), 0, r, 1, 1)
+        self.name = Gtk.Entry(text=device.name, width_chars=26)
+        grid.attach(self.name, 1, r, 1, 1)
+        r += 1
+        self.info = Gtk.Label(xalign=0, wrap=True)
+        grid.attach(self.info, 0, r, 2, 1)
         r += 1
         self.check = Gtk.Label(xalign=0, wrap=True)
         grid.attach(self.check, 0, r, 2, 1)
@@ -603,6 +633,12 @@ class InstallDialog(Gtk.Dialog):
         elif self.isos:
             self.iso_combo.set_active(0)
         self._load_disks()
+
+    def _masked(self) -> str:
+        return f"XXXXX-XXXXX-XXXXX-XXXXX-{self.key[-5:]}"
+
+    def _iso(self) -> oslib.IsoInfo | None:
+        return self.isos.get(self.iso_combo.get_active_id() or "")
 
     def _load_disks(self) -> None:
         from okula_recovery import agentclient  # Kreisimport vermeiden
@@ -633,57 +669,111 @@ class InstallDialog(Gtk.Dialog):
         return False
 
     def _on_iso(self) -> None:
-        iso = self.isos.get(self.iso_combo.get_active_id() or "")
+        iso = self._iso()
         self.edition.remove_all()
-        if iso:
+        windows = iso is not None and iso.family == "windows"
+        if windows:
             eds = iso.meta.get("windows", {}).get("editions", [])
             for e in eds:
                 self.edition.append(str(e["index"]), e["name"])
-            pro = next((e for e in eds if e.get("edition_id") == "Professional"), eds[0] if eds else None)
-            if pro:
-                self.edition.set_active_id(str(pro["index"]))
+            # Edition wie bisher auf dem Gerät (passt zur Lizenz), sonst Pro
+            wanted = self.device.windows_edition or "Professional"
+            pick = next((e for e in eds if e.get("edition_id") == wanted), None) or \
+                next((e for e in eds if e.get("edition_id") == "Professional"), eds[0] if eds else None)
+            if pick:
+                self.edition.set_active_id(str(pick["index"]))
+        self.edition.set_visible(windows)
+        self.edition_label.set_visible(windows)
+        self.win.set_visible(windows)
+        self.lin.set_visible(not windows)
+        kind = self.linuxsetup.kind(iso.meta) if iso and not windows else ""
+        self.l_desktop.set_visible(kind == "debian")
+        texts = {
+            "windows": "Ablauf: EFI-, Windows- und Setup-Partition anlegen, Setup-Dateien vom NAS übertragen, Neustart. "
+                       "Windows installiert sich selbständig (ohne Setup-Assistent, ohne TPM-/Secure-Boot-Prüfung) und "
+                       "entfernt am Ende die Setup-Partition.",
+            "ubuntu": "Ablauf: EFI-Partition und Setup-Partition mit der ISO anlegen, Neustart. Der Ubuntu-Installer "
+                      "läuft automatisch (Autoinstall) in den freien Platz; beim ersten Start wird die Setup-Partition "
+                      "entfernt und das System vergrössert.",
+            "debian": "Ablauf: EFI-Partition mit dem Debian-Netzwerk-Installer anlegen, Neustart. Die Installation "
+                      "läuft automatisch (Preseed) – <b>das Gerät braucht Internet</b> (deb.debian.org).",
+        }
+        which = "windows" if windows else kind
+        self.info.set_markup(f"<small>{texts.get(which, '')} <b>Gerät muss im UEFI-Modus laufen. Agent-Stick beim "
+                             "Neustart abziehen.</b></small>")
         self._update()
 
     def _update(self) -> None:
+        iso = self._iso()
+        windows = iso is not None and iso.family == "windows"
         for w in (self.w_user, self.w_pass):
             w.set_sensitive(self.w_account.get_active())
         disk = self.disks.get(self.disk_combo.get_active_id() or "")
         self.part_store.clear()
-        ok = bool(self.iso_combo.get_active_id() and self.edition.get_active_id() and disk)
+        ok = bool(iso and disk and (self.edition.get_active_id() or not windows))
+        problems = []
         if disk:
             for p in disk["partitions"] or [{"name": disk["name"], "fstype": "", "size": disk["size"], "label": ""}]:
                 self.part_store.append([p["name"], p.get("fstype") or "leer/unbekannt", nas.format_size(p["size"]),
                                         p.get("label", "")])
             self.confirm_label.set_markup(f"Bestätigung: <b>{GLib.markup_escape_text(disk['name'])}</b> eintippen")
-            if disk["size"] < 40 * 1000**3:
-                self.check.set_markup(f"<b>Disk zu klein:</b> {_gb(disk['size'])} (mind. 40 GB)")
+            need = 40 * 1000**3 if windows else 30 * 1000**3 + (iso.size if iso else 0)
+            if disk["size"] < need:
+                problems.append(f"Disk zu klein: {_gb(disk['size'])} (mind. {_gb(need)})")
                 ok = False
-            elif any(p.get("mounted") for p in disk["partitions"]):
-                self.check.set_markup("<b>Eine Partition der Zieldisk ist eingehängt.</b>")
+            if any(p.get("mounted") for p in disk["partitions"]):
+                problems.append("Eine Partition der Zieldisk ist eingehängt.")
                 ok = False
-            else:
-                self.check.set_text(f"Disk passt: {_gb(disk['size'])}")
+        if windows and self.w_key.get_active() and self.device.windows_edition:
+            chosen = next((e for e in iso.meta["windows"]["editions"]
+                           if str(e["index"]) == self.edition.get_active_id()), None)
+            if chosen and chosen.get("edition_id") != self.device.windows_edition:
+                old = EDITION_NAMES.get(self.device.windows_edition, self.device.windows_edition)
+                problems.append(f"Hinweis: Auf dem Gerät war Windows {old} – der Schlüssel aktiviert vermutlich nur "
+                                f"diese Edition, nicht {chosen['name']}.")
+        if iso and not windows:
+            try:
+                self.linuxsetup.username(self.l_user.get_text())
+            except self.linuxsetup.LinuxSetupError as e:
+                problems.append(str(e))
+                ok = False
+            if len(self.l_pass.get_text()) < 4:
+                problems.append("Passwort: mindestens 4 Zeichen")
+                ok = False
+            elif self.l_pass.get_text() != self.l_pass2.get_text():
+                problems.append("Passwörter stimmen nicht überein")
+                ok = False
+        self.check.set_markup("\n".join(GLib.markup_escape_text(p) for p in problems)
+                              if problems else (f"Disk passt: {_gb(disk['size'])}" if disk else ""))
         typed = disk is not None and self.confirm.get_text().strip() == disk["name"]
         self.btn_start.set_sensitive(ok and typed)
 
-    def options(self) -> winunattend.WinOptions:
-        iso = self.isos[self.iso_combo.get_active_id()]
-        w = iso.meta.get("windows", {})
-        return winunattend.WinOptions(
-            bypass_requirements=False,  # Direktinstallation läuft ohne Setup-Assistent
-            local_account=self.w_user.get_text().strip() if self.w_account.get_active() else "",
-            password=self.w_pass.get_text() if self.w_account.get_active() else "",
-            skip_privacy=self.w_privacy.get_active(), no_bitlocker=self.w_bitlocker.get_active(),
-            swiss_region=self.w_swiss.get_active(), ui_language=(w.get("languages") or ["de-DE"])[0],
-            computer_name=self.w_name.get_text().strip(), arch=w.get("arch") or "amd64", skip_network=True)
+    def options(self):
+        iso = self._iso()
+        if iso.family == "windows":
+            w = iso.meta.get("windows", {})
+            return winunattend.WinOptions(
+                bypass_requirements=False,  # Direktinstallation läuft ohne Setup-Assistent
+                local_account=self.w_user.get_text().strip() if self.w_account.get_active() else "",
+                password=self.w_pass.get_text() if self.w_account.get_active() else "",
+                skip_privacy=self.w_privacy.get_active(), no_bitlocker=self.w_bitlocker.get_active(),
+                swiss_region=self.swiss.get_active(), ui_language=(w.get("languages") or ["de-DE"])[0],
+                computer_name=self.name.get_text().strip(), arch=w.get("arch") or "amd64", skip_network=True,
+                product_key=self.key if self.w_key.get_active() else "")
+        return self.linuxsetup.LinuxOptions(
+            username=self.l_user.get_text().strip(), password=self.l_pass.get_text(),
+            hostname=self.name.get_text().strip() or self.device.name, swiss_region=self.swiss.get_active(),
+            desktop=self.l_desktop.get_active())
 
     def _on_response(self, _dlg, response: int) -> None:
         if response != Gtk.ResponseType.APPLY:
             self.destroy()
             return
-        iso = self.isos[self.iso_combo.get_active_id()]
+        iso = self._iso()
+        disk = self.disks[self.disk_combo.get_active_id()]
+        index = int(self.edition.get_active_id()) if iso.family == "windows" else None
         try:
-            self.start_job(iso, int(self.edition.get_active_id()), self.disk_combo.get_active_id(), self.options())
+            self.start_job(iso, disk, index, self.options())
         except Exception as e:
             self.status.set_text(f"Nicht gestartet: {e}")
             return

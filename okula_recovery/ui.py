@@ -139,7 +139,7 @@ class MainWindow(Gtk.ApplicationWindow):
             ("Gerät ö_ffnen …", self.on_open_device, "<Control>o"),
             ("_Disk-Image erstellen …", lambda: self._with_device(self.start_image), None),
             ("Image _zurückspielen …", lambda: self._with_device(self.start_restore), None),
-            ("_Windows installieren …", lambda: self._with_device(self.start_install), None),
+            ("_OS installieren …", lambda: self._with_device(self.start_install), None),
             ("_Inventar neu einlesen", lambda: self._with_device(self.refresh_inventory), None),
             ("Gerät _herunterfahren", lambda: self._with_device(lambda d: self.power(d, "poweroff")), None),
             None,
@@ -419,7 +419,7 @@ class MainWindow(Gtk.ApplicationWindow):
             add("Details und Prüfsummen …", lambda: iso and IsoDetailsDialog(self, iso), iso is not None)
             add("Boot-Stick erstellen …", self.on_boot_stick, iso is not None and bool(oslib.stick_modes(iso.meta)))
             add("Auf Gerät installieren …", lambda: self.install_iso_on_device(iso),
-                iso is not None and iso.family == "windows" and oslib.installable(iso.meta))
+                iso is not None and oslib.installable(iso.meta))
             menu.append(Gtk.SeparatorMenuItem())
             add("Umbenennen …", lambda: self.on_rename_archive_folder(None))
             add("Löschen …", lambda: self.on_delete_image(None))
@@ -1262,7 +1262,7 @@ class MainWindow(Gtk.ApplicationWindow):
             b.set_sensitive(ready)
         self.dev_buttons["rename"].set_sensitive(kind in ("folder", "device"))
         self.dev_buttons["delete"].set_sensitive(kind == "folder" or (dev is not None and agent is None))
-        for label in ("Gerät öffnen …", "Disk-Image erstellen …", "Image zurückspielen …", "Windows installieren …",
+        for label in ("Gerät öffnen …", "Disk-Image erstellen …", "Image zurückspielen …", "OS installieren …",
                       "Inventar neu einlesen", "Gerät herunterfahren"):
             if label in getattr(self, "menu_items", {}):
                 self.menu_items[label].set_sensitive(dev is not None if label == "Gerät öffnen …" else ready)
@@ -1298,7 +1298,7 @@ class MainWindow(Gtk.ApplicationWindow):
             add("Öffnen …", self.on_open_device)
             add("Disk-Image erstellen …", lambda: self.start_image(dev), ready)
             add("Image zurückspielen …", lambda: self.start_restore(dev), ready)
-            add("Windows installieren …", lambda: self.start_install(dev), ready)
+            add("OS installieren …", lambda: self.start_install(dev), ready)
             add("Inventar neu einlesen", lambda: self.refresh_inventory(dev), ready)
             add("Herunterfahren", lambda: self.power(dev, "poweroff"), ready)
             add("Neu starten", lambda: self.power(dev, "reboot"), ready)
@@ -1619,7 +1619,7 @@ class MainWindow(Gtk.ApplicationWindow):
         RestoreDialog(parent, agent, root, start_job=start, preselect=preselect, device_name=dev.name)
 
     def start_install(self, dev: devices.Device, preselect: str | None = None) -> None:
-        """Windows direkt aufs Gerät installieren (Medium aus „Betriebssysteme“ auf dem NAS)."""
+        """Betriebssystem direkt aufs Gerät installieren (Medium aus „Betriebssysteme“ auf dem NAS)."""
         parent = self._parent_for(dev)
         agent = self._ready_agent(dev, parent)
         if agent is None:
@@ -1627,27 +1627,37 @@ class MainWindow(Gtk.ApplicationWindow):
         if self._nas_root() is None:
             confirm_error(parent, "NAS ist nicht verbunden – Menü → NAS-Verbindung …")
             return
-        isos = [i for i in self._isos.values() if i.family == "windows" and oslib.installable(i.meta)]
+        isos = [i for i in self._isos.values() if oslib.installable(i.meta)]
         if not isos:
-            confirm_error(parent, "Keine Windows-10/11-ISO unter „Betriebssysteme“ – zuerst rechts "
-                                  "„ISO hinzufügen …“.")
+            confirm_error(parent, "Keine installierbare ISO unter „Betriebssysteme“ (Windows 10/11, Ubuntu Desktop "
+                                  "ab 24.04, Debian) – zuerst rechts „ISO hinzufügen …“.")
             return
         if preselect is None:
             iso = self._selected_iso()
             preselect = str(iso.path) if iso else None
 
-        def start(iso: oslib.IsoInfo, index: int, disk: str, opts) -> None:
-            edition = next((e["name"] for e in iso.meta["windows"]["editions"] if e["index"] == index), "")
-            what = f"Windows-Installation {edition} → {disk}"
+        def start(iso: oslib.IsoInfo, disk: dict, index: int | None, opts) -> None:
+            if iso.family == "windows":
+                edition = next((e["name"] for e in iso.meta["windows"]["editions"] if e["index"] == index), "")
+                what = f"Windows-Installation {edition} → {disk['path']}"
+                kind = "install"
+            else:
+                what = f"Linux-Installation {iso.title} → {disk['path']}"
+                kind = "linux"
 
             def after(job, boot, error) -> None:
                 GLib.idle_add(self._after_job, dev.id, job, what, boot, error, False)
 
-            work = jobs.install_work(agent.ip, self.key, agent.control_port, str(iso.path), index, opts, disk, after)
-            self.jobs.start(dev.id, "install", disk, what, work)
+            if kind == "install":
+                work = jobs.install_work(agent.ip, self.key, agent.control_port, str(iso.path), index, opts,
+                                         disk["path"], after)
+            else:
+                work = jobs.linux_install_work(agent.ip, self.key, agent.control_port, str(iso.path), iso.meta,
+                                               disk["path"], int(disk["size"]), opts, after)
+            self.jobs.start(dev.id, kind, disk["path"], what, work)
             self.open_device(dev).show_jobs()
 
-        InstallDialog(parent, agent, isos, dev.name, start, preselect)
+        InstallDialog(parent, agent, isos, dev, start, preselect)
 
     def install_iso_on_device(self, iso: oslib.IsoInfo | None) -> None:
         """Rechtsklick auf eine ISO: auf welches verbundene Gerät?"""
@@ -1681,9 +1691,9 @@ class MainWindow(Gtk.ApplicationWindow):
         """Ergebnis eines Auftrags: Verlauf, Image-Liste, freier Speicher, evtl. herunterfahren."""
         dev = self.store.devices.get(dev_id)
         if dev is not None:
-            if error is None and job.kind == "install":
+            if error is None and job.kind in ("install", "linux"):
                 self.store.add_history(dev, job.kind, f"{what}: vorbereitet, Gerät startet neu und installiert "
-                                                      "Windows selbständig", ok=True)
+                                                      "selbständig", ok=True)
             elif error is None:
                 where = ""
                 if job.kind == "image" and path and self._nas_root():

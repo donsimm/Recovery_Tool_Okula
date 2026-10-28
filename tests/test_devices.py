@@ -115,3 +115,28 @@ class DeviceStoreTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProductKeyTest(unittest.TestCase):
+    def test_oem_key_from_msdm_and_precedence(self):
+        from okula_recovery import inventory
+        with tempfile.TemporaryDirectory() as tmp:
+            msdm = Path(tmp) / "MSDM"
+            msdm.write_bytes(b"MSDM" + bytes(52) + b"ABCDE-FGHJK-MNPQR-TVWXY-23456")
+            self.assertEqual(inventory.oem_key(msdm), "ABCDE-FGHJK-MNPQR-TVWXY-23456")
+            msdm.write_bytes(b"MSDM" + bytes(80))
+            self.assertEqual(inventory.oem_key(msdm), "")
+            self.assertEqual(inventory.oem_key(Path(tmp) / "fehlt"), "")
+        dev = devices.Device(id="x", inventory={"oem_key": "ABCDE-FGHJK-MNPQR-TVWXY-23456",
+                                                "systems": [{"family": "Windows", "edition": "Professional"}]})
+        self.assertEqual(dev.windows_key, ("ABCDE-FGHJK-MNPQR-TVWXY-23456", "BIOS (OEM)"))
+        self.assertEqual(dev.windows_edition, "Professional")
+        dev.product_key = "VK7JG-NPHTM-C97JM-9MPGT-3V66T"
+        self.assertEqual(dev.windows_key[1], "hinterlegt")
+        self.assertEqual(devices.mask_key(dev.windows_key[0]), "XXXXX-XXXXX-XXXXX-XXXXX-3V66T")
+
+    def test_normalize_key(self):
+        self.assertEqual(devices.normalize_key(" vk7jg npHTM-c97jm 9mpgt 3v66t "), "VK7JG-NPHTM-C97JM-9MPGT-3V66T")
+        self.assertEqual(devices.normalize_key(""), "")
+        with self.assertRaisesRegex(devices.DeviceError, "25 Zeichen"):
+            devices.normalize_key("ABC-123")

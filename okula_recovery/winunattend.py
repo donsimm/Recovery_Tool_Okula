@@ -36,6 +36,7 @@ class WinOptions:
     computer_name: str = ""            # leer = Windows wählt
     arch: str = "amd64"
     skip_network: bool = False         # Netzwerk-Seite im Willkommens-Assistenten überspringen
+    product_key: str = ""              # nur Direktinstallation: wird beim ersten Start gesetzt
 
 
 def encode_password(password: str, kind: str = "Password") -> str:
@@ -125,6 +126,8 @@ def build(opts: WinOptions, pe: bool = True, system: bool = True, launch: str | 
     name = computer_name(opts.computer_name)
     if name:
         b.sub(shell, "ComputerName", name)
+    if opts.product_key:
+        b.sub(shell, "ProductKey", opts.product_key)
     if opts.swiss_region:
         b.sub(shell, "TimeZone", SWISS_TIMEZONE)
     regs = []
@@ -193,4 +196,6 @@ def summary(opts: WinOptions) -> list[str]:
         lines.append("Region Schweiz: Formate de-CH, Tastatur Schweiz, Zeitzone Zürich")
     if computer_name(opts.computer_name):
         lines.append(f"Computername {computer_name(opts.computer_name)}")
+    if opts.product_key:
+        lines.append(f"Produktschlüssel …{opts.product_key[-5:]} (Aktivierung, sobald Internet da ist)")
     return lines

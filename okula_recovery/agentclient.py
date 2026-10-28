@@ -488,3 +488,49 @@ def install_windows(ip: str, key: bytes, iso_path: str | Path, plan, disk: str, 
         raise AgentError(f"Verbindung zum Agent abgebrochen: {e}") from None
     finally:
         sock.close()
+
+
+def bootprep(ip: str, key: bytes, plan, disk: str, progress: Progress, cancel: threading.Event,
+             port: int = wire.PORT) -> str:
+    """Linux-Direktinstallation: Partitionen anlegen lassen und Bootdateien/ISO übertragen (plan: linuxsetup.BootPlan)."""
+    total = sum(size for _p, _path, size, _src in plan.files) or 1
+    sent = 0
+    started = time.monotonic()
+    sock = _connect(ip, key, port)
+    try:
+        sock.settimeout(1800)
+        wire.send_json(sock, plan.request(disk))
+        progress({"phase": "prepare"})
+        _expect(sock, "ready")
+        for part, path, _size, src in plan.files:
+            progress({"phase": "file", "file": path})
+            h = hashlib.sha256()
+            size, last = 0, 0.0
+            try:
+                wire.send_json(sock, {"type": "file", "part": part, "path": path})
+                with open(src, "rb") as fh:
+                    while chunk := fh.read(wire.CHUNK):
+                        if cancel.is_set():
+                            raise AgentError("Abgebrochen – die Zieldisk ist jetzt leer bzw. unvollständig")
+                        wire.send_data(sock, chunk)
+                        h.update(chunk)
+                        size += len(chunk)
+                        sent += len(chunk)
+                        if time.monotonic() - last >= 0.5:
+                            last = time.monotonic()
+                            progress({"phase": "data", "fraction": sent / total, "file": path,
+                                      "speed": sent / max(time.monotonic() - started, 0.001)})
+                wire.send_json(sock, {"type": "file_end", "file": path, "size": size, "sha256": h.hexdigest()})
+            except (BrokenPipeError, ConnectionResetError, ssl.SSLError) as e:
+                raise AgentError(_agent_error(sock) or f"Verbindung zum Agent abgebrochen: {e}") from None
+            _expect(sock, "file_done")
+        wire.send_json(sock, {"type": "end"})
+        msg = _expect(sock, "done")
+        progress({"phase": "done"})
+        return str(msg.get("boot") or "")
+    except wire.ProtocolError as e:
+        raise AgentError(f"Verbindung zum Agent gestört: {e}") from None
+    except (TimeoutError, ConnectionError) as e:
+        raise AgentError(f"Verbindung zum Agent abgebrochen: {e}") from None
+    finally:
+        sock.close()

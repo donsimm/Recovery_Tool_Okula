@@ -50,6 +50,7 @@ class Device:
     disk_serials: list[str] = field(default_factory=list)
     inventory: dict = field(default_factory=dict)
     notes: str = ""
+    product_key: str = ""              # Windows-Schlüssel von Hand (Retail/Volumen); OEM kommt aus dem Inventar
     history: list[dict] = field(default_factory=list)
     folder: str = ""                   # nicht gespeichert: ergibt sich aus dem Ablageort
 
@@ -57,6 +58,20 @@ class Device:
     def os_name(self) -> str:
         systems = self.inventory.get("systems") or []
         return systems[0]["name"] if systems else ""
+
+    @property
+    def windows_key(self) -> tuple[str, str]:
+        """(Schlüssel, Herkunft): von Hand hinterlegt hat Vorrang vor dem OEM-Schlüssel aus dem BIOS."""
+        if self.product_key:
+            return self.product_key, "hinterlegt"
+        oem = self.inventory.get("oem_key") or ""
+        return (oem, "BIOS (OEM)") if oem else ("", "")
+
+    @property
+    def windows_edition(self) -> str:
+        """Edition des zuletzt erkannten Windows (z. B. Professional, Core) – passt meist zur Lizenz."""
+        return next((s.get("edition", "") for s in self.inventory.get("systems") or []
+                     if s.get("family") == "Windows" and s.get("edition")), "")
 
     @property
     def hardware(self) -> str:
@@ -205,12 +220,15 @@ class DeviceStore:
             self.add_history(dev, "verbunden" if connected else "getrennt",
                              f"Verbunden ({ip})" if connected else "Getrennt")
 
-    def update(self, dev: Device, name: str | None = None, notes: str | None = None) -> None:
+    def update(self, dev: Device, name: str | None = None, notes: str | None = None,
+               product_key: str | None = None) -> None:
         with self.lock:
             if name is not None and name.strip():
                 dev.name = name.strip()
             if notes is not None:
                 dev.notes = notes
+            if product_key is not None:
+                dev.product_key = normalize_key(product_key)
             self.save(dev)
 
     def delete(self, dev: Device) -> None:
@@ -292,6 +310,20 @@ class DeviceStore:
 def _content(inv: dict) -> dict:
     """Inventar ohne Zeitstempel – zum Vergleichen, ob sich etwas geändert hat."""
     return {k: v for k, v in (inv or {}).items() if k != "collected"}
+
+
+def normalize_key(key: str) -> str:
+    """„xxxxx xxxxx …“ → „XXXXX-XXXXX-XXXXX-XXXXX-XXXXX“; leer = löschen. Ungültig → DeviceError."""
+    raw = "".join(c for c in key.upper() if c.isalnum())
+    if not raw:
+        return ""
+    if len(raw) != 25:
+        raise DeviceError("Produktschlüssel hat 25 Zeichen (5 × 5, mit Bindestrichen)")
+    return "-".join(raw[i:i + 5] for i in range(0, 25, 5))
+
+
+def mask_key(key: str) -> str:
+    return f"XXXXX-XXXXX-XXXXX-XXXXX-{key[-5:]}" if key else ""
 
 
 def short_time(iso: str) -> str:

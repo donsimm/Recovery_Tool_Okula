@@ -43,7 +43,8 @@ class Job:
 
     @property
     def label(self) -> str:
-        return self.phase or {"image": "Disk-Image", "install": "Windows-Installation"}.get(self.kind, "Zurückspielen")
+        return self.phase or {"image": "Disk-Image", "install": "Windows-Installation",
+                              "linux": "Linux-Installation"}.get(self.kind, "Zurückspielen")
 
     @property
     def shown_fraction(self) -> float:
@@ -264,8 +265,8 @@ def install_work(ip: str, key: bytes, port: int, iso: str, index: int, opts, dis
                     jm.log(job, "Agent teilt install.wim in install.swm-Teile (FAT32: max. 4 GB je Datei)")
                 jm.progress(job, 0.8 + 0.2 * f, "install.swm", "Teilen (2/2)", f)
             elif phase == "done":
-                jm.log(job, "Setup-Partition bereit – das Gerät startet neu und installiert Windows selbständig "
-                            "(Agent-Stick jetzt abziehen)")
+                jm.log(job, "Setup-Partition bereit – das Gerät startet in 15 s neu und installiert Windows "
+                            "selbständig (Agent-Stick JETZT abziehen)")
 
         try:
             boot = agentclient.install_windows(ip, key, iso, plan, disk, progress, job.cancel, port)
@@ -274,5 +275,51 @@ def install_work(ip: str, key: bytes, port: int, iso: str, index: int, opts, dis
             raise
         after(job, boot, None)
         return f"Windows-Installation auf {disk} gestartet (Boot{boot})"
+
+    return work
+
+
+def linux_install_work(ip: str, key: bytes, port: int, iso: str, meta: dict, disk: str, disk_size: int, opts,
+                       after: Callable[[Job, str | None, Exception | None], None]):
+    """Linux-Direktinstallation: Bootdateien (und bei Ubuntu die ISO) übertragen, dann Neustart."""
+    from okula_recovery import linuxsetup
+
+    def work(job: Job, jm: JobManager) -> str:
+        try:
+            jm.log(job, "Bereite die Bootdateien vor (aus der ISO" +
+                   (", Debian-Netzwerk-Installer von deb.debian.org)" if linuxsetup.kind(meta) == "debian" else ")"))
+            plan = linuxsetup.plan(iso, meta, disk, disk_size, opts)
+        except Exception as e:
+            after(job, None, e)
+            raise
+        try:
+            for line in plan.lines:
+                jm.log(job, "  · " + line)
+            state = {"files": 0}
+
+            def progress(ev: dict) -> None:
+                phase = ev.get("phase")
+                if phase == "prepare":
+                    jm.log(job, f"Agent partitioniert {disk}: EFI vorne, Platz für das System"
+                           + (", Setup-Partitionen am Ende" if len(plan.parts) > 1 else ""))
+                elif phase == "file":
+                    state["files"] += 1
+                    if ev.get("file", "").endswith(".iso"):
+                        jm.log(job, f"Übertrage {ev['file']}")
+                elif phase == "data":
+                    jm.progress(job, ev.get("fraction", 0),
+                                f"{state['files']}/{len(plan.files)} Dateien · {ev.get('speed', 0) / 1e6:.0f} MB/s")
+                elif phase == "done":
+                    jm.log(job, "Vorbereitet – das Gerät startet in 15 s neu und installiert selbständig "
+                                "(Agent-Stick JETZT abziehen)")
+
+            boot = agentclient.bootprep(ip, key, plan, disk, progress, job.cancel, port)
+        except Exception as e:
+            after(job, None, e)
+            raise
+        finally:
+            plan.cleanup()
+        after(job, boot, None)
+        return f"Linux-Installation auf {disk} gestartet (Boot{boot})"
 
     return work

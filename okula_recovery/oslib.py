@@ -249,7 +249,8 @@ def installable(meta: dict) -> bool:
     if meta.get("family") == "windows":
         return meta["windows"].get("product") in ("Windows 10", "Windows 11") and meta["windows"].get("arch") == "amd64"
     if meta.get("family") == "linux":
-        return meta["linux"].get("kind") in ("casper", "debian-installer")
+        from okula_recovery import linuxsetup  # Ubuntu ab 24.04 (Autoinstall), Debian mit Netzwerk-Installer
+        return bool(linuxsetup.kind(meta))
     return False
 
 

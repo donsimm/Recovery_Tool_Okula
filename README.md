@@ -198,20 +198,40 @@ Rechts im Reiter *Images* steht der Ast **„Betriebssysteme“**. Das Tool legt
 - Der Stick wird über den bestehenden Root-Helfer geschrieben (`sudo okula-make-stick iso-stick …`); ISOs werden nur vom eingehängten NAS (`/mnt/…`) akzeptiert.
 - Nicht übernommen von Rufus: ReFS/MS-DOS (unter Linux nicht erstellbar), FFU-Abbilder (nur mit Microsoft DISM), Windows To Go, Download von Windows-ISOs (ISOs lädst du selbst hoch).
 
-### Windows direkt auf ein Gerät installieren
+### Betriebssystem direkt auf ein Gerät installieren
 
-Gerät mit dem Agent-Stick starten, dann im Gerätefenster (oder Rechtsklick auf das Gerät bzw. auf eine Windows-ISO) **„Windows installieren …“**. Im Dialog Medium, Edition (Standard: Pro), Zieldisk und die Windows-Anpassung wählen (Computername = Gerätename), Disk-Namen zur Bestätigung eintippen.
+Gerät mit dem Agent-Stick starten, dann im Gerätefenster (oder Rechtsklick auf das Gerät bzw. auf eine ISO → „Auf Gerät installieren …“) **„OS installieren …“**. Im Dialog Betriebssystem, Zieldisk und Einstellungen wählen (Computername = Gerätename), Disk-Namen zur Bestätigung eintippen. Direkt installierbar: **Windows 10/11** (x64), **Ubuntu Desktop ab 24.04**, **Debian**. Das Gerät muss im **UEFI-Modus** laufen; Secure Boot darf eingeschaltet bleiben. Beim Neustart (15 s nach „vorbereitet“) den **Agent-Stick abziehen**.
 
-![Windows installieren](docs/windows-installieren.png)
+![OS installieren](docs/windows-installieren.png)
 
+**Windows**
 1. Der Agent legt auf der Zieldisk an (GPT): EFI (FAT32) · MSR · Windows · **Setup-Partition** (FAT32, am Ende).
 2. Das Tool liest die Setup-Dateien direkt aus der ISO auf dem NAS und überträgt sie verschlüsselt (SHA-256 je Datei). Eine `install.wim` über 4 GB teilt der Agent in `install.swm`-Teile.
-3. Der Agent setzt per `efibootmgr` den **einmaligen** Start (BootNext) auf die Setup-Partition und startet neu – **Agent-Stick dann abziehen**.
-4. Die Windows-Setup-Umgebung (von Microsoft signiert, Secure Boot geht) startet über `sources\autounattend.xml` nur `okula\install.cmd`: `dism` spielt die gewählte Edition auf, `bcdboot` richtet den Start ein. Der Setup-Assistent läuft nicht (keine TPM-/Secure-Boot-Prüfung, keine Klicks). Bei einem Fehler öffnet sich das Protokoll `okula\install.log`.
-5. Erster Start: Windows richtet sich mit den Anpassungen ein (Konto, Region Schweiz, Computername …). Danach löscht `SetupComplete.cmd` die Setup-Partition und vergrössert C: auf die ganze Disk.
+3. Der Agent setzt per `efibootmgr` den **einmaligen** Start (BootNext) auf die Setup-Partition und startet neu.
+4. Die Windows-Setup-Umgebung (von Microsoft signiert) startet über `sources\autounattend.xml` nur `okula\install.cmd`: `dism` spielt die gewählte Edition auf, `bcdboot` richtet den Start ein. Der Setup-Assistent läuft nicht (keine TPM-/Secure-Boot-Prüfung, keine Klicks). Bei einem Fehler öffnet sich das Protokoll `okula\install.log`.
+5. Erster Start: Windows richtet sich mit den Anpassungen ein (Konto, Region Schweiz, Computername, Produktschlüssel). Danach löscht `SetupComplete.cmd` die Setup-Partition und vergrössert C:.
 
-Im Tool ist der Auftrag fertig, sobald die Setup-Partition bereit ist (Schritt 3); der Verlauf des Geräts vermerkt die Installation. Voraussetzungen: Gerät startet im **UEFI-Modus** (sonst Boot-Stick verwenden), Zieldisk mind. 40 GB, Windows 10/11 x64. Neuere Intel-Laptops mit **VMD/RST** zeigen die Disk in der Setup-Umgebung evtl. nicht – dann im BIOS auf AHCI stellen oder den Boot-Stick verwenden. Linux-Direktinstallation folgt (Secure Boot verhindert das direkte Starten fremder Kernel aus dem Agent heraus); Linux bitte per Boot-Stick.
+Neuere Intel-Laptops mit **VMD/RST** zeigen die Disk in der Setup-Umgebung evtl. nicht – dann im BIOS auf AHCI stellen oder den Boot-Stick verwenden.
 
+![Linux installieren](docs/linux-installieren.png)
+
+**Ubuntu Desktop (ab 24.04)**
+- EFI-Partition mit den signierten Bootdateien der ISO (shim/grub), die ISO als Datei auf einer Setup-Partition am Disk-Ende, Antworten für den Installer auf einer kleinen Partition `CIDATA`.
+- GRUB startet die ISO per Loopback, der offizielle Installer läuft per **Autoinstall** in den freien Platz (`use_gap`): Benutzer, Passwort, Computername, Tastatur Schweiz, Zeitzone Zürich.
+- Beim ersten Start entfernt der Dienst `okula-cleanup` die Setup-Partitionen und vergrössert die Systempartition.
+
+**Debian**
+- EFI-Partition mit den Bootdateien der ISO und dem **Debian-Netzwerk-Installer** (Kernel/initrd lädt der Server einmal von deb.debian.org, geprüft gegen `SHA256SUMS`, Zwischenspeicher `~/.cache/okula-recovery/netboot`).
+- **Preseed** (im zweiten initrd): Partitionierung im freien Platz, Benutzer, Passwort, Computername, Region Schweiz, wahlweise mit GNOME-Desktop. **Das Gerät braucht Internet**, die Pakete kommen von deb.debian.org.
+
+Im Tool ist der Auftrag fertig, sobald das Gerät neu startet; den Rest erledigt der Installer am Gerät. Der Verlauf des Geräts vermerkt die Installation.
+
+### Windows-Produktschlüssel
+
+- **OEM-Schlüssel aus dem BIOS:** Der Agent liest ihn beim Erfassen aus (ACPI-Tabelle `MSDM`, bei den meisten Geräten ab Windows 8). Nach dem Update den Agent-Stick neu erstellen und *Inventar neu einlesen*.
+- **Von Hand:** Gerätefenster → *Übersicht* → *Windows-Schlüssel* → „Hinterlegen …“ (Retail/Volumen; hat Vorrang vor dem OEM-Schlüssel). Angezeigt wird er maskiert, „Anzeigen“ und „Kopieren“ auf Wunsch. Gespeichert lokal auf dem Server bei den Gerätedaten.
+- **Bei der Installation** setzt das Tool den Schlüssel ein; Windows aktiviert sich, sobald Internet da ist. Vorgewählt wird die Edition, die zuletzt auf dem Gerät lief – wählst du eine andere, warnt der Dialog (z. B. Home-Schlüssel und Pro).
+- Geräte mit **digitaler Lizenz** (z. B. Gratis-Upgrade auf 10/11) brauchen keinen Schlüssel: die gleiche Edition aktiviert sich nach der Neuinstallation von selbst.
 
 ## Restore-Stick (ein Image, ohne Netzwerk)
 

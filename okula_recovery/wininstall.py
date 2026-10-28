@@ -216,3 +216,88 @@ def install(sock, req: dict, log: Callable[[str], None] = print, report: Report 
     log(f"Setup-Partition bereit, nächster Start: Boot{entry}")
     report(1.0, "bereit", received)
     return entry
+
+
+# ---------- Allgemein: Disk für eine Installation vorbereiten (Linux) ----------
+
+FS_TYPES = ("fat32", "ext4")
+
+
+def _mkext4(part: str, label: str) -> None:
+    _run(["mkfs.ext4", "-q", "-F", "-L", label, part])
+
+
+def bootprep(sock, req: dict, log: Callable[[str], None] = print, report: Report | None = None) -> str:
+    """Partitionstabelle (vom Tool berechnet, GPT), Dateisysteme, Dateien je Partition, BootNext.
+
+    req: table (sfdisk), parts [{number, fs, label, key}], files [{part, path, size}],
+         extra [{part, path, text}], boot {part, loader, label}
+    """
+    target = imaging._find_target(str(req.get("disk") or ""))
+    disk = target["path"]
+    mounted = [p["path"] for p in target["partitions"] if p["mounted"]]
+    if mounted:
+        raise ImagingError(f"Partition der Zieldisk ist eingehängt: {', '.join(mounted)}")
+    if not EFI_DIR.is_dir():
+        raise ImagingError("Gerät ist im BIOS-Modus gestartet – Direktinstallation braucht UEFI. "
+                           "Im BIOS auf UEFI umstellen oder einen Boot-Stick verwenden.")
+    table = str(req.get("table") or "")
+    if not table.startswith("label: gpt\n"):
+        raise ImagingError("Ungültige Partitionstabelle")
+    parts = req.get("parts") or []
+    if not parts or any(p.get("fs") not in FS_TYPES for p in parts):
+        raise ImagingError("Ungültige Partitionsangaben")
+    boot = req.get("boot") or {}
+    report = report or (lambda f, p, n: None)
+
+    log(f"Partitioniere {disk} für die Installation …")
+    _run(["wipefs", "-a", disk])
+    _run(["sfdisk", "--wipe", "always", disk], input=table)
+    subprocess.run(["partx", "-u", disk], capture_output=True)
+    devs = {p["key"]: imaging.partition_device(disk, int(p["number"])) for p in parts}
+    imaging._wait_for(sorted(devs.values()))
+    dirs = {}
+    for p in parts:
+        (_mkfat if p["fs"] == "fat32" else _mkext4)(devs[p["key"]], str(p.get("label") or "OKULA"))
+    try:
+        for p in parts:
+            dirs[p["key"]] = WORK / p["key"]
+            _mount(devs[p["key"]], dirs[p["key"]])
+        wire.send_json(sock, {"type": "ready"})
+        expected = {(f["part"], f["path"]): int(f["size"]) for f in req.get("files") or []}
+        total = sum(expected.values()) or 1
+        received = 0
+        while True:
+            msg = wire.recv_json(sock)
+            if msg.get("type") == "end":
+                break
+            key = (str(msg.get("part") or ""), str(msg.get("path") or ""))
+            if msg.get("type") != "file" or key not in expected or key[0] not in dirs:
+                raise ImagingError(f"Unerwartete Datei: {key[1]}")
+            dest = _safe(dirs[key[0]], key[1])
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            before = received
+            with open(dest, "wb") as out:
+                for chunk in imaging._frames(sock, {"file": key[1]}):
+                    out.write(chunk)
+                    received += len(chunk)
+                    report(0.97 * received / total, key[1], received)
+                if expected[key] > 64 * MIB:
+                    out.flush()
+                    os.fsync(out.fileno())
+            received = before + expected[key]
+            wire.send_json(sock, {"type": "file_done", "path": key[1]})
+        for x in req.get("extra") or []:
+            if x.get("part") not in dirs:
+                raise ImagingError(f"Unbekannte Partition für {x.get('path')}")
+            p = _safe(dirs[x["part"]], str(x.get("path") or ""))
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(str(x.get("text") or ""), encoding="utf-8")
+        subprocess.run(["sync"])
+    finally:
+        for d in dirs.values():
+            _umount(d)
+    entry = set_bootnext(disk, int(boot.get("part") or 1), str(boot.get("label") or "Okula Installation"))
+    log(f"Installation vorbereitet, nächster Start: Boot{entry}")
+    report(1.0, "bereit", received)
+    return entry

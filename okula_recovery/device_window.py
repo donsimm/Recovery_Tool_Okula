@@ -9,10 +9,10 @@ from typing import TYPE_CHECKING
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gtk, Pango  # noqa: E402
+from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
 from okula_recovery import archive, devices, jobs, nas  # noqa: E402
-from okula_recovery.uikit import run_async, scrolled  # noqa: E402
+from okula_recovery.uikit import ask_text, confirm_error, run_async, scrolled  # noqa: E402
 
 if TYPE_CHECKING:
     from okula_recovery.ui import MainWindow
@@ -68,7 +68,7 @@ class DeviceWindow(Gtk.Window):
         for key, label, handler in (
                 ("image", "Disk-Image erstellen …", lambda: main.start_image(self.dev)),
                 ("restore", "Image zurückspielen …", lambda: main.start_restore(self.dev)),
-                ("install", "Windows installieren …", lambda: main.start_install(self.dev)),
+                ("install", "OS installieren …", lambda: main.start_install(self.dev)),
                 ("inventory", "Inventar neu einlesen", lambda: main.refresh_inventory(self.dev)),
                 ("poweroff", "Herunterfahren", lambda: main.power(self.dev, "poweroff")),
                 ("reboot", "Neu starten", lambda: main.power(self.dev, "reboot"))):
@@ -227,7 +227,48 @@ class DeviceWindow(Gtk.Window):
             val = Gtk.Label(label=v or "–", xalign=0, selectable=True, wrap=True)
             self.info_grid.attach(key, 0, i, 1, 1)
             self.info_grid.attach(val, 1, i, 1, 1)
+        self._key_row(len(rows))
         self.info_grid.show_all()
+
+    def _key_row(self, row: int) -> None:
+        """Windows-Produktschlüssel: maskiert, auf Wunsch anzeigen/kopieren, von Hand hinterlegen."""
+        key, source = self.dev.windows_key
+        label = Gtk.Label(label="Windows-Schlüssel", xalign=0, yalign=0.5)
+        label.get_style_context().add_class("status-idle")
+        self.info_grid.attach(label, 0, row, 1, 1)
+        box = Gtk.Box(spacing=6)
+        text = Gtk.Label(label=f"{devices.mask_key(key)}  ({source})" if key else "keiner bekannt", xalign=0,
+                         selectable=True)
+        text.get_style_context().add_class("monospace")
+        box.pack_start(text, False, False, 0)
+        if key:
+            show = Gtk.ToggleButton(label="Anzeigen")
+            show.connect("toggled", lambda b: text.set_text(
+                f"{key if b.get_active() else devices.mask_key(key)}  ({source})"))
+            box.pack_start(show, False, False, 0)
+            copy = Gtk.Button(label="Kopieren")
+            copy.connect("clicked", lambda _b: Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(key, -1))
+            box.pack_start(copy, False, False, 0)
+        change = Gtk.Button(label="Ändern …" if self.dev.product_key else "Hinterlegen …")
+        change.set_tooltip_text("Retail-/Volumenschlüssel von Hand hinterlegen (hat Vorrang vor dem OEM-Schlüssel "
+                                "aus dem BIOS); leer lassen = löschen")
+        change.connect("clicked", lambda _b: self._edit_key())
+        box.pack_start(change, False, False, 0)
+        self.info_grid.attach(box, 1, row, 1, 1)
+
+    def _edit_key(self) -> None:
+        new = ask_text(self, "Windows-Produktschlüssel", "Schlüssel (XXXXX-XXXXX-XXXXX-XXXXX-XXXXX), leer = löschen:",
+                       self.dev.product_key)
+        if new is None:
+            return
+        try:
+            self.main.store.update(self.dev, product_key=new)
+        except devices.DeviceError as e:
+            confirm_error(self, str(e))
+            return
+        self.main.store.add_history(self.dev, "notiz", "Windows-Schlüssel " +
+                                    ("hinterlegt" if self.dev.product_key else "gelöscht"))
+        self.refresh()
 
     def _fill_disks(self) -> None:
         self.disk_store.clear()
