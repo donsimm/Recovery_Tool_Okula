@@ -113,8 +113,10 @@ def build(opts: WinOptions, pe: bool = True, system: bool = True, launch: str | 
             cmds.append(launch)
         if cmds:
             b.commands(setup, "RunSynchronous", "RunSynchronousCommand", cmds)
+        # UserData ohne ProductKey bricht Setup ab („<ProductKey> kann nicht gelesen werden“);
+        # ein leerer Schlüssel wie bei Rufus: Setup fragt Edition/Schlüssel wie gewohnt
         user = b.sub(setup, "UserData")
-        b.sub(user, "AcceptEula", "true")
+        b.sub(b.sub(user, "ProductKey"), "Key", "")
     if not system:
         return b.xml()
 
