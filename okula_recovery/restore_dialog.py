@@ -12,7 +12,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk, Pango  # noqa: E402
 
-from okula_recovery import agentclient, clonezilla, discovery, nas  # noqa: E402
+from okula_recovery import agentclient, archive, clonezilla, discovery, nas  # noqa: E402
 
 
 def _gb(n: int) -> str:
@@ -126,7 +126,7 @@ class RestoreDialog(Gtk.Dialog):
 
         def work():
             images, problems = {}, []
-            for img in nas.list_images(root):
+            for img in archive.scan(root).all_images():  # auch Images in Archiv-Ordnern
                 if img.kind == "Disk-Image":
                     try:
                         meta = agentclient.load_image(img.path)

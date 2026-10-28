@@ -276,8 +276,34 @@ def _dir_size(path: Path) -> int:
     return total
 
 
-def list_images(root: str | Path, max_depth: int = 2) -> list[ImageInfo]:
-    """Sucht Images unter root (Dateien nach Endung, Clonezilla-Ordner), neueste zuerst."""
+def image_at(p: Path, root: Path) -> ImageInfo | None:
+    """Ist p ein Image (Okula-Ordner, Clonezilla-Ordner oder Image-Datei)? Symlinks zählen nicht."""
+    try:
+        if p.is_symlink():
+            return None
+        if p.is_dir():
+            if p.name.endswith(".partial"):
+                return None  # wird gerade geschrieben oder ist abgebrochen
+            if (p / OKULA_META).is_file():
+                return _okula_image(p, root)
+            if _is_clonezilla_dir(p):
+                return ImageInfo(str(p.relative_to(root)), p, "Clonezilla", _dir_size(p),
+                                 datetime.fromtimestamp(p.stat().st_mtime))
+            return None
+        kind = _image_kind(p.name)
+        if kind and p.is_file():
+            st = p.stat()
+            return ImageInfo(str(p.relative_to(root)), p, kind, st.st_size, datetime.fromtimestamp(st.st_mtime))
+    except OSError:
+        pass
+    return None
+
+
+def list_images(root: str | Path, max_depth: int = 2, exclude: tuple[str, ...] = ()) -> list[ImageInfo]:
+    """Sucht Images unter root (Dateien nach Endung, Clonezilla-Ordner), neueste zuerst.
+
+    exclude: Ordnernamen direkt unter root, die übersprungen werden (z. B. das Archiv).
+    """
     root = Path(root)
     found: list[ImageInfo] = []
 
@@ -287,30 +313,18 @@ def list_images(root: str | Path, max_depth: int = 2) -> list[ImageInfo]:
         except OSError:
             return
         for e in entries:
-            if e.name.startswith("."):
+            if e.name.startswith(".") or (depth == 0 and e.name in exclude):
                 continue
             p = Path(e.path)
-            try:
-                if e.is_dir(follow_symlinks=False):
-                    if e.name.endswith(".partial"):
-                        continue  # Image wird gerade geschrieben oder ist abgebrochen
-                    if (p / OKULA_META).is_file():
-                        info = _okula_image(p, root)
-                        if info:
-                            found.append(info)
-                    elif _is_clonezilla_dir(p):
-                        found.append(ImageInfo(str(p.relative_to(root)), p, "Clonezilla",
-                                               _dir_size(p), datetime.fromtimestamp(e.stat().st_mtime)))
-                    elif depth < max_depth:
+            info = image_at(p, root)
+            if info:
+                found.append(info)
+            elif depth < max_depth and not e.name.endswith(".partial"):
+                try:
+                    if e.is_dir(follow_symlinks=False):
                         walk(p, depth + 1)
-                elif e.is_file(follow_symlinks=False):
-                    kind = _image_kind(e.name)
-                    if kind:
-                        st = e.stat()
-                        found.append(ImageInfo(str(p.relative_to(root)), p, kind,
-                                               st.st_size, datetime.fromtimestamp(st.st_mtime)))
-            except OSError:
-                continue
+                except OSError:
+                    continue
 
     walk(root, 0)
     found.sort(key=lambda i: i.mtime, reverse=True)

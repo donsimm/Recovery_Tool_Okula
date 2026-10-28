@@ -9,10 +9,10 @@ Server: Debian 13 + Xfce, Python 3 + GTK 3.
   - **Menü:** NAS-Verbindung … (Ctrl+N), Agent-USB-Stick erstellen …, Beenden
   - **Tools:** Netzwerk scannen (F5), Maschine hinzufügen, Disk-Image erstellen, Image zurückspielen, Maschine herunterfahren, Restore-Stick aus Image, Images aktualisieren
   - **Hilfe:** Tastenkürzel (F1), Über
-- **Links (Maschinen im LAN):** Maschinen, die vom Agent-Stick gebootet wurden, erscheinen automatisch (Quelle *USB-Agent*, mit Status). Dazu kommen der Ping-Scan des LAN und manuell erfasste Maschinen.
+- **Links (Geräte):** Maschinen, die vom Agent-Stick gebootet wurden, erscheinen automatisch (Quelle *USB-Agent*, mit Status). Dazu kommen der Ping-Scan des LAN und manuell erfasste Maschinen.
 - **Rechts (NAS):**
   - **Statuszeile:** ● grün = NAS verbunden, ● rot = nicht verbunden bzw. nicht eingerichtet. Daneben der freie Speicher: grün, wenn genug frei ist; rot, wenn weniger als 100 GB frei sind. Das Tool prüft den Status beim Start und danach alle 30 s.
-  - **Reiter:** *Images* (Liste, Löschen, Restore-Stick) und *Dateien* (Dateiverwaltung).
+  - **Reiter:** *Images* (Ordnerbaum, siehe unten) und *Dateien* (Dateiverwaltung).
 - **NAS-Verbindung einrichten:** Menü → NAS-Verbindung … oder das Zahnrad in der Statuszeile. Das Fenster enthält Protokoll, Host, Freigabe (mit „Freigaben suchen“), Benutzer, Passwort, Einhängepunkt, die Buttons Testen, Einhängen, Aushängen und Speichern sowie die Prüfdetails.
 
 ## Server-Installation (Debian 13)
@@ -45,6 +45,15 @@ Im Tool unter Menü → NAS-Verbindung …:
 Das Passwort speichert nur der Root-Helfer, in `/etc/okula-recovery/nas.cred` (root, `0600`). Es steht nie in der Konfiguration oder in Prozess-Argumenten. Nach dem nächsten Start hängt das Tool das NAS automatisch wieder ein. Fehlermeldungen von `mount` und `smbclient` werden als Hinweis angezeigt, etwa bei einem falschen Passwort, einer fehlenden Freigabe oder einer unpassenden SMB-Version.
 
 Für NFS gibst du als Freigabe den Exportpfad an (z. B. `/volume1/recovery`) und erlaubst im NAS die IP des Servers.
+
+### Images in Ordner einsortieren
+
+Der Reiter *Images* zeigt einen aufklappbaren Baum:
+- **Nicht einsortiert** steht ganz oben, neueste zuerst. Hier landen neue Images und alle, die noch in keinem Ordner liegen, auch bestehende Clonezilla-Images.
+- **Eigene Ordner** mit bis zu **3 Ebenen**, z. B. *Kunde › Standort › Gerät*. Anlegen, Umbenennen und Löschen über die Knöpfe oder per Rechtsklick. Ein Ordner lässt sich nur löschen, wenn er leer ist.
+- **Einsortieren per Maus:** Ein Image auf einen Ordner ziehen oder zurück auf „Nicht einsortiert“. Ganze Ordner lassen sich ebenfalls in einen anderen Ordner ziehen, ohne die 3 Ebenen zu überschreiten. Rechtsklick → „Nach ‚Nicht einsortiert‘“ geht auch.
+
+Die Ordner sind echte Ordner auf dem NAS unter `Archiv/`, z. B. `Archiv/Kunde A/Standort Zürich/PC-Buchhaltung/<Image>`. Verschieben ist ein Umbenennen auf derselben Freigabe und geht auch bei grossen Images sofort. Nicht einsortierte Images liegen unter `images/` (bzw. bei Clonezilla dort, wo sie abgelegt wurden).
 
 ### Dateien auf dem NAS verwalten
 
@@ -141,7 +150,7 @@ Bestehende Clonezilla-Images (Modus „savedisk“) erkennt das Tool automatisch
 
 ## Restore-Stick (ein Image, ohne Netzwerk)
 
-Rechts im Reiter *Images* (oder Tools → Restore-Stick aus Image …) ein Okula- oder Clonezilla-Image wählen und **„Restore-Stick …“** klicken. Dann Stick und Debian-Live-ISO wählen und **Stick vorbereiten**. Der Dialog zeigt, wie gross der Stick mindestens sein muss: Image plus etwa 2 GB. Zu kleine Sticks sind markiert.
+Rechts im Reiter *Images* (oder Tools → Restore-Stick aus Image …) ein Okula- oder Clonezilla-Image wählen, auch in Ordnern und **„Restore-Stick …“** klicken. Dann Stick und Debian-Live-ISO wählen und **Stick vorbereiten**. Der Dialog zeigt, wie gross der Stick mindestens sein muss: Image plus etwa 2 GB. Zu kleine Sticks sind markiert.
 
 - **Aufbau:** Partition 1 ist FAT32 (`OKULA-REST`) mit Live-System, Boot-Menü „Okula Restore-Stick“ und Restore-Programm. Partition 2 ist ext4 (`OKULADATA`) mit dem Image unter `image/` und der Beschreibung `okula-restore.json`. ext4, weil Partitions-Images oft grösser als 4 GB sind.
 - **An der Zielmaschine:** vom Stick booten. Die Bildschirmführung zeigt das Image und alle Disks der Maschine, mit Modell, Grösse, Partitionen und dem Hinweis, ob eine Disk zu klein ist.

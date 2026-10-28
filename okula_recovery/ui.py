@@ -13,7 +13,8 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 
-from okula_recovery import __version__, agentclient, clonezilla, config, discovery, nas, nasfiles, network  # noqa: E402
+from okula_recovery import (__version__, agentclient, archive, clonezilla, config, discovery, nas,  # noqa: E402
+                            nasfiles, network)
 from okula_recovery.image_dialog import ImageDialog  # noqa: E402
 from okula_recovery.nas_dialog import NasDialog  # noqa: E402
 from okula_recovery.restore_dialog import RestoreDialog  # noqa: E402
@@ -64,6 +65,10 @@ class MainWindow(Gtk.ApplicationWindow):
         if icon:
             self.set_icon(icon)
             Gtk.Window.set_default_icon(icon)
+        btn_stick = Gtk.Button(label="Agent-USB-Stick erstellen …")
+        btn_stick.set_tooltip_text("USB-Stick wählen und mit Live-System und Agent vorbereiten")
+        btn_stick.connect("clicked", lambda _b: StickDialog(self))
+        header.pack_end(btn_stick)
         self.set_titlebar(header)
 
         paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL, wide_handle=True)
@@ -196,47 +201,264 @@ class MainWindow(Gtk.ApplicationWindow):
         box.pack_start(self.nas_tabs, True, True, 0)
         return box
 
+    # Spalten des Image-Baums
+    C_ICON, C_NAME, C_TYPE, C_SIZE, C_DATE, C_BYTES, C_PATH, C_KIND, C_REL, C_AREA = range(10)
+    DND_TARGET = "okula/archive-row"
+
     def _build_images_tab(self) -> Gtk.Widget:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=6)
         head = Gtk.Box(spacing=6)
-        self.img_count = Gtk.Label(label="", xalign=0)
+        self.img_count = Gtk.Label(label="", xalign=0, ellipsize=Pango.EllipsizeMode.END)
         head.pack_start(self.img_count, True, True, 0)
+        self.img_buttons = {}
+        for key, icon, tip, handler in (
+                ("folder", "folder-new-symbolic", "Neuer Ordner (im gewählten Ordner, max. 3 Ebenen)",
+                 self.on_new_archive_folder),
+                ("rename", "document-edit-symbolic", "Ordner umbenennen", self.on_rename_archive_folder),
+                ("delete", "user-trash-symbolic", "Löschen (Image bzw. leerer Ordner)", self.on_delete_image)):
+            b = Gtk.Button.new_from_icon_name(icon, Gtk.IconSize.BUTTON)
+            b.set_tooltip_text(tip)
+            b.connect("clicked", handler)
+            head.pack_start(b, False, False, 0)
+            self.img_buttons[key] = b
         self.btn_img_stick = Gtk.Button(label="Restore-Stick …", sensitive=False)
         self.btn_img_stick.set_tooltip_text("Bootfähigen USB-Stick mit diesem Image erstellen – spielt es nach "
                                             "Rückfrage ohne Netzwerk zurück")
         self.btn_img_stick.connect("clicked", self.on_restore_stick)
         head.pack_start(self.btn_img_stick, False, False, 0)
-        self.btn_img_delete = Gtk.Button(label="Löschen", sensitive=False)
-        self.btn_img_delete.set_tooltip_text("Gewähltes Image vom NAS löschen")
-        self.btn_img_delete.connect("clicked", self.on_delete_image)
-        head.pack_start(self.btn_img_delete, False, False, 0)
         btn_refresh = Gtk.Button.new_from_icon_name("view-refresh-symbolic", Gtk.IconSize.BUTTON)
         btn_refresh.set_tooltip_text("Image-Liste neu laden")
         btn_refresh.connect("clicked", lambda _b: self.refresh_images())
         head.pack_start(btn_refresh, False, False, 0)
         box.pack_start(head, False, False, 0)
 
-        # Name, Typ, Grösse (Text), Datum (Text), Grösse (Byte, für Sortierung), Pfad
-        self.image_store = Gtk.ListStore(str, str, str, str, str, GObject.TYPE_INT64, str)
-        self.image_view = make_tree([("Name", 1), ("Typ", 2), ("Grösse", 3), ("Datum", 4)], self.image_store)
-        self.image_view.get_column(2).set_sort_column_id(5)
-        self.image_view.get_selection().connect("changed", self._on_image_selected)
-        box.pack_start(scrolled(self.image_view), True, True, 0)
+        # icon, Name, Typ, Grösse, Datum, Bytes, Pfad (Image), Art (unsorted/folder/image), Ordner-rel, Bereich
+        self.image_store = Gtk.TreeStore(str, str, str, str, str, GObject.TYPE_INT64, str, str, str, str)
+        view = Gtk.TreeView(model=self.image_store)
+        col = Gtk.TreeViewColumn("Name")
+        icon = Gtk.CellRendererPixbuf()
+        col.pack_start(icon, False)
+        col.add_attribute(icon, "icon-name", self.C_ICON)
+        text = Gtk.CellRendererText(ellipsize=Pango.EllipsizeMode.END)
+        col.pack_start(text, True)
+        col.add_attribute(text, "text", self.C_NAME)
+        col.set_expand(True)
+        col.set_resizable(True)
+        view.append_column(col)
+        for title, idx in (("Typ", self.C_TYPE), ("Grösse", self.C_SIZE), ("Datum", self.C_DATE)):
+            c = Gtk.TreeViewColumn(title, Gtk.CellRendererText(), text=idx)
+            c.set_resizable(True)
+            view.append_column(c)
+        view.set_enable_tree_lines(True)
+        view.get_selection().connect("changed", self._on_image_selected)
+        view.connect("row-activated", self._on_image_activated)
+        view.connect("button-press-event", self._on_image_button)
+        # Ziehen mit der Maus: Images und Ordner in Ordner bzw. nach „Nicht einsortiert“
+        target = [Gtk.TargetEntry.new(self.DND_TARGET, Gtk.TargetFlags.SAME_WIDGET, 0)]
+        view.enable_model_drag_source(Gdk.ModifierType.BUTTON1_MASK, target, Gdk.DragAction.MOVE)
+        view.enable_model_drag_dest(target, Gdk.DragAction.MOVE)
+        view.connect("drag-data-get", self._on_drag_get)
+        view.connect("drag-data-received", self._on_drag_received)
+        self.image_view = view
+        self._images_loaded = False
+        self._expand_after_refresh: str | None = None
+        box.pack_start(scrolled(view), True, True, 0)
+        hint = Gtk.Label(xalign=0, wrap=True)
+        hint.set_markup("<small>Images per Maus in Ordner ziehen · Rechtsklick für weitere Aktionen</small>")
+        hint.get_style_context().add_class("status-idle")
+        box.pack_start(hint, False, False, 0)
+        self._on_image_selected(view.get_selection())
         return box
+
+    # ---------- Image-Archiv (Baum) ----------
+
+    def _selected_image_row(self):
+        model, it = self.image_view.get_selection().get_selected()
+        return model, it
+
+    def _target_folder(self) -> str:
+        """Ordner für „Neuer Ordner“: gewählter Ordner, Ordner des gewählten Images, sonst oberste Ebene."""
+        model, it = self._selected_image_row()
+        if it is None:
+            return ""
+        kind, area, rel = model[it][self.C_KIND], model[it][self.C_AREA], model[it][self.C_REL]
+        if kind == "folder" or (kind == "image" and area == "archive"):
+            return rel
+        return ""
 
     def _on_image_selected(self, sel: Gtk.TreeSelection) -> None:
         model, it = sel.get_selected()
-        self.btn_img_delete.set_sensitive(it is not None)
-        self.btn_img_stick.set_sensitive(it is not None and model[it][2] in ("Disk-Image", "Clonezilla"))
+        kind = model[it][self.C_KIND] if it is not None else ""
+        root_ok = self._nas_root() is not None
+        self.img_buttons["folder"].set_sensitive(root_ok)
+        self.img_buttons["rename"].set_sensitive(root_ok and kind == "folder")
+        self.img_buttons["delete"].set_sensitive(root_ok and kind in ("folder", "image"))
+        self.btn_img_stick.set_sensitive(kind == "image" and model[it][self.C_TYPE] in ("Disk-Image", "Clonezilla"))
+
+    def _on_image_activated(self, view, path, _col) -> None:
+        if view.row_expanded(path):
+            view.collapse_row(path)
+        else:
+            view.expand_row(path, False)
+
+    def _on_image_button(self, view, event) -> bool:
+        if event.button != 3:
+            return False
+        hit = view.get_path_at_pos(int(event.x), int(event.y))
+        if hit:
+            view.get_selection().select_path(hit[0])
+        model, it = self._selected_image_row()
+        kind = model[it][self.C_KIND] if it is not None else ""
+        menu = Gtk.Menu()
+
+        def add(label, handler, sensitive=True):
+            item = Gtk.MenuItem(label=label, sensitive=sensitive)
+            item.connect("activate", lambda _i: handler(None))
+            menu.append(item)
+
+        add("Neuer Ordner …", self.on_new_archive_folder)
+        if kind == "folder":
+            add("Umbenennen …", self.on_rename_archive_folder)
+            add("Löschen (nur leer)", self.on_delete_image)
+        if kind == "image":
+            if model[it][self.C_AREA] == "archive":
+                add("Nach „Nicht einsortiert“", self.on_unsort_image)
+            add("Restore-Stick …", self.on_restore_stick,
+                model[it][self.C_TYPE] in ("Disk-Image", "Clonezilla"))
+            add("Löschen …", self.on_delete_image)
+        menu.show_all()
+        menu.popup_at_pointer(event)
+        return True
 
     def on_restore_stick(self, _btn) -> None:
-        model, it = self.image_view.get_selection().get_selected()
-        if it is None or model[it][2] not in ("Disk-Image", "Clonezilla"):
+        model, it = self._selected_image_row()
+        if it is None or model[it][self.C_KIND] != "image" or \
+                model[it][self.C_TYPE] not in ("Disk-Image", "Clonezilla"):
             self.status("Zuerst rechts im Reiter „Images“ ein Disk- oder Clonezilla-Image wählen")
             return
-        path = model[it][6]
-        disks = clonezilla.disks(Path(path)) if model[it][2] == "Clonezilla" else None
+        path = model[it][self.C_PATH]
+        disks = clonezilla.disks(Path(path)) if model[it][self.C_TYPE] == "Clonezilla" else None
         StickDialog(self, image=path, source_disks=disks)
+
+    def _archive_op(self, op, done_msg: str) -> None:
+        def finished(result) -> None:
+            if isinstance(result, Exception):
+                self.status(f"Fehler: {result}")
+                confirm_error(self, str(result))
+            else:
+                self.status(done_msg)
+            self.refresh_images()
+            self.refresh_files()
+        run_async(op, finished)
+
+    def on_new_archive_folder(self, _btn) -> None:
+        root = self._nas_root()
+        if root is None:
+            return
+        parent = self._target_folder()
+        if parent and len(parent.split("/")) >= archive.MAX_DEPTH:
+            confirm_error(self, f"„{parent}“ liegt schon auf Ebene {archive.MAX_DEPTH} – "
+                                "dort sind keine weiteren Unterordner möglich.")
+            return
+        where = f" in „{parent}“" if parent else " (oberste Ebene)"
+        name = ask_text(self, "Neuer Ordner", f"Name des neuen Ordners{where}:")
+        if name:
+            self._expand_after_refresh = parent
+            self._archive_op(lambda: archive.make_folder(root, parent, name), f"Ordner „{name.strip()}“ angelegt")
+
+    def on_rename_archive_folder(self, _btn) -> None:
+        root = self._nas_root()
+        model, it = self._selected_image_row()
+        if root is None or it is None or model[it][self.C_KIND] != "folder":
+            return
+        rel = model[it][self.C_REL]
+        old = rel.rsplit("/", 1)[-1]
+        new = ask_text(self, "Ordner umbenennen", f"Neuer Name für „{old}“:", old)
+        if new and new.strip() != old:
+            self._archive_op(lambda: archive.rename_folder(root, rel, new), f"Umbenannt in „{new.strip()}“")
+
+    def on_unsort_image(self, _btn) -> None:
+        root = self._nas_root()
+        model, it = self._selected_image_row()
+        if root and it is not None and model[it][self.C_KIND] == "image":
+            path = model[it][self.C_PATH]
+            self._archive_op(lambda: archive.move_image(root, path, None), "Nach „Nicht einsortiert“ verschoben")
+
+    def _on_drag_get(self, view, _context, selection, _info, _time) -> None:
+        model, it = view.get_selection().get_selected()
+        if it is not None:
+            selection.set(selection.get_target(), 8, model.get_string_from_iter(it).encode())
+
+    def _on_drag_received(self, view, context, x, y, selection, _info, time) -> None:
+        # Der Store soll die Zeilen nicht selbst umhängen – das NAS ist die Wahrheit
+        view.stop_emission_by_name("drag-data-received")
+        Gtk.drag_finish(context, True, False, time)
+        root = self._nas_root()
+        data = selection.get_data()
+        if root is None or not data:
+            return
+        model = self.image_store
+        try:
+            src = model.get_iter_from_string(data.decode())
+        except (ValueError, TypeError):
+            return
+        hit = view.get_dest_row_at_pos(x, y)
+        if hit is None:
+            dest_area, dest_rel = "archive", ""  # leere Fläche: oberste Ebene (nur für Ordner)
+        else:
+            row = model[hit[0]]
+            dest_area = row[self.C_AREA]
+            dest_rel = row[self.C_REL] if row[self.C_KIND] in ("folder", "image") else ""
+        self.drop(model[src][self.C_KIND], model[src][self.C_AREA], model[src][self.C_REL],
+                  model[src][self.C_PATH], model[src][self.C_NAME], dest_area, dest_rel)
+
+    def drop(self, kind: str, area: str, rel: str, path: str, name: str, dest_area: str, dest_rel: str) -> None:
+        """Ziel einer Maus-Verschiebung auswerten (auch für Tests ohne echte Maus)."""
+        root = self._nas_root()
+        if root is None:
+            return
+        if kind == "image":
+            if dest_area == "unsorted":
+                if area != "unsorted":
+                    self._archive_op(lambda: archive.move_image(root, path, None),
+                                     "Nach „Nicht einsortiert“ verschoben")
+            elif dest_rel:
+                if not (area == "archive" and rel == dest_rel):
+                    self._expand_after_refresh = dest_rel
+                    self._archive_op(lambda: archive.move_image(root, path, dest_rel),
+                                     f"Verschoben nach „{dest_rel}“")
+            else:
+                self.status("Images bitte in einen Ordner ziehen")
+        elif kind == "folder":
+            current_parent = rel.rsplit("/", 1)[0] if "/" in rel else ""
+            if dest_area == "unsorted":
+                self.status("Ordner können nicht nach „Nicht einsortiert“ verschoben werden")
+            elif dest_rel != current_parent and dest_rel != rel:
+                self._expand_after_refresh = dest_rel
+                folder = rel.rsplit("/", 1)[-1]
+                self._archive_op(lambda: archive.move_folder(root, rel, dest_rel), f"Ordner „{folder}“ verschoben")
+
+    def _expanded_keys(self) -> set[str]:
+        keys = set()
+
+        def walk(it):
+            while it is not None:
+                if self.image_view.row_expanded(self.image_store.get_path(it)):
+                    keys.add(self.image_store[it][self.C_KIND] + ":" + self.image_store[it][self.C_REL])
+                walk(self.image_store.iter_children(it))
+                it = self.image_store.iter_next(it)
+        walk(self.image_store.get_iter_first())
+        return keys
+
+    def _restore_expanded(self, keys: set[str]) -> None:
+        def walk(it):
+            while it is not None:
+                row = self.image_store[it]
+                if row[self.C_KIND] + ":" + row[self.C_REL] in keys:
+                    self.image_view.expand_row(self.image_store.get_path(it), False)
+                walk(self.image_store.iter_children(it))
+                it = self.image_store.iter_next(it)
+        walk(self.image_store.get_iter_first())
 
     def _build_files_tab(self) -> Gtk.Widget:
         self.files_rel = ""
@@ -386,8 +608,14 @@ class MainWindow(Gtk.ApplicationWindow):
         model, it = self.image_view.get_selection().get_selected()
         if not root or it is None:
             return
+        if model[it][self.C_KIND] == "folder":
+            rel = model[it][self.C_REL]
+            self._archive_op(lambda: archive.delete_folder(root, rel), f"Ordner „{rel}“ gelöscht")
+            return
+        if model[it][self.C_KIND] != "image":
+            return
         try:
-            rel_path = os.path.relpath(model[it][6], root)
+            rel_path = os.path.relpath(model[it][self.C_PATH], root)
         except ValueError:
             return
         if rel_path.startswith(".."):
@@ -479,24 +707,54 @@ class MainWindow(Gtk.ApplicationWindow):
         if mp is None:
             self.image_store.clear()
             self.img_count.set_text("NAS nicht verbunden")
+            self._on_image_selected(self.image_view.get_selection())
             return
-        run_async(lambda: nas.list_images(mp), self._on_images)
+        run_async(lambda: archive.scan(mp), self._on_images)
 
-    def _on_images(self, result) -> None:
-        self.image_store.clear()
-        if isinstance(result, Exception):
-            self.status(f"Images konnten nicht gelesen werden: {result}")
+    def _image_row(self, img: nas.ImageInfo, rel: str, area: str) -> list:
+        return ["drive-harddisk-symbolic", img.name, img.kind, nas.format_size(img.size),
+                img.mtime.strftime("%d.%m.%Y %H:%M"), img.size, str(img.path), "image", rel, area]
+
+    def _on_images(self, tree) -> None:
+        if isinstance(tree, Exception):
+            self.status(f"Images konnten nicht gelesen werden: {tree}")
             return
-        for img in result:
-            self.image_store.append(["", img.name, img.kind, nas.format_size(img.size),
-                                     img.mtime.strftime("%d.%m.%Y %H:%M"), img.size, str(img.path)])
-        self.img_count.set_text(f"{len(result)} Images")
+        keys = self._expanded_keys() if self._images_loaded else {"unsorted:"}
+        if self._expand_after_refresh is not None:
+            parts = self._expand_after_refresh.split("/") if self._expand_after_refresh else []
+            keys |= {"folder:" + "/".join(parts[:i]) for i in range(1, len(parts) + 1)}
+            self._expand_after_refresh = None
+        store = self.image_store
+        store.clear()
+        unsorted = store.append(None, ["folder-download-symbolic", f"Nicht einsortiert ({len(tree.unsorted)})", "",
+                                       nas.format_size(sum(i.size for i in tree.unsorted)), "", 0, "", "unsorted",
+                                       "", "unsorted"])
+        for img in tree.unsorted:  # neueste zuerst
+            store.append(unsorted, self._image_row(img, "", "unsorted"))
+
+        def add(parent, folder: archive.Folder) -> None:
+            total = folder.size()  # inklusive Unterordner
+            it = store.append(parent, ["folder-symbolic", f"{folder.name} ({folder.count()})", "Ordner",
+                                       nas.format_size(total) if total else "", "", total, "", "folder",
+                                       folder.rel, "archive"])
+            for sub in folder.folders:
+                add(it, sub)
+            for img in folder.images:
+                store.append(it, self._image_row(img, folder.rel, "archive"))
+
+        for folder in tree.folders:
+            add(None, folder)
+        self._restore_expanded(keys)
+        self._images_loaded = True
+        self.img_count.set_text(f"{len(tree.all_images())} Images · {len(tree.unsorted)} nicht einsortiert")
+        self._on_image_selected(self.image_view.get_selection())
+
 
     # ---------- linke Seite: Maschinen ----------
 
     def _build_machine_pane(self) -> Gtk.Widget:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=12)
-        box.pack_start(pane_title("Maschinen im LAN"), False, False, 0)
+        box.pack_start(pane_title("Geräte"), False, False, 0)
 
         bar = Gtk.Box(spacing=6)
         bar.pack_start(Gtk.Label(label="Netz"), False, False, 0)
@@ -769,7 +1027,8 @@ class MainWindow(Gtk.ApplicationWindow):
             self.status("NAS ist nicht eingehängt")
             return
         model, it = self.image_view.get_selection().get_selected()
-        RestoreDialog(self, agent, root, preselect=model[it][6] if it is not None else None)
+        pre = model[it][self.C_PATH] if it is not None and model[it][self.C_KIND] == "image" else None
+        RestoreDialog(self, agent, root, preselect=pre)
 
     def on_remove_machine(self, _btn) -> None:
         model, it = self.machine_view.get_selection().get_selected()
