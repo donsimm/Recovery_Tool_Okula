@@ -51,6 +51,8 @@ Für NFS gibst du als Freigabe den Exportpfad an (z. B. `/volume1/recovery`) und
 Der Reiter *Images* zeigt einen aufklappbaren Baum:
 - **Nicht einsortiert** steht ganz oben, neueste zuerst. Hier landen neue Images und alle, die noch in keinem Ordner liegen, auch bestehende Clonezilla-Images.
 - **Eigene Ordner** mit bis zu **3 Ebenen**, z. B. *Kunde › Standort › Gerät*. Anlegen, Umbenennen und Löschen über die Knöpfe oder per Rechtsklick. Ein Ordner lässt sich nur löschen, wenn er leer ist.
+- **Icons:** OKULA-Emblem = mit diesem Tool erstelltes Image, orange Disk = Clonezilla-Image, Datei-Symbol = einzelne Image-Datei (`.img`, `.dd` …). Eine Legende steht unter dem Baum.
+- **Restore-Stick aus Image …:** Der Knopf steht unter dem Baum und ist aktiv, sobald ein Okula- oder Clonezilla-Image gewählt ist.
 - **Einsortieren per Maus:** Ein Image auf einen Ordner ziehen oder zurück auf „Nicht einsortiert“. Ganze Ordner lassen sich ebenfalls in einen anderen Ordner ziehen, ohne die 3 Ebenen zu überschreiten. Rechtsklick → „Nach ‚Nicht einsortiert‘“ geht auch.
 
 Die Ordner sind echte Ordner auf dem NAS unter `Archiv/`, z. B. `Archiv/Kunde A/Standort Zürich/PC-Buchhaltung/<Image>`. Verschieben ist ein Umbenennen auf derselben Freigabe und geht auch bei grossen Images sofort. Nicht einsortierte Images liegen unter `images/` (bzw. bei Clonezilla dort, wo sie abgelegt wurden).

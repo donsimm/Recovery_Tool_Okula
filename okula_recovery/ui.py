@@ -25,6 +25,10 @@ from okula_recovery.uikit import (ask_text, confirm, confirm_error, make_tree, p
 ASSETS = Path(__file__).resolve().parent / "assets"
 NAS_POLL = 30  # Sekunden zwischen den NAS-Statusabfragen
 
+# Icons im Image-Baum je nach Herkunft (eigene SVGs in assets/icons, siehe App.do_activate)
+IMAGE_ICONS = {"Disk-Image": "okula-image", "Clonezilla": "okula-image-clonezilla"}
+FILE_IMAGE_ICON = "text-x-generic-symbolic"
+
 # Agent gilt als offline, wenn so lange kein Beacon kam, und verschwindet nach AGENT_REMOVE_AFTER
 AGENT_TIMEOUT = 15
 AGENT_REMOVE_AFTER = 60
@@ -221,11 +225,6 @@ class MainWindow(Gtk.ApplicationWindow):
             b.connect("clicked", handler)
             head.pack_start(b, False, False, 0)
             self.img_buttons[key] = b
-        self.btn_img_stick = Gtk.Button(label="Restore-Stick …", sensitive=False)
-        self.btn_img_stick.set_tooltip_text("Bootfähigen USB-Stick mit diesem Image erstellen – spielt es nach "
-                                            "Rückfrage ohne Netzwerk zurück")
-        self.btn_img_stick.connect("clicked", self.on_restore_stick)
-        head.pack_start(self.btn_img_stick, False, False, 0)
         btn_refresh = Gtk.Button.new_from_icon_name("view-refresh-symbolic", Gtk.IconSize.BUTTON)
         btn_refresh.set_tooltip_text("Image-Liste neu laden")
         btn_refresh.connect("clicked", lambda _b: self.refresh_images())
@@ -263,6 +262,23 @@ class MainWindow(Gtk.ApplicationWindow):
         self._images_loaded = False
         self._expand_after_refresh: str | None = None
         box.pack_start(scrolled(view), True, True, 0)
+
+        # Unter dem Baum: Legende der Icons und „Restore-Stick aus Image …“
+        bottom = Gtk.Box(spacing=12)
+        for icon, label in (("okula-image", "Okula-Image"), ("okula-image-clonezilla", "Clonezilla"),
+                            (FILE_IMAGE_ICON, "Image-Datei")):
+            item = Gtk.Box(spacing=4)
+            item.pack_start(Gtk.Image.new_from_icon_name(icon, Gtk.IconSize.MENU), False, False, 0)
+            lbl = Gtk.Label(label=label)
+            lbl.get_style_context().add_class("status-idle")
+            item.pack_start(lbl, False, False, 0)
+            bottom.pack_start(item, False, False, 0)
+        self.btn_img_stick = Gtk.Button(label="Restore-Stick aus Image …", sensitive=False)
+        self.btn_img_stick.set_tooltip_text("Bootfähigen USB-Stick mit dem gewählten Image erstellen – spielt es "
+                                            "nach Rückfrage ohne Netzwerk zurück")
+        self.btn_img_stick.connect("clicked", self.on_restore_stick)
+        bottom.pack_end(self.btn_img_stick, False, False, 0)
+        box.pack_start(bottom, False, False, 0)
         hint = Gtk.Label(xalign=0, wrap=True)
         hint.set_markup("<small>Images per Maus in Ordner ziehen · Rechtsklick für weitere Aktionen</small>")
         hint.get_style_context().add_class("status-idle")
@@ -323,7 +339,7 @@ class MainWindow(Gtk.ApplicationWindow):
         if kind == "image":
             if model[it][self.C_AREA] == "archive":
                 add("Nach „Nicht einsortiert“", self.on_unsort_image)
-            add("Restore-Stick …", self.on_restore_stick,
+            add("Restore-Stick aus Image …", self.on_restore_stick,
                 model[it][self.C_TYPE] in ("Disk-Image", "Clonezilla"))
             add("Löschen …", self.on_delete_image)
         menu.show_all()
@@ -712,7 +728,7 @@ class MainWindow(Gtk.ApplicationWindow):
         run_async(lambda: archive.scan(mp), self._on_images)
 
     def _image_row(self, img: nas.ImageInfo, rel: str, area: str) -> list:
-        return ["drive-harddisk-symbolic", img.name, img.kind, nas.format_size(img.size),
+        return [IMAGE_ICONS.get(img.kind, FILE_IMAGE_ICON), img.name, img.kind, nas.format_size(img.size),
                 img.mtime.strftime("%d.%m.%Y %H:%M"), img.size, str(img.path), "image", rel, area]
 
     def _on_images(self, tree) -> None:
@@ -1049,6 +1065,7 @@ class App(Gtk.Application):
         super().__init__(application_id="ch.okula.RecoveryTool")
 
     def do_activate(self):
+        Gtk.IconTheme.get_default().append_search_path(str(ASSETS / "icons"))
         provider = Gtk.CssProvider()
         provider.load_from_data(CSS)
         Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), provider,
