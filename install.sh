@@ -23,7 +23,8 @@ apt-get install -y --no-install-recommends \
     python3 python3-gi gir1.2-gtk-3.0 librsvg2-common \
     cifs-utils nfs-common smbclient iputils-ping iproute2 \
     util-linux dosfstools grub-pc-bin grub2-common squashfs-tools \
-    partclone zstd pigz lz4 lzop bzip2 xz-utils
+    partclone zstd pigz lz4 lzop bzip2 xz-utils \
+    xorriso wimtools e2fsprogs
 
 echo "==> Programm nach $APP_DIR kopieren"
 if [ "$SRC_DIR" != "$APP_DIR" ]; then

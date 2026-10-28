@@ -13,10 +13,11 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 
 from okula_recovery import (__version__, agentclient, archive, clonezilla, config, devices, discovery,  # noqa: E402
-                            jobs, nas, nasfiles)
+                            jobs, nas, nasfiles, oslib)
 from okula_recovery.device_window import DeviceWindow  # noqa: E402
 from okula_recovery.image_dialog import ImageDialog  # noqa: E402
 from okula_recovery.nas_dialog import NasDialog  # noqa: E402
+from okula_recovery.os_dialogs import BootStickDialog, IsoDetailsDialog, UploadDialog, choose_isos  # noqa: E402
 from okula_recovery.restore_dialog import RestoreDialog  # noqa: E402
 from okula_recovery.stick_dialog import StickDialog  # noqa: E402
 from okula_recovery.uikit import (ask_text, confirm, confirm_error, make_tree, pane_title, rgba_hex,  # noqa: E402
@@ -28,6 +29,7 @@ NAS_POLL = 30  # Sekunden zwischen den NAS-Statusabfragen
 # Icons im Image-Baum je nach Herkunft (eigene SVGs in assets/icons, siehe App.do_activate)
 IMAGE_ICONS = {"Disk-Image": "okula-image", "Clonezilla": "okula-image-clonezilla"}
 FILE_IMAGE_ICON = "text-x-generic-symbolic"
+OS_ICONS = {"windows": "okula-os-windows", "linux": "okula-os-linux", "other": "okula-os-other"}
 
 # Gerät gilt als getrennt, wenn so lange kein Beacon seines Agents kam
 AGENT_TIMEOUT = 15
@@ -140,6 +142,8 @@ class MainWindow(Gtk.ApplicationWindow):
             ("Gerät _herunterfahren", lambda: self._with_device(lambda d: self.power(d, "poweroff")), None),
             None,
             ("_Restore-Stick aus Image …", lambda: self.on_restore_stick(None), None),
+            ("IS_O hinzufügen …", self.on_add_iso, None),
+            ("_Boot-Stick aus ISO …", self.on_boot_stick, None),
             ("Images _aktualisieren", self.refresh_images, "F5"),
         ]))
         bar.append(menu("_Hilfe", [
@@ -213,8 +217,10 @@ class MainWindow(Gtk.ApplicationWindow):
         return box
 
     # Spalten des Image-Baums
-    C_ICON, C_NAME, C_TYPE, C_SIZE, C_DATE, C_BYTES, C_PATH, C_KIND, C_REL, C_AREA = range(10)
+    # Art: unsorted/folder/image (Images), osroot/osfolder/iso (Betriebssysteme, Bereich „os“)
+    C_ICON, C_NAME, C_TYPE, C_SIZE, C_DATE, C_BYTES, C_PATH, C_KIND, C_REL, C_AREA, C_TIP = range(11)
     DND_TARGET = "okula/archive-row"
+    URI_TARGET = "text/uri-list"   # ISO-Dateien aus dem Dateimanager
 
     def _build_images_tab(self) -> Gtk.Widget:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=6)
@@ -223,10 +229,11 @@ class MainWindow(Gtk.ApplicationWindow):
         head.pack_start(self.img_count, True, True, 0)
         self.img_buttons = {}
         for key, icon, tip, handler in (
+                ("iso", "media-optical-symbolic", "ISO hinzufügen … (Betriebssysteme)", lambda _b: self.on_add_iso()),
                 ("folder", "folder-new-symbolic", "Neuer Ordner (im gewählten Ordner, max. 3 Ebenen)",
                  self.on_new_archive_folder),
-                ("rename", "document-edit-symbolic", "Ordner umbenennen", self.on_rename_archive_folder),
-                ("delete", "user-trash-symbolic", "Löschen (Image bzw. leerer Ordner)", self.on_delete_image)):
+                ("rename", "document-edit-symbolic", "Umbenennen (Ordner bzw. ISO)", self.on_rename_archive_folder),
+                ("delete", "user-trash-symbolic", "Löschen (Image, ISO bzw. leerer Ordner)", self.on_delete_image)):
             b = Gtk.Button.new_from_icon_name(icon, Gtk.IconSize.BUTTON)
             b.set_tooltip_text(tip)
             b.connect("clicked", handler)
@@ -238,8 +245,8 @@ class MainWindow(Gtk.ApplicationWindow):
         head.pack_start(btn_refresh, False, False, 0)
         box.pack_start(head, False, False, 0)
 
-        # icon, Name, Typ, Grösse, Datum, Bytes, Pfad (Image), Art (unsorted/folder/image), Ordner-rel, Bereich
-        self.image_store = Gtk.TreeStore(str, str, str, str, str, GObject.TYPE_INT64, str, str, str, str)
+        # icon, Name, Typ, Grösse, Datum, Bytes, Pfad (Image/ISO), Art, Ordner-rel, Bereich, Tooltip
+        self.image_store = Gtk.TreeStore(str, str, str, str, str, GObject.TYPE_INT64, str, str, str, str, str)
         view = Gtk.TreeView(model=self.image_store)
         col = Gtk.TreeViewColumn("Name")
         icon = Gtk.CellRendererPixbuf()
@@ -251,43 +258,67 @@ class MainWindow(Gtk.ApplicationWindow):
         col.set_expand(True)
         col.set_resizable(True)
         view.append_column(col)
+        col.set_min_width(220)
         for title, idx in (("Typ", self.C_TYPE), ("Grösse", self.C_SIZE), ("Datum", self.C_DATE)):
-            c = Gtk.TreeViewColumn(title, Gtk.CellRendererText(), text=idx)
+            cell = Gtk.CellRendererText()
+            if idx == self.C_TYPE:  # „Windows-ISO · 2 Editionen“ darf gekürzt werden, der Name nicht
+                cell.set_property("ellipsize", Pango.EllipsizeMode.END)
+                cell.set_property("width-chars", 12)
+            c = Gtk.TreeViewColumn(title, cell, text=idx)
             c.set_resizable(True)
             view.append_column(c)
         view.set_enable_tree_lines(True)
+        view.set_tooltip_column(self.C_TIP)
         view.get_selection().connect("changed", self._on_image_selected)
         view.connect("row-activated", self._on_image_activated)
         view.connect("button-press-event", self._on_image_button)
-        # Ziehen mit der Maus: Images und Ordner in Ordner bzw. nach „Nicht einsortiert“
+        # Ziehen mit der Maus: Images und Ordner in Ordner bzw. nach „Nicht einsortiert“, ISOs zwischen
+        # OS-Ordnern; ISO-Dateien aus dem Dateimanager werden hochgeladen
         target = [Gtk.TargetEntry.new(self.DND_TARGET, Gtk.TargetFlags.SAME_WIDGET, 0)]
         view.enable_model_drag_source(Gdk.ModifierType.BUTTON1_MASK, target, Gdk.DragAction.MOVE)
-        view.enable_model_drag_dest(target, Gdk.DragAction.MOVE)
+        view.enable_model_drag_dest(target + [Gtk.TargetEntry.new(self.URI_TARGET, Gtk.TargetFlags.OTHER_APP, 1)],
+                                    Gdk.DragAction.MOVE | Gdk.DragAction.COPY)
         view.connect("drag-data-get", self._on_drag_get)
         view.connect("drag-data-received", self._on_drag_received)
         self.image_view = view
         self._images_loaded = False
         self._expand_after_refresh: str | None = None
+        self._expand_after_os: str | None = None
+        self._isos: dict[str, oslib.IsoInfo] = {}
         box.pack_start(scrolled(view), True, True, 0)
 
-        # Unter dem Baum: Legende der Icons und „Restore-Stick aus Image …“
-        bottom = Gtk.Box(spacing=12)
+        # Unter dem Baum: Legende der Icons, dann Sticks (Restore-Stick aus Image, Boot-Stick aus ISO)
+        legend = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, column_spacing=12, max_children_per_line=6)
         for icon, label in (("okula-image", "Okula-Image"), ("okula-image-clonezilla", "Clonezilla"),
-                            (FILE_IMAGE_ICON, "Image-Datei")):
+                            (FILE_IMAGE_ICON, "Image-Datei"), ("okula-os-windows", "Windows-ISO"),
+                            ("okula-os-linux", "Linux-ISO"), ("okula-os-other", "Sonstige ISO")):
             item = Gtk.Box(spacing=4)
             item.pack_start(Gtk.Image.new_from_icon_name(icon, Gtk.IconSize.MENU), False, False, 0)
             lbl = Gtk.Label(label=label)
             lbl.get_style_context().add_class("status-idle")
             item.pack_start(lbl, False, False, 0)
-            bottom.pack_start(item, False, False, 0)
+            legend.add(item)
+        box.pack_start(legend, False, False, 0)
+        bottom = Gtk.Box(spacing=6)
+        self.btn_add_iso = Gtk.Button(label="ISO hinzufügen …")
+        self.btn_add_iso.set_tooltip_text("ISO-Dateien aufs NAS hochladen (Betriebssysteme) – auch per Ziehen aus "
+                                          "dem Dateimanager")
+        self.btn_add_iso.connect("clicked", lambda _b: self.on_add_iso())
+        bottom.pack_start(self.btn_add_iso, False, False, 0)
         self.btn_img_stick = Gtk.Button(label="Restore-Stick aus Image …", sensitive=False)
         self.btn_img_stick.set_tooltip_text("Bootfähigen USB-Stick mit dem gewählten Image erstellen – spielt es "
                                             "nach Rückfrage ohne Netzwerk zurück")
         self.btn_img_stick.connect("clicked", self.on_restore_stick)
         bottom.pack_end(self.btn_img_stick, False, False, 0)
+        self.btn_boot_stick = Gtk.Button(label="Boot-Stick aus ISO …", sensitive=False)
+        self.btn_boot_stick.set_tooltip_text("Installations- bzw. Live-Stick aus der gewählten ISO erstellen")
+        self.btn_boot_stick.connect("clicked", lambda _b: self.on_boot_stick())
+        bottom.pack_end(self.btn_boot_stick, False, False, 0)
         box.pack_start(bottom, False, False, 0)
         hint = Gtk.Label(xalign=0, wrap=True)
-        hint.set_markup("<small>Images per Maus in Ordner ziehen · Rechtsklick für weitere Aktionen</small>")
+        hint.set_markup("<small>Images und ISOs per Maus in Ordner ziehen · ISO-Dateien aus dem Dateimanager "
+                        "hierher ziehen = hochladen · Doppelklick auf ISO = Details · Rechtsklick für weitere "
+                        "Aktionen</small>")
         hint.get_style_context().add_class("status-idle")
         box.pack_start(hint, False, False, 0)
         self._on_image_selected(view.get_selection())
@@ -312,13 +343,30 @@ class MainWindow(Gtk.ApplicationWindow):
     def _on_image_selected(self, sel: Gtk.TreeSelection) -> None:
         model, it = sel.get_selected()
         kind = model[it][self.C_KIND] if it is not None else ""
+        rel = model[it][self.C_REL] if it is not None else ""
         root_ok = self._nas_root() is not None
-        self.img_buttons["folder"].set_sensitive(root_ok)
-        self.img_buttons["rename"].set_sensitive(root_ok and kind == "folder")
-        self.img_buttons["delete"].set_sensitive(root_ok and kind in ("folder", "image"))
+        own_osfolder = kind == "osfolder" and "/" in rel   # Kategorien bleiben fest
+        self.img_buttons["iso"].set_sensitive(root_ok)
+        self.btn_add_iso.set_sensitive(root_ok)
+        self.img_buttons["folder"].set_sensitive(root_ok and kind != "osroot")
+        self.img_buttons["rename"].set_sensitive(root_ok and (kind in ("folder", "iso") or own_osfolder))
+        self.img_buttons["delete"].set_sensitive(root_ok and (kind in ("folder", "image", "iso") or own_osfolder))
         self.btn_img_stick.set_sensitive(kind == "image" and model[it][self.C_TYPE] in ("Disk-Image", "Clonezilla"))
+        iso = self._selected_iso()
+        self.btn_boot_stick.set_sensitive(iso is not None and bool(oslib.stick_modes(iso.meta)))
+
+    def _selected_iso(self) -> oslib.IsoInfo | None:
+        model, it = self._selected_image_row()
+        if it is None or model[it][self.C_KIND] != "iso":
+            return None
+        return self._isos.get(model[it][self.C_PATH])
 
     def _on_image_activated(self, view, path, _col) -> None:
+        if self.image_store[path][self.C_KIND] == "iso":
+            iso = self._selected_iso()
+            if iso:
+                IsoDetailsDialog(self, iso)
+            return
         if view.row_expanded(path):
             view.collapse_row(path)
         else:
@@ -339,6 +387,11 @@ class MainWindow(Gtk.ApplicationWindow):
             item.connect("activate", lambda _i: handler(None))
             menu.append(item)
 
+        if model[it][self.C_AREA] == "os" if it is not None else False:
+            self._os_menu(menu, model[it][self.C_KIND], model[it][self.C_REL])
+            menu.show_all()
+            menu.popup_at_pointer(event)
+            return True
         add("Neuer Ordner …", self.on_new_archive_folder)
         if kind == "folder":
             add("Umbenennen …", self.on_rename_archive_folder)
@@ -352,6 +405,61 @@ class MainWindow(Gtk.ApplicationWindow):
         menu.show_all()
         menu.popup_at_pointer(event)
         return True
+
+    def _os_menu(self, menu: Gtk.Menu, kind: str, rel: str) -> None:
+        def add(label, handler, sensitive=True):
+            item = Gtk.MenuItem(label=label, sensitive=sensitive)
+            item.connect("activate", lambda _i: handler())
+            menu.append(item)
+
+        if kind == "iso":
+            iso = self._selected_iso()
+            add("Details und Prüfsummen …", lambda: iso and IsoDetailsDialog(self, iso), iso is not None)
+            add("Boot-Stick erstellen …", self.on_boot_stick, iso is not None and bool(oslib.stick_modes(iso.meta)))
+            menu.append(Gtk.SeparatorMenuItem())
+            add("Umbenennen …", lambda: self.on_rename_archive_folder(None))
+            add("Löschen …", lambda: self.on_delete_image(None))
+            return
+        add("ISO hinzufügen …", lambda: self.on_add_iso(rel if kind == "osfolder" else None))
+        if kind == "osfolder":
+            add("Neuer Ordner …", lambda: self.on_new_archive_folder(None), len(rel.split("/")) < oslib.MAX_DEPTH)
+            if "/" in rel:
+                add("Umbenennen …", lambda: self.on_rename_archive_folder(None))
+                add("Löschen (nur leer)", lambda: self.on_delete_image(None))
+
+    # ---------- Betriebssysteme (ISOs) ----------
+
+    def on_add_iso(self, dest_rel: str | None = None) -> None:
+        root = self._nas_root()
+        if root is None:
+            confirm_error(self, "NAS ist nicht verbunden – Menü → NAS-Verbindung …")
+            return
+        if dest_rel is None:
+            model, it = self._selected_image_row()
+            if it is not None and model[it][self.C_KIND] in ("osfolder", "iso"):
+                dest_rel = model[it][self.C_REL]
+        files = choose_isos(self)
+        if files:
+            self.upload_isos(files, dest_rel)
+
+    def upload_isos(self, files: list[str], dest_rel: str | None) -> None:
+        root = self._nas_root()
+        if root is None:
+            return
+        self._expand_after_os = dest_rel or ""
+
+        def done() -> None:
+            self.refresh_images()
+            self.refresh_nas_status()
+
+        UploadDialog(self, root, files, dest_rel, done)
+
+    def on_boot_stick(self) -> None:
+        iso = self._selected_iso()
+        if iso is None:
+            self.status("Zuerst rechts unter „Betriebssysteme“ eine ISO wählen")
+            return
+        BootStickDialog(self, iso)
 
     def on_restore_stick(self, _btn) -> None:
         model, it = self._selected_image_row()
@@ -378,6 +486,20 @@ class MainWindow(Gtk.ApplicationWindow):
         root = self._nas_root()
         if root is None:
             return
+        model, it = self._selected_image_row()
+        if it is not None and model[it][self.C_AREA] == "os":
+            parent = model[it][self.C_REL]
+            if not parent:
+                confirm_error(self, "Eigene Ordner bitte in Windows, Linux oder Sonstige anlegen.")
+                return
+            if len(parent.split("/")) >= oslib.MAX_DEPTH:
+                confirm_error(self, f"„{parent}“ liegt schon auf Ebene {oslib.MAX_DEPTH}.")
+                return
+            name = ask_text(self, "Neuer Ordner", f"Name des neuen Ordners in „{parent}“:")
+            if name:
+                self._expand_after_os = parent
+                self._archive_op(lambda: oslib.make_folder(root, parent, name), f"Ordner „{name.strip()}“ angelegt")
+            return
         parent = self._target_folder()
         if parent and len(parent.split("/")) >= archive.MAX_DEPTH:
             confirm_error(self, f"„{parent}“ liegt schon auf Ebene {archive.MAX_DEPTH} – "
@@ -392,7 +514,24 @@ class MainWindow(Gtk.ApplicationWindow):
     def on_rename_archive_folder(self, _btn) -> None:
         root = self._nas_root()
         model, it = self._selected_image_row()
-        if root is None or it is None or model[it][self.C_KIND] != "folder":
+        if root is None or it is None:
+            return
+        kind, rel = model[it][self.C_KIND], model[it][self.C_REL]
+        if kind == "iso":
+            path = model[it][self.C_PATH]
+            old = os.path.basename(path)
+            new = ask_text(self, "ISO umbenennen", f"Neuer Name für „{old}“:", old)
+            if new and new.strip() != old:
+                self._archive_op(lambda: oslib.rename_iso(root, path, new), f"Umbenannt in „{new.strip()}“")
+            return
+        if kind == "osfolder" and "/" in rel:
+            old = rel.rsplit("/", 1)[-1]
+            new = ask_text(self, "Ordner umbenennen", f"Neuer Name für „{old}“:", old)
+            if new and new.strip() != old:
+                self._expand_after_os = rel.rsplit("/", 1)[0]
+                self._archive_op(lambda: oslib.rename_folder(root, rel, new), f"Umbenannt in „{new.strip()}“")
+            return
+        if kind != "folder":
             return
         rel = model[it][self.C_REL]
         old = rel.rsplit("/", 1)[-1]
@@ -417,6 +556,9 @@ class MainWindow(Gtk.ApplicationWindow):
         view.stop_emission_by_name("drag-data-received")
         Gtk.drag_finish(context, True, False, time)
         root = self._nas_root()
+        if root is not None and selection.get_target().name() == self.URI_TARGET:
+            self._drop_files(view, x, y, selection.get_uris())
+            return
         data = selection.get_data()
         if root is None or not data:
             return
@@ -431,14 +573,39 @@ class MainWindow(Gtk.ApplicationWindow):
         else:
             row = model[hit[0]]
             dest_area = row[self.C_AREA]
-            dest_rel = row[self.C_REL] if row[self.C_KIND] in ("folder", "image") else ""
+            dest_rel = row[self.C_REL] if row[self.C_KIND] in ("folder", "image", "osfolder", "iso") else ""
         self.drop(model[src][self.C_KIND], model[src][self.C_AREA], model[src][self.C_REL],
                   model[src][self.C_PATH], model[src][self.C_NAME], dest_area, dest_rel)
+
+    def _drop_files(self, view, x: int, y: int, uris: list[str]) -> None:
+        """Dateien aus dem Dateimanager: ISOs hochladen (in den OS-Ordner unter der Maus, sonst automatisch)."""
+        files = [GLib.filename_from_uri(u)[0] for u in uris if u.startswith("file://")]
+        isos = [f for f in files if oslib.is_iso_name(os.path.basename(f)) and os.path.isfile(f)]
+        if not isos:
+            self.status("Nur ISO- und IMG-Dateien können hier hochgeladen werden")
+            return
+        hit = view.get_dest_row_at_pos(x, y)
+        dest_rel = None
+        if hit is not None:
+            row = self.image_store[hit[0]]
+            if row[self.C_KIND] in ("osfolder", "iso"):
+                dest_rel = row[self.C_REL]
+        self.upload_isos(isos, dest_rel)
 
     def drop(self, kind: str, area: str, rel: str, path: str, name: str, dest_area: str, dest_rel: str) -> None:
         """Ziel einer Maus-Verschiebung auswerten (auch für Tests ohne echte Maus)."""
         root = self._nas_root()
         if root is None:
+            return
+        if kind == "iso":
+            if dest_area != "os" or not dest_rel:
+                self.status("ISOs bitte in einen Ordner unter „Betriebssysteme“ ziehen")
+            elif dest_rel != rel:
+                self._expand_after_os = dest_rel
+                self._archive_op(lambda: oslib.move_iso(root, path, dest_rel), f"Verschoben nach „{dest_rel}“")
+            return
+        if area == "os" or dest_area == "os":
+            self.status("Images und Betriebssysteme sind getrennt – nur innerhalb des Bereichs verschieben")
             return
         if kind == "image":
             if dest_area == "unsorted":
@@ -635,6 +802,17 @@ class MainWindow(Gtk.ApplicationWindow):
             rel = model[it][self.C_REL]
             self._archive_op(lambda: archive.delete_folder(root, rel), f"Ordner „{rel}“ gelöscht")
             return
+        if model[it][self.C_KIND] == "osfolder" and "/" in model[it][self.C_REL]:
+            rel = model[it][self.C_REL]
+            self._archive_op(lambda: oslib.delete_folder(root, rel), f"Ordner „{rel}“ gelöscht")
+            return
+        if model[it][self.C_KIND] == "iso":
+            path = model[it][self.C_PATH]
+            if confirm(self, f"„{os.path.basename(path)}“ endgültig löschen?",
+                       f"{model[it][self.C_NAME]} · {model[it][self.C_SIZE]}\n\n"
+                       "Das NAS hat keinen Papierkorb für das Tool – gelöschte Daten sind weg."):
+                self._archive_op(lambda: oslib.delete_iso(root, path), f"„{os.path.basename(path)}“ gelöscht")
+            return
         if model[it][self.C_KIND] != "image":
             return
         try:
@@ -732,17 +910,67 @@ class MainWindow(Gtk.ApplicationWindow):
             self.img_count.set_text("NAS nicht verbunden")
             self._on_image_selected(self.image_view.get_selection())
             return
-        run_async(lambda: archive.scan(mp), self._on_images)
+        def work():
+            tree = archive.scan(mp)
+            try:
+                oslib.ensure_layout(mp)  # OS/Windows, OS/Linux, OS/Sonstige anlegen
+                systems = oslib.scan(mp)
+            except (OSError, oslib.OsLibError, nasfiles.FileError) as e:
+                systems = e
+            return tree, systems
+
+        run_async(work, self._on_images)
 
     def _image_row(self, img: nas.ImageInfo, rel: str, area: str) -> list:
         return [IMAGE_ICONS.get(img.kind, FILE_IMAGE_ICON), img.name, img.kind, nas.format_size(img.size),
-                img.mtime.strftime("%d.%m.%Y %H:%M"), img.size, str(img.path), "image", rel, area]
+                img.mtime.strftime("%d.%m.%Y %H:%M"), img.size, str(img.path), "image", rel, area, str(img.path)]
 
-    def _on_images(self, tree) -> None:
-        if isinstance(tree, Exception):
-            self.status(f"Images konnten nicht gelesen werden: {tree}")
+    def _iso_row(self, iso: oslib.IsoInfo) -> list:
+        sha = iso.meta.get("sha256", "")
+        tip = f"{iso.name}\n{oslib.describe(iso.meta)}" + (f"\nSHA-256 {sha}" if sha else "")
+        return [OS_ICONS.get(iso.family, "okula-os-other"), iso.title, oslib.describe(iso.meta),
+                nas.format_size(iso.size), iso.mtime.strftime("%d.%m.%Y %H:%M"), iso.size, str(iso.path), "iso",
+                iso.rel, "os", tip]
+
+    def _add_os_tree(self, systems, keys: set[str]) -> int:
+        store = self.image_store
+        self._isos = {}
+        if isinstance(systems, Exception):
+            store.append(None, ["dialog-warning-symbolic", "Betriebssysteme: nicht lesbar", "", "", "", 0, "",
+                                "osroot", "", "os", str(systems)])
+            return 0
+        isos = [i for f in systems for i in f.all_isos()]
+        self._isos = {str(i.path): i for i in isos}
+        total = sum(i.size for i in isos)
+        root = store.append(None, ["media-optical-symbolic", f"Betriebssysteme ({len(isos)})", "",
+                                   nas.format_size(total) if total else "", "", total, "", "osroot", "", "os",
+                                   f"ISO-Dateien in NAS: /{oslib.OS_DIR} – „ISO hinzufügen …“ oder Dateien "
+                                   "hierher ziehen"])
+
+        def add(parent, folder: oslib.OsFolder) -> None:
+            size = folder.size()
+            it = store.append(parent, ["folder-symbolic", f"{folder.name} ({folder.count()})", "Ordner",
+                                       nas.format_size(size) if size else "", "", size, "", "osfolder",
+                                       folder.rel, "os", f"NAS: /{oslib.OS_DIR}/{folder.rel}"])
+            for sub in folder.folders:
+                add(it, sub)
+            for iso in folder.isos:
+                store.append(it, self._iso_row(iso))
+
+        for folder in systems:
+            add(root, folder)
+        if self._expand_after_os is not None:
+            parts = self._expand_after_os.split("/") if self._expand_after_os else []
+            keys |= {"osroot:"} | {"osfolder:" + "/".join(parts[:i]) for i in range(1, len(parts) + 1)}
+            self._expand_after_os = None
+        return len(isos)
+
+    def _on_images(self, result) -> None:
+        if isinstance(result, Exception):
+            self.status(f"Images konnten nicht gelesen werden: {result}")
             return
-        keys = self._expanded_keys() if self._images_loaded else {"unsorted:"}
+        tree, systems = result
+        keys = self._expanded_keys() if self._images_loaded else {"unsorted:", "osroot:"}
         if self._expand_after_refresh is not None:
             parts = self._expand_after_refresh.split("/") if self._expand_after_refresh else []
             keys |= {"folder:" + "/".join(parts[:i]) for i in range(1, len(parts) + 1)}
@@ -751,7 +979,7 @@ class MainWindow(Gtk.ApplicationWindow):
         store.clear()
         unsorted = store.append(None, ["folder-download-symbolic", f"Nicht einsortiert ({len(tree.unsorted)})", "",
                                        nas.format_size(sum(i.size for i in tree.unsorted)), "", 0, "", "unsorted",
-                                       "", "unsorted"])
+                                       "", "unsorted", ""])
         for img in tree.unsorted:  # neueste zuerst
             store.append(unsorted, self._image_row(img, "", "unsorted"))
 
@@ -759,7 +987,7 @@ class MainWindow(Gtk.ApplicationWindow):
             total = folder.size()  # inklusive Unterordner
             it = store.append(parent, ["folder-symbolic", f"{folder.name} ({folder.count()})", "Ordner",
                                        nas.format_size(total) if total else "", "", total, "", "folder",
-                                       folder.rel, "archive"])
+                                       folder.rel, "archive", ""])
             for sub in folder.folders:
                 add(it, sub)
             for img in folder.images:
@@ -767,9 +995,11 @@ class MainWindow(Gtk.ApplicationWindow):
 
         for folder in tree.folders:
             add(None, folder)
+        n_isos = self._add_os_tree(systems, keys)
         self._restore_expanded(keys)
         self._images_loaded = True
-        self.img_count.set_text(f"{len(tree.all_images())} Images · {len(tree.unsorted)} nicht einsortiert")
+        self.img_count.set_text(f"{len(tree.all_images())} Images · {len(tree.unsorted)} nicht einsortiert · "
+                                f"{n_isos} ISOs")
         self._on_image_selected(self.image_view.get_selection())
 
     # ---------- linke Seite: Geräte ----------

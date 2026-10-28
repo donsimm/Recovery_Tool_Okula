@@ -34,6 +34,54 @@ def helper_command(device: str, iso: str, server: str, image: str | None = None,
     return ["sudo", "-n", HELPER, *args]
 
 
+def iso_stick_command(args: list[str]) -> list[str]:
+    """Boot-Stick aus ISO: gleicher Root-Helfer, Unterbefehl „iso-stick“."""
+    if os.geteuid() == 0:
+        return [sys.executable, "-m", "okula_recovery.stick", "iso-stick", *args]
+    if not Path(HELPER).exists():
+        raise FileNotFoundError(f"{HELPER} fehlt – bitte install.sh ausführen")
+    return ["sudo", "-n", HELPER, "iso-stick", *args]
+
+
+def run_helper(cmd: list[str], stdin_text: str, on_progress, on_line, on_done) -> None:
+    """Root-Helfer im Hintergrund starten und seine Ausgabe auswerten (PROGRESS/WARN/DONE/ERROR).
+
+    Die Rückrufe laufen im GTK-Hauptthread: on_progress(anteil, text), on_line(zeile), on_done(ok, fehler).
+    """
+    cwd = str(Path(stick.__file__).resolve().parent.parent)
+
+    def work():
+        try:
+            proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, text=True, cwd=cwd)
+            proc.stdin.write(stdin_text)
+            proc.stdin.close()
+        except OSError as e:
+            GLib.idle_add(on_done, False, str(e))
+            return
+        ok, last_error = False, ""
+        for line in proc.stdout:
+            kind, _, text = line.rstrip("\n").partition(" ")
+            if kind == "PROGRESS":
+                frac, _, msg = text.partition(" ")
+                try:
+                    GLib.idle_add(on_progress, float(frac), msg)
+                except ValueError:
+                    pass
+                continue
+            if kind == "DONE":
+                ok = True
+            elif kind == "ERROR":
+                last_error = text
+            GLib.idle_add(on_line, line.rstrip("\n"))
+        rc = proc.wait()
+        if rc != 0 and not last_error:
+            last_error = f"Hilfsprogramm beendet mit Code {rc} (sudo-Regel vorhanden? install.sh)"
+        GLib.idle_add(on_done, ok and rc == 0, last_error)
+
+    threading.Thread(target=work, daemon=True).start()
+
+
 class StickDialog(Gtk.Dialog):
     """Agent-Stick (image=None) oder Restore-Stick mit genau einem Image."""
 
@@ -230,38 +278,7 @@ class StickDialog(Gtk.Dialog):
         key_hex = agentclient.load_or_create_key().hex()
         self._set_busy(True)
         self.append_log(f"Erstelle {'Restore-Stick' if self.image else 'Agent-Stick'} auf {device} …")
-        cwd = str(Path(stick.__file__).resolve().parent.parent)
-
-        def work():
-            try:
-                proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                        stderr=subprocess.STDOUT, text=True, cwd=cwd)
-                proc.stdin.write(key_hex + "\n")
-                proc.stdin.close()
-            except OSError as e:
-                GLib.idle_add(self._on_written, False, str(e))
-                return
-            ok, last_error = False, ""
-            for line in proc.stdout:
-                kind, _, text = line.rstrip("\n").partition(" ")
-                if kind == "PROGRESS":
-                    frac, _, msg = text.partition(" ")
-                    try:
-                        GLib.idle_add(self._on_progress, float(frac), msg)
-                    except ValueError:
-                        pass
-                    continue
-                if kind == "DONE":
-                    ok = True
-                elif kind == "ERROR":
-                    last_error = text
-                GLib.idle_add(self.append_log, line.rstrip("\n"))
-            rc = proc.wait()
-            if rc != 0 and not last_error:
-                last_error = f"Hilfsprogramm beendet mit Code {rc} (sudo-Regel vorhanden? install.sh)"
-            GLib.idle_add(self._on_written, ok and rc == 0, last_error)
-
-        threading.Thread(target=work, daemon=True).start()
+        run_helper(cmd, key_hex + "\n", self._on_progress, self.append_log, self._on_written)
 
     def _on_written(self, ok: bool, error: str) -> bool:
         self._set_busy(False)

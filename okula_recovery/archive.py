@@ -14,7 +14,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from okula_recovery import nas, nasfiles
+from okula_recovery import nas, nasfiles, oslib
 
 ARCHIVE_DIR = "Archiv"
 UNSORTED_DIR = "images"  # Ziel für „zurück zu Nicht einsortiert“, hier legt das Tool auch neue Images ab
@@ -85,7 +85,7 @@ def _folder_path(root: str | Path, rel: str) -> Path:
 
 def scan(root: str | Path) -> Tree:
     root = Path(root)
-    unsorted = nas.list_images(root, exclude=(ARCHIVE_DIR,))
+    unsorted = nas.list_images(root, exclude=(ARCHIVE_DIR, oslib.OS_DIR))
     for info in unsorted:
         info.name = display_name(info)  # einheitlich „Maschine – Ordner (Modell)“, auch nach dem Zurückschieben
     archive = root / ARCHIVE_DIR

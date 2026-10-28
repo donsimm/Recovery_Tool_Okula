@@ -70,6 +70,8 @@ def list_dir(root: str | Path, rel: str = "") -> list[Entry]:
         raise FileError(f"Kein Ordner: {rel or '/'}")
     entries = []
     for e in os.scandir(path):
+        if e.name.startswith(".") and e.name.endswith(".okula.json"):
+            continue  # Beschreibung einer ISO (Betriebssysteme) – gehört zur ISO, nicht in die Liste
         try:
             st = e.stat(follow_symlinks=False)
             is_dir = e.is_dir(follow_symlinks=False)
