@@ -218,6 +218,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.nas_tabs = Gtk.Notebook()
         self.nas_tabs.append_page(self._build_images_tab(), Gtk.Label(label="Images"))
         self.nas_tabs.append_page(self._build_files_tab(), Gtk.Label(label="Dateien"))
+        self.nas_tabs.append_page(self._build_backups_tab(), Gtk.Label(label="Backups"))
         self.nas_tabs.connect("switch-page", lambda _n, _p, num: num == 1 and self.refresh_files())
         box.pack_start(self.nas_tabs, True, True, 0)
         return box
@@ -239,7 +240,7 @@ class MainWindow(Gtk.ApplicationWindow):
                 ("folder", "folder-new-symbolic", "Neuer Ordner (im gewählten Ordner, max. 3 Ebenen)",
                  self.on_new_archive_folder),
                 ("rename", "document-edit-symbolic", "Umbenennen (Ordner bzw. ISO)", self.on_rename_archive_folder),
-                ("delete", "user-trash-symbolic", "Löschen (Image, ISO, Backup bzw. leerer Ordner)", self.on_delete_image)):
+                ("delete", "user-trash-symbolic", "Löschen (Image, ISO bzw. leerer Ordner)", self.on_delete_image)):
             b = Gtk.Button.new_from_icon_name(icon, Gtk.IconSize.BUTTON)
             b.set_tooltip_text(tip)
             b.connect("clicked", handler)
@@ -291,7 +292,6 @@ class MainWindow(Gtk.ApplicationWindow):
         self._expand_after_refresh: str | None = None
         self._expand_after_os: str | None = None
         self._isos: dict[str, oslib.IsoInfo] = {}
-        self._backups: dict[str, backups.BackupInfo] = {}
         box.pack_start(scrolled(view), True, True, 0)
 
         # Unter dem Baum: Legende der Icons, dann Sticks (Restore-Stick aus Image, Boot-Stick aus ISO)
@@ -357,8 +357,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.btn_add_iso.set_sensitive(root_ok)
         self.img_buttons["folder"].set_sensitive(root_ok and kind != "osroot")
         self.img_buttons["rename"].set_sensitive(root_ok and (kind in ("folder", "iso") or own_osfolder))
-        self.img_buttons["delete"].set_sensitive(root_ok and (kind in ("folder", "image", "iso", "backup")
-                                                              or own_osfolder))
+        self.img_buttons["delete"].set_sensitive(root_ok and (kind in ("folder", "image", "iso") or own_osfolder))
         self.btn_img_stick.set_sensitive(kind == "image" and model[it][self.C_TYPE] in ("Disk-Image", "Clonezilla"))
         iso = self._selected_iso()
         self.btn_boot_stick.set_sensitive(iso is not None and bool(oslib.stick_modes(iso.meta)))
@@ -370,11 +369,6 @@ class MainWindow(Gtk.ApplicationWindow):
         return self._isos.get(model[it][self.C_PATH])
 
     def _on_image_activated(self, view, path, _col) -> None:
-        if self.image_store[path][self.C_KIND] == "backup":
-            b = self._selected_backup()
-            if b:
-                self.start_file_restore(b)
-            return
         if self.image_store[path][self.C_KIND] == "iso":
             iso = self._selected_iso()
             if iso:
@@ -404,18 +398,6 @@ class MainWindow(Gtk.ApplicationWindow):
             self._os_menu(menu, model[it][self.C_KIND], model[it][self.C_REL])
             menu.show_all()
             menu.popup_at_pointer(event)
-            return True
-        if kind == "backup":
-            b = self._selected_backup()
-            add("Zurückspielen / herunterladen …", lambda _x: b and self.start_file_restore(b), b is not None)
-            add("Notiz …", lambda _x: b and self.edit_backup_note(b), b is not None)
-            add("Details …", lambda _x: b and BackupDetailsDialog(self, b), b is not None)
-            menu.append(Gtk.SeparatorMenuItem())
-            add("Löschen …", self.on_delete_image)
-            menu.show_all()
-            menu.popup_at_pointer(event)
-            return True
-        if kind in ("bkroot", "bkdevice"):
             return True
         add("Neuer Ordner …", self.on_new_archive_folder)
         if kind == "folder":
@@ -833,11 +815,6 @@ class MainWindow(Gtk.ApplicationWindow):
             rel = model[it][self.C_REL]
             self._archive_op(lambda: oslib.delete_folder(root, rel), f"Ordner „{rel}“ gelöscht")
             return
-        if model[it][self.C_KIND] == "backup":
-            b = self._selected_backup()
-            if b is not None:
-                self.delete_backup(b)
-            return
         if model[it][self.C_KIND] == "iso":
             path = model[it][self.C_PATH]
             if confirm(self, f"„{os.path.basename(path)}“ endgültig löschen?",
@@ -1002,31 +979,152 @@ class MainWindow(Gtk.ApplicationWindow):
             self._expand_after_os = None
         return len(isos)
 
-    def _add_backup_tree(self, saved) -> int:
-        store = self.image_store
-        self._backups = {}
+    # ---------- Reiter Backups (Datei-Backups aller Geräte) ----------
+
+    # Spalten: Icon, Gerät bzw. Datum, Notiz, Inhalt, Grösse, Bytes, Pfad (nur Backups), Art (device/backup), Tooltip
+    B_ICON, B_NAME, B_NOTE, B_SUMMARY, B_SIZE, B_BYTES, B_PATH, B_KIND, B_TIP = range(9)
+
+    def _build_backups_tab(self) -> Gtk.Widget:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=6)
+        head = Gtk.Box(spacing=6)
+        self.bk_count = Gtk.Label(label="", xalign=0, ellipsize=Pango.EllipsizeMode.END)
+        head.pack_start(self.bk_count, True, True, 0)
+        self.bk_filter = Gtk.SearchEntry(placeholder_text="Gerät oder Notiz suchen", width_chars=22)
+        self.bk_filter.connect("search-changed", lambda _e: self._fill_backups())
+        head.pack_start(self.bk_filter, False, False, 0)
+        btn_refresh = Gtk.Button.new_from_icon_name("view-refresh-symbolic", Gtk.IconSize.BUTTON)
+        btn_refresh.set_tooltip_text("Backup-Liste neu laden")
+        btn_refresh.connect("clicked", lambda _b: self.refresh_images())
+        head.pack_start(btn_refresh, False, False, 0)
+        box.pack_start(head, False, False, 0)
+
+        self.backup_store = Gtk.TreeStore(str, str, str, str, str, GObject.TYPE_INT64, str, str, str)
+        view = Gtk.TreeView(model=self.backup_store)
+        col = Gtk.TreeViewColumn("Gerät / Datum")
+        icon = Gtk.CellRendererPixbuf()
+        col.pack_start(icon, False)
+        col.add_attribute(icon, "icon-name", self.B_ICON)
+        text = Gtk.CellRendererText()
+        col.pack_start(text, True)
+        col.add_attribute(text, "text", self.B_NAME)
+        col.set_resizable(True)
+        view.append_column(col)
+        for title, idx in (("Notiz", self.B_NOTE), ("Inhalt", self.B_SUMMARY), ("Grösse", self.B_SIZE)):
+            cell = Gtk.CellRendererText()
+            if idx in (self.B_NOTE, self.B_SUMMARY):
+                cell.set_property("ellipsize", Pango.EllipsizeMode.END)
+                cell.set_property("width-chars", 14)
+            c = Gtk.TreeViewColumn(title, cell, text=idx)
+            c.set_resizable(True)
+            c.set_expand(idx == self.B_NOTE)
+            view.append_column(c)
+        view.set_tooltip_column(self.B_TIP)
+        view.get_selection().connect("changed", lambda _s: self._on_backup_selected())
+        view.connect("row-activated", self._on_backup_activated)
+        view.connect("button-press-event", self._on_backup_button)
+        self.backup_view = view
+        self._backups: dict[str, backups.BackupInfo] = {}
+        box.pack_start(scrolled(view), True, True, 0)
+
+        bar = Gtk.Box(spacing=6)
+        self.bk_buttons: dict[str, Gtk.Button] = {}
+        for key, label, handler in (("restore", "Zurückspielen / herunterladen …", self.start_file_restore),
+                                    ("note", "Notiz …", self.edit_backup_note),
+                                    ("details", "Details …", lambda b: BackupDetailsDialog(self, b)),
+                                    ("delete", "Löschen …", self.delete_backup)):
+            b = Gtk.Button(label=label, sensitive=False)
+            b.connect("clicked", lambda _b, h=handler: (bk := self._selected_backup()) and h(bk))
+            (bar.pack_end if key == "delete" else bar.pack_start)(b, False, False, 0)
+            self.bk_buttons[key] = b
+        box.pack_start(bar, False, False, 0)
+        hint = Gtk.Label(xalign=0, wrap=True)
+        hint.set_markup(f"<small>Datei-Backups in NAS: /{backups.BACKUP_DIR} · neues Backup: Gerät öffnen → "
+                        "„Backup erstellen …“ · Doppelklick = zurückspielen bzw. herunterladen · Rechtsklick für "
+                        "weitere Aktionen</small>")
+        hint.get_style_context().add_class("status-idle")
+        box.pack_start(hint, False, False, 0)
+        return box
+
+    def _set_backups(self, saved) -> None:
         if isinstance(saved, Exception):
-            return 0
-        self._backups = {str(b.path): b for b in saved}
-        total = sum(b.size for b in saved)
-        root = store.append(None, ["document-save-symbolic", f"Backups ({len(saved)})", "",
-                                   nas.format_size(total) if total else "", "", total, "", "bkroot", "", "backups",
-                                   f"Datei-Backups in NAS: /{backups.BACKUP_DIR} – Gerät öffnen → „Backup erstellen …“"])
+            self._backups = {}
+            self._fill_backups(f"Backups nicht lesbar: {saved}")
+        else:
+            self._backups = {str(b.path): b for b in saved}
+            self._fill_backups()
+        for win in self.device_windows.values():
+            win.load_backups()
+
+    def _fill_backups(self, error: str = "") -> None:
+        selected = (b := self._selected_backup()) and str(b.path)
+        needle = self.bk_filter.get_text().strip().lower()
+        shown = [b for b in self._backups.values() if not needle or needle in b.device.lower()
+                 or needle in b.note.lower() or needle in b.summary.lower()]
+        store = self.backup_store
+        store.clear()
         by_device: dict[str, list] = {}
-        for b in saved:
+        for b in shown:
             by_device.setdefault(b.device, []).append(b)
         for device, items in sorted(by_device.items(), key=lambda kv: kv[0].lower()):
             size = sum(b.size for b in items)
-            it = store.append(root, ["folder-symbolic", f"{device} ({len(items)})", "Gerät", nas.format_size(size), "",
-                                     size, "", "bkdevice", device, "backups", ""])
-            for b in items:
-                note = b.note.splitlines()[0] if b.note else ""
+            it = store.append(None, ["computer-symbolic", f"{device} ({len(items)})", "", "",
+                                     nas.format_size(size), size, "", "device", ""])
+            for b in sorted(items, key=lambda b: b.created, reverse=True):
                 tip = (f"Notiz: {b.note}\n\n" if b.note else "") + "\n".join(b.manifest.get("description", []))
                 store.append(it, ["package-x-generic-symbolic" if b.storage == "tar" else "folder-documents-symbolic",
-                                  f"{b.created:%d.%m.%Y %H:%M}" + (f" – {note}" if note else ""), b.summary,
-                                  nas.format_size(b.size), b.created.strftime("%d.%m.%Y %H:%M"), b.size, str(b.path),
-                                  "backup", device, "backups", GLib.markup_escape_text(tip)])
-        return len(saved)
+                                  f"{b.created:%d.%m.%Y %H:%M}", " ".join(b.note.split()), b.summary,
+                                  nas.format_size(b.size), b.size, str(b.path), "backup",
+                                  GLib.markup_escape_text(tip)])
+        self.backup_view.expand_all()
+        if selected:
+            store.foreach(lambda m, p, i: m[i][self.B_PATH] == selected
+                          and (self.backup_view.get_selection().select_iter(i), True)[1])
+        total = sum(b.size for b in self._backups.values())
+        n_dev = len({b.device for b in self._backups.values()})
+        text = error or (f"{len(self._backups)} Backup{'s' if len(self._backups) != 1 else ''} · {n_dev} "
+                         f"Gerät{'e' if n_dev != 1 else ''} · {nas.format_size(total)}")
+        if needle and not error:
+            text += f" · {len(shown)} gefunden"
+        self.bk_count.set_text(text)
+        self._on_backup_selected()
+
+    def _on_backup_selected(self) -> None:
+        ok = self._selected_backup() is not None
+        for b in self.bk_buttons.values():
+            b.set_sensitive(ok)
+
+    def _on_backup_activated(self, view, path, _col) -> None:
+        b = self._selected_backup()
+        if b is not None:
+            self.start_file_restore(b)
+        elif view.row_expanded(path):
+            view.collapse_row(path)
+        else:
+            view.expand_row(path, False)
+
+    def _on_backup_button(self, view, event) -> bool:
+        if event.button != 3:
+            return False
+        hit = view.get_path_at_pos(int(event.x), int(event.y))
+        if hit:
+            view.get_selection().select_path(hit[0])
+        b = self._selected_backup()
+        if b is None:
+            return True
+        menu = Gtk.Menu()
+        for label, handler in (("Zurückspielen / herunterladen …", self.start_file_restore),
+                               ("Notiz …", self.edit_backup_note),
+                               ("Details …", lambda bk: BackupDetailsDialog(self, bk)), (None, None),
+                               ("Löschen …", self.delete_backup)):
+            if label is None:
+                menu.append(Gtk.SeparatorMenuItem())
+                continue
+            item = Gtk.MenuItem(label=label)
+            item.connect("activate", lambda _i, h=handler: h(b))
+            menu.append(item)
+        menu.show_all()
+        menu.popup_at_pointer(event)
+        return True
 
     def edit_backup_note(self, b: backups.BackupInfo, parent: Gtk.Window | None = None) -> None:
         text = edit_note(parent or self, b)
@@ -1050,17 +1148,17 @@ class MainWindow(Gtk.ApplicationWindow):
         self._confirm_delete(root, nasfiles.parent(rel_path), [os.path.basename(rel_path)], parent, extra + "\n")
 
     def _selected_backup(self) -> backups.BackupInfo | None:
-        model, it = self._selected_image_row()
-        if it is None or model[it][self.C_KIND] != "backup":
+        model, it = self.backup_view.get_selection().get_selected()
+        if it is None or model[it][self.B_KIND] != "backup":
             return None
-        return self._backups.get(model[it][self.C_PATH])
+        return self._backups.get(model[it][self.B_PATH])
 
     def _on_images(self, result) -> None:
         if isinstance(result, Exception):
             self.status(f"Images konnten nicht gelesen werden: {result}")
             return
         tree, systems, saved = result
-        keys = self._expanded_keys() if self._images_loaded else {"unsorted:", "osroot:", "bkroot:"}
+        keys = self._expanded_keys() if self._images_loaded else {"unsorted:", "osroot:"}
         if self._expand_after_refresh is not None:
             parts = self._expand_after_refresh.split("/") if self._expand_after_refresh else []
             keys |= {"folder:" + "/".join(parts[:i]) for i in range(1, len(parts) + 1)}
@@ -1086,13 +1184,11 @@ class MainWindow(Gtk.ApplicationWindow):
         for folder in tree.folders:
             add(None, folder)
         n_isos = self._add_os_tree(systems, keys)
-        n_backups = self._add_backup_tree(saved)
-        for win in self.device_windows.values():
-            win.load_backups()
+        self._set_backups(saved)
         self._restore_expanded(keys)
         self._images_loaded = True
         self.img_count.set_text(f"{len(tree.all_images())} Images · {len(tree.unsorted)} nicht einsortiert · "
-                                f"{n_isos} ISOs · {n_backups} Backups")
+                                f"{n_isos} ISOs")
         self._on_image_selected(self.image_view.get_selection())
 
     # ---------- linke Seite: Geräte ----------
