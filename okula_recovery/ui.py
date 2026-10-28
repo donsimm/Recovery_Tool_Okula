@@ -775,8 +775,9 @@ class MainWindow(Gtk.ApplicationWindow):
     # ---------- linke Seite: Geräte ----------
 
     # Spalten des Gerätebaums: LED bzw. Ordner-Icon, Name, Status, Betriebssystem, zuletzt verbunden, IP,
-    # Geräte-ID, Art (unsorted/folder/device), Ordner-rel
-    D_ICON, D_NAME, D_STATUS, D_OS, D_SEEN, D_IP, D_ID, D_KIND, D_REL = range(9)
+    # Geräte-ID, Art (unsorted/folder/device), Ordner-rel, Fortschritt 0–100, Balken-Text (leer), Balken zeigen
+    D_ICON, D_NAME, D_STATUS, D_OS, D_SEEN, D_IP, D_ID, D_KIND, D_REL, D_PROG, D_PCT, D_BAR = range(12)
+    NO_PROGRESS = [0, "", False]
     DEV_DND_TARGET = "okula/device-row"
 
     def _build_device_pane(self) -> Gtk.Widget:
@@ -800,7 +801,7 @@ class MainWindow(Gtk.ApplicationWindow):
             self.dev_buttons[key] = b
         box.pack_start(head, False, False, 0)
 
-        self.device_store = Gtk.TreeStore(str, str, str, str, str, str, str, str, str)
+        self.device_store = Gtk.TreeStore(str, str, str, str, str, str, str, str, str, int, str, bool)
         view = Gtk.TreeView(model=self.device_store)
         col = Gtk.TreeViewColumn("Gerät")
         icon = Gtk.CellRendererPixbuf()
@@ -813,7 +814,20 @@ class MainWindow(Gtk.ApplicationWindow):
         col.set_resizable(True)
         col.set_min_width(200)
         view.append_column(col)
-        for title, idx, chars in (("Status", self.D_STATUS, 16), ("Betriebssystem", self.D_OS, 18),
+        # Status: solange etwas läuft, Fortschrittsbalken mit Prozent, daneben Auftrag und Restzeit
+        col = Gtk.TreeViewColumn("Status")
+        bar = Gtk.CellRendererProgress()
+        bar.set_fixed_size(90, -1)
+        col.pack_start(bar, False)
+        for attr, idx in (("value", self.D_PROG), ("text", self.D_PCT), ("visible", self.D_BAR)):
+            col.add_attribute(bar, attr, idx)
+        text = Gtk.CellRendererText(ellipsize=Pango.EllipsizeMode.END)
+        col.pack_start(text, True)
+        col.add_attribute(text, "markup", self.D_STATUS)
+        col.set_min_width(340)
+        col.set_resizable(True)
+        view.append_column(col)
+        for title, idx, chars in (("Betriebssystem", self.D_OS, 18),
                                   ("Zuletzt verbunden", self.D_SEEN, 16), ("IP", self.D_IP, 14)):
             cell = Gtk.CellRendererText(ellipsize=Pango.EllipsizeMode.END, width_chars=chars)
             c = Gtk.TreeViewColumn(title, cell, text=idx)
@@ -871,24 +885,35 @@ class MainWindow(Gtk.ApplicationWindow):
         return self.agents.get(aid) if aid else None
 
     def device_status(self, dev: devices.Device) -> str:
-        """Was mit dem Gerät gerade passiert – Aufträge des Tools zuerst, dann die Meldung des Agents."""
-        summary = self.jobs.summary(dev.id)
-        agent = self.online_agent(dev)
-        if agent is None:
-            return summary or "nicht verbunden"
-        if summary:
-            return summary
-        if agent.agent_id in self.inv_pending:
-            return "Inventar wird gelesen …"
-        if not agent.control_port:
-            return "Agent-Stick veraltet"
-        return agent.status
+        what, fraction, eta = self.device_progress(dev)
+        pct = f" {fraction * 100:.0f} %" if fraction is not None else ""
+        return " · ".join(p for p in (what + pct, eta) if p)
 
-    def _device_values(self, dev: devices.Device) -> list[str]:
+    def device_progress(self, dev: devices.Device) -> tuple[str, float | None, str]:
+        """(was läuft, Fortschritt 0..1, Restzeit) – Aufträge des Tools zuerst, dann die Meldung des Agents."""
+        what, fraction, eta = self.jobs.parts(dev.id)
         agent = self.online_agent(dev)
-        return ["okula-led-on" if agent else "okula-led-off", dev.name, self.device_status(dev),
+        if what or agent is None:
+            return what or "nicht verbunden", fraction, eta
+        if agent.agent_id in self.inv_pending:
+            return "Inventar wird gelesen …", None, ""
+        if not agent.control_port:
+            return "Agent-Stick veraltet", None, ""
+        if agent.job:  # z. B. Image-Prüfung, die das Tool dem Agent meldet
+            return agent.job, agent.progress, ""
+        return agent.status, None, ""
+
+    def _device_values(self, dev: devices.Device) -> list:
+        agent = self.online_agent(dev)
+        what, fraction, eta = self.device_progress(dev)
+        bar = fraction is not None
+        status = GLib.markup_escape_text(" · ".join(p for p in (what, eta) if p))
+        if bar:
+            status = f"<b>{fraction * 100:.0f} %</b>  {status}"
+        return ["okula-led-on" if agent else "okula-led-off", dev.name, status,
                 dev.os_name or "–", "jetzt" if agent else devices.short_time(dev.last_seen) or "–",
-                agent.ip if agent else dev.last_ip, dev.id, "device", dev.folder]
+                agent.ip if agent else dev.last_ip, dev.id, "device", dev.folder,
+                int(fraction * 100) if bar else 0, "", bar]
 
     def refresh_devices(self) -> None:
         """Baum neu aufbauen (neue Geräte, Ordner, Umbenennen) – Auf- und Zuklappen bleibt erhalten."""
@@ -903,7 +928,7 @@ class MainWindow(Gtk.ApplicationWindow):
         store.clear()
         new = sorted(self.store.in_folder(""), key=lambda d: d.first_seen, reverse=True)  # neueste zuerst
         unsorted = store.append(None, ["folder-download-symbolic", f"Neu / nicht einsortiert ({len(new)})",
-                                       "", "", "", "", "", "unsorted", ""])
+                                       "", "", "", "", "", "unsorted", ""] + self.NO_PROGRESS)
         for dev in new:
             store.append(unsorted, self._device_values(dev))
 
@@ -912,7 +937,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
         def add(parent, rel: str) -> None:
             it = store.append(parent, ["folder-symbolic", f"{rel.rsplit('/', 1)[-1]} ({count(rel)})", "", "", "",
-                                       "", "", "folder", rel])
+                                       "", "", "folder", rel] + self.NO_PROGRESS)
             for sub in self.store.folders:
                 if sub.rsplit("/", 1)[0] == rel and "/" in sub:
                     add(it, sub)

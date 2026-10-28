@@ -38,6 +38,32 @@ class Job:
     def running(self) -> bool:
         return self.state == RUNNING
 
+    @property
+    def label(self) -> str:
+        if self.detail.startswith("Prüfe Image"):
+            return "Image prüfen"
+        return "Disk-Image" if self.kind == "image" else "Zurückspielen"
+
+    @property
+    def remaining(self) -> float | None:
+        """Geschätzte Restzeit in Sekunden (aus bisheriger Dauer und Fortschritt), None = noch unklar."""
+        if not self.running or self.fraction < 0.02:
+            return None
+        elapsed = time.time() - self.started
+        if elapsed < 10:
+            return None
+        return elapsed * (1 - self.fraction) / self.fraction
+
+
+def eta_text(seconds: float | None) -> str:
+    if seconds is None:
+        return ""
+    if seconds < 60:
+        return "noch < 1 min"
+    if seconds < 3600:
+        return f"noch {seconds / 60:.0f} min"
+    return f"noch {int(seconds // 3600)} h {int(seconds % 3600 // 60):02d} min"
+
 
 class JobManager:
     def __init__(self, on_change: Callable[[Job], None] = lambda job: None):
@@ -55,14 +81,24 @@ class JobManager:
             return [j for j in self.jobs if j.running]
 
     def summary(self, device_id: str) -> str:
-        """Kurzstatus für die Geräteliste, z. B. „Disk-Image 45 %“ oder „2 Aufträge“."""
+        """Kurzstatus für die Geräteliste, z. B. „Disk-Image 45 % · noch 6 min“."""
+        return self.status(device_id)[0]
+
+    def status(self, device_id: str) -> tuple[str, float | None]:
+        """(Text, Fortschritt 0..1) der laufenden Aufträge eines Geräts."""
+        what, fraction, eta = self.parts(device_id)
+        if fraction is None:
+            return "", None
+        return " · ".join(p for p in (f"{what} {fraction * 100:.0f} %", eta) if p), fraction
+
+    def parts(self, device_id: str) -> tuple[str, float | None, str]:
+        """(was läuft, Fortschritt, Restzeit); mehrere Aufträge: Mittelwert und längste Restzeit."""
         active = [j for j in self.running() if j.device_id == device_id]
         if not active:
-            return ""
-        if len(active) > 1:
-            return f"{len(active)} Aufträge"
-        j = active[0]
-        return f"{'Disk-Image' if j.kind == 'image' else 'Zurückspielen'} {j.fraction * 100:.0f} %"
+            return "", None, ""
+        rests = [j.remaining for j in active]
+        return (active[0].label if len(active) == 1 else f"{len(active)} Aufträge",
+                sum(j.fraction for j in active) / len(active), eta_text(None if None in rests else max(rests)))
 
     def start(self, device_id: str, kind: str, disk: str, title: str,
               work: Callable[["Job", "JobManager"], str]) -> Job:

@@ -80,7 +80,9 @@ class ParallelJobsTest(unittest.TestCase):
             start(self.disks[0])  # gleiche Disk: abgelehnt
         time.sleep(0.5)
         self.assertEqual(len(jm.running()), 2, "beide Aufträge sollten gleichzeitig laufen")
-        self.assertEqual(jm.summary("dev1"), "2 Aufträge")
+        text, fraction = jm.status("dev1")
+        self.assertRegex(text, r"^2 Aufträge \d+ %")
+        self.assertIsNotNone(fraction)
         deadline = time.time() + 30
         while jm.running() and time.time() < deadline:
             time.sleep(0.1)
@@ -132,3 +134,17 @@ class ParallelJobsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EtaTest(unittest.TestCase):
+    def test_remaining_and_text(self):
+        job = jobs.Job(1, "dev", "image", "/dev/sda", "Disk-Image sda", started=time.time() - 600, fraction=0.25)
+        self.assertAlmostEqual(job.remaining, 1800, delta=5)
+        self.assertEqual(jobs.eta_text(job.remaining), "noch 30 min")
+        self.assertEqual(jobs.eta_text(4000), "noch 1 h 06 min")
+        self.assertIsNone(jobs.Job(2, "dev", "image", "/dev/sdb", "x", fraction=0.5).remaining)  # zu früh
+        jm = jobs.JobManager()
+        jm.jobs.append(job)
+        self.assertEqual(jm.status("dev"), ("Disk-Image 25 % · noch 30 min", 0.25))
+        job.detail = "Prüfe Image 40 %"
+        self.assertTrue(jm.summary("dev").startswith("Image prüfen 25 %"))

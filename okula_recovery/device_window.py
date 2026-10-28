@@ -111,8 +111,15 @@ class DeviceWindow(Gtk.Window):
             col = Gtk.TreeViewColumn(title, Gtk.CellRendererText(), text=i)
             col.set_resizable(True)
             view.append_column(col)
-        prog = Gtk.CellRendererProgress()
-        col = Gtk.TreeViewColumn("Fortschritt", prog, value=3, text=4)
+        # Balken ohne Text (über der Farbgrenze schlecht lesbar), Prozent fett daneben
+        col = Gtk.TreeViewColumn("Fortschritt")
+        prog = Gtk.CellRendererProgress(text="")
+        prog.set_fixed_size(120, -1)
+        col.pack_start(prog, False)
+        col.add_attribute(prog, "value", 3)
+        info = Gtk.CellRendererText(ellipsize=Pango.EllipsizeMode.END)
+        col.pack_start(info, True)
+        col.add_attribute(info, "markup", 4)
         col.set_expand(True)
         view.append_column(col)
         view.append_column(Gtk.TreeViewColumn("Start", Gtk.CellRendererText(), text=5))
@@ -270,8 +277,9 @@ class DeviceWindow(Gtk.Window):
         all_jobs = self.main.jobs.for_device(self.dev.id)
         rows = {row[0]: row for row in self.job_store}
         for job in all_jobs:
-            pct = f"{job.fraction * 100:.0f} %"
-            values = [job.id, job.title, job.state, int(job.fraction * 100), f"{pct} · {job.detail}" if job.detail else pct,
+            rest = GLib.markup_escape_text(" · ".join(p for p in (jobs.eta_text(job.remaining), job.detail) if p))
+            text = f"<b>{job.fraction * 100:.0f} %</b>  {rest}"
+            values = [job.id, job.title, job.state, int(job.fraction * 100), text,
                       datetime.fromtimestamp(job.started).strftime("%H:%M:%S")]
             if job.id in rows:
                 for i, v in enumerate(values):
