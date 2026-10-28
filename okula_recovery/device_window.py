@@ -69,13 +69,14 @@ class DeviceWindow(Gtk.Window):
                 ("image", "Disk-Image erstellen …", lambda: main.start_image(self.dev)),
                 ("restore", "Image zurückspielen …", lambda: main.start_restore(self.dev)),
                 ("install", "OS installieren …", lambda: main.start_install(self.dev)),
+                ("backup", "Backup erstellen …", lambda: main.start_backup(self.dev)),
                 ("inventory", "Inventar neu einlesen", lambda: main.refresh_inventory(self.dev)),
                 ("poweroff", "Herunterfahren", lambda: main.power(self.dev, "poweroff")),
                 ("reboot", "Neu starten", lambda: main.power(self.dev, "reboot"))):
             b = Gtk.Button(label=label)
             b.connect("clicked", lambda _b, h=handler: h())
             self.buttons[key] = b
-        for key in ("image", "restore", "install", "inventory"):
+        for key in ("image", "restore", "install", "backup", "inventory"):
             actions.pack_start(self.buttons[key], False, False, 0)
         for key in ("reboot", "poweroff"):  # rechts, abgesetzt von den Aufträgen
             actions.pack_end(self.buttons[key], False, False, 0)
@@ -89,6 +90,7 @@ class DeviceWindow(Gtk.Window):
             (str,) * 8, expand=4)
         self.tabs.append_page(scrolled(self.disk_view), Gtk.Label(label="Disks"))
         self.tabs.append_page(self._build_images(), Gtk.Label(label="Images"))
+        self.tabs.append_page(self._build_backups(), Gtk.Label(label="Backups"))
         self.history_view, self.history_store = table(["Zeit", "Ereignis", "Ergebnis"], (str, str, str), expand=1)
         self.tabs.append_page(scrolled(self.history_view), Gtk.Label(label="Verlauf"))
         self.notes = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR)
@@ -163,6 +165,44 @@ class DeviceWindow(Gtk.Window):
         hint.get_style_context().add_class("status-idle")
         box.pack_start(hint, False, False, 0)
         return box
+
+    def _build_backups(self) -> Gtk.Widget:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=6)
+        self.backup_view, self.backup_store = table(["Datum", "Inhalt", "Grösse", "Ablage"], (str, str, str, str, str),
+                                                    expand=1)
+        self.backup_view.connect("row-activated", lambda *_a: self._restore_backup())
+        box.pack_start(scrolled(self.backup_view), True, True, 0)
+        bar = Gtk.Box(spacing=6)
+        for label, handler in (("Zurückspielen / herunterladen …", self._restore_backup),
+                               ("Details …", self._backup_details)):
+            b = Gtk.Button(label=label)
+            b.connect("clicked", lambda _b, h=handler: h())
+            bar.pack_start(b, False, False, 0)
+        box.pack_start(bar, False, False, 0)
+        return box
+
+    def load_backups(self) -> None:
+        self.backup_store.clear()
+        mine = [b for b in self.main._backups.values()
+                if b.manifest.get("device_id") == self.dev.id or b.device == self.dev.name]
+        for b in sorted(mine, key=lambda b: b.created, reverse=True):
+            self.backup_store.append([b.created.strftime("%d.%m.%Y %H:%M"), b.summary, nas.format_size(b.size),
+                                      "Dateien" if b.storage == "files" else "tar.zst", str(b.path)])
+
+    def _sel_backup(self):
+        model, it = self.backup_view.get_selection().get_selected()
+        return self.main._backups.get(model[it][4]) if it is not None else None
+
+    def _restore_backup(self) -> None:
+        b = self._sel_backup()
+        if b is not None:
+            self.main.start_file_restore(b, self.dev)
+
+    def _backup_details(self) -> None:
+        from okula_recovery.backup_dialogs import BackupDetailsDialog
+        b = self._sel_backup()
+        if b is not None:
+            BackupDetailsDialog(self, b)
 
     # ---------- Inhalte ----------
 
@@ -283,6 +323,7 @@ class DeviceWindow(Gtk.Window):
                                     f"{sm['temperature']} °C" if sm.get("temperature") else "–"])
 
     def load_images(self) -> None:
+        self.load_backups()
         root = self.main._nas_root()
         if root is None:
             return

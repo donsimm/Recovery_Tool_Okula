@@ -12,8 +12,9 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 
-from okula_recovery import (__version__, agentclient, archive, clonezilla, config, devices, discovery,  # noqa: E402
-                            jobs, nas, nasfiles, oslib)
+from okula_recovery import (__version__, agentclient, archive, backups, clonezilla, config, devices,  # noqa: E402
+                            discovery, jobs, nas, nasfiles, oslib)
+from okula_recovery.backup_dialogs import BackupDetailsDialog, BackupDialog, RestoreFilesDialog  # noqa: E402
 from okula_recovery.device_window import DeviceWindow  # noqa: E402
 from okula_recovery.image_dialog import ImageDialog  # noqa: E402
 from okula_recovery.nas_dialog import NasDialog  # noqa: E402
@@ -140,6 +141,8 @@ class MainWindow(Gtk.ApplicationWindow):
             ("_Disk-Image erstellen …", lambda: self._with_device(self.start_image), None),
             ("Image _zurückspielen …", lambda: self._with_device(self.start_restore), None),
             ("_OS installieren …", lambda: self._with_device(self.start_install), None),
+            ("_Backup erstellen …", lambda: self._with_device(self.start_backup), None),
+            ("Backup zur_ückspielen …", lambda: self._with_device(lambda d: self.start_file_restore(None, d)), None),
             ("_Inventar neu einlesen", lambda: self._with_device(self.refresh_inventory), None),
             ("Gerät _herunterfahren", lambda: self._with_device(lambda d: self.power(d, "poweroff")), None),
             None,
@@ -287,6 +290,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self._expand_after_refresh: str | None = None
         self._expand_after_os: str | None = None
         self._isos: dict[str, oslib.IsoInfo] = {}
+        self._backups: dict[str, backups.BackupInfo] = {}
         box.pack_start(scrolled(view), True, True, 0)
 
         # Unter dem Baum: Legende der Icons, dann Sticks (Restore-Stick aus Image, Boot-Stick aus ISO)
@@ -352,7 +356,8 @@ class MainWindow(Gtk.ApplicationWindow):
         self.btn_add_iso.set_sensitive(root_ok)
         self.img_buttons["folder"].set_sensitive(root_ok and kind != "osroot")
         self.img_buttons["rename"].set_sensitive(root_ok and (kind in ("folder", "iso") or own_osfolder))
-        self.img_buttons["delete"].set_sensitive(root_ok and (kind in ("folder", "image", "iso") or own_osfolder))
+        self.img_buttons["delete"].set_sensitive(root_ok and (kind in ("folder", "image", "iso", "backup")
+                                                              or own_osfolder))
         self.btn_img_stick.set_sensitive(kind == "image" and model[it][self.C_TYPE] in ("Disk-Image", "Clonezilla"))
         iso = self._selected_iso()
         self.btn_boot_stick.set_sensitive(iso is not None and bool(oslib.stick_modes(iso.meta)))
@@ -364,6 +369,11 @@ class MainWindow(Gtk.ApplicationWindow):
         return self._isos.get(model[it][self.C_PATH])
 
     def _on_image_activated(self, view, path, _col) -> None:
+        if self.image_store[path][self.C_KIND] == "backup":
+            b = self._selected_backup()
+            if b:
+                self.start_file_restore(b)
+            return
         if self.image_store[path][self.C_KIND] == "iso":
             iso = self._selected_iso()
             if iso:
@@ -393,6 +403,17 @@ class MainWindow(Gtk.ApplicationWindow):
             self._os_menu(menu, model[it][self.C_KIND], model[it][self.C_REL])
             menu.show_all()
             menu.popup_at_pointer(event)
+            return True
+        if kind == "backup":
+            b = self._selected_backup()
+            add("Zurückspielen / herunterladen …", lambda _x: b and self.start_file_restore(b), b is not None)
+            add("Details …", lambda _x: b and BackupDetailsDialog(self, b), b is not None)
+            menu.append(Gtk.SeparatorMenuItem())
+            add("Löschen …", self.on_delete_image)
+            menu.show_all()
+            menu.popup_at_pointer(event)
+            return True
+        if kind in ("bkroot", "bkdevice"):
             return True
         add("Neuer Ordner …", self.on_new_archive_folder)
         if kind == "folder":
@@ -810,6 +831,11 @@ class MainWindow(Gtk.ApplicationWindow):
             rel = model[it][self.C_REL]
             self._archive_op(lambda: oslib.delete_folder(root, rel), f"Ordner „{rel}“ gelöscht")
             return
+        if model[it][self.C_KIND] == "backup":
+            rel_path = os.path.relpath(model[it][self.C_PATH], root)
+            if not rel_path.startswith(".."):
+                self._confirm_delete(root, nasfiles.parent(rel_path), [os.path.basename(rel_path)])
+            return
         if model[it][self.C_KIND] == "iso":
             path = model[it][self.C_PATH]
             if confirm(self, f"„{os.path.basename(path)}“ endgültig löschen?",
@@ -921,7 +947,11 @@ class MainWindow(Gtk.ApplicationWindow):
                 systems = oslib.scan(mp)
             except (OSError, oslib.OsLibError, nasfiles.FileError) as e:
                 systems = e
-            return tree, systems
+            try:
+                saved = backups.list_backups(mp)
+            except OSError as e:
+                saved = e
+            return tree, systems, saved
 
         run_async(work, self._on_images)
 
@@ -969,12 +999,42 @@ class MainWindow(Gtk.ApplicationWindow):
             self._expand_after_os = None
         return len(isos)
 
+    def _add_backup_tree(self, saved) -> int:
+        store = self.image_store
+        self._backups = {}
+        if isinstance(saved, Exception):
+            return 0
+        self._backups = {str(b.path): b for b in saved}
+        total = sum(b.size for b in saved)
+        root = store.append(None, ["document-save-symbolic", f"Backups ({len(saved)})", "",
+                                   nas.format_size(total) if total else "", "", total, "", "bkroot", "", "backups",
+                                   f"Datei-Backups in NAS: /{backups.BACKUP_DIR} – Gerät öffnen → „Backup erstellen …“"])
+        by_device: dict[str, list] = {}
+        for b in saved:
+            by_device.setdefault(b.device, []).append(b)
+        for device, items in sorted(by_device.items(), key=lambda kv: kv[0].lower()):
+            size = sum(b.size for b in items)
+            it = store.append(root, ["folder-symbolic", f"{device} ({len(items)})", "Gerät", nas.format_size(size), "",
+                                     size, "", "bkdevice", device, "backups", ""])
+            for b in items:
+                store.append(it, ["package-x-generic-symbolic" if b.storage == "tar" else "folder-documents-symbolic",
+                                  f"{b.created:%d.%m.%Y %H:%M}", b.summary, nas.format_size(b.size),
+                                  b.created.strftime("%d.%m.%Y %H:%M"), b.size, str(b.path), "backup", device,
+                                  "backups", "\n".join(b.manifest.get("description", []))])
+        return len(saved)
+
+    def _selected_backup(self) -> backups.BackupInfo | None:
+        model, it = self._selected_image_row()
+        if it is None or model[it][self.C_KIND] != "backup":
+            return None
+        return self._backups.get(model[it][self.C_PATH])
+
     def _on_images(self, result) -> None:
         if isinstance(result, Exception):
             self.status(f"Images konnten nicht gelesen werden: {result}")
             return
-        tree, systems = result
-        keys = self._expanded_keys() if self._images_loaded else {"unsorted:", "osroot:"}
+        tree, systems, saved = result
+        keys = self._expanded_keys() if self._images_loaded else {"unsorted:", "osroot:", "bkroot:"}
         if self._expand_after_refresh is not None:
             parts = self._expand_after_refresh.split("/") if self._expand_after_refresh else []
             keys |= {"folder:" + "/".join(parts[:i]) for i in range(1, len(parts) + 1)}
@@ -1000,10 +1060,11 @@ class MainWindow(Gtk.ApplicationWindow):
         for folder in tree.folders:
             add(None, folder)
         n_isos = self._add_os_tree(systems, keys)
+        n_backups = self._add_backup_tree(saved)
         self._restore_expanded(keys)
         self._images_loaded = True
         self.img_count.set_text(f"{len(tree.all_images())} Images · {len(tree.unsorted)} nicht einsortiert · "
-                                f"{n_isos} ISOs")
+                                f"{n_isos} ISOs · {n_backups} Backups")
         self._on_image_selected(self.image_view.get_selection())
 
     # ---------- linke Seite: Geräte ----------
@@ -1263,6 +1324,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.dev_buttons["rename"].set_sensitive(kind in ("folder", "device"))
         self.dev_buttons["delete"].set_sensitive(kind == "folder" or (dev is not None and agent is None))
         for label in ("Gerät öffnen …", "Disk-Image erstellen …", "Image zurückspielen …", "OS installieren …",
+                      "Backup erstellen …", "Backup zurückspielen …",
                       "Inventar neu einlesen", "Gerät herunterfahren"):
             if label in getattr(self, "menu_items", {}):
                 self.menu_items[label].set_sensitive(dev is not None if label == "Gerät öffnen …" else ready)
@@ -1299,6 +1361,8 @@ class MainWindow(Gtk.ApplicationWindow):
             add("Disk-Image erstellen …", lambda: self.start_image(dev), ready)
             add("Image zurückspielen …", lambda: self.start_restore(dev), ready)
             add("OS installieren …", lambda: self.start_install(dev), ready)
+            add("Backup erstellen …", lambda: self.start_backup(dev), ready)
+            add("Backup zurückspielen …", lambda: self.start_file_restore(None, dev), ready)
             add("Inventar neu einlesen", lambda: self.refresh_inventory(dev), ready)
             add("Herunterfahren", lambda: self.power(dev, "poweroff"), ready)
             add("Neu starten", lambda: self.power(dev, "reboot"), ready)
@@ -1658,6 +1722,106 @@ class MainWindow(Gtk.ApplicationWindow):
 
         InstallDialog(parent, agent, isos, dev, start, preselect)
 
+    def start_backup(self, dev: devices.Device) -> None:
+        parent = self._parent_for(dev)
+        agent = self._ready_agent(dev, parent)
+        if agent is None:
+            return
+        root = self._nas_root()
+        if root is None:
+            confirm_error(parent, "NAS ist nicht verbunden – Menü → NAS-Verbindung …")
+            return
+
+        def start(disk: str, sources: list[dict], mode: str, storage: str, description: list[str]) -> None:
+            what = f"Backup ({description[0].split(':')[0]})"
+
+            def after(job, path, error) -> None:
+                GLib.idle_add(self._after_job, dev.id, job, what, path, error, False)
+
+            work = jobs.backup_work(agent.ip, self.key, agent.control_port, disk, sources, root,
+                                    {"id": dev.id, "name": dev.name}, mode, storage, description, after)
+            self.jobs.start(dev.id, "backup", disk, what, work)
+            self.open_device(dev).show_jobs()
+
+        BackupDialog(parent, agent, dev, root, start)
+
+    def start_file_restore(self, backup: backups.BackupInfo | None, dev: devices.Device | None = None) -> None:
+        """Backup zurückspielen (ins System des Geräts) oder herunterladen."""
+        if backup is None and dev is not None:
+            mine = [b for b in self._backups.values()
+                    if b.manifest.get("device_id") == dev.id or b.device == dev.name]
+            if not mine:
+                confirm_error(self._parent_for(dev), f"Für „{dev.name}“ gibt es noch kein Backup.")
+                return
+            backup = max(mine, key=lambda b: b.created) if len(mine) == 1 else self._choose_backup(dev, mine)
+            if backup is None:
+                return
+        if dev is None:  # vom Backup aus: verbundenes Gerät wählen (oder nur herunterladen)
+            online = [self.store.devices[d] for d in self.online if d in self.store.devices]
+            own = next((d for d in online if d.id == backup.manifest.get("device_id")), None)
+            dev = own or (online[0] if len(online) == 1 else None)
+            if dev is None and len(online) > 1:
+                dev = self._choose_device(online)
+        agent = self.online_agent(dev) if dev else None
+        if agent is not None and not agent.control_port:
+            agent = None
+        parent = self._parent_for(dev) if dev else self
+
+        def restore(disk: str, plan) -> None:
+            what = f"Backup {backup.created:%d.%m.%Y %H:%M} zurückspielen"
+
+            def after(job, _path, error) -> None:
+                GLib.idle_add(self._after_job, dev.id, job, what, None, error, False)
+
+            work = jobs.filerestore_work(agent.ip, self.key, agent.control_port, disk, str(backup.path), plan, after)
+            self.jobs.start(dev.id, "filerestore", disk, what, work)
+            self.open_device(dev).show_jobs()
+
+        def download(target: str, prefixes: list[str]) -> None:
+            owner = dev.id if dev else (backup.manifest.get("device_id") or "")
+            what = f"Backup {backup.created:%d.%m.%Y %H:%M} herunterladen"
+
+            def after(job, path, error) -> None:
+                GLib.idle_add(self._after_job, owner, job, what, None, error, False)
+                if error is None:
+                    GLib.idle_add(self.status, f"Backup heruntergeladen nach {path}")
+
+            self.jobs.start(owner, "download", f"download:{target}", what,
+                            jobs.download_work(str(backup.path), target, prefixes, after))
+            if owner in self.store.devices:
+                self.open_device(self.store.devices[owner]).show_jobs()
+            else:
+                self.status(f"Herunterladen nach {target} läuft …")
+
+        RestoreFilesDialog(parent, backup, agent, dev.name if dev else "", restore, download)
+
+    def _choose_device(self, online: list[devices.Device]) -> devices.Device | None:
+        dlg = Gtk.Dialog(title="Zielgerät wählen", transient_for=self, modal=True)
+        dlg.add_buttons("Nur herunterladen", Gtk.ResponseType.CANCEL, "Weiter", Gtk.ResponseType.OK)
+        combo = Gtk.ComboBoxText(margin=12)
+        for d in online:
+            agent = self.online_agent(d)
+            combo.append(d.id, f"{d.name}  ({agent.ip if agent else ''})")
+        combo.set_active(0)
+        dlg.get_content_area().add(combo)
+        dlg.show_all()
+        answer, chosen = dlg.run(), combo.get_active_id()
+        dlg.destroy()
+        return self.store.devices.get(chosen) if answer == Gtk.ResponseType.OK else None
+
+    def _choose_backup(self, dev: devices.Device, items: list) -> backups.BackupInfo | None:
+        dlg = Gtk.Dialog(title=f"Backup von {dev.name} wählen", transient_for=self._parent_for(dev), modal=True)
+        dlg.add_buttons("Abbrechen", Gtk.ResponseType.CANCEL, "Weiter", Gtk.ResponseType.OK)
+        combo = Gtk.ComboBoxText(margin=12)
+        for b in sorted(items, key=lambda b: b.created, reverse=True):
+            combo.append(str(b.path), f"{b.created:%d.%m.%Y %H:%M} – {b.summary} ({nas.format_size(b.size)})")
+        combo.set_active(0)
+        dlg.get_content_area().add(combo)
+        dlg.show_all()
+        answer, chosen = dlg.run(), combo.get_active_id()
+        dlg.destroy()
+        return self._backups.get(chosen) if answer == Gtk.ResponseType.OK else None
+
     def install_iso_on_device(self, iso: oslib.IsoInfo | None) -> None:
         """Rechtsklick auf eine ISO: auf welches verbundene Gerät?"""
         if iso is None:
@@ -1695,7 +1859,7 @@ class MainWindow(Gtk.ApplicationWindow):
                                                       "selbständig", ok=True)
             elif error is None:
                 where = ""
-                if job.kind == "image" and path and self._nas_root():
+                if job.kind in ("image", "backup") and path and self._nas_root():
                     where = f" → NAS: /{os.path.relpath(path, self._nas_root())}"
                 self.store.add_history(dev, job.kind, f"{what} erfolgreich{where}", ok=True)
             else:

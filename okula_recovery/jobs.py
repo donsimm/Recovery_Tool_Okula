@@ -11,6 +11,7 @@ import itertools
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable
 
 from okula_recovery import agentclient, nas
@@ -43,8 +44,9 @@ class Job:
 
     @property
     def label(self) -> str:
-        return self.phase or {"image": "Disk-Image", "install": "Windows-Installation",
-                              "linux": "Linux-Installation"}.get(self.kind, "Zurückspielen")
+        return self.phase or {"image": "Disk-Image", "install": "Windows-Installation", "linux": "Linux-Installation",
+                              "backup": "Backup", "filerestore": "Dateien zurückspielen",
+                              "download": "Backup herunterladen"}.get(self.kind, "Zurückspielen")
 
     @property
     def shown_fraction(self) -> float:
@@ -321,5 +323,79 @@ def linux_install_work(ip: str, key: bytes, port: int, iso: str, meta: dict, dis
             plan.cleanup()
         after(job, boot, None)
         return f"Linux-Installation auf {disk} gestartet (Boot{boot})"
+
+    return work
+
+
+def _transfer_progress(jm: JobManager, job: Job, what: str):
+    def progress(ev: dict) -> None:
+        phase = ev.get("phase")
+        if phase == "plan":
+            jm.log(job, f"{ev.get('files', 0)} Dateien, {nas.format_size(ev.get('bytes', 0))}")
+        elif phase == "data":
+            jm.progress(job, ev.get("fraction", 0), f"{ev.get('files', '')} Dateien · "
+                        f"{ev.get('speed', 0) / 1e6:.0f} MB/s" if ev.get("speed") else ev.get("file", ""))
+        elif phase == "done":
+            parts = [f"{ev.get('files', 0)} Dateien"]
+            if ev.get("skipped"):
+                parts.append(f"{ev['skipped']} übersprungen (Details im Backup)")
+            if ev.get("renamed"):
+                parts.append(f"{ev['renamed']} mit Zusatz „wiederhergestellt“ (Datei war schon da)")
+            jm.log(job, f"{what}: " + ", ".join(parts))
+    return progress
+
+
+def backup_work(ip: str, key: bytes, port: int, disk: str, sources: list[dict], root: str, device: dict,
+                mode: str, storage: str, description: list[str],
+                after: Callable[[Job, str | None, Exception | None], None]):
+    from okula_recovery import backups
+
+    def work(job: Job, jm: JobManager) -> str:
+        for line in description:
+            jm.log(job, "  · " + line)
+        try:
+            path = backups.run_backup(ip, key, port, disk, sources, root, device, mode, storage, description,
+                                      _transfer_progress(jm, job, "Gesichert"), job.cancel)
+        except Exception as e:
+            after(job, None, e)
+            raise
+        after(job, str(path), None)
+        return str(path)
+
+    return work
+
+
+def filerestore_work(ip: str, key: bytes, port: int, disk: str, backup: str, plan,
+                     after: Callable[[Job, str | None, Exception | None], None]):
+    from okula_recovery import backups
+
+    def work(job: Job, jm: JobManager) -> str:
+        for src, dst in plan.mapping:
+            jm.log(job, f"  · {src or 'alles'} → {plan.part}: /{dst}")
+        try:
+            result = backups.run_restore(ip, key, port, disk, Path(backup), plan,
+                                         _transfer_progress(jm, job, "Zurückgeschrieben"), job.cancel)
+        except Exception as e:
+            after(job, None, e)
+            raise
+        after(job, backup, None)
+        return f"{result.get('files', 0)} Dateien zurückgeschrieben"
+
+    return work
+
+
+def download_work(backup: str, target: str, prefixes: list[str] | None,
+                  after: Callable[[Job, str | None, Exception | None], None]):
+    from okula_recovery import backups
+
+    def work(job: Job, jm: JobManager) -> str:
+        try:
+            n = backups.download(Path(backup), Path(target), prefixes, _transfer_progress(jm, job, "Kopiert"),
+                                 job.cancel)
+        except Exception as e:
+            after(job, None, e)
+            raise
+        after(job, target, None)
+        return f"{n} Dateien nach {target}"
 
     return work

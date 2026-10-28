@@ -18,7 +18,7 @@ import threading
 import time
 from pathlib import Path
 
-from okula_recovery import __version__, discovery, imaging, inventory, network, wininstall, wire
+from okula_recovery import __version__, discovery, filebackup, imaging, inventory, network, wininstall, wire
 
 
 # So lange ohne IPv4, dann DHCP nachfassen bzw. Link-Local-Adresse setzen
@@ -288,7 +288,7 @@ def run_job(tls, addr, req: dict, kind: str) -> None:
     parallel zu Aufträgen auf anderen Disks."""
     disk = str(req.get("disk") or "")
     label = {"image": "Disk-Image", "restore": "Zurückspielen", "install": "Windows-Installation",
-             "bootprep": "Installation"}[kind]
+             "bootprep": "Installation", "backup": "Backup", "filerestore": "Dateien zurückschreiben"}[kind]
     if not disk_locks.acquire(disk, kind):
         wire.send_json(tls, {"type": "error", "message": f"Auf {disk} läuft bereits ein Auftrag"})
         return
@@ -305,7 +305,9 @@ def run_job(tls, addr, req: dict, kind: str) -> None:
         title = {"image": f"Disk-Image von {disk} läuft",
                  "restore": f"Image wird auf {disk} zurückgespielt",
                  "install": f"Windows-Installation wird auf {disk} vorbereitet",
-                 "bootprep": f"Installation wird auf {disk} vorbereitet"}[kind] + " – Maschine nicht ausschalten"
+                 "bootprep": f"Installation wird auf {disk} vorbereitet",
+                 "backup": f"Backup von {disk} läuft",
+                 "filerestore": f"Dateien werden auf {disk} zurückgeschrieben"}[kind] + " – Maschine nicht ausschalten"
         # Mehrere parallele Aufträge: keine Balken (würden sich überschreiben), nur Meldungen
         bar = ConsoleBar(console, title) if console and alone else None
         job_state.update(job, label, 0.0)
@@ -318,6 +320,10 @@ def run_job(tls, addr, req: dict, kind: str) -> None:
 
         if kind == "image":
             imaging.stream_disk_image(tls, disk, log, report)
+        elif kind == "backup":
+            filebackup.backup(tls, req, log, report)
+        elif kind == "filerestore":
+            filebackup.restore_files(tls, req, log, report)
         elif kind in ("install", "bootprep"):
             entry = (wininstall.install if kind == "install" else wininstall.bootprep)(tls, req, log, report)
             wire.send_json(tls, {"type": "done", "boot": entry})
@@ -332,7 +338,8 @@ def run_job(tls, addr, req: dict, kind: str) -> None:
         if bar:
             done_text = {"image": "fertig", "restore": "zurückgespielt – Stick abziehen und neu starten",
                          "install": "vorbereitet – Neustart, Windows wird installiert (Stick abziehen)",
-                         "bootprep": "vorbereitet – Neustart, Installation startet (Stick JETZT abziehen)"}[kind]
+                         "bootprep": "vorbereitet – Neustart, Installation startet (Stick JETZT abziehen)",
+                         "backup": "fertig", "filerestore": "fertig"}[kind]
             result = done_text if ok else ("abgebrochen" if kind == "image" else "abgebrochen – Disk ist unvollständig")
             bar.finish(f"» {label} auf {disk}: {result}")
         job_state.finish(job)
@@ -365,8 +372,26 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
                 wire.send_json(tls, {"type": "info", "hostname": socket.gethostname(), "version": __version__,
                                      "disks": imaging.list_disks(), "tools": imaging.tool_status(),
                                      "busy": disk_locks.busy(), "active": disk_locks.active()})
-            elif cmd in ("image", "restore", "install", "bootprep"):
+            elif cmd in ("image", "restore", "install", "bootprep", "backup", "filerestore"):
                 run_job(tls, addr, req, cmd)
+            elif cmd in ("profiles", "browse", "estimate"):
+                # kurze Abfragen fürs Backup; hängen Partitionen lesend ein – nicht auf Disks mit Auftrag
+                busy = set(disk_locks.active())
+                try:
+                    with inspect_lock:
+                        if cmd == "profiles":
+                            reply = {"type": "profiles", "partitions": filebackup.profiles(busy)}
+                        else:
+                            parts = [str(s.get("part") or "") for s in req.get("sources") or []] + \
+                                [str(req.get("part") or "")]
+                            if any(p and any(p.startswith(b) for b in busy) for p in parts):
+                                raise imaging.ImagingError("Auf dieser Disk läuft gerade ein Auftrag")
+                            reply = ({"type": "entries", "entries": filebackup.browse(str(req.get("part")),
+                                                                                   str(req.get("path") or ""))}
+                                     if cmd == "browse" else filebackup.estimate(req.get("sources") or []))
+                except (imaging.ImagingError, OSError) as e:
+                    reply = {"type": "error", "message": str(e)}
+                wire.send_json(tls, reply)
             elif cmd == "inventory":
                 if req.get("refresh") and disk_locks.busy():
                     wire.send_json(tls, {"type": "error", "message": "Während eines Auftrags nicht möglich"})
