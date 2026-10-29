@@ -65,6 +65,9 @@ der genaue Verlauf in `git log`.
 - **Windows-Master-Image mit Sysprep** (entschieden, noch nicht programmiert): Image beim Zurückspielen pro Gerät
   anpassen – Gerätename aus dem Tool, Windows-Key, Benutzer, Region Schweiz. Anleitung und Plan:
   [MASTER-IMAGE.md](MASTER-IMAGE.md).
+- **Ordner an Geräte senden** (entschieden, noch nicht programmiert): `Software` und `Test Files` (fix) sowie
+  gewählte Projekte aus `Content` vom NAS auf den öffentlichen Desktop kopieren, erneut senden ersetzt.
+  Plan: [ORDNER-SENDEN.md](ORDNER-SENDEN.md).
 - **Gerätename = Name im Tool** bei Neuinstallation und Zurückspielen (offen: fix oder im Dialog änderbar).
 
 - Nobara/Zorin direkt installieren: nur möglich, falls deren Installer eine unbeaufsichtigte Installation
