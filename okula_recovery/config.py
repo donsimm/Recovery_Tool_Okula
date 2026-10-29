@@ -28,6 +28,8 @@ class Config:
     # Manuell hinzugefügte Maschinen: Liste von {"name": ..., "ip": ...}
     machines: list[dict] = field(default_factory=list)
     scan_network: str = ""  # leer = automatisch aus eigener Schnittstelle
+    automation_max: int = 2         # höchstens so viele Automatisierungen gleichzeitig
+    automation_paused: bool = False  # Hauptschalter: alle Automatisierungen angehalten
 
 
 def load(path: Path | None = None) -> Config:
@@ -41,6 +43,8 @@ def load(path: Path | None = None) -> Config:
         nas=nas,
         machines=list(data.get("machines", [])),
         scan_network=data.get("scan_network", ""),
+        automation_max=max(1, min(10, int(data.get("automation_max") or 2))),
+        automation_paused=bool(data.get("automation_paused", False)),
     )
 
 

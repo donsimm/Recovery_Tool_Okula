@@ -59,6 +59,7 @@ class ImageInfo:
     kind: str
     size: int
     mtime: datetime
+    master: bool = False   # als Master-Image markiert (Automatisierung)
 
 
 def test_connection(cfg: NasConfig, timeout: float = 3.0) -> list[Check]:
@@ -242,6 +243,26 @@ def _image_kind(name: str) -> str | None:
 
 
 OKULA_META = "okula-image.json"
+MASTER_FILE = "okula-master.json"   # liegt im Image-Ordner: als Master-Image markiert
+
+
+def is_master(path: Path) -> bool:
+    return (Path(path) / MASTER_FILE).is_file()
+
+
+def set_master(path: str | Path, on: bool, note: str = "") -> None:
+    """Image-Ordner (Okula oder Clonezilla) als Master-Image markieren bzw. die Markierung entfernen."""
+    path = Path(path)
+    if not path.is_dir() or path.is_symlink():
+        raise OSError("Nur Image-Ordner (Okula- oder Clonezilla-Image) lassen sich als Master markieren")
+    marker = path / MASTER_FILE
+    if on:
+        tmp = path / (MASTER_FILE + ".tmp")
+        tmp.write_text(json.dumps({"master": True, "since": datetime.now().isoformat(timespec="seconds"),
+                                   "note": note}, ensure_ascii=False))
+        tmp.replace(marker)
+    else:
+        marker.unlink(missing_ok=True)
 
 
 def _okula_image(path: Path, root: Path) -> ImageInfo | None:
@@ -258,7 +279,7 @@ def _okula_image(path: Path, root: Path) -> ImageInfo | None:
         name = name[len("images/"):]
     disk = meta.get("disk") or {}
     model = disk.get("model") or ""
-    return ImageInfo(f"{name}  ({model})" if model else name, path, "Disk-Image", size, mtime)
+    return ImageInfo(f"{name}  ({model})" if model else name, path, "Disk-Image", size, mtime, is_master(path))
 
 
 def _is_clonezilla_dir(path: Path) -> bool:
@@ -288,7 +309,7 @@ def image_at(p: Path, root: Path) -> ImageInfo | None:
                 return _okula_image(p, root)
             if _is_clonezilla_dir(p):
                 return ImageInfo(str(p.relative_to(root)), p, "Clonezilla", _dir_size(p),
-                                 datetime.fromtimestamp(p.stat().st_mtime))
+                                 datetime.fromtimestamp(p.stat().st_mtime), is_master(p))
             return None
         kind = _image_kind(p.name)
         if kind and p.is_file():

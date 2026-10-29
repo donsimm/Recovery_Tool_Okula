@@ -47,7 +47,8 @@ class Job:
     def label(self) -> str:
         return self.phase or {"image": "Disk-Image", "install": "Windows-Installation", "linux": "Linux-Installation",
                               "backup": "Backup", "filerestore": "Dateien zurückspielen",
-                              "download": "Backup herunterladen"}.get(self.kind, "Zurückspielen")
+                              "download": "Backup herunterladen", "auto": "Automatisierung",
+                              "deliver": "Ordner senden"}.get(self.kind, "Zurückspielen")
 
     @property
     def shown_fraction(self) -> float:
@@ -402,3 +403,29 @@ def download_work(backup: str, target: str, prefixes: list[str] | None,
         return f"{n} Dateien nach {target}"
 
     return work
+
+
+def deliver_work(ip: str, key: bytes, port: int, disk: str, nas_root: str, items: list[str],
+                 after: Callable[[Job, str | None, Exception | None], None]):
+    """Ordner (Software, Test Files, Content-Projekte) vom NAS auf den öffentlichen Desktop des Geräts."""
+    from okula_recovery import distribute
+
+    def work(job: Job, jm: JobManager) -> str:
+        try:
+            plan = distribute.plan(nas_root, items)
+            if plan.missing:
+                jm.log(job, f"Fehlt auf dem NAS (übersprungen): {', '.join(plan.missing)}")
+            if plan.skipped:
+                jm.log(job, f"{len(plan.skipped)} Links/Sonderdateien übersprungen")
+            jm.log(job, f"{plan.files} Dateien, {nas.format_size(plan.bytes)} → Öffentlicher Desktop "
+                        "(alle Benutzer); vorhandene Ordner gleichen Namens werden ersetzt")
+            result = agentclient.deliver(ip, key, disk, plan.items, plan.entries, plan.bytes,
+                                         _transfer_progress(jm, job, "Auf den Desktop gelegt"), job.cancel, port)
+        except Exception as e:
+            after(job, None, e)
+            raise
+        after(job, distribute.describe(plan.items), None)
+        return f"{result.get('files', 0)} Dateien auf den Desktop gelegt"
+
+    return work
+

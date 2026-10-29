@@ -58,6 +58,7 @@ class Device:
     boot_request: bool = False         # beim nächsten Start einmal den Agent laden
     boot_saved: list[str] = field(default_factory=list)   # Startreihenfolge vor „Netzwerk zuerst“ (zum Zurückstellen)
     boot_status: dict = field(default_factory=dict)       # zuletzt vom Agent gemeldet (netfirst, network, labels, …)
+    automation: dict = field(default_factory=dict)        # Einstellungen der Automatisierung (automation.Settings)
     history: list[dict] = field(default_factory=list)
     folder: str = ""                   # nicht gespeichert: ergibt sich aus dem Ablageort
 
