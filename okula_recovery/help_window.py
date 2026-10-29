@@ -121,9 +121,10 @@ Ein Gerät, das schon einmal mit dem Agent-Stick lief, kann den Agent auch <b>ü
 Dann brauchst du den Stick nicht mehr.
 
 <b>Einmal einrichten:</b>
-1.  <i>Extras → Netzwerkstart (PXE) …</i> öffnen.
+1.  <i>Tools → Netzwerkstart (PXE) …</i> öffnen.
 2.  Server-IP und Debian-Live-ISO wählen, dann <i>Vorbereiten</i>. Das dauert einige Minuten.
-3.  Geräte freischalten: Haken setzen (auch im Gerätefenster unter <i>Übersicht</i>).
+3.  Geräte freischalten: Haken setzen. Oder im Gerätefenster unter <i>Übersicht</i> den Schalter
+     „Netzwerkstart“ einschalten. Das Zahnrad daneben öffnet die Einstellungen.
 4.  <i>Einschalten</i>.
 
 <b>Am Gerät:</b>

@@ -170,14 +170,13 @@ class MainWindow(Gtk.ApplicationWindow):
             ("_Restore-Stick aus Image …", lambda: self.on_restore_stick(None), None),
             ("IS_O hinzufügen …", self.on_add_iso, None),
             ("_Boot-Stick aus ISO …", self.on_boot_stick, None),
+            ("_Netzwerkstart (PXE) …", self.open_pxe_dialog, None),
             None,
             ("Images _aktualisieren", self.refresh_images, "F5"),
         ]))
         bar.append(menu("E_xtras", [
             ("_USB klonen …", lambda: CloneDialog(self), None),
             ("USB _formatieren …", lambda: FormatDialog(self), None),
-            None,
-            ("_Netzwerkstart (PXE) …", self.open_pxe_dialog, None),
         ]))
         bar.append(menu("_Hilfe", [
             ("_So funktioniert das Tool", self.show_help, "F1"),
@@ -206,6 +205,20 @@ class MainWindow(Gtk.ApplicationWindow):
         self.pxe_dialog = PxeDialog(self)
         self.pxe_dialog.connect("destroy", lambda _d: setattr(self, "pxe_dialog", None))
 
+    @staticmethod
+    def netboot_ready() -> tuple[bool, str]:
+        """Kann ein Gerät jetzt per Netzwerk starten? (bereit, Grund falls nicht)."""
+        if not pxe.read_state():
+            return False, "Netzwerkstart ist noch nicht eingerichtet – Zahnrad: Tools → Netzwerkstart (PXE)"
+        if not pxe.is_active():
+            return False, "Netzwerkstart ist ausgeschaltet – Zahnrad: Tools → Netzwerkstart (PXE)"
+        return True, ""
+
+    def netboot_changed(self) -> None:
+        """Netzwerkstart ein-/ausgeschaltet oder Freigaben geändert: offene Gerätefenster nachführen."""
+        for win in self.device_windows.values():
+            win.update_netboot()
+
     def set_netboot(self, dev: devices.Device, on: bool, parent: Gtk.Window | None = None) -> None:
         """Gerät für den Netzwerkstart freischalten bzw. sperren; Freigabeliste des Dienstes nachführen."""
         if dev.netboot == on:
@@ -216,6 +229,7 @@ class MainWindow(Gtk.ApplicationWindow):
         if self.pxe_dialog is not None:
             self.pxe_dialog.fill_devices()
             self.pxe_dialog.update()
+        self.netboot_changed()
 
     def sync_netboot(self) -> None:
         """Läuft der Netzwerkstart, die MAC-Freigabeliste des Dienstes auf den Stand der Geräte bringen."""

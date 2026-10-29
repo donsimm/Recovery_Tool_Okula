@@ -1,4 +1,4 @@
-"""Extras → „Netzwerkstart (PXE) …“: vorbereiten, ein-/ausschalten, Geräte freischalten."""
+"""Tools → „Netzwerkstart (PXE) …“: vorbereiten, ein-/ausschalten, Geräte freischalten."""
 
 from __future__ import annotations
 
@@ -156,6 +156,9 @@ class PxeDialog(Gtk.Dialog):
         self.btn_on.set_sensitive(not self.busy and ready and not active)
         self.btn_off.set_sensitive(not self.busy and active)
         self.btn_download.set_sensitive(not self.busy)
+        if active != getattr(self, "_was_active", None) or bool(state) != getattr(self, "_was_prepared", None):
+            self._was_active, self._was_prepared = active, bool(state)
+            self.main.netboot_changed()   # Schalter in offenen Gerätefenstern nachführen
 
     def _log(self, text: str) -> bool:
         buf = self.log.get_buffer()

@@ -286,19 +286,56 @@ class DeviceWindow(Gtk.Window):
         self.info_grid.show_all()
 
     def _netboot_row(self, row: int) -> None:
-        """Freigabe für den Netzwerkstart (PXE) – ohne sie bekommt das Gerät vom Tool nie eine Antwort."""
+        """Netzwerkstart (PXE) für dieses Gerät ein/aus; Zahnrad öffnet die PXE-Einstellungen.
+        Ausgegraut, solange der Netzwerkstart nicht eingerichtet/eingeschaltet ist oder keine Kabel-Netzwerkkarte
+        bekannt ist – ohne Freigabe bekommt das Gerät vom Tool nie eine Antwort."""
         label = Gtk.Label(label="Netzwerkstart", xalign=0, yalign=0.5)
         label.get_style_context().add_class("status-idle")
         self.info_grid.attach(label, 0, row, 1, 1)
+        box = Gtk.Box(spacing=8)
+        self.netboot_switch = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.netboot_switch.connect("notify::active", self._on_netboot_switch)
+        box.pack_start(self.netboot_switch, False, False, 0)
+        self.netboot_text = Gtk.Label(xalign=0, wrap=True)
+        box.pack_start(self.netboot_text, False, False, 0)
+        gear = Gtk.Button.new_from_icon_name("emblem-system-symbolic", Gtk.IconSize.BUTTON)
+        gear.set_relief(Gtk.ReliefStyle.NONE)
+        gear.set_tooltip_text("Netzwerkstart einrichten, ein-/ausschalten (Tools → Netzwerkstart (PXE))")
+        gear.connect("clicked", lambda _b: self.main.open_pxe_dialog())
+        box.pack_start(gear, False, False, 0)
+        self.info_grid.attach(box, 1, row, 1, 1)
+        self.update_netboot()
+
+    def update_netboot(self) -> None:
+        """Schalter auf den aktuellen Stand bringen (auch wenn der Netzwerkstart anderswo geändert wurde)."""
+        switch = getattr(self, "netboot_switch", None)
+        if switch is None:
+            return
         wired = devices.netboot_macs([devices.Device(id="x", netboot=True, macs=self.dev.macs,
                                                      inventory=self.dev.inventory)])
-        cb = Gtk.CheckButton(label="Erlaubt – Gerät kann den Agent ohne Stick übers Netzwerk starten (F12 → Netzwerk)",
-                             active=self.dev.netboot, sensitive=bool(wired))
-        cb.set_tooltip_text("Nur freigeschaltete, registrierte Geräte bekommen beim Netzwerkstart eine Antwort. "
-                            "Einschalten unter Extras → Netzwerkstart (PXE)." if wired else
-                            "Keine kabelgebundene Netzwerkkarte bekannt – einmal mit dem Agent-Stick starten")
-        cb.connect("toggled", lambda b: self.main.set_netboot(self.dev, b.get_active(), self))
-        self.info_grid.attach(cb, 1, row, 1, 1)
+        ready, reason = self.main.netboot_ready()
+        if not wired:
+            reason = "Keine Kabel-Netzwerkkarte bekannt – Gerät einmal mit dem Agent-Stick starten"
+        self._netboot_updating = True
+        switch.set_active(self.dev.netboot)
+        self._netboot_updating = False
+        switch.set_sensitive(ready and bool(wired))
+        if reason:
+            text = reason.split(" – ")[0]
+        elif self.dev.netboot:
+            text = "Ein – Gerät startet den Agent ohne Stick: F12 (Boot-Menü) → Netzwerk"
+        else:
+            text = "Aus"
+        self.netboot_text.set_text(text)
+        tip = reason or ("Nur freigeschaltete, registrierte Geräte bekommen beim Netzwerkstart eine Antwort. "
+                         f"Kabel-Netzwerkkarten: {', '.join(wired)}")
+        for w in (switch, self.netboot_text):
+            w.set_tooltip_text(tip)
+
+    def _on_netboot_switch(self, switch, _param) -> None:
+        if getattr(self, "_netboot_updating", False):
+            return
+        self.main.set_netboot(self.dev, switch.get_active(), self)
 
     def _key_row(self, row: int) -> None:
         """Windows-Produktschlüssel: maskiert, auf Wunsch anzeigen/kopieren, von Hand hinterlegen."""

@@ -7,8 +7,8 @@ Server: Debian 13 + Xfce, Python 3 + GTK 3.
 
 - **Menüleiste:**
   - **Menü:** NAS-Verbindung … (Ctrl+N), Agent-USB-Stick erstellen …, Einstellungen exportieren / importieren …, Beenden
-  - **Tools:** Gerät öffnen (Ctrl+O), Disk-Image erstellen, Image zurückspielen, OS installieren, Backup erstellen, Backup zurückspielen, Inventar neu einlesen, Gerät herunterfahren, Restore-Stick aus Image, ISO hinzufügen, Boot-Stick aus ISO, Images aktualisieren (F5)
-  - **Extras:** USB klonen, USB formatieren, Netzwerkstart (PXE)
+  - **Tools:** Gerät öffnen (Ctrl+O), Disk-Image erstellen, Image zurückspielen, OS installieren, Backup erstellen, Backup zurückspielen, Inventar neu einlesen, Gerät herunterfahren, Restore-Stick aus Image, ISO hinzufügen, Boot-Stick aus ISO, Netzwerkstart (PXE), Images aktualisieren (F5)
+  - **Extras:** USB klonen, USB formatieren
   - **Hilfe:** **So funktioniert das Tool** (F1, Anleitung in einfacher Sprache mit Kapiteln), Tastenkürzel, Über
 - **Links (Geräte):** Alle Geräte, die je mit dem Agent-Stick gebootet wurden, in einer Ordnerstruktur. ● grün = verbunden, ● rot = nicht verbunden (Erklärung auch unter Hilfe → So funktioniert das Tool); dazu Status, Betriebssystem, zuletzt verbunden und IP. Details siehe [Geräte](#geräte).
 - **Rechts (NAS):**
@@ -109,10 +109,10 @@ Menü → **Agent-USB-Stick erstellen …**:
 
 Registrierte Geräte können den Agent **übers Netzwerk** starten (am Gerät F12/Boot-Menü → Netzwerk/PXE), statt vom Agent-Stick. **Nur** Geräte, die schon einmal mit dem Agent-Stick liefen **und** einzeln freigeschaltet sind, bekommen eine Antwort; alle anderen Rechner im Netz bleiben unberührt.
 
-**Einrichten (Extras → Netzwerkstart (PXE) …):**
+**Einrichten (Tools → Netzwerkstart (PXE) …):**
 1. Server-IP wählen (Netz der Geräte) und das Debian-Live-ISO (wie beim Agent-Stick, ggf. **Herunterladen**).
 2. **Vorbereiten:** legt Live-System, Agent-Teil (mit Schlüssel, partclone usw.) und die signierten Bootlader bereit (`/var/lib/okula-recovery/pxe`). Nach einem Tool-Update oder neuer Server-IP erneut vorbereiten.
-3. Geräte freischalten: Haken in der Liste oder im Gerätefenster (*Übersicht → Netzwerkstart erlaubt*). Neu erfasste Geräte sind nie freigeschaltet.
+3. Geräte freischalten: Haken in der Liste oder im Gerätefenster (*Übersicht → Netzwerkstart*: Schalter Ein/Aus, daneben das Zahnrad zu den PXE-Einstellungen). Der Schalter ist ausgegraut, solange der Netzwerkstart nicht eingerichtet und eingeschaltet ist oder keine Kabel-Netzwerkkarte bekannt ist. Neu erfasste Geräte sind nie freigeschaltet.
 4. **Einschalten.** Der Dienst läuft danach auch nach einem Neustart des Servers, bis er ausgeschaltet wird.
 
 **Wie es abgesichert ist:**
