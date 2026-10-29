@@ -558,6 +558,9 @@ def main(argv: list[str] | None = None) -> int:
     if argv[:1] in (["usb-clone"], ["usb-format"]):  # Tools → USB klonen / formatieren
         from okula_recovery import usbtools
         return usbtools.main(argv)
+    if argv[:1] == ["pxe"]:  # Netzwerkstart vorbereiten / ein / aus / Freigabeliste
+        from okula_recovery import pxe
+        return pxe.main(argv[1:])
     ap = argparse.ArgumentParser(description="Okula Agent-USB-Stick erstellen (löscht den Stick!)")
     ap.add_argument("--device", required=True, help="z. B. /dev/sdb")
     ap.add_argument("--iso", required=True, help="Debian-Live-ISO")

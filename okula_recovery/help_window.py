@@ -115,6 +115,27 @@ Doppelklick auf ein Gerät öffnet sein Fenster. Dort findest du:
 
 Das Tool erkennt ein Gerät beim nächsten Mal wieder, auch nach Monaten."""),
 
+    ("Netzwerkstart", """<big><b>Gerät ohne Stick verbinden (Netzwerkstart)</b></big>
+
+Ein Gerät, das schon einmal mit dem Agent-Stick lief, kann den Agent auch <b>übers Netzwerk</b> starten.
+Dann brauchst du den Stick nicht mehr.
+
+<b>Einmal einrichten:</b>
+1.  <i>Extras → Netzwerkstart (PXE) …</i> öffnen.
+2.  Server-IP und Debian-Live-ISO wählen, dann <i>Vorbereiten</i>. Das dauert einige Minuten.
+3.  Geräte freischalten: Haken setzen (auch im Gerätefenster unter <i>Übersicht</i>).
+4.  <i>Einschalten</i>.
+
+<b>Am Gerät:</b>
+1.  Netzwerkkabel einstecken.
+2.  Beim Start das Boot-Menü öffnen (meist F12) und „Netzwerk“ oder „PXE“ wählen.
+3.  Das Gerät erscheint im Tool mit grünem Punkt – wie mit dem Stick.
+
+<b>Sicher für die anderen Rechner:</b>
+•  Nur freigeschaltete Geräte bekommen eine Antwort. Alle anderen Rechner merken nichts.
+•  Das Tool verteilt keine IP-Adressen. Das macht weiterhin euer Router bzw. DHCP-Server.
+•  Neue Geräte sind nie automatisch freigeschaltet."""),
+
     ("Disk-Image", """<big><b>Ganze Festplatte sichern (Disk-Image)</b></big>
 
 Ein Disk-Image ist eine komplette Kopie der Festplatte.

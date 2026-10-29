@@ -1,0 +1,13 @@
+[Unit]
+Description=Okula Recovery Tool – Netzwerkstart (Proxy-DHCP/TFTP nur für freigeschaltete Geräte)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file=/etc/okula-recovery/pxe-dnsmasq.conf
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -282,7 +282,23 @@ class DeviceWindow(Gtk.Window):
             self.info_grid.attach(key, 0, i, 1, 1)
             self.info_grid.attach(val, 1, i, 1, 1)
         self._key_row(len(rows))
+        self._netboot_row(len(rows) + 1)
         self.info_grid.show_all()
+
+    def _netboot_row(self, row: int) -> None:
+        """Freigabe für den Netzwerkstart (PXE) – ohne sie bekommt das Gerät vom Tool nie eine Antwort."""
+        label = Gtk.Label(label="Netzwerkstart", xalign=0, yalign=0.5)
+        label.get_style_context().add_class("status-idle")
+        self.info_grid.attach(label, 0, row, 1, 1)
+        wired = devices.netboot_macs([devices.Device(id="x", netboot=True, macs=self.dev.macs,
+                                                     inventory=self.dev.inventory)])
+        cb = Gtk.CheckButton(label="Erlaubt – Gerät kann den Agent ohne Stick übers Netzwerk starten (F12 → Netzwerk)",
+                             active=self.dev.netboot, sensitive=bool(wired))
+        cb.set_tooltip_text("Nur freigeschaltete, registrierte Geräte bekommen beim Netzwerkstart eine Antwort. "
+                            "Einschalten unter Extras → Netzwerkstart (PXE)." if wired else
+                            "Keine kabelgebundene Netzwerkkarte bekannt – einmal mit dem Agent-Stick starten")
+        cb.connect("toggled", lambda b: self.main.set_netboot(self.dev, b.get_active(), self))
+        self.info_grid.attach(cb, 1, row, 1, 1)
 
     def _key_row(self, row: int) -> None:
         """Windows-Produktschlüssel: maskiert, auf Wunsch anzeigen/kopieren, von Hand hinterlegen."""

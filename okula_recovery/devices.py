@@ -51,6 +51,7 @@ class Device:
     inventory: dict = field(default_factory=dict)
     notes: str = ""
     product_key: str = ""              # Windows-Schlüssel von Hand (Retail/Volumen); OEM kommt aus dem Inventar
+    netboot: bool = False              # darf den Agent per Netzwerk (PXE) starten – nur mit dieser Freigabe
     history: list[dict] = field(default_factory=list)
     folder: str = ""                   # nicht gespeichert: ergibt sich aus dem Ablageort
 
@@ -221,8 +222,10 @@ class DeviceStore:
                              f"Verbunden ({ip})" if connected else "Getrennt")
 
     def update(self, dev: Device, name: str | None = None, notes: str | None = None,
-               product_key: str | None = None) -> None:
+               product_key: str | None = None, netboot: bool | None = None) -> None:
         with self.lock:
+            if netboot is not None:
+                dev.netboot = bool(netboot)
             if name is not None and name.strip():
                 dev.name = name.strip()
             if notes is not None:
@@ -331,3 +334,14 @@ def short_time(iso: str) -> str:
         return datetime.fromisoformat(iso).strftime("%d.%m.%Y %H:%M")
     except (TypeError, ValueError):
         return ""
+
+
+def netboot_macs(store_devices) -> list[str]:
+    """MAC-Adressen aller für den Netzwerkstart freigeschalteten Geräte (kabelgebundene zuerst; WLAN kann kein PXE)."""
+    macs = set()
+    for dev in store_devices:
+        if not dev.netboot:
+            continue
+        wireless = {n["mac"].lower() for n in (dev.inventory.get("network") or []) if n.get("wireless") and n.get("mac")}
+        macs |= {m.lower() for m in dev.macs if m and m.lower() not in wireless}
+    return sorted(macs)

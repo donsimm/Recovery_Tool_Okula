@@ -8,7 +8,7 @@ Server: Debian 13 + Xfce, Python 3 + GTK 3.
 - **Menüleiste:**
   - **Menü:** NAS-Verbindung … (Ctrl+N), Agent-USB-Stick erstellen …, Einstellungen exportieren / importieren …, Beenden
   - **Tools:** Gerät öffnen (Ctrl+O), Disk-Image erstellen, Image zurückspielen, OS installieren, Backup erstellen, Backup zurückspielen, Inventar neu einlesen, Gerät herunterfahren, Restore-Stick aus Image, ISO hinzufügen, Boot-Stick aus ISO, Images aktualisieren (F5)
-  - **Extras:** USB klonen, USB formatieren
+  - **Extras:** USB klonen, USB formatieren, Netzwerkstart (PXE)
   - **Hilfe:** **So funktioniert das Tool** (F1, Anleitung in einfacher Sprache mit Kapiteln), Tastenkürzel, Über
 - **Links (Geräte):** Alle Geräte, die je mit dem Agent-Stick gebootet wurden, in einer Ordnerstruktur. ● grün = verbunden, ● rot = nicht verbunden (Erklärung auch unter Hilfe → So funktioniert das Tool); dazu Status, Betriebssystem, zuletzt verbunden und IP. Details siehe [Geräte](#geräte).
 - **Rechts (NAS):**
@@ -104,6 +104,28 @@ Menü → **Agent-USB-Stick erstellen …**:
 - **Firewall auf dem Server:** UDP 47811 eingehend freigeben (z. B. `sudo ufw allow 47811/udp`).
 - **Secure Boot:** Der Stick nutzt die signierte Boot-Kette des Debian-ISO.
 - **Hinweis:** Die Beacons sind nicht authentifiziert. Die spätere Steuerverbindung zum Agent bekommt eine Authentifizierung.
+
+## Netzwerkstart (PXE) – Agent ohne Stick
+
+Registrierte Geräte können den Agent **übers Netzwerk** starten (am Gerät F12/Boot-Menü → Netzwerk/PXE), statt vom Agent-Stick. **Nur** Geräte, die schon einmal mit dem Agent-Stick liefen **und** einzeln freigeschaltet sind, bekommen eine Antwort; alle anderen Rechner im Netz bleiben unberührt.
+
+**Einrichten (Extras → Netzwerkstart (PXE) …):**
+1. Server-IP wählen (Netz der Geräte) und das Debian-Live-ISO (wie beim Agent-Stick, ggf. **Herunterladen**).
+2. **Vorbereiten:** legt Live-System, Agent-Teil (mit Schlüssel, partclone usw.) und die signierten Bootlader bereit (`/var/lib/okula-recovery/pxe`). Nach einem Tool-Update oder neuer Server-IP erneut vorbereiten.
+3. Geräte freischalten: Haken in der Liste oder im Gerätefenster (*Übersicht → Netzwerkstart erlaubt*). Neu erfasste Geräte sind nie freigeschaltet.
+4. **Einschalten.** Der Dienst läuft danach auch nach einem Neustart des Servers, bis er ausgeschaltet wird.
+
+**Wie es abgesichert ist:**
+- Das Tool vergibt **keine IP-Adressen** und macht kein DNS: `dnsmasq` läuft nur als *Proxy-DHCP* (`dhcp-range=…,proxy`, `port=0`). Der normale DHCP-Server bleibt zuständig.
+- Proxy-DHCP und TFTP antworten nur MAC-Adressen in der Freigabeliste (`dhcp-hostsfile` mit Merkmal `okula`, `dhcp-ignore=tag:!okula`); es werden nur kabelgebundene Netzwerkkarten freigeschaltet. Fremde Rechner, die per Netzwerk starten, bekommen keine Antwort (getestet in QEMU).
+- Den Agent-Teil (enthält den Agent-Schlüssel) liefert ein eigener HTTP-Dienst (Port 47813) nur aus, wenn die MAC der anfragenden IP (ARP-Tabelle) freigeschaltet ist; er kennt nur zwei feste Dateien. Der Schlüssel liegt nur für root lesbar auf dem Server.
+- Bootlader: `shim`, `grub` (signiert – **Secure Boot** darf an bleiben) und `pxelinux` (BIOS) kommen aus den Paketquellen des Servers. Sie werden nur heruntergeladen und ausgepackt, nicht installiert – der Bootlader des Servers bleibt unberührt.
+
+**Technik:** UEFI: shim → grub → Kernel/initrd per TFTP; BIOS: pxelinux. Das initrd ist das des Live-ISO plus ein kleines Skript, das live-boot anweist, neben `filesystem.squashfs` auch den Agent-Teil per HTTP zu laden – danach läuft alles wie mit dem Stick. Dienste: `okula-pxe.service` (dnsmasq), `okula-pxe-http.service`; gesteuert über den bestehenden Root-Helfer (`okula-make-stick pxe …`).
+
+**Firewall auf dem Server:** eingehend UDP 67, 69 und 4011 (Proxy-DHCP, TFTP) sowie TCP 47813 (HTTP) freigeben, z. B. `sudo ufw allow 67,69,4011/udp && sudo ufw allow 47813/tcp`.
+
+**Voraussetzungen am Gerät:** Netzwerkkabel (kein WLAN), Netzwerkstart im BIOS aktiv. Liegen Router/VLANs zwischen Gerät und Server, braucht es eine DHCP-Weiterleitung (IP-Helper) zum Server. Die Geräte brauchen genug RAM für das Live-System (wie beim Stick, ca. 2 GB).
 
 ## Geräte
 

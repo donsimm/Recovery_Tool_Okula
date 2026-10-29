@@ -24,7 +24,7 @@ apt-get install -y --no-install-recommends \
     cifs-utils nfs-common smbclient iputils-ping iproute2 \
     util-linux dosfstools grub-pc-bin grub2-common squashfs-tools \
     partclone zstd pigz lz4 lzop bzip2 xz-utils \
-    xorriso wimtools e2fsprogs exfatprogs ntfs-3g
+    xorriso wimtools e2fsprogs exfatprogs ntfs-3g dnsmasq-base
 
 # Formatieren: weitere Dateisysteme. Sichtbar installieren (Btrfs/XFS bauen das initramfs neu, das dauert);
 # fehlt ein Paket in den Quellen, einzeln weiter – das bricht die Installation nicht ab.
@@ -59,6 +59,14 @@ echo "$TARGET_USER ALL=(root) NOPASSWD: /usr/local/sbin/okula-make-stick, /usr/l
 chmod 0440 "$SUDOERS.tmp"
 visudo -cf "$SUDOERS.tmp" >/dev/null
 mv "$SUDOERS.tmp" "$SUDOERS"
+
+echo "==> Netzwerkstart-Dienste (laufen nur, wenn im Tool eingeschaltet)"
+install -m 0644 "$APP_DIR/packaging/okula-pxe.service" /etc/systemd/system/okula-pxe.service
+install -m 0644 "$APP_DIR/packaging/okula-pxe-http.service" /etc/systemd/system/okula-pxe-http.service
+systemctl daemon-reload
+if systemctl is-enabled --quiet okula-pxe.service 2>/dev/null; then
+    systemctl restart okula-pxe.service okula-pxe-http.service || true
+fi
 
 echo "==> Startmenü-Eintrag"
 install -D -m 0644 "$APP_DIR/okula_recovery/assets/okula-emblem.svg" \

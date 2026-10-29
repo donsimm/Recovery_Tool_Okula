@@ -13,7 +13,7 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 
-from okula_recovery import (__version__, agentclient, archive, backups, clonezilla, config, devices,  # noqa: E402
+from okula_recovery import (__version__, agentclient, archive, backups, clonezilla, config, devices, pxe,  # noqa: E402
                             discovery, jobs, nas, nasfiles, oslib)
 from okula_recovery.backup_dialogs import (BackupDetailsDialog, BackupDialog, RestoreFilesDialog,  # noqa: E402
                                            edit_note)
@@ -21,6 +21,8 @@ from okula_recovery.device_window import DeviceWindow  # noqa: E402
 from okula_recovery.copy_dialog import CopyDialog  # noqa: E402
 from okula_recovery.help_window import HelpWindow  # noqa: E402
 from okula_recovery.settings_dialogs import ExportDialog, import_settings  # noqa: E402
+from okula_recovery.pxe_dialog import PxeDialog  # noqa: E402
+from okula_recovery.stick_dialog import helper_subcommand, run_helper  # noqa: E402
 from okula_recovery.loadbar import LoadBar  # noqa: E402
 from okula_recovery.usb_dialogs import CloneDialog, FormatDialog  # noqa: E402
 from okula_recovery.image_dialog import ImageDialog  # noqa: E402
@@ -82,6 +84,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self._nas_checking = False
         self.nas_dialog: NasDialog | None = None
         self.copies: set = set()     # laufende Kopien aufs NAS (Fenster)
+        self.pxe_dialog = None
 
         header = Gtk.HeaderBar(title="Recovery Tool", subtitle=f"Version {__version__}",
                                show_close_button=True)
@@ -116,6 +119,7 @@ class MainWindow(Gtk.ApplicationWindow):
         # es gibt True zurück (für den 30-s-Timer), und idle_add würde es dann pausenlos wiederholen.
         GLib.idle_add(lambda: (self.refresh_nas_status(auto_mount=True), False)[1])
         GLib.timeout_add_seconds(NAS_POLL, self.refresh_nas_status)
+        GLib.idle_add(lambda: (self.sync_netboot(), False)[1])  # Freigabeliste nach Geräteänderungen nachführen
 
     # ---------- Menüleiste ----------
 
@@ -172,6 +176,8 @@ class MainWindow(Gtk.ApplicationWindow):
         bar.append(menu("E_xtras", [
             ("_USB klonen …", lambda: CloneDialog(self), None),
             ("USB _formatieren …", lambda: FormatDialog(self), None),
+            None,
+            ("_Netzwerkstart (PXE) …", self.open_pxe_dialog, None),
         ]))
         bar.append(menu("_Hilfe", [
             ("_So funktioniert das Tool", self.show_help, "F1"),
@@ -190,6 +196,44 @@ class MainWindow(Gtk.ApplicationWindow):
             dlg.set_logo(logo)
         dlg.run()
         dlg.destroy()
+
+    # ---------- Netzwerkstart (PXE) ----------
+
+    def open_pxe_dialog(self) -> None:
+        if self.pxe_dialog is not None:
+            self.pxe_dialog.present()
+            return
+        self.pxe_dialog = PxeDialog(self)
+        self.pxe_dialog.connect("destroy", lambda _d: setattr(self, "pxe_dialog", None))
+
+    def set_netboot(self, dev: devices.Device, on: bool, parent: Gtk.Window | None = None) -> None:
+        """Gerät für den Netzwerkstart freischalten bzw. sperren; Freigabeliste des Dienstes nachführen."""
+        if dev.netboot == on:
+            return
+        self.store.update(dev, netboot=on)
+        self.store.add_history(dev, "notiz", "Netzwerkstart " + ("erlaubt" if on else "gesperrt"))
+        self.sync_netboot()
+        if self.pxe_dialog is not None:
+            self.pxe_dialog.fill_devices()
+            self.pxe_dialog.update()
+
+    def sync_netboot(self) -> None:
+        """Läuft der Netzwerkstart, die MAC-Freigabeliste des Dienstes auf den Stand der Geräte bringen."""
+        if not pxe.is_active():
+            return
+        macs = devices.netboot_macs(self.store.devices.values())
+        try:
+            cmd = helper_subcommand("pxe", ["allow"])
+        except FileNotFoundError as e:
+            self.status(str(e))
+            return
+
+        def done(ok: bool, error: str) -> bool:
+            self.status(f"Netzwerkstart: {len(macs)} MAC-Adresse{'n' if len(macs) != 1 else ''} freigeschaltet" if ok
+                        else f"Netzwerkstart: Freigabeliste nicht aktualisiert – {error}")
+            return False
+
+        run_helper(cmd, "".join(f"{m}\n" for m in macs), lambda *_a: False, lambda *_a: False, done)
 
     def on_import_settings(self) -> None:
         if import_settings(self, busy=bool(self.jobs.running())):

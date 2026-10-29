@@ -1,0 +1,19 @@
+[Unit]
+Description=Okula Recovery Tool – Netzwerkstart, Dateien nur für freigeschaltete Geräte (HTTP)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/okula-recovery
+ExecStart=/usr/bin/python3 -m okula_recovery.pxe serve
+Restart=on-failure
+RestartSec=5
+# liest nur /var/lib/okula-recovery/pxe und die ARP-Tabelle
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadOnlyPaths=/
+
+[Install]
+WantedBy=multi-user.target
