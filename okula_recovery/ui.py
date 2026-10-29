@@ -108,7 +108,9 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self.refresh_devices()
         self._start_listener()
-        GLib.idle_add(self.refresh_nas_status, True)   # beim Start mit gespeicherten Zugangsdaten einhängen
+        # beim Start einmal mit gespeicherten Zugangsdaten einhängen. Nicht refresh_nas_status direkt übergeben:
+        # es gibt True zurück (für den 30-s-Timer), und idle_add würde es dann pausenlos wiederholen.
+        GLib.idle_add(lambda: (self.refresh_nas_status(auto_mount=True), False)[1])
         GLib.timeout_add_seconds(NAS_POLL, self.refresh_nas_status)
 
     # ---------- Menüleiste ----------
