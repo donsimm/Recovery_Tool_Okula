@@ -15,8 +15,9 @@ Stand: Idee/Entscheid vom 29.10.2026. Im Tool ist dafür noch nichts gebaut.
 
 - **Geräteübersicht:** zusätzliche Spalte mit Häkchen **„Automatisierung“** ein/aus.
 - **Gerätefenster:** neuer Reiter **„Automatisierung“** mit allen Einstellungen und dem Hinweis:
-  *„Die Automatisierung läuft einmal und schaltet sich nach erfolgreichem Durchlauf selbst aus.“*
-  (Keine Option „immer“.)
+  *„Die Automatisierung läuft einmal und schaltet sich nach erfolgreichem Durchlauf selbst aus. Nach 24 Stunden
+  schaltet sie sich wieder ein (abschaltbar).“* (Keine Option „immer“.)
+- **Option im Reiter: „Nach 24 h wieder einschalten“** – Standard **ein**.
 - **Hauptschalter** (Menü): alle Automatisierungen pausieren, z. B. bei Wartung am NAS.
 - **Vorlagen** im Reiter: Einstellungen als Vorlage speichern (z. B. „Schulungs-PC zurücksetzen“) und anderen
   Geräten zuweisen.
@@ -27,7 +28,7 @@ Stand: Idee/Entscheid vom 29.10.2026. Im Tool ist dafür noch nichts gebaut.
 |---|---|---|
 | 1 | Vorher sichern (Backup der Benutzerdaten) | Option ein/aus |
 | 2 | Image zurückspielen | Auswahl: **Master-Image** (markierte Images) oder **eigenes Image** |
-| 3 | Anpassen: Gerätename aus dem Tool, Windows-Key | immer (siehe [MASTER-IMAGE.md](MASTER-IMAGE.md)) |
+| 3 | Anpassen: Gerätename aus dem Tool, Windows-Key | läuft **immer** (siehe [MASTER-IMAGE.md](MASTER-IMAGE.md)) |
 | 4 | Ordner senden: Software, Test Files, Content-Projekte | Option im Reiter (siehe [ORDNER-SENDEN.md](ORDNER-SENDEN.md)) |
 | 5 | Abschluss: Neustart in Windows / herunterfahren / nichts | Option im Reiter |
 
@@ -37,8 +38,10 @@ Nach Schritt 5 setzt das Tool die Startreihenfolge auf „lokal“ zurück (fall
 
 1. **Countdown sichtbar** im Tool und am Gerät: *„Automatisierung startet in 30 s – Esc zum Abbrechen“*;
    im Tool ein Abbrechen-Knopf.
-2. **Nur einmal:** nach erfolgreichem Durchlauf schaltet sich das Häkchen selbst aus (keine Endlosschleife bei jedem
-   Start mit Stick/Netzwerkstart).
+2. **Nur einmal pro 24 h:** nach erfolgreichem Durchlauf schaltet sich das Häkchen selbst aus (keine Endlosschleife
+   bei jedem Start mit Stick/Netzwerkstart). Nach **24 Stunden** (gerechnet ab Ende des erfolgreichen Durchlaufs)
+   schaltet das Tool es **wieder ein** – ausser im Reiter ist „Nach 24 h wieder einschalten“ aus. Die Übersicht zeigt
+   in dieser Zeit z. B. *„wieder aktiv in 5 h“*.
 3. **Zieldisk über die Seriennummer** festgelegt, nicht `/dev/sda`. Andere Disk eingebaut → Abbruch, nichts gelöscht.
 4. **Hauptschalter** zum Pausieren aller Automatisierungen.
 5. **Vorab prüfen:** passt das Image auf die Disk, ist es unbeschädigt – erst danach wird etwas gelöscht.
@@ -70,6 +73,6 @@ Nach Schritt 5 setzt das Tool die Startreihenfolge auf „lokal“ zurück (fall
 - **Abbrechen am Gerät:** Taste **Esc** (üblichste Abbruchtaste – BIOS/Boot-Menüs, Windows-Dialoge). Im Countdown
   steht: *„Automatisierung startet in 30 s – Esc zum Abbrechen“*.
 
-## Noch offen
-
-- Schritt 3 „Anpassen“: immer an (so notiert) oder wie das Backup als Option ausschaltbar?
+- **Schritt 3 „Anpassen“** läuft immer (keine Option).
+- **Wieder einschalten nach 24 h:** Option im Reiter, Standard ein. Ist sie aus, bleibt das Häkchen nach dem
+  Durchlauf aus, bis es jemand von Hand einschaltet.

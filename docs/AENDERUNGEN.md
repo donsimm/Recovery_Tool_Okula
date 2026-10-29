@@ -69,7 +69,7 @@ der genaue Verlauf in `git log`.
   gewählte Projekte aus `Content` vom NAS auf den öffentlichen Desktop kopieren, erneut senden ersetzt.
   Plan: [ORDNER-SENDEN.md](ORDNER-SENDEN.md).
 - **Automatisierung** (entschieden, noch nicht programmiert): erfasste Geräte mit Häkchen „Automatisierung“ werden
-  30 s nach dem Auftauchen im LAN einmal neu aufgesetzt – Backup (optional), Master- oder eigenes Image, Anpassen,
+  30 s nach dem Auftauchen im LAN neu aufgesetzt (danach aus, nach 24 h wieder ein – abschaltbar) – Backup (optional), Master- oder eigenes Image, Anpassen,
   Ordner senden (optional), Abschluss; Vorlagen, höchstens N gleichzeitig, Protokoll.
   Plan: [AUTOMATISIERUNG.md](AUTOMATISIERUNG.md).
 - **Gerätename = Name im Tool** bei Neuinstallation und Zurückspielen (offen: fix oder im Dialog änderbar).
