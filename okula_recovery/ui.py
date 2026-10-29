@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from okula_recovery.backup_dialogs import (BackupDetailsDialog, BackupDialog, Re
                                            edit_note)
 from okula_recovery.device_window import DeviceWindow  # noqa: E402
 from okula_recovery.help_window import HelpWindow  # noqa: E402
+from okula_recovery.settings_dialogs import ExportDialog, import_settings  # noqa: E402
 from okula_recovery.loadbar import LoadBar  # noqa: E402
 from okula_recovery.usb_dialogs import CloneDialog, FormatDialog  # noqa: E402
 from okula_recovery.image_dialog import ImageDialog  # noqa: E402
@@ -144,6 +146,9 @@ class MainWindow(Gtk.ApplicationWindow):
             ("_NAS-Verbindung …", self.open_nas_dialog, "<Control>n"),
             ("_Agent-USB-Stick erstellen …", lambda: StickDialog(self), None),
             None,
+            ("Einstellungen e_xportieren …", lambda: ExportDialog(self).run_export(), None),
+            ("Einstellungen _importieren …", self.on_import_settings, None),
+            None,
             ("_Beenden", self.close, "<Control>q"),
         ]))
         bar.append(menu("_Tools", [
@@ -183,6 +188,17 @@ class MainWindow(Gtk.ApplicationWindow):
             dlg.set_logo(logo)
         dlg.run()
         dlg.destroy()
+
+    def on_import_settings(self) -> None:
+        if import_settings(self, busy=bool(self.jobs.running())):
+            self.restart()
+
+    def restart(self) -> None:
+        """Neu starten (nach dem Import: Einstellungen, Schlüssel und Geräte frisch laden)."""
+        env = dict(os.environ)
+        package_root = str(Path(__file__).resolve().parent.parent)
+        env["PYTHONPATH"] = package_root + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+        os.execve(sys.executable, [sys.executable, "-m", "okula_recovery"], env)
 
     def show_help(self) -> None:
         if self.help_window is not None:

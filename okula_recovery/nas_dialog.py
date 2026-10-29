@@ -9,7 +9,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk  # noqa: E402
 
-from okula_recovery import config, nas  # noqa: E402
+from okula_recovery import config, nas, transfer  # noqa: E402
 from okula_recovery.uikit import make_tree, run_async, scrolled  # noqa: E402
 
 
@@ -21,6 +21,7 @@ class NasDialog(Gtk.Dialog):
         self.set_default_size(640, 560)
         self.cfg = cfg
         self.on_changed = on_changed
+        self._test_run = 0   # nur das Ergebnis des letzten Tests anzeigen
         self.add_button("Schliessen", Gtk.ResponseType.CLOSE)
         self.connect("response", lambda *_a: self.destroy())
 
@@ -71,6 +72,16 @@ class NasDialog(Gtk.Dialog):
             buttons.pack_start(b, False, False, 0)
         self.spinner = Gtk.Spinner()
         buttons.pack_start(self.spinner, False, False, 0)
+        # Für einen anderen Rechner: Einstellungen in eine Datei (ohne Passwort) bzw. daraus übernehmen
+        btn_import = Gtk.Button(label="Importieren …")
+        btn_import.set_tooltip_text("NAS-Einstellungen aus einer Exportdatei übernehmen (auch aus dem Gesamt-Export)")
+        btn_import.connect("clicked", self.on_import)
+        btn_export = Gtk.Button(label="Exportieren …")
+        btn_export.set_tooltip_text("NAS-Einstellungen in eine Datei speichern – für eine Installation auf einem "
+                                    "anderen Rechner. Das Passwort wird aus Sicherheitsgründen nicht gespeichert.")
+        btn_export.connect("clicked", self.on_export)
+        buttons.pack_end(btn_import, False, False, 0)
+        buttons.pack_end(btn_export, False, False, 0)
         box.pack_start(buttons, False, False, 0)
 
         self.status = Gtk.Label(label="Nicht geprüft", xalign=0, wrap=True, selectable=True)
@@ -133,16 +144,55 @@ class NasDialog(Gtk.Dialog):
         self.on_changed(self._store())
         self._set_status("Einstellungen gespeichert", "idle")
 
+    def on_export(self, _btn) -> None:
+        from okula_recovery.settings_dialogs import NAS_PATTERNS, choose_file
+        cfg = self.form()
+        path = choose_file(self, "NAS-Einstellungen exportieren", True, transfer.default_name("nas"), NAS_PATTERNS)
+        if not path:
+            return
+        try:
+            transfer.export_nas(cfg, path)
+        except OSError as e:
+            self._set_status(f"Export fehlgeschlagen: {e}", "fail")
+            return
+        self._set_status(f"Exportiert nach {path} (ohne Passwort)", "idle")
+
+    def on_import(self, _btn) -> None:
+        from okula_recovery.settings_dialogs import NAS_PATTERNS, choose_file
+        path = choose_file(self, "NAS-Einstellungen importieren", False, patterns=NAS_PATTERNS)
+        if not path:
+            return
+        try:
+            nas_cfg = transfer.read_nas(path)
+        except transfer.TransferError as e:
+            self._set_status(f"Import fehlgeschlagen: {e}", "fail")
+            return
+        self.protocol.set_active_id(nas_cfg.protocol)
+        self.host.set_text(nas_cfg.host)
+        self.share.set_text(nas_cfg.share)
+        self.user.set_text(nas_cfg.username)
+        self.mount_point.set_text(nas_cfg.mount_point)
+        self._update_form()
+        self._test_run += 1   # laufender Test gehört zu den alten Angaben
+        self.check_store.clear()
+        hint = "Passwort eingeben und „Einhängen“ klicken" if self._is_smb() else "„Einhängen“ klicken"
+        self._set_status(f"Übernommen aus {path} – {hint}", "idle")
+        self.password.grab_focus()
+
     def on_test(self, _btn) -> None:
         cfg = self.form()
         self.btn_test.set_sensitive(False)
         self.spinner.start()
         self._set_status("Prüfe Verbindung …", "idle")
-        run_async(lambda: nas.test_connection(cfg), self._on_tested)
+        self._test_run += 1
+        run = self._test_run
+        run_async(lambda: nas.test_connection(cfg), lambda result: self._on_tested(result, run))
 
-    def _on_tested(self, result) -> None:
+    def _on_tested(self, result, run: int = 0) -> None:
         self.btn_test.set_sensitive(True)
         self.spinner.stop()
+        if run and run != self._test_run:  # Formular wurde inzwischen geändert (z. B. Import) – Ergebnis veraltet
+            return
         self.check_store.clear()
         if isinstance(result, Exception):
             self._set_status(f"✗ Fehler: {result}", "fail")

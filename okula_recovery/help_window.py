@@ -297,6 +297,35 @@ Wenn du unsicher bist: Bis 32 GB <b>FAT32</b>, darüber <b>exFAT</b>.
 <b>Fortschritt</b>
 In der Geräteliste siehst du bei jedem Gerät einen Balken mit Prozent und Restzeit."""),
 
+    ("Neuer Rechner", """<big><b>Das Tool auf einen neuen Rechner umziehen</b></big>
+
+Alles, was das Tool weiss, lässt sich in <b>eine Datei</b> speichern.
+So musst du auf einem neuen Rechner nichts von vorne einrichten.
+
+<b>Auf dem alten Rechner:</b>
+1.  <i>Menü → Einstellungen exportieren …</i> öffnen.
+2.  Auswählen, was mit soll. Am besten alles:
+     •  NAS-Verbindung und Einstellungen
+     •  Geräte mit Ordnern, Verlauf, Notizen und Windows-Schlüsseln
+     •  Agent-Schlüssel: Dann funktionieren alle bisherigen Agent- und Restore-Sticks weiter.
+3.  <i>Exportieren …</i> klicken und die Datei speichern, zum Beispiel auf einem USB-Stick.
+
+<b>Auf dem neuen Rechner:</b>
+1.  Das Tool installieren (<tt>sudo ./install.sh</tt>).
+2.  <i>Menü → Einstellungen importieren …</i> öffnen und die Datei wählen.
+3.  Prüfen, was übernommen wird, und <i>Importieren</i> klicken. Das Tool startet neu.
+4.  <i>Menü → NAS-Verbindung …</i>: einmal das <b>Passwort</b> eingeben und <i>Einhängen</i> klicken.
+
+<b>Gut zu wissen:</b>
+•  Das NAS-Passwort ist aus Sicherheitsgründen nicht in der Datei.
+•  Images, Backups und ISOs liegen auf dem NAS. Sie sind sofort wieder da.
+•  Bewahre die Datei sicher auf, wie ein Passwort. Sie enthält Schlüssel.
+•  Vorhandene Daten auf dem neuen Rechner werden vor dem Import gesichert.
+
+<b>Nur die NAS-Verbindung</b>
+Im NAS-Fenster gibt es <i>Exportieren …</i> und <i>Importieren …</i>.
+Damit nimmst du nur die NAS-Einstellungen mit (ohne Passwort)."""),
+
     ("Probleme lösen", """<big><b>Wenn etwas nicht klappt</b></big>
 
 <b>Das Gerät erscheint nicht im Tool</b>

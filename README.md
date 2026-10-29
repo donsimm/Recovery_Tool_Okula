@@ -6,7 +6,7 @@ Server: Debian 13 + Xfce, Python 3 + GTK 3.
 ![Oberfläche](docs/screenshot.png)
 
 - **Menüleiste:**
-  - **Menü:** NAS-Verbindung … (Ctrl+N), Agent-USB-Stick erstellen …, Beenden
+  - **Menü:** NAS-Verbindung … (Ctrl+N), Agent-USB-Stick erstellen …, Einstellungen exportieren / importieren …, Beenden
   - **Tools:** Gerät öffnen (Ctrl+O), Disk-Image erstellen, Image zurückspielen, OS installieren, Backup erstellen, Backup zurückspielen, Inventar neu einlesen, Gerät herunterfahren, Restore-Stick aus Image, ISO hinzufügen, Boot-Stick aus ISO, Images aktualisieren (F5)
   - **Extras:** USB klonen, USB formatieren
   - **Hilfe:** **So funktioniert das Tool** (F1, Anleitung in einfacher Sprache mit Kapiteln), Tastenkürzel, Über
@@ -69,6 +69,19 @@ Vor dem Löschen zeigt das Tool Anzahl und Grösse der Dateien und fragt nach. D
 Das Tool startet maximiert. **F11** schaltet auf Vollbild ohne Titelleiste und wieder zurück.
 
 **Serverlast:** Oben rechts zeigt das Tool die Auslastung des Servers – CPU, RAM (ohne Cache) und LAN (↓ empfangen, ↑ gesendet) mit Verlauf der letzten Minute, gemessen jede Sekunde aus `/proc`. Maus darüber: Kerne und Last, Swap, Netzwerkkarte und Verbindungsgeschwindigkeit. Ab 90 % wird der Wert rot. Für die Kurven braucht es `python3-gi-cairo` (installiert `install.sh`).
+
+## Umzug auf einen neuen Rechner
+
+**Menü → Einstellungen exportieren …** speichert alles in eine Datei (`okula-recovery-<Rechner>-<Datum>.okula.zip`, nur für den Benutzer lesbar):
+- `config.json`: NAS-Verbindung und Einstellungen
+- `geraete/…`: Geräteverzeichnis mit Ordnern, Verlauf, Notizen und Windows-Schlüsseln
+- `agent.key`: Schlüssel der Agent- und Restore-Sticks (empfohlen – sonst alle Sticks neu erstellen)
+
+Nicht enthalten: Images, Backups und ISOs (bleiben auf dem NAS) sowie das **NAS-Passwort** – es liegt nur für root lesbar in `/etc/okula-recovery/nas.cred` und wird nach dem Import einmal im NAS-Fenster eingegeben. Die Datei enthält Schlüssel: wie ein Passwort aufbewahren.
+
+**Menü → Einstellungen importieren …** auf dem neuen Rechner (nach `sudo ./install.sh`): zeigt den Inhalt, Teile einzeln wählbar. Vorher sichert das Tool alles, was überschrieben werden könnte, nach `~/.config/okula-recovery/import-sicherung/<Datum>/`. Geräte werden zusammengeführt (gleiche ID: das zuletzt gesehene gewinnt, Ordner aus dem Export). Danach startet das Tool neu. Während Aufträge laufen, ist der Import gesperrt. Manipulierte Dateien (Pfade ausserhalb, falsche IDs, neuere Formatversion) werden abgewiesen.
+
+**Nur NAS:** Im NAS-Fenster gibt es **Exportieren …** (JSON ohne Passwort) und **Importieren …** (liest auch den Gesamt-Export). Der Import füllt das Formular; danach Passwort eingeben und „Einhängen“.
 
 ## Agent-USB-Stick
 
