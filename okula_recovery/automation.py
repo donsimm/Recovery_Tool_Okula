@@ -14,6 +14,7 @@ Ein neuer Versuch erst, wenn das Gerät neu angeschlossen wird. Kein GTK hier.
 from __future__ import annotations
 
 import json
+import math
 import threading
 import time
 from dataclasses import asdict, dataclass, field, fields
@@ -144,8 +145,8 @@ def rearm_text(s: Settings, now: datetime | None = None) -> str:
     if left <= 0:
         return "wird wieder eingeschaltet"
     if left < 3600:
-        return f"wieder aktiv in {max(1, int(left // 60))} min"
-    return f"wieder aktiv in {int(left // 3600)} h"
+        return f"wieder aktiv in {max(1, math.ceil(left / 60))} min"
+    return f"wieder aktiv in {math.ceil(left / 3600)} h"
 
 
 # ---------- Vorlagen ----------
@@ -228,6 +229,8 @@ def run_text(run: Run | None, s: Settings, paused: bool, ready: bool, now: datet
         return "Automatisierung pausiert"
     if s.enabled and not ready:
         return "Automatisierung: Einstellungen unvollständig"
+    if s.enabled:
+        return "Automatisierung ein" + (" – letzter Versuch fehlgeschlagen" if s.last_error else "")
     return rearm_text(s, now)
 
 

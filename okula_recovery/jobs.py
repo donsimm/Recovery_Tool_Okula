@@ -192,7 +192,8 @@ def image_work(ip: str, key: bytes, port: int, disk: dict, nas_root: str, machin
 
 
 def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source_disk: str | None, verify: bool,
-                 after: Callable[[Job, str | None, Exception | None], None]):
+                 after: Callable[[Job, str | None, Exception | None], None], customize: dict | None = None):
+    """customize: {"unattend", "hostname"} – danach Master-Image anpassen (Name, Key …)."""
     def work(job: Job, jm: JobManager) -> str:
         def progress(ev: dict) -> None:
             phase = ev.get("phase")
@@ -222,11 +223,19 @@ def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source
 
         try:
             agentclient.restore_image(ip, key, image, target, progress, job.cancel, port, verify, source_disk)
+            if customize:
+                jm.log(job, "Anpassen: Gerätename und Windows-Key (Master-Image)")
+                for r in agentclient.customize(ip, key, target, customize["unattend"], customize["hostname"], port):
+                    jm.log(job, f"  {r['part']}: " + {
+                        "unattend": "Windows (Master) – Name/Key gesetzt, richtet sich beim ersten Start ein",
+                        "hostname": f"Linux – Hostname {customize['hostname']}",
+                        "not_generalized": "Windows ist nicht mit Sysprep vorbereitet – Name und Key NICHT gesetzt",
+                        "none": "nichts zu tun"}.get(r["action"], r.get("detail") or r["action"]))
         except Exception as e:
             after(job, None, e)
             raise
         after(job, image, None)
-        return f"{target} zurückgespielt"
+        return f"{target} zurückgespielt" + (" und angepasst" if customize else "")
 
     return work
 

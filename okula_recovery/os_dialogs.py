@@ -633,8 +633,15 @@ class InstallDialog(Gtk.Dialog):
         grid.attach(self.swiss, 0, r, 2, 1)
         r += 1
         grid.attach(Gtk.Label(label="Computername", xalign=0), 0, r, 1, 1)
-        self.name = Gtk.Entry(text=device.name, width_chars=26)
+        # immer der Gerätename aus dem Tool – ändern: Gerät umbenennen
+        self.name = Gtk.Entry(text=device.name, width_chars=26, editable=False, can_focus=False)
+        self.name.set_tooltip_text("Der Computername ist immer der Gerätename im Tool – zum Ändern das Gerät "
+                                   "umbenennen")
         grid.attach(self.name, 1, r, 1, 1)
+        r += 1
+        self.name_hint = Gtk.Label(xalign=0, wrap=True)
+        self.name_hint.get_style_context().add_class("status-idle")
+        grid.attach(self.name_hint, 1, r, 1, 1)
         r += 1
         self.info = Gtk.Label(xalign=0, wrap=True)
         grid.attach(self.info, 0, r, 2, 1)
@@ -748,6 +755,7 @@ class InstallDialog(Gtk.Dialog):
 
     def _update(self) -> None:
         iso = self._iso()
+        self._update_name_hint(iso is not None and iso.family == "windows")
         if iso is not None and not oslib.installable(iso.meta):
             self.part_store.clear()
             self.check.set_text("")
@@ -804,6 +812,14 @@ class InstallDialog(Gtk.Dialog):
         typed = disk is not None and self.confirm.get_text().strip() == disk["name"]
         self.btn_start.set_sensitive(ok and typed)
 
+    def _update_name_hint(self, windows: bool) -> None:
+        """Computername = Gerätename; zeigen, wie er auf dem Gerät ankommt."""
+        name = self.device.name
+        on_device = winunattend.computer_name(name) if windows else self.linuxsetup.hostname(name)
+        rule = "Windows: max. 15 Zeichen, nur A–Z, 0–9 und -" if windows else "Linux: Kleinbuchstaben, Ziffern, -"
+        self.name_hint.set_text(f"Auf dem Gerät: {on_device or '(ungültig)'}"
+                                + ("" if on_device == name else f" – angepasst ({rule})") + " · ändern: Gerät umbenennen")
+
     def options(self):
         iso = self._iso()
         if iso.family == "windows":
@@ -814,11 +830,11 @@ class InstallDialog(Gtk.Dialog):
                 password=self.w_pass.get_text() if self.w_account.get_active() else "",
                 skip_privacy=self.w_privacy.get_active(), no_bitlocker=self.w_bitlocker.get_active(),
                 swiss_region=self.swiss.get_active(), ui_language=(w.get("languages") or ["de-DE"])[0],
-                computer_name=self.name.get_text().strip(), arch=w.get("arch") or "amd64", skip_network=True,
+                computer_name=self.device.name, arch=w.get("arch") or "amd64", skip_network=True,
                 product_key=self.key if self.w_key.get_active() else "")
         return self.linuxsetup.LinuxOptions(
             username=self.l_user.get_text().strip(), password=self.l_pass.get_text(),
-            hostname=self.name.get_text().strip() or self.device.name, swiss_region=self.swiss.get_active(),
+            hostname=self.device.name, swiss_region=self.swiss.get_active(),
             desktop=self.l_desktop.get_active() if self.l_desktop.get_visible() else bool(self.l_env.get_active_id()),
             desktop_env=self.l_env.get_active_id() or "", standard=self.l_standard.get_active(),
             ssh=self.l_ssh.get_active(), web=self.l_web.get_active(),

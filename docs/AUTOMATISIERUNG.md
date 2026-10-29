@@ -1,9 +1,9 @@
-# Automatisierung (geplant, noch nicht programmiert)
+# Automatisierung
 
 Ziel: Ein Gerät, das schon im Tool erfasst ist und dessen Automatisierung eingeschaltet ist, wird automatisch
 neu aufgesetzt, sobald es im LAN auftaucht (mit Agent gestartet: Stick oder Netzwerkstart). Start nach 30 Sekunden.
 
-Stand: Idee/Entscheid vom 29.10.2026. Im Tool ist dafür noch nichts gebaut.
+Stand: **umgesetzt** (29.10.2026). Bedienung im [README](../README.md); Prüfungen am realen System: [TESTS.md](TESTS.md).
 
 ## Auslöser
 

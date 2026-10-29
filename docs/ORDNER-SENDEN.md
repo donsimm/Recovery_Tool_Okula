@@ -1,8 +1,8 @@
-# Ordner an Geräte senden (geplant, noch nicht programmiert)
+# Ordner an Geräte senden
 
 Ziel: vordefinierte Ordner vom NAS per Mausklick auf den Desktop eines Geräts kopieren.
 
-Stand: Idee/Entscheid vom 29.10.2026. Im Tool ist dafür noch nichts gebaut.
+Stand: **umgesetzt** (29.10.2026). Bedienung im [README](../README.md); Prüfungen am realen System: [TESTS.md](TESTS.md).
 
 ## Struktur auf dem NAS
 

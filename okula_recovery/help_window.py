@@ -188,7 +188,57 @@ Am Ende den Stick abziehen und das Gerät neu starten.
 <b>Gut zu wissen:</b>
 •  Die Ziel-Festplatte muss mindestens so gross sein wie die alte.
 •  Auch Images von Clonezilla funktionieren.
-•  Wenn du abbrichst, ist die Festplatte danach unvollständig."""),
+•  Wenn du abbrichst, ist die Festplatte danach unvollständig.
+
+<b>Master-Image</b>
+Ein Master-Image ist ein vorbereitetes Windows für viele Geräte (mit Sysprep, Anleitung im Ordner docs).
+•  Rechtsklick auf das Image → <i>Als Master-Image markieren</i>. Es bekommt einen Stern ★.
+•  Beim Zurückspielen ist dann <i>Danach anpassen</i> eingeschaltet:
+     Das Gerät bekommt seinen Namen aus dem Tool und den Windows-Schlüssel.
+•  Beim ersten Start richtet sich Windows damit selbst ein."""),
+
+    ("Ordner senden", """<big><b>Ordner an ein Gerät senden</b></big>
+
+Damit legst du Ordner vom NAS auf den Desktop eines Geräts – für alle Benutzer.
+
+<b>Wo die Ordner liegen:</b> auf dem NAS im Ordner <i>Verteilen</i>:
+•  <i>Software</i> und <i>Test Files</i>: werden immer ganz gesendet.
+•  <i>Content</i>: darin liegen Projekte. Du wählst, welche Projekte gesendet werden.
+Die Inhalte änderst du rechts im Reiter <i>Dateien</i>.
+
+<b>So gehts:</b>
+1.  Gerät mit dem Agent-Stick starten.
+2.  Rechtsklick auf das Gerät → <i>Ordner senden</i> → <i>Software</i>, <i>Test Files</i> oder <i>Content …</i>
+3.  Bei Content die Projekte anhaken und <i>Senden</i> klicken.
+
+<b>Gut zu wissen:</b>
+•  Gibt es den Ordner schon auf dem Desktop, wird er ersetzt.
+•  Bricht etwas ab, bleibt der alte Ordner.
+•  Windows muss ganz heruntergefahren sein (Shift + Herunterfahren)."""),
+
+    ("Automatisierung", """<big><b>Geräte automatisch neu aufsetzen</b></big>
+
+Mit der Automatisierung setzt das Tool ein Gerät selbst neu auf, sobald es mit dem Agent startet.
+
+<b>Einrichten (einmal pro Gerät):</b>
+1.  Gerät öffnen → Reiter <i>Automatisierung</i>.
+2.  Image wählen (Master-Image oder ein eigenes) und die Ziel-Festplatte.
+3.  Wenn du willst: vorher Backup, Ordner senden, am Ende Neustart oder Herunterfahren.
+4.  Schalter <i>Automatisierung</i> einschalten – oder in der Liste das Häkchen <i>Auto</i> setzen.
+Tipp: Speichere die Einstellungen als <i>Vorlage</i> und verwende sie für andere Geräte.
+
+<b>Was dann passiert:</b>
+1.  Das Gerät startet mit dem Agent (Stick oder Netzwerkstart).
+2.  30 Sekunden Countdown – am Gerät bricht <b>Esc</b> ab, im Tool <i>Abbrechen</i>.
+3.  Backup (wenn gewählt), Image zurückspielen, Name und Windows-Schlüssel setzen, Ordner senden.
+4.  Neustart. Danach schaltet sich die Automatisierung aus – und nach 24 Stunden wieder ein.
+
+<b>Gut zu wissen:</b>
+•  Steckt eine andere Festplatte im Gerät, bricht das Tool ab. Es wird nichts gelöscht.
+•  Bei einem Fehler steht das in der Liste (rot), im Gerätefenster und am Bildschirm des Geräts.
+     Für einen neuen Versuch das Gerät neu starten.
+•  Es laufen höchstens 2 Geräte gleichzeitig (ändern: Menü → Einstellungen). Die anderen warten.
+•  Alles anhalten: Tools → <i>Automatisierungen pausieren</i>."""),
 
     ("Datei-Backup", """<big><b>Nur Dateien sichern (Datei-Backup)</b></big>
 

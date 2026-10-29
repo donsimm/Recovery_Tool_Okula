@@ -5,6 +5,20 @@ der genaue Verlauf in `git log`.
 
 ## Änderungsprotokoll
 
+### 29.10.2026 (Abend) – Master-Image, Ordner senden, Automatisierung
+- **Automatisierung:** Häkchen „Auto“ in der Geräteliste und Reiter „Automatisierung“ im Gerätefenster. Erfasste
+  Geräte werden 30 s nach dem Auftauchen im LAN neu aufgesetzt (Countdown im Tool und am Gerät, Esc bricht ab):
+  Backup (Option) → Master- oder eigenes Image → Anpassen (Name, Key) → Ordner senden (Option) → Neustart/
+  Herunterfahren/nichts. Zieldisk über Seriennummer, höchstens N gleichzeitig (Menü → Einstellungen), Hauptschalter
+  (Tools → Automatisierungen pausieren), Vorlagen, nach 24 h wieder ein (abschaltbar), Fehler überall sichtbar.
+- **Master-Image:** Images als Master markieren (★); beim Zurückspielen „Danach anpassen“: Windows nach Sysprep
+  bekommt `Windows\Panther\unattend.xml` (Gerätename, Windows-Key, Region Schweiz, lokales Konto), Linux den Hostnamen.
+- **Ordner senden:** `Verteilen/Software`, `Verteilen/Test Files` und gewählte `Content`-Projekte auf den
+  öffentlichen Desktop; erneut senden ersetzt, Abbruch behält den alten Stand.
+- **Computername = Gerätename** bei „OS installieren“ (fest, Anzeige wie er auf dem Gerät ankommt).
+- Export/Import enthält Vorlagen der Automatisierung und „höchstens gleichzeitig“.
+- Neuer Agent (Modul `deploy.py`): **Agent-Stick neu erstellen bzw. Netzwerkstart neu „Vorbereiten“.**
+
 ### 29.10.2026
 - **Doppelt erfasste Geräte zusammenführen:** gleiche Board-UUID/Seriennummer mit anderer ID wird beim Import und
   beim Start automatisch vereint; von Hand per Rechtsklick → „Zusammenführen mit …“. Auslöser: Gerät wurde auf
@@ -50,29 +64,21 @@ der genaue Verlauf in `git log`.
 - **Auf Zielgeräten wird nichts installiert:** Agent läuft im RAM (Stick oder Netzwerkstart).
 - **Automatisches Zusammenführen nur bei sicherer Identität** (gleiche Board-UUID/Seriennummer); eine gleiche MAC
   allein reicht nie (geteilter USB-Netzwerkadapter).
+- **Gerätename im Tool = Computername** bei Neuinstallation, Anpassen und Automatisierung; ändern = Gerät umbenennen.
+- **Windows anpassen nur bei Master-Images (Sysprep)**; ein nicht generalisiertes Windows wird nicht verändert.
+- **Passwörter werden nicht gespeichert:** lokales Konto ohne Passwort, Windows verlangt es beim ersten Anmelden.
+- **Umsetzungsreihenfolge:** zuerst Agent (Fundament, ein neuer Stick reicht), dann Tool-Logik, zuletzt Oberfläche.
 
 ## Offene Punkte / zu testen
 
-- [ ] Debian-Direktinstallation mit der echten Debian-13.7.0-Netinst-ISO nochmals testen (Fix vom 29.10.).
-- [ ] Doppelten HP-Eintrag nach Update prüfen (automatisch zusammengeführt oder von Hand).
-- [ ] Auf echter Hardware: Reiter „Netzwerk“, Wake-on-LAN, „Netzwerkstart zuerst“, Agent beim nächsten Start.
-- [ ] Neuer Server: Agent-Stick neu erstellen bzw. Agent-Schlüssel importieren, Netzwerkstart neu „Vorbereiten“.
-- [ ] Firewall: auf dem neuen Server ist kein ufw installiert; mit `sudo nft list ruleset` prüfen, ob Regeln aktiv
-      sind (sonst nichts zu tun).
+Alle Prüfungen – erledigte und offene – stehen in [TESTS.md](TESTS.md).
 
 ## Ideen
 
-- **Windows-Master-Image mit Sysprep** (entschieden, noch nicht programmiert): Image beim Zurückspielen pro Gerät
-  anpassen – Gerätename aus dem Tool, Windows-Key, Benutzer, Region Schweiz. Anleitung und Plan:
-  [MASTER-IMAGE.md](MASTER-IMAGE.md).
-- **Ordner an Geräte senden** (entschieden, noch nicht programmiert): `Software` und `Test Files` (fix) sowie
-  gewählte Projekte aus `Content` vom NAS auf den öffentlichen Desktop kopieren, erneut senden ersetzt.
-  Plan: [ORDNER-SENDEN.md](ORDNER-SENDEN.md).
-- **Automatisierung** (entschieden, noch nicht programmiert): erfasste Geräte mit Häkchen „Automatisierung“ werden
-  30 s nach dem Auftauchen im LAN neu aufgesetzt (danach aus, nach 24 h wieder ein – abschaltbar) – Backup (optional), Master- oder eigenes Image, Anpassen,
-  Ordner senden (optional), Abschluss; Vorlagen, höchstens N gleichzeitig, Protokoll.
-  Plan: [AUTOMATISIERUNG.md](AUTOMATISIERUNG.md).
-- **Gerätename = Name im Tool** bei Neuinstallation und Zurückspielen (offen: fix oder im Dialog änderbar).
-
+- ~~Windows-Master-Image mit Sysprep~~ – umgesetzt, siehe [MASTER-IMAGE.md](MASTER-IMAGE.md).
+- ~~Ordner an Geräte senden~~ – umgesetzt, siehe [ORDNER-SENDEN.md](ORDNER-SENDEN.md).
+- ~~Automatisierung~~ – umgesetzt, siehe [AUTOMATISIERUNG.md](AUTOMATISIERUNG.md).
+- ~~Gerätename = Name im Tool~~ – umgesetzt (fest, ändern = Gerät umbenennen).
 - Nobara/Zorin direkt installieren: nur möglich, falls deren Installer eine unbeaufsichtigte Installation
   erhält; aktuell nicht vorgesehen.
+- Nicht generalisierte 1:1-Images anpassen (Name per Registry, Key per Skript) – vorerst nicht vorgesehen.

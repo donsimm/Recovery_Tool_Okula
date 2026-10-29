@@ -1,0 +1,87 @@
+# Prüfliste – was geprüft ist und was am realen System noch offen ist
+
+Stand: 29.10.2026. Abhaken mit `[x]`, Probleme mit Datum und Fehlermeldung darunter notieren.
+
+Legende **Geprüft:** **A** = automatischer Test (Loop-Disks/QEMU, `python3 -m unittest`, 240 Tests) ·
+**V** = Oberfläche in der Vorschau geprüft (virtuelle Anzeige, Screenshot) · **R** = von dir am realen System
+bestätigt.
+
+## Vorbereitung am neuen Server (einmal, vor allen Tests)
+
+- [ ] Update: `cd ~/recovery_tool_okula && git pull && sudo ./install.sh`, Tool neu starten
+- [ ] Einstellungen vom alten Server importiert (NAS-Passwort einmal neu eingeben)
+- [ ] **Agent-Stick neu erstellen** (neuer Agent mit Anpassen, Ordner senden, Countdown) – alte Sticks können das nicht
+- [ ] Netzwerkstart: Tools → Netzwerkstart (PXE) → **Vorbereiten**, dann Einschalten
+- [ ] Firewall: `sudo nft list ruleset` – leer = nichts zu tun
+
+## Bereits geprüft
+
+| Funktion | Geprüft | Bemerkung |
+|---|---|---|
+| Agent-Stick erstellen, Gerät verbinden | A, R | |
+| Disk-Image erstellen / zurückspielen (Okula, Clonezilla) | A, R | |
+| Boot-Sticks aus ISO (alle OS) | A, R | „funktioniert mit allen OS“ |
+| Windows-Direktinstallation | A, R | |
+| Datei-Backup erstellen / zurückspielen, Notiz, Löschen | A, R | |
+| Serverlast (CPU/RAM/LAN), CPU-Fix (84 % → 0,3 %) | A, R | |
+| Netzwerkstart (PXE) – Agent ohne Stick, nur freigeschaltete Geräte | A, R | QEMU: UEFI Secure Boot und BIOS; fremde MAC bekommt keine Antwort |
+| install.sh auf neuem Debian 13 | R | |
+| USB klonen / formatieren | A | |
+| Einstellungen exportieren / importieren (inkl. Vorlagen) | A | |
+| Kopieren aufs NAS (Drag & Drop), Abbrechen schliesst Fenster | A, V | |
+| Debian-Direktinstallation: xorriso-Fehler behoben | A | mit nachgebauter Debian-ISO (schreibgeschützte Ordner) |
+| Doppelte Geräte zusammenführen (automatisch und von Hand) | A, V | |
+| Wake-on-LAN, „Netzwerkstart zuerst“, Agent beim nächsten Start | A | Logik und Pakete; keine echte Hardware |
+| **Master-Image:** Markieren, Erkennen (Sysprep), unattend.xml mit Name/Key/Region/Konto | A, V | NTFS-Loop-Disk, echtes Image erstellt und zurückgespielt |
+| **Ordner senden:** Software, Test Files, Content-Projekte, Ersetzen, Abbruch behält alten Stand | A, V | NTFS-Loop-Disk |
+| **Automatisierung:** Countdown + Esc, Warteschlange (N), 5 Schritte, falsche Disk = nichts gelöscht, Fehler, 24 h | A, V | ganzer Durchlauf über den echten Agent auf Loop-Disks |
+| Computername = Gerätename (OS installieren, Anpassen) | A, V | |
+
+## Offen – am realen System testen
+
+### 1. Fixes von heute
+- [ ] **Debian-Direktinstallation** mit der echten Debian-13.7.0-Netinst-ISO (bei Fehler: neue, genauere Meldung schicken)
+- [ ] **Doppelter HP-Eintrag** nach dem Update: verschwindet beim Start, sonst Rechtsklick → „Zusammenführen mit …“
+
+### 2. Netzwerk (Reiter „Netzwerk“ im Gerätefenster)
+- [ ] Wake-on-LAN: Gerät ausgeschaltet, „Einschalten“ → startet Windows
+- [ ] „Netzwerkstart zuerst“ einschalten → Gerät startet ohne Auftrag nach ~2 s normal von der Festplatte
+- [ ] „Beim nächsten Start den Agent laden“ → startet einmal den Agent, danach wieder Windows
+- [ ] „Einschalten und Agent starten“ (Wake-on-LAN + Agent) → Gerät erscheint im Tool
+- [ ] „Prüfen“ nach einem Windows-Update: Startreihenfolge noch richtig?
+
+### 3. Master-Image (Anleitung: [MASTER-IMAGE.md](MASTER-IMAGE.md))
+- [ ] Referenzgerät: Audit-Modus (Ctrl+Shift+F3), Programme, BitLocker aus, `sysprep /generalize /oobe /shutdown`
+- [ ] Ohne Windows zu starten mit dem Agent-Stick „Disk-Image erstellen“
+- [ ] Rechtsklick → „Als Master-Image markieren“ → ★ Master in der Liste
+- [ ] Auf ein **anderes** Gerät zurückspielen, „Danach anpassen“ an → Log: „Windows (Master) – Name/Key gesetzt“
+- [ ] Erster Start: keine Fragen (bzw. nur Konto, falls leer), **Computername** = Gerätename (max. 15 Zeichen),
+      **Region** de-CH / Tastatur Schweiz / Zeitzone Zürich, **Aktivierung** mit Key bzw. BIOS-Key
+- [ ] Lokales Konto: Anmelden ohne Passwort → Windows verlangt neues Passwort
+- [ ] Gegenprobe: normales (nicht generalisiertes) Image mit „Danach anpassen“ → Log „nicht mit Sysprep vorbereitet“, Windows unverändert
+
+### 4. Ordner senden
+- [ ] NAS: `Verteilen/Software`, `Verteilen/Test Files`, `Verteilen/Content` sind da; Inhalte über Reiter Dateien hineinziehen
+- [ ] Rechtsklick → Ordner senden → **Software** → Windows starten: Ordner auf dem Desktop (auch bei einem zweiten Benutzer)
+- [ ] **Content …** → zwei Projekte → Desktop: `Content\Projekt …`
+- [ ] Erneut senden mit geändertem Inhalt → alter Ordnerinhalt ersetzt, andere Projekte bleiben
+- [ ] Windows mit Schnellstart heruntergefahren → klare Meldung „Ruhezustand bzw. Schnellstart“
+- [ ] Grosser Ordner (z. B. 5 GB) → Fortschritt, Dauer notieren: ______
+
+### 5. Automatisierung (Plan: [AUTOMATISIERUNG.md](AUTOMATISIERUNG.md))
+- [ ] Reiter „Automatisierung“: Master-Image, Zieldisk, Ordner, Abschluss „Neustart“ einstellen, Schalter ein
+- [ ] Gerät mit Agent-Stick starten → Liste „startet in 30 s“, am Gerät Countdown sichtbar
+- [ ] **Esc am Gerät** → abgebrochen, Gerät bleibt im Agent; erst nach Neustart wieder Countdown
+- [ ] Durchlauf ohne Eingriff: Schritt 1–5 in der Liste, Neustart, Windows richtet sich mit Name/Key ein, Ordner auf dem Desktop
+- [ ] Danach: Häkchen aus, Liste „wieder aktiv in 24 h“; Verlauf mit allen Schritten
+- [ ] Mit **Netzwerkstart** statt Stick (Gerät freigeschaltet, F12 → Netzwerk)
+- [ ] **Zwei Geräte gleichzeitig** bei N = 1 → zweites „wartet (Platz 1)“, startet danach
+- [ ] **Andere Disk** im Gerät (oder Zieldisk absichtlich falsch) → Fehler rot, Meldung am Gerät, nichts gelöscht
+- [ ] **Backup vorher** an → Backup erscheint im Reiter Backups mit Notiz „Automatisierung – vor dem Zurückspielen“
+- [ ] Hauptschalter: Tools → „Automatisierungen pausieren“ → Gerät startet keinen Countdown
+- [ ] Vorlage speichern („Schulungs-PC“), bei zweitem Gerät anwenden, Zieldisk dort wählen
+- [ ] Nach 24 h: Häkchen wieder an (oder Option aus → bleibt aus)
+
+### 6. Allgemein
+- [ ] Gerätename mit Umlaut/Unterstrich (z. B. „Büro_PC_01“) bei OS installieren → Hinweis zeigt Name auf dem Gerät
+- [ ] Export auf altem/neuem Server: Vorlagen und „höchstens gleichzeitig“ kommen mit

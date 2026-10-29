@@ -13,8 +13,9 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 
-from okula_recovery import (__version__, agentclient, archive, backups, clonezilla, config, devices, pxe,  # noqa: E402
-                            discovery, jobs, nas, nasfiles, oslib, wol)
+from okula_recovery import (__version__, agentclient, archive, automation, backups, clonezilla, config,  # noqa: E402
+                            devices, discovery, distribute, jobs, nas, nasfiles, oslib, pxe, wol)
+from okula_recovery.automation_tab import SendFoldersDialog, SettingsDialog  # noqa: E402
 from okula_recovery.backup_dialogs import (BackupDetailsDialog, BackupDialog, RestoreFilesDialog,  # noqa: E402
                                            edit_note)
 from okula_recovery.device_window import DeviceWindow  # noqa: E402
@@ -71,6 +72,9 @@ class MainWindow(Gtk.ApplicationWindow):
         self.key = agentclient.load_or_create_key()
         self.store = devices.DeviceStore()          # erfasste Geräte, lokal auf dem Server
         self.jobs = jobs.JobManager(on_change=lambda job: GLib.idle_add(self._on_job_change, job))
+        self.automation = automation.Engine(self.store, self.jobs, self.key, self._nas_root, lambda: self.cfg,
+                                            lambda dev_id: GLib.idle_add(self._on_automation_change, dev_id))
+        self._image_tree: archive.Tree | None = None   # zuletzt gelesene Images (für die Automatisierung)
         self.agents: dict[str, discovery.AgentInfo] = {}  # Agent-ID → letzter Beacon (nur verbundene)
         self.device_of_agent: dict[str, str] = {}   # Agent-ID → Geräte-ID
         self.online: dict[str, str] = {}            # Geräte-ID → Agent-ID der verbundenen Geräte
@@ -123,6 +127,7 @@ class MainWindow(Gtk.ApplicationWindow):
         GLib.idle_add(lambda: (self.refresh_nas_status(auto_mount=True), False)[1])
         GLib.timeout_add_seconds(NAS_POLL, self.refresh_nas_status)
         GLib.idle_add(lambda: (self.sync_netboot(), False)[1])  # Freigabeliste nach Geräteänderungen nachführen
+        GLib.timeout_add_seconds(60, self._automation_tick)    # Automatisierung nach 24 h wieder einschalten
 
     # ---------- Menüleiste ----------
 
@@ -153,6 +158,7 @@ class MainWindow(Gtk.ApplicationWindow):
         bar = Gtk.MenuBar()
         bar.append(menu("_Menü", [
             ("_NAS-Verbindung …", self.open_nas_dialog, "<Control>n"),
+            ("_Einstellungen …", self.open_settings, None),
             ("_Agent-USB-Stick erstellen …", lambda: StickDialog(self), None),
             None,
             ("Einstellungen e_xportieren …", lambda: ExportDialog(self).run_export(), None),
@@ -167,6 +173,8 @@ class MainWindow(Gtk.ApplicationWindow):
             ("_OS installieren …", lambda: self._with_device(self.start_install), None),
             ("_Backup erstellen …", lambda: self._with_device(self.start_backup), None),
             ("Backup zur_ückspielen …", lambda: self._with_device(lambda d: self.start_file_restore(None, d)), None),
+            ("Ordner _senden …", lambda: self._with_device(self.on_send_folders), None),
+            ("Automatisierung …", lambda: self._with_device(lambda d: self.open_device(d).show_automation()), None),
             ("_Inventar neu einlesen", lambda: self._with_device(self.refresh_inventory), None),
             ("Gerät _herunterfahren", lambda: self._with_device(lambda d: self.power(d, "poweroff")), None),
             None,
@@ -177,6 +185,11 @@ class MainWindow(Gtk.ApplicationWindow):
             None,
             ("Images _aktualisieren", self.refresh_images, "F5"),
         ]))
+        tools = bar.get_children()[-1].get_submenu()
+        self.pause_item = Gtk.CheckMenuItem.new_with_mnemonic("Automatisierungen _pausieren")
+        self.pause_item.set_active(self.cfg.automation_paused)
+        self.pause_item.connect("toggled", lambda i: self.set_automation_paused(i.get_active()))
+        tools.insert(self.pause_item, 8)
         bar.append(menu("E_xtras", [
             ("_USB klonen …", lambda: CloneDialog(self), None),
             ("USB _formatieren …", lambda: FormatDialog(self), None),
@@ -606,6 +619,11 @@ class MainWindow(Gtk.ApplicationWindow):
                 add("Nach „Nicht einsortiert“", self.on_unsort_image)
             add("Restore-Stick aus Image …", self.on_restore_stick,
                 model[it][self.C_TYPE] in ("Disk-Image", "Clonezilla"))
+            if model[it][self.C_TYPE] in ("Disk-Image", "Clonezilla"):
+                path = model[it][self.C_PATH]
+                master = nas.is_master(Path(path))
+                add("Master-Markierung entfernen" if master else "Als Master-Image markieren",
+                    lambda _x: self.set_master_image(path, not master))
             add("Löschen …", self.on_delete_image)
         menu.show_all()
         menu.popup_at_pointer(event)
@@ -1201,6 +1219,10 @@ class MainWindow(Gtk.ApplicationWindow):
         def work():
             tree = archive.scan(mp)
             try:
+                distribute.ensure(mp)  # Verteilen/Software, Verteilen/Test Files, Verteilen/Content
+            except OSError:
+                pass
+            try:
                 oslib.ensure_layout(mp)  # OS/Windows, OS/Linux, OS/Sonstige anlegen
                 systems = oslib.scan(mp)
             except (OSError, oslib.OsLibError, nasfiles.FileError) as e:
@@ -1214,7 +1236,8 @@ class MainWindow(Gtk.ApplicationWindow):
         run_async(work, self._on_images)
 
     def _image_row(self, img: nas.ImageInfo, rel: str, area: str) -> list:
-        return [IMAGE_ICONS.get(img.kind, FILE_IMAGE_ICON), img.name, img.kind, nas.format_size(img.size),
+        return [IMAGE_ICONS.get(img.kind, FILE_IMAGE_ICON), ("★ Master · " if img.master else "") + img.name,
+                img.kind, nas.format_size(img.size),
                 img.mtime.strftime("%d.%m.%Y %H:%M"), img.size, str(img.path), "image", rel, area, str(img.path)]
 
     def _iso_row(self, iso: oslib.IsoInfo) -> list:
@@ -1436,6 +1459,7 @@ class MainWindow(Gtk.ApplicationWindow):
             self.status(f"Images konnten nicht gelesen werden: {result}")
             return
         tree, systems, saved = result
+        self._image_tree = tree
         keys = self._expanded_keys() if self._images_loaded else {"unsorted:", "osroot:"}
         if self._expand_after_refresh is not None:
             parts = self._expand_after_refresh.split("/") if self._expand_after_refresh else []
@@ -1473,8 +1497,9 @@ class MainWindow(Gtk.ApplicationWindow):
 
     # Spalten des Gerätebaums: LED bzw. Ordner-Icon, Name, Status, Betriebssystem, zuletzt verbunden, IP,
     # Geräte-ID, Art (unsorted/folder/device), Ordner-rel, Fortschritt 0–100, Balken-Text (leer), Balken zeigen
-    D_ICON, D_NAME, D_STATUS, D_OS, D_SEEN, D_IP, D_ID, D_KIND, D_REL, D_PROG, D_PCT, D_BAR = range(12)
-    NO_PROGRESS = [0, "", False]
+    D_ICON, D_NAME, D_STATUS, D_OS, D_SEEN, D_IP, D_ID, D_KIND, D_REL, D_PROG, D_PCT, D_BAR, D_AUTO, D_AUTOVIS = \
+        range(14)
+    NO_PROGRESS = [0, "", False, False, False]
     DEV_DND_TARGET = "okula/device-row"
 
     def _build_device_pane(self) -> Gtk.Widget:
@@ -1498,7 +1523,7 @@ class MainWindow(Gtk.ApplicationWindow):
             self.dev_buttons[key] = b
         box.pack_start(head, False, False, 0)
 
-        self.device_store = Gtk.TreeStore(str, str, str, str, str, str, str, str, str, int, str, bool)
+        self.device_store = Gtk.TreeStore(str, str, str, str, str, str, str, str, str, int, str, bool, bool, bool)
         view = Gtk.TreeView(model=self.device_store)
         col = Gtk.TreeViewColumn("Gerät")
         icon = Gtk.CellRendererPixbuf()
@@ -1511,6 +1536,12 @@ class MainWindow(Gtk.ApplicationWindow):
         col.set_resizable(True)
         col.set_min_width(200)
         view.append_column(col)
+        # Automatisierung ein/aus (nur Gerätezeilen)
+        toggle = Gtk.CellRendererToggle()
+        toggle.connect("toggled", self._on_auto_toggled)
+        col = Gtk.TreeViewColumn("Auto", toggle, active=self.D_AUTO, visible=self.D_AUTOVIS)
+        view.append_column(col)
+        self.auto_column = col
         # Status: solange etwas läuft, Fortschrittsbalken mit Prozent, daneben Auftrag und Restzeit
         col = Gtk.TreeViewColumn("Status")
         bar = Gtk.CellRendererProgress()
@@ -1581,8 +1612,13 @@ class MainWindow(Gtk.ApplicationWindow):
         """(was läuft, Fortschritt 0..1, Restzeit) – Aufträge des Tools zuerst, dann die Meldung des Agents."""
         what, fraction, eta = self.jobs.parts(dev.id)
         agent = self.online_agent(dev)
-        if what or agent is None:
-            return what or "nicht verbunden", fraction, eta
+        auto = self.automation.text(dev)
+        if what:
+            return what, fraction, eta
+        if agent is None:
+            return " · ".join(p for p in ("nicht verbunden", auto) if p), None, ""
+        if auto:
+            return auto, None, ""
         if agent.agent_id in self.inv_pending:
             return "Inventar wird gelesen …", None, ""
         if not agent.control_port:
@@ -1598,10 +1634,12 @@ class MainWindow(Gtk.ApplicationWindow):
         status = GLib.markup_escape_text(" · ".join(p for p in (what, eta) if p))
         if bar:
             status = f"<b>{fraction * 100:.0f} %</b>  {status}"
+        if "Automatisierung: Fehler" in what or "fehlgeschlagen" in what:
+            status = f'<span foreground="#c62828">{status}</span>'
         return ["okula-led-on" if agent else "okula-led-off", dev.name, status,
                 dev.os_name or "–", "jetzt" if agent else devices.short_time(dev.last_seen) or "–",
                 agent.ip if agent else dev.last_ip, dev.id, "device", dev.folder,
-                int(fraction * 100) if bar else 0, "", bar]
+                int(fraction * 100) if bar else 0, "", bar, automation.settings(dev).enabled, True]
 
     def refresh_devices(self) -> None:
         """Baum neu aufbauen (neue Geräte, Ordner, Umbenennen) – Auf- und Zuklappen bleibt erhalten."""
@@ -1757,6 +1795,15 @@ class MainWindow(Gtk.ApplicationWindow):
             add("Backup erstellen …", lambda: self.start_backup(dev), ready)
             add("Backup zurückspielen …", lambda: self.start_file_restore(None, dev), ready)
             add("Inventar neu einlesen", lambda: self.refresh_inventory(dev), ready)
+            send = Gtk.MenuItem(label="Ordner senden", sensitive=ready)
+            sub = Gtk.Menu()
+            for label, preset in (("Software", "software"), ("Test Files", "testfiles"), ("Content …", "content")):
+                item = Gtk.MenuItem(label=label)
+                item.connect("activate", lambda _i, p=preset: self.on_send_folders(dev, p))
+                sub.append(item)
+            send.set_submenu(sub)
+            menu.append(send)
+            add("Automatisierung …", lambda: self.open_device(dev).show_automation())
             add("Herunterfahren", lambda: self.power(dev, "poweroff"), ready)
             add("Neu starten", lambda: self.power(dev, "reboot"), ready)
             menu.append(Gtk.SeparatorMenuItem())
@@ -1908,6 +1955,139 @@ class MainWindow(Gtk.ApplicationWindow):
             win.refresh()
         return True
 
+    # ---------- Automatisierung, Ordner senden, Master-Images ----------
+
+    def restorable_images(self) -> list[nas.ImageInfo]:
+        """Images, die sich zurückspielen lassen (Okula, Clonezilla) – Master zuerst, dann neueste."""
+        tree = self._image_tree
+        images = [i for i in (tree.all_images() if tree else []) if i.kind in ("Disk-Image", "Clonezilla")]
+        return sorted(images, key=lambda i: (not i.master, -i.mtime.timestamp()))
+
+    def save_automation(self, dev: devices.Device, s: automation.Settings) -> None:
+        was = automation.settings(dev)
+        dev.automation = s.to_dict()
+        self.store.save(dev)
+        if was.enabled != s.enabled:
+            self.store.add_history(dev, "automatisierung", "Automatisierung " + ("eingeschaltet" if s.enabled
+                                                                                 else "ausgeschaltet"))
+            if not s.enabled:
+                self.automation.cancel(dev.id)
+        agent = self.online_agent(dev)
+        if s.enabled and agent is not None and self.automation.consider(dev, agent):
+            self.status(f"Automatisierung für {dev.name} startet in {automation.COUNTDOWN} s – im Tool oder am "
+                        "Gerät mit Esc abbrechen")
+        self._on_automation_change(dev.id)
+
+    def _on_auto_toggled(self, _cell, path) -> None:
+        row = self.device_store[path]
+        dev = self.store.devices.get(row[self.D_ID]) if row[self.D_KIND] == "device" else None
+        if dev is None:
+            return
+        s = automation.settings(dev)
+        s.enabled = not s.enabled
+        missing = automation.problems(s, self._nas_root())
+        if s.enabled and missing:
+            win = self.open_device(dev)
+            win.show_automation()
+            confirm_error(win, "Automatisierung noch nicht eingerichtet:\n· " + "\n· ".join(missing))
+            return
+        if s.enabled:
+            s.done_at = ""
+        self.save_automation(dev, s)
+
+    def _on_automation_change(self, dev_id: str) -> bool:
+        self.update_device_rows()
+        win = self.device_windows.get(dev_id)
+        if win is not None:
+            win.refresh_automation()
+        return False
+
+    def _automation_tick(self) -> bool:
+        for dev in self.automation.tick():
+            self.status(f"Automatisierung für {dev.name} nach 24 h wieder eingeschaltet")
+            win = self.device_windows.get(dev.id)
+            if win is not None:
+                win.refresh_automation(reload=True)
+        self.update_device_rows()
+        return True
+
+    def set_automation_paused(self, paused: bool) -> None:
+        if self.cfg.automation_paused == paused:
+            return
+        cfg = config.load()
+        cfg.automation_paused = self.cfg.automation_paused = paused
+        config.save(cfg)
+        self.status("Alle Automatisierungen pausiert" if paused else "Automatisierungen wieder aktiv")
+        if self.pause_item.get_active() != paused:
+            self.pause_item.set_active(paused)
+        self.update_device_rows()
+
+    def open_settings(self) -> None:
+        dlg = SettingsDialog(self, self.cfg)
+        if dlg.run() == Gtk.ResponseType.OK:
+            limit, paused = dlg.values()
+            cfg = config.load()
+            cfg.automation_max = self.cfg.automation_max = limit
+            config.save(cfg)
+            self.set_automation_paused(paused)
+            self.status(f"Einstellungen gespeichert – höchstens {limit} Automatisierung"
+                        f"{'en' if limit != 1 else ''} gleichzeitig")
+        dlg.destroy()
+
+    def set_master_image(self, path: str, on: bool) -> None:
+        try:
+            nas.set_master(path, on)
+        except OSError as e:
+            confirm_error(self, f"Nicht geändert: {e}")
+            return
+        self.status(f"{Path(path).name}: " + ("als Master-Image markiert" if on else "Master-Markierung entfernt"))
+        self.refresh_images()
+
+    def windows_disk(self, dev: devices.Device) -> str | None:
+        """Disk mit dem (einzigen bzw. ersten) Windows laut Inventar, z. B. /dev/nvme0n1."""
+        for s in dev.inventory.get("systems") or []:
+            if s.get("family") == "Windows" and "BitLocker" not in s.get("name", "") and s.get("disk"):
+                return f"/dev/{s['disk']}"
+        return None
+
+    def on_send_folders(self, dev: devices.Device, preset: str = "") -> None:
+        """Ordner senden: Software/Test Files direkt, Content (oder ohne Vorgabe) über die Auswahl."""
+        parent = self._parent_for(dev)
+        agent = self._ready_agent(dev, parent)
+        root = self._nas_root()
+        if agent is None:
+            return
+        if root is None:
+            confirm_error(parent, "NAS ist nicht verbunden – Menü → NAS-Verbindung …")
+            return
+        disk = self.windows_disk(dev)
+        if disk is None:
+            confirm_error(parent, f"Auf „{dev.name}“ wurde kein Windows erkannt (oder es ist mit BitLocker "
+                                  "verschlüsselt) – Inventar neu einlesen.")
+            return
+        distribute.ensure(root)
+        if preset in ("software", "testfiles"):
+            items = distribute.items_for(preset == "software", preset == "testfiles", [])
+        else:
+            dlg = SendFoldersDialog(parent, root, dev.name)
+            ok = dlg.run() == Gtk.ResponseType.OK
+            items = dlg.items()
+            dlg.destroy()
+            if not ok or not items:
+                return
+        what = f"Ordner senden ({distribute.describe(items)})"
+
+        def after(job, path, error) -> None:
+            GLib.idle_add(self._after_job, dev.id, job, what, path, error, False)
+
+        try:
+            self.jobs.start(dev.id, "deliver", disk, what,
+                            jobs.deliver_work(agent.ip, self.key, agent.control_port, disk, root, items, after))
+        except agentclient.AgentError as e:
+            confirm_error(parent, str(e))
+            return
+        self.open_device(dev).show_jobs()
+
     def _on_device_drag_received(self, view, context, x, y, selection, _info, time_) -> None:
         view.stop_emission_by_name("drag-data-received")
         Gtk.drag_finish(context, True, False, time_)
@@ -2032,6 +2212,9 @@ class MainWindow(Gtk.ApplicationWindow):
             self.sync_netboot()
         if dev.netfirst and info.control_port:
             GLib.timeout_add_seconds(3, lambda: (self.check_bootorder(dev, quiet=True), False)[1])
+        if self.automation.consider(dev, info):
+            self.status(f"Automatisierung für {dev.name} startet in {automation.COUNTDOWN} s – im Tool oder am "
+                        "Gerät mit Esc abbrechen")
         note = " – Link-Local, im Netz gibt es kein DHCP" if info.ip.startswith("169.254.") else ""
         self.status(f"Gerät verbunden: {dev.name} ({info.ip}){note}")
         win = self.device_windows.get(dev.id)
@@ -2050,6 +2233,7 @@ class MainWindow(Gtk.ApplicationWindow):
                 if a != aid:
                     continue
                 del self.online[dev_id]
+                self.automation.offline(dev_id)
                 dev = self.store.devices.get(dev_id)
                 if dev is not None:
                     self.store.touch(dev, "", False)
@@ -2057,6 +2241,11 @@ class MainWindow(Gtk.ApplicationWindow):
                     win = self.device_windows.get(dev_id)
                     if win:
                         win.refresh()
+        # eingeschaltete Automatisierung bei schon verbundenen Geräten (Häkchen gesetzt, nach 24 h wieder an)
+        for dev_id, aid in list(self.online.items()):
+            dev, info = self.store.devices.get(dev_id), self.agents.get(aid)
+            if dev is not None and info is not None and self.automation.consider(dev, info):
+                self.status(f"Automatisierung für {dev.name} startet in {automation.COUNTDOWN} s")
         self.update_device_rows()
         return True
 
@@ -2127,17 +2316,23 @@ class MainWindow(Gtk.ApplicationWindow):
             if it is not None and model[it][self.C_KIND] == "image":
                 preselect = model[it][self.C_PATH]
 
-        def start(image, source_disk, target, verify, shutdown, label) -> None:
+        def start(image, source_disk, target, verify, shutdown, label, custom=None) -> None:
             def after(job, path, error) -> None:
                 GLib.idle_add(self._after_job, dev.id, job, f"Zurückspielen {label} → {target}", path, error,
                               shutdown)
 
+            customize = None
+            if custom is not None:
+                from okula_recovery import linuxsetup, winunattend
+                customize = {"unattend": winunattend.master_unattend(dev.name, dev.windows_key[0], custom["swiss"],
+                                                                     custom["account"]),
+                             "hostname": linuxsetup.hostname(dev.name)}
             work = jobs.restore_work(agent.ip, self.key, agent.control_port, image, target, source_disk, verify,
-                                     after)
+                                     after, customize)
             self.jobs.start(dev.id, "restore", target, f"Zurückspielen {label} → {target}", work)
             self.open_device(dev).show_jobs()
 
-        RestoreDialog(parent, agent, root, start_job=start, preselect=preselect, device_name=dev.name)
+        RestoreDialog(parent, agent, root, start_job=start, preselect=preselect, device_name=dev.name, device=dev)
 
     def start_install(self, dev: devices.Device, preselect: str | None = None) -> None:
         """Betriebssystem direkt aufs Gerät installieren (Medium aus „Betriebssysteme“ auf dem NAS)."""

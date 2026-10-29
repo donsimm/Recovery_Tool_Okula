@@ -1,9 +1,9 @@
-# Windows-Master-Image mit Sysprep (geplant, noch nicht programmiert)
+# Windows-Master-Image mit Sysprep
 
 Ziel: ein Windows-Image für viele Geräte. Beim Zurückspielen passt das Tool es pro Gerät an (Gerätename, Windows-Key,
 Benutzer, Region Schweiz), ohne Klicks am Gerät.
 
-Stand: Idee/Entscheid vom 29.10.2026 – **Weg B (Master-Image mit Sysprep)**. Im Tool ist dafür noch nichts gebaut.
+Stand: **umgesetzt** (29.10.2026). Bedienung im [README](../README.md); Prüfungen am realen System: [TESTS.md](TESTS.md).
 
 ## Master-Image erstellen
 
@@ -41,7 +41,7 @@ Stand: Idee/Entscheid vom 29.10.2026 – **Weg B (Master-Image mit Sysprep)**. I
 
 Quelle: Microsoft Learn – „Sysprep (Generalize) a Windows installation“, „Boot Windows to Audit Mode or OOBE“.
 
-## Geplante Funktion im Tool
+## Funktion im Tool (umgesetzt)
 
 Im Dialog **„Image zurückspielen“** ein Bereich *„Nach dem Zurückspielen anpassen“*:
 
@@ -70,8 +70,8 @@ Liste). Die Automatisierung bietet bei *Master-Image* nur markierte Images an
 
 ## Noch offen
 
-- Gerätename: immer fix der Tool-Name oder im Dialog änderbar? (Windows: max. 15 Zeichen, `_` wird `-`,
-  „DoNs_EliteBook_1“ → „DoNs-EliteBook“ – der Dialog soll zeigen, wie der Name ankommt.)
+- ~~Gerätename fix oder änderbar~~ → entschieden: immer der Tool-Name (ändern = Gerät umbenennen); Dialoge zeigen,
+  wie der Name ankommt (Windows max. 15 Zeichen, `_` → `-`: „DoNs_EliteBook_1“ → „DoNs-EliteBook“).
 - Sind Geräte in einer Domäne oder in Azure AD/Intune? (Beitritt müsste nach dem Einrichten erfolgen.)
 - Nicht generalisierte 1:1-Images (Weg A: Name per Registry, Key per Skript beim ersten Start) – vorerst nicht
   vorgesehen.

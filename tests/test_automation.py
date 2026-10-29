@@ -167,7 +167,7 @@ class EngineTest(unittest.TestCase):
         # erledigt bleibt erledigt, bis das Gerät getrennt war; dann 24 h-Anzeige
         self.assertFalse(self.engine.consider(a, self.agent()))
         self.engine.offline(a.id)
-        self.assertEqual(self.engine.text(a), "wieder aktiv in 23 h")
+        self.assertEqual(self.engine.text(a), "wieder aktiv in 24 h")
         self.assertEqual(self.engine.tick(datetime.now() + timedelta(hours=23)), [])
         self.assertEqual([d.id for d in self.engine.tick(datetime.now() + timedelta(hours=24, minutes=1))], [a.id])
         self.assertTrue(automation.settings(a).enabled)
@@ -194,6 +194,7 @@ class EngineTest(unittest.TestCase):
         self.assertTrue(wait_for(lambda: self.engine.run(bad.id).phase == "cancelled"))
         self.assertEqual(self.engine.text(bad), "Automatisierung am Gerät mit Esc abgebrochen")
         self.engine.offline(bad.id)
+        self.assertEqual(self.engine.text(bad), "Automatisierung ein – letzter Versuch fehlgeschlagen")
         # Hauptschalter
         self.cfg.automation_paused = True
         self.assertFalse(self.engine.consider(bad, self.agent()))

@@ -12,6 +12,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
 from okula_recovery import archive, devices, jobs, nas  # noqa: E402
+from okula_recovery.automation_tab import AutomationTab  # noqa: E402
 from okula_recovery.uikit import ask_text, confirm_error, run_async, scrolled  # noqa: E402
 
 if TYPE_CHECKING:
@@ -70,13 +71,14 @@ class DeviceWindow(Gtk.Window):
                 ("restore", "Image zurückspielen …", lambda: main.start_restore(self.dev)),
                 ("install", "OS installieren …", lambda: main.start_install(self.dev)),
                 ("backup", "Backup erstellen …", lambda: main.start_backup(self.dev)),
+                ("send", "Ordner senden …", lambda: main.on_send_folders(self.dev)),
                 ("inventory", "Inventar neu einlesen", lambda: main.refresh_inventory(self.dev)),
                 ("poweroff", "Herunterfahren", lambda: main.power(self.dev, "poweroff")),
                 ("reboot", "Neu starten", lambda: main.power(self.dev, "reboot"))):
             b = Gtk.Button(label=label)
             b.connect("clicked", lambda _b, h=handler: h())
             self.buttons[key] = b
-        for key in ("image", "restore", "install", "backup", "inventory"):
+        for key in ("image", "restore", "install", "backup", "send", "inventory"):
             actions.pack_start(self.buttons[key], False, False, 0)
         for key in ("reboot", "poweroff"):  # rechts, abgesetzt von den Aufträgen
             actions.pack_end(self.buttons[key], False, False, 0)
@@ -92,6 +94,8 @@ class DeviceWindow(Gtk.Window):
         self.tabs.append_page(self._build_images(), Gtk.Label(label="Images"))
         self.tabs.append_page(self._build_backups(), Gtk.Label(label="Backups"))
         self.tabs.append_page(self._build_network(), Gtk.Label(label="Netzwerk"))
+        self.automation_tab = AutomationTab(main, dev)
+        self.automation_page = self.tabs.append_page(self.automation_tab, Gtk.Label(label="Automatisierung"))
         self.history_view, self.history_store = table(["Zeit", "Ereignis", "Ergebnis"], (str, str, str), expand=1)
         self.tabs.append_page(scrolled(self.history_view), Gtk.Label(label="Verlauf"))
         self.notes = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR)
@@ -225,6 +229,8 @@ class DeviceWindow(Gtk.Window):
         """Kopf, Aktionen, Übersicht, Disks und Verlauf aus dem gespeicherten Gerät neu füllen."""
         self.refresh_head()
         self.update_netboot()
+        if hasattr(self, "automation_tab"):
+            self.automation_tab.refresh()
         self._fill_overview()
         self._fill_disks()
         self.history_store.clear()
@@ -598,6 +604,14 @@ class DeviceWindow(Gtk.Window):
         self.tabs.set_current_page(0)
         self.present()
 
+    def show_automation(self) -> None:
+        self.automation_tab.reload()
+        self.tabs.set_current_page(self.automation_page)
+        self.present()
+
+    def refresh_automation(self, reload: bool = False) -> None:
+        (self.automation_tab.reload if reload else self.automation_tab.refresh)()
+
     # ---------- Speichern ----------
 
     def _save_name(self) -> bool:
@@ -605,6 +619,7 @@ class DeviceWindow(Gtk.Window):
         if name and name != self.dev.name:
             self.main.store.update(self.dev, name=name)
             self.main.refresh_devices()
+            self.automation_tab.refresh()   # Gerätename = Computername bei Neuinstallation/Anpassen
         return False
 
     def _save_notes(self) -> bool:

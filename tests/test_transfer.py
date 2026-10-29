@@ -9,7 +9,7 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
-from okula_recovery import agentclient, config, devices, transfer
+from okula_recovery import agentclient, automation, config, devices, transfer
 
 
 class Machine:
@@ -113,6 +113,24 @@ class TransferTest(unittest.TestCase):
             store = devices.DeviceStore()
             self.assertNotIn("x9", store.devices)
             self.assertEqual((store.devices["d3"].folder, store.devices["d3"].last_ip), ("XX", "192.168.110.50"))
+
+
+    def test_automation_templates_and_settings(self):
+        out = self.root / "export.okula.zip"
+        with self.old:
+            cfg = config.load()
+            cfg.automation_max = 3
+            config.save(cfg)
+            automation.save_template("Schulungs-PC", automation.Settings(image="images/Master", software=True))
+            transfer.export_all(out)
+        exp = transfer.read_export(out)
+        self.assertIn("Vorlagen der Automatisierung: Schulungs-PC", exp.describe())
+        with self.new:
+            automation.save_template("Eigene", automation.Settings(finish="none"))
+            transfer.import_all(exp)
+            self.assertEqual(sorted(automation.load_templates()), ["Eigene", "Schulungs-PC"])
+            self.assertEqual(automation.load_templates()["Schulungs-PC"]["image"], "images/Master")
+            self.assertEqual(config.load().automation_max, 3)
 
     def test_export_without_key_and_nas_file(self):
         out = self.root / "ohne-schluessel.okula.zip"

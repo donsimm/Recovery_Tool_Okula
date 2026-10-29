@@ -12,7 +12,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
-from okula_recovery import agentclient, archive, clonezilla, discovery, nas  # noqa: E402
+from okula_recovery import agentclient, archive, clonezilla, devices, discovery, nas, winunattend  # noqa: E402
 
 
 def _gb(n: int) -> str:
@@ -21,9 +21,10 @@ def _gb(n: int) -> str:
 
 class RestoreDialog(Gtk.Dialog):
     def __init__(self, parent: Gtk.Window, agent: discovery.AgentInfo, nas_root: str,
-                 start_job: Callable[[str, str | None, str, bool, bool, str], None], preselect: str | None = None,
-                 device_name: str = ""):
-        """start_job(image, quelldisk, zieldisk, prüfen, herunterfahren, bezeichnung) startet den Auftrag."""
+                 start_job: Callable[..., None], preselect: str | None = None,
+                 device_name: str = "", device: devices.Device | None = None):
+        """start_job(image, quelldisk, zieldisk, prüfen, herunterfahren, bezeichnung, anpassen) startet den Auftrag;
+        anpassen = {"swiss", "account"} oder None."""
         super().__init__(title="Image zurückspielen", transient_for=parent, modal=True)
         self.start_job = start_job
         self.set_default_size(820, 640)
@@ -90,6 +91,25 @@ class RestoreDialog(Gtk.Dialog):
         self.shutdown = Gtk.CheckButton(label="Maschine danach herunterfahren (Stick dann abziehen und einschalten)")
         grid.attach(self.shutdown, 0, row, 2, 1)
         row += 1
+        # Master-Image: danach Gerätename, Windows-Key (und Region/Konto) setzen
+        self.device = device
+        name = device.name if device else device_name
+        key = device.windows_key[0] if device else ""
+        self.custom = Gtk.CheckButton(label=f"Danach anpassen: Gerätename „{name}“ "
+                                            f"(Windows: {winunattend.computer_name(name) or '–'})"
+                                            + (", Windows-Key" if key else "") + " – nur Master-Image mit Sysprep")
+        self.custom.connect("toggled", lambda _c: self._update())
+        grid.attach(self.custom, 0, row, 2, 1)
+        row += 1
+        custom_box = Gtk.Box(spacing=8, margin_start=24)
+        self.custom_swiss = Gtk.CheckButton(label="Region Schweiz", active=True)
+        custom_box.pack_start(self.custom_swiss, False, False, 0)
+        custom_box.pack_start(Gtk.Label(label="Lokales Konto"), False, False, 0)
+        self.custom_account = Gtk.Entry(placeholder_text="leer = Windows fragt", width_chars=18)
+        custom_box.pack_start(self.custom_account, False, False, 0)
+        self.custom_box = custom_box
+        grid.attach(custom_box, 0, row, 2, 1)
+        row += 1
         self.confirm_label = Gtk.Label(xalign=0)
         grid.attach(self.confirm_label, 0, row, 1, 1)
         self.confirm = Gtk.Entry(placeholder_text="Disk-Namen eintippen")
@@ -135,7 +155,7 @@ class RestoreDialog(Gtk.Dialog):
                     images[f"{img.path}\t{disk.get('name', '')}"] = {
                         "path": str(img.path), "disk": None, "machine": meta.get("machine", "?"),
                         "completed": meta.get("completed", ""), "disk_info": disk, "format": "Okula",
-                        "product": meta.get("source", {}).get("product", "")}
+                        "product": meta.get("source", {}).get("product", ""), "master": img.master}
                 elif img.kind == "Clonezilla":
                     for d in clonezilla.disks(img.path):
                         try:
@@ -146,7 +166,7 @@ class RestoreDialog(Gtk.Dialog):
                         images[f"{img.path}\t{d}"] = {
                             "path": str(img.path), "disk": d, "machine": img.path.name,
                             "completed": img.mtime.isoformat(timespec="minutes"), "disk_info": src["source"],
-                            "format": "Clonezilla", "product": ""}
+                            "format": "Clonezilla", "product": "", "master": img.master}
             try:
                 info = agentclient.get_info(agent.ip, key, agent.control_port)
             except Exception as e:
@@ -160,7 +180,8 @@ class RestoreDialog(Gtk.Dialog):
         for key, meta in sorted(images.items(), key=lambda kv: kv[1].get("completed", ""), reverse=True):
             d = meta["disk_info"]
             when = meta.get("completed", "")[:16].replace("T", " ")
-            self.image_combo.append(key, f"[{meta['format']}] {meta['machine']} – {d.get('name', '?')} "
+            self.image_combo.append(key, f"{'★ Master ' if meta.get('master') else ''}"
+                                         f"[{meta['format']}] {meta['machine']} – {d.get('name', '?')} "
                                          f"{d.get('model', '')} ({_gb(int(d.get('size') or 0))}) – {when}")
         for msg in problems:
             self.append_log(f"Nicht zurückspielbar: {msg}")
@@ -187,6 +208,11 @@ class RestoreDialog(Gtk.Dialog):
 
     def _update(self) -> None:
         meta = self.images.get(self.image_combo.get_active_id() or "")
+        image_id = self.image_combo.get_active_id() or ""
+        if meta and image_id != getattr(self, "_custom_for", None):  # Master-Image: Anpassen vorschlagen
+            self._custom_for = image_id
+            self.custom.set_active(bool(meta.get("master")))
+        self.custom_box.set_sensitive(self.custom.get_active())
         disk = self.disks.get(self.disk_combo.get_active_id() or "")
         if meta:
             d = meta["disk_info"]
@@ -229,8 +255,10 @@ class RestoreDialog(Gtk.Dialog):
         target = self.disk_combo.get_active_id()
         label = f"{chosen['machine']} ({chosen['disk_info'].get('name', '?')})"
         try:
+            custom = {"swiss": self.custom_swiss.get_active(), "account": self.custom_account.get_text().strip()} \
+                if self.custom.get_active() else None
             self.start_job(chosen["path"], chosen["disk"], target, self.verify.get_active(),
-                           self.shutdown.get_active(), label)
+                           self.shutdown.get_active(), label, custom)
         except Exception as e:
             self.append_log(f"Nicht gestartet: {e}")
             return

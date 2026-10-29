@@ -3,7 +3,8 @@
 NAS-Export (NAS-Fenster): kleine JSON-Datei mit Protokoll, Host, Freigabe, Benutzer, Einhängepunkt.
 Gesamt-Export (Menü): ZIP-Datei mit
     manifest.json        Art, Datum, Quellrechner, Inhalt
-    config.json          Einstellungen (NAS, Maschinen, Netz)
+    config.json          Einstellungen (NAS, Maschinen, Netz, Automatisierung)
+    automatisierung-vorlagen.json   Vorlagen der Automatisierung
     agent.key            Schlüssel der Agent-/Restore-Sticks (optional; ohne ihn alle Sticks neu erstellen)
     geraete/…            Geräteverzeichnis mit Ordnern, Verlauf, Notizen, Windows-Schlüsseln
 Nicht enthalten: Images, Backups, ISOs (liegen auf dem NAS), NAS-Passwort (nur root lesbar, wird nach dem
@@ -141,6 +142,11 @@ def export_all(path: str | Path, include_key: bool = True, include_devices: bool
         if include_config:
             z.writestr("config.json", json.dumps(asdict(config.load()), indent=2, ensure_ascii=False))
             contents.append("config")
+            from okula_recovery import automation
+            templates = automation.load_templates()
+            if templates:
+                z.writestr("automatisierung-vorlagen.json", json.dumps(templates, indent=2, ensure_ascii=False))
+                manifest["templates"] = len(templates)
         if include_key and key_path.is_file():
             z.writestr("agent.key", key_path.read_text().strip() + "\n")
             contents.append("agent_key")
@@ -165,6 +171,7 @@ class ExportFile:
     key: bytes | None = None
     device_files: dict[str, bytes] = field(default_factory=dict)   # rel → Inhalt
     folders: list[str] = field(default_factory=list)
+    templates: dict[str, dict] = field(default_factory=dict)   # Vorlagen der Automatisierung
 
     def describe(self) -> list[str]:
         m = self.manifest
@@ -178,6 +185,8 @@ class ExportFile:
             lines.append("Agent-Schlüssel: enthalten (bestehende Agent- und Restore-Sticks funktionieren weiter)")
         if self.device_files or self.folders:
             lines.append(f"Geräte: {len(self.device_files)} (in {len(self.folders)} Ordnern)")
+        if self.templates:
+            lines.append(f"Vorlagen der Automatisierung: {', '.join(sorted(self.templates))}")
         return lines
 
 
@@ -222,6 +231,14 @@ def read_export(path: str | Path) -> ExportFile:
                 result.config = json.loads(read("config.json"))
             except ValueError:
                 raise TransferError("config.json ist beschädigt") from None
+        if "automatisierung-vorlagen.json" in names:
+            try:
+                data = json.loads(read("automatisierung-vorlagen.json"))
+            except ValueError:
+                raise TransferError("automatisierung-vorlagen.json ist beschädigt") from None
+            if not isinstance(data, dict):
+                raise TransferError("automatisierung-vorlagen.json ist beschädigt")
+            result.templates = {str(k): v for k, v in data.items() if isinstance(v, dict)}
         if "agent.key" in names:
             try:
                 key = bytes.fromhex(read("agent.key").decode().strip())
@@ -306,8 +323,19 @@ def import_all(export: ExportFile, use_config: bool = True, use_key: bool = True
         old.nas = _nas_from(new)
         old.machines = list(new.get("machines") or old.machines)
         old.scan_network = str(new.get("scan_network") or old.scan_network)
+        try:
+            old.automation_max = max(1, min(10, int(new.get("automation_max") or old.automation_max)))
+        except (TypeError, ValueError):
+            pass
         config.save(old)
         result.config = True
+        if export.templates:
+            from okula_recovery import automation
+            path = automation.templates_path()
+            save_old(path, path.name)
+            merged = {**automation.load_templates(), **{k: {f: v[f] for f in automation.TEMPLATE_FIELDS if f in v}
+                                                        for k, v in export.templates.items()}}
+            automation._save_templates(merged)
     if use_key and export.key is not None:
         current = None
         try:
