@@ -22,15 +22,19 @@ Alles läuft über das Netzwerk. Die Sicherungen liegen auf dem <b>NAS</b>.
 •  Windows oder Linux neu auf einen Computer installieren.
 •  USB-Sticks erstellen: zum Starten, zum Installieren oder zum Wiederherstellen.
 •  USB-Sticks und externe Festplatten kopieren (klonen) und formatieren.
+•  Ein <b>Master-Image</b> auf viele Geräte verteilen – jedes bekommt seinen eigenen Namen.
+•  Ordner wie <i>Software</i> oder Projekte auf den Desktop eines Geräts senden.
+•  Geräte <b>automatisch</b> neu aufsetzen, sobald sie starten (<b>Automatisierung</b>).
 
 <b>So ist das Fenster aufgebaut:</b>
 •  <b>Links</b> stehen alle Geräte (Computer). Ein grüner Punkt heisst: verbunden.
+   Das Häkchen <i>Auto</i> schaltet die Automatisierung für ein Gerät ein oder aus.
 •  <b>Rechts</b> siehst du das NAS mit den Reitern <i>Images</i>, <i>Dateien</i> und <i>Backups</i>.
 •  <b>Oben rechts</b> siehst du, wie stark der Server gerade arbeitet (CPU, RAM, LAN).
 •  <b>Oben</b> ist die Menüleiste: <i>Menü</i>, <i>Tools</i>, <i>Extras</i> und <i>Hilfe</i>.
 
 Wichtig: Auf den Computern wird <b>nichts installiert</b>.
-Sie starten nur kurz von einem USB-Stick, dem <b>Agent-Stick</b>."""),
+Sie starten nur kurz vom <b>Agent-Stick</b> oder über das Netzwerk (Netzwerkstart)."""),
 
     ("Wichtige Begriffe", """<big><b>Wichtige Begriffe einfach erklärt</b></big>
 
@@ -65,7 +69,17 @@ Einen Datenträger leer machen und für ein bestimmtes System vorbereiten.
 Dabei gehen alle Daten verloren.
 
 <b>Klonen</b>
-Einen Datenträger 1:1 auf einen anderen kopieren."""),
+Einen Datenträger 1:1 auf einen anderen kopieren.
+
+<b>Master-Image</b>
+Ein vorbereitetes Windows für viele Geräte (mit Sysprep). Beim Zurückspielen bekommt jedes Gerät
+seinen eigenen Namen und seinen Windows-Schlüssel. In der Liste hat es einen Stern ★.
+
+<b>Automatisierung</b>
+Das Tool setzt ein Gerät selbst neu auf, sobald es mit dem Agent startet – ohne Klick.
+
+<b>Gerätename</b>
+Der Name im Tool. Er wird auch der Computername bei einer Neuinstallation."""),
 
     ("Erste Schritte", """<big><b>Erste Schritte (nur einmal nötig)</b></big>
 
@@ -112,7 +126,10 @@ Doppelklick auf ein Gerät öffnet sein Fenster. Dort findest du:
 •  <i>Aufträge</i>: was gerade läuft, mit Fortschritt.
 •  <i>Übersicht</i> und <i>Disks</i>: Hersteller, Modell, Festplatten und deren Zustand.
 •  <i>Images</i> und <i>Backups</i>: alle Sicherungen von diesem Gerät.
+•  <i>Netzwerk</i>: Netzwerkstart, Einschalten aus der Ferne (Wake-on-LAN).
+•  <i>Automatisierung</i>: das Gerät automatisch neu aufsetzen.
 •  <i>Verlauf</i> und <i>Notizen</i>.
+•  <i>Ordner senden …</i>: Ordner vom NAS auf den Desktop des Geräts.
 
 Das Tool erkennt ein Gerät beim nächsten Mal wieder, auch nach Monaten."""),
 
@@ -282,6 +299,9 @@ Mit <i>Notiz …</i> änderst du die Notiz. Mit <i>Löschen …</i> entfernst du
 5.  Starten. Das Gerät startet danach neu und installiert selbständig.
      An der Maschine wird nichts gefragt. Was du nicht auswählst, wird nicht installiert.
 
+Der <b>Computername</b> ist immer der Gerätename im Tool. Willst du einen anderen, benenne das Gerät um.
+Windows erlaubt nur 15 Zeichen ohne Sonderzeichen. Der Dialog zeigt dir, wie der Name ankommt.
+
 Direkt installieren geht mit Windows 10/11, Ubuntu Desktop ab 24.04, Debian und Fedora.
 Bei anderen Systemen zeigt das Tool den Grund. Dann hilft ein Boot-Stick (nächstes Kapitel).
 
@@ -384,7 +404,18 @@ Wenn du unsicher bist: Bis 32 GB <b>FAT32</b>, darüber <b>exFAT</b>.
 •  <i>Backups</i>: alle Datei-Backups, nach Gerät sortiert, mit Suche.
 
 <b>Fortschritt</b>
-In der Geräteliste siehst du bei jedem Gerät einen Balken mit Prozent und Restzeit."""),
+In der Geräteliste siehst du bei jedem Gerät einen Balken mit Prozent und Restzeit.
+
+<b>Spalte „Auto“ und Status der Automatisierung</b>
+•  Häkchen gesetzt: Die Automatisierung ist eingeschaltet.
+•  <i>startet in 25 s</i>: Countdown läuft. Am Gerät bricht Esc ab.
+•  <i>wartet (Platz 2)</i>: Es laufen schon so viele Geräte wie erlaubt. Das Gerät kommt gleich dran.
+•  <i>Schritt 2/5: Image zurückspielen</i>: Die Automatisierung arbeitet.
+•  <i>wieder aktiv in 5 h</i>: Sie ist fertig und schaltet sich nach 24 Stunden wieder ein.
+•  <span foreground="#c62828">rot</span>: Es gab einen Fehler. Details im Gerätefenster.
+
+<b>Stern ★ bei Images</b>
+Das Image ist als Master-Image markiert."""),
 
     ("Neuer Rechner", """<big><b>Das Tool auf einen neuen Rechner umziehen</b></big>
 
@@ -397,6 +428,7 @@ So musst du auf einem neuen Rechner nichts von vorne einrichten.
      •  NAS-Verbindung und Einstellungen
      •  Geräte mit Ordnern, Verlauf, Notizen und Windows-Schlüsseln
      •  Agent-Schlüssel: Dann funktionieren alle bisherigen Agent- und Restore-Sticks weiter.
+     Die Vorlagen der Automatisierung kommen mit den Einstellungen mit.
 3.  <i>Exportieren …</i> klicken und die Datei speichern, zum Beispiel auf einem USB-Stick.
 
 <b>Auf dem neuen Rechner:</b>
@@ -437,6 +469,16 @@ Damit nimmst du nur die NAS-Einstellungen mit (ohne Passwort)."""),
 
 <b>Ein Stick ist plötzlich zu klein oder macht Fehler</b>
 •  Beim Formatieren den <i>Schnelltest</i> wählen. Er erkennt gefälschte Sticks.
+
+<b>Die Automatisierung startet nicht</b>
+•  Steht in der Liste <i>Einstellungen unvollständig</i>? Im Reiter <i>Automatisierung</i> steht, was fehlt.
+•  Steht <i>pausiert</i>? Unter <i>Tools</i> das Häkchen <i>Automatisierungen pausieren</i> entfernen.
+•  Steht <i>wieder aktiv in …</i>? Sie lief schon. Häkchen <i>Auto</i> neu setzen, wenn sie sofort laufen soll.
+•  Nach einem Fehler oder Esc: Gerät neu starten, dann versucht sie es wieder.
+•  Meldung „Agent zu alt“: Agent-Stick neu erstellen bzw. Netzwerkstart neu vorbereiten.
+
+<b>Name oder Windows-Schlüssel wurden nicht gesetzt</b>
+•  Das geht nur bei einem Master-Image, das mit Sysprep vorbereitet wurde. Das Protokoll sagt es.
 
 <b>Fehlermeldung „Hilfsprogramm … sudo-Regel“</b>
 •  Auf dem Server einmal <tt>sudo ./install.sh</tt> im Tool-Ordner ausführen."""),
