@@ -1,7 +1,9 @@
 import os
 import tempfile
+import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from okula_recovery import nasfiles
 
@@ -71,6 +73,72 @@ class NasFilesTest(unittest.TestCase):
         self.assertEqual(nasfiles.parent("images"), "")
         self.assertEqual(nasfiles.join("", "images"), "images")
         self.assertEqual(nasfiles.join("images", "PC1"), "images/PC1")
+
+
+
+class CopyInTest(unittest.TestCase):
+    def setUp(self):
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = Path(self.tmp.name)
+        self.nas = self.d / "nas"
+        (self.nas / "images").mkdir(parents=True)
+        # Clonezilla-Image wie auf einer externen Platte: Ordner mit disk, parts und Teilen
+        self.cz = self.d / "usb" / "2026-10-20-12-img"
+        self.cz.mkdir(parents=True)
+        (self.cz / "disk").write_text("sda\n")
+        (self.cz / "parts").write_text("sda1 sda2\n")
+        (self.cz / "sda2.ntfs-ptcl-img.zst.aa").write_bytes(os.urandom(3 * 1024 * 1024 + 7))
+        (self.cz / "sub").mkdir()
+        (self.cz / "sub" / "info.txt").write_text("x")
+        os.symlink("/etc/passwd", self.cz / "link")
+        self.single = self.d / "usb" / "notiz.txt"
+        self.single.write_text("hallo")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_copy_folder_and_file(self):
+        plan = nasfiles.plan_copy([self.cz, self.single])
+        self.assertEqual((plan.files, plan.skipped), (5, ["2026-10-20-12-img/link"]))
+        seen = []
+        names = nasfiles.copy_in(self.nas, "images", plan, lambda d, t, f: seen.append((d, t)), threading.Event())
+        self.assertEqual(names, ["2026-10-20-12-img", "notiz.txt"])
+        out = self.nas / "images" / "2026-10-20-12-img"
+        self.assertEqual((out / "sda2.ntfs-ptcl-img.zst.aa").read_bytes(), (self.cz / "sda2.ntfs-ptcl-img.zst.aa").read_bytes())
+        self.assertEqual((out / "sub" / "info.txt").read_text(), "x")
+        self.assertFalse((out / "link").exists())
+        self.assertEqual(seen[-1], (plan.bytes, plan.bytes))
+        self.assertEqual(os.stat(out / "disk").st_mtime, os.stat(self.cz / "disk").st_mtime)
+        # zweites Mal: nichts überschreiben, neuer Name
+        names = nasfiles.copy_in(self.nas, "images", nasfiles.plan_copy([self.cz, self.single]),
+                                 lambda *a: None, threading.Event())
+        self.assertEqual(names, ["2026-10-20-12-img (2)", "notiz (2).txt"])
+
+    def test_cancel_leaves_nothing(self):
+        cancel = threading.Event()
+
+        def progress(done, total, current):
+            cancel.set()
+
+        with mock.patch.object(nasfiles, "COPY_CHUNK", 1024 * 1024):
+            with self.assertRaises(nasfiles.FileError):
+                nasfiles.copy_in(self.nas, "", nasfiles.plan_copy([self.cz]), progress, cancel)
+        self.assertEqual(sorted(p.name for p in self.nas.iterdir()), ["images"])
+
+    def test_checks_before_copy(self):
+        bad = self.d / "usb" / "a:b"
+        bad.write_text("x")
+        with self.assertRaises(nasfiles.FileError):
+            nasfiles.plan_copy([bad])
+        with self.assertRaises(nasfiles.FileError):
+            nasfiles.plan_copy([self.d / "fehlt"])
+        with mock.patch.object(nasfiles.shutil, "disk_usage", return_value=mock.Mock(free=10)):
+            with self.assertRaises(nasfiles.FileError):
+                nasfiles.copy_in(self.nas, "", nasfiles.plan_copy([self.cz]), lambda *a: None, threading.Event())
+        with self.assertRaises(nasfiles.FileError):
+            nasfiles.copy_in(self.nas, "../draussen", nasfiles.plan_copy([self.single]), lambda *a: None,
+                             threading.Event())
 
 
 if __name__ == "__main__":

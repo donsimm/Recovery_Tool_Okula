@@ -18,6 +18,7 @@ from okula_recovery import (__version__, agentclient, archive, backups, clonezil
 from okula_recovery.backup_dialogs import (BackupDetailsDialog, BackupDialog, RestoreFilesDialog,  # noqa: E402
                                            edit_note)
 from okula_recovery.device_window import DeviceWindow  # noqa: E402
+from okula_recovery.copy_dialog import CopyDialog  # noqa: E402
 from okula_recovery.help_window import HelpWindow  # noqa: E402
 from okula_recovery.settings_dialogs import ExportDialog, import_settings  # noqa: E402
 from okula_recovery.loadbar import LoadBar  # noqa: E402
@@ -80,6 +81,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.nas_state = ""          # letzter NAS-Zustand, um Wechsel zu erkennen
         self._nas_checking = False
         self.nas_dialog: NasDialog | None = None
+        self.copies: set = set()     # laufende Kopien aufs NAS (Fenster)
 
         header = Gtk.HeaderBar(title="Recovery Tool", subtitle=f"Version {__version__}",
                                show_close_button=True)
@@ -719,6 +721,19 @@ class MainWindow(Gtk.ApplicationWindow):
             b.connect("clicked", handler)
             bar.pack_start(b, False, False, 0)
             self.file_buttons[tip] = b
+        # Hochladen: Dateien oder ganze Ordner (z. B. Clonezilla-Images) vom Server in den offenen Ordner
+        upload_menu = Gtk.Menu()
+        for label, folders in (("Dateien hochladen …", False), ("Ordner hochladen … (z. B. Clonezilla-Image)", True)):
+            item = Gtk.MenuItem(label=label)
+            item.connect("activate", lambda _i, f=folders: self.on_upload_files(f))
+            upload_menu.append(item)
+        upload_menu.show_all()
+        upload = Gtk.MenuButton(popup=upload_menu)
+        upload.add(Gtk.Image.new_from_icon_name("document-send-symbolic", Gtk.IconSize.BUTTON))
+        upload.set_tooltip_text("Dateien oder Ordner vom Server auf das NAS kopieren – oder einfach aus dem "
+                                "Dateimanager hierher ziehen")
+        bar.pack_start(upload, False, False, 0)
+        self.file_buttons["Hochladen"] = upload
         box.pack_start(bar, False, False, 0)
 
         # icon, Name, Grösse (Text), Geändert, Ordner?, Grösse (Byte)
@@ -729,9 +744,75 @@ class MainWindow(Gtk.ApplicationWindow):
         self.file_view.get_selection().connect("changed", lambda _s: self._update_file_buttons())
         self.file_view.connect("row-activated", self._on_file_activated)
         self.file_view.connect("key-press-event", self._on_file_key)
+        # Aus dem Dateimanager hineinziehen: auf einen Ordner = dorthin, sonst in den offenen Ordner
+        self.file_view.enable_model_drag_dest([Gtk.TargetEntry.new(self.URI_TARGET, Gtk.TargetFlags.OTHER_APP, 0)],
+                                              Gdk.DragAction.COPY)
+        self.file_view.connect("drag-data-received", self._on_files_dropped)
         box.pack_start(scrolled(self.file_view), True, True, 0)
+        hint = Gtk.Label(xalign=0, wrap=True)
+        hint.set_markup("<small>Dateien und Ordner (z. B. Clonezilla-Images) aus dem Dateimanager hierher ziehen = "
+                        "auf das NAS kopieren</small>")
+        hint.get_style_context().add_class("status-idle")
+        box.pack_start(hint, False, False, 0)
         self._update_file_buttons()
         return box
+
+    def _on_files_dropped(self, view, ctx, x, y, selection, _info, time_) -> None:
+        paths = [GLib.filename_from_uri(u)[0] for u in selection.get_uris() if u.startswith("file://")]
+        Gtk.drag_finish(ctx, bool(paths), False, time_)
+        rel = self.files_rel
+        hit = view.get_dest_row_at_pos(x, y)
+        if hit is not None:
+            row = self.file_store[hit[0]]
+            if row[4] and hit[1] in (Gtk.TreeViewDropPosition.INTO_OR_BEFORE, Gtk.TreeViewDropPosition.INTO_OR_AFTER):
+                rel = nasfiles.join(self.files_rel, row[1])
+        if paths:
+            self.copy_to_nas(paths, rel)
+
+    def on_upload_files(self, folders: bool) -> None:
+        if self._nas_root() is None:
+            return
+        dlg = Gtk.FileChooserDialog(title="Ordner auf das NAS kopieren" if folders else "Dateien auf das NAS kopieren",
+                                    transient_for=self,
+                                    action=Gtk.FileChooserAction.SELECT_FOLDER if folders else Gtk.FileChooserAction.OPEN)
+        dlg.add_buttons("Abbrechen", Gtk.ResponseType.CANCEL, "Kopieren", Gtk.ResponseType.OK)
+        dlg.set_select_multiple(True)
+        dlg.set_current_folder(str(Path.home()))
+        paths = dlg.get_filenames() if dlg.run() == Gtk.ResponseType.OK else []
+        dlg.destroy()
+        if paths:
+            self.copy_to_nas(paths, self.files_rel)
+
+    def copy_to_nas(self, paths: list[str], rel: str) -> None:
+        """Dateien/Ordner vom Server in den NAS-Ordner rel kopieren (Fortschritt im eigenen Fenster)."""
+        root = self._nas_root()
+        if root is None:
+            self.status("NAS nicht eingehängt")
+            return
+        mount = os.path.realpath(root)
+        if any(os.path.realpath(p) == mount or os.path.realpath(p).startswith(mount + os.sep) for p in paths):
+            confirm_error(self, "Diese Dateien liegen schon auf dem NAS – zum Verschieben im Reiter „Images“ bzw. "
+                                "hier Umbenennen verwenden.")
+            return
+
+        def planned(plan) -> None:
+            if isinstance(plan, Exception):
+                confirm_error(self, f"Kopieren nicht möglich: {plan}")
+                return
+
+            def done(names) -> None:
+                self.copies.discard(dlg)
+                if names:
+                    self.status(f"{len(names)} {'Eintrag' if len(names) == 1 else 'Einträge'} auf das NAS kopiert")
+                self.refresh_files()
+                self.refresh_images()
+                self.refresh_nas_status()
+
+            dlg = CopyDialog(self, root, rel, plan, done)
+            self.copies.add(dlg)
+
+        self.status("Ermittle Umfang …")
+        run_async(lambda: nasfiles.plan_copy(paths), planned)
 
     # ---------- Fenster ----------
 
@@ -760,6 +841,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.file_buttons["Neuer Ordner"].set_sensitive(root_ok)
         self.file_buttons["Umbenennen"].set_sensitive(root_ok and n == 1)
         self.file_buttons["Löschen"].set_sensitive(root_ok and n > 0)
+        self.file_buttons["Hochladen"].set_sensitive(root_ok)
         self.btn_up.set_sensitive(bool(self.files_rel))
 
     def refresh_files(self) -> None:
@@ -2112,6 +2194,15 @@ class MainWindow(Gtk.ApplicationWindow):
     def _on_delete(self, *_a) -> bool:
         """Beim Beenden warnen, wenn noch Aufträge laufen (sie würden abbrechen)."""
         running = self.jobs.running()
+        copies = [c for c in self.copies if c.running]
+        if copies and not running:
+            if confirm(self, "Es wird noch auf das NAS kopiert – trotzdem beenden?",
+                       "Die laufende Kopie wird abgebrochen; auf dem NAS bleibt nichts Halbes zurück.",
+                       ok_label="Trotzdem beenden"):
+                for c in copies:
+                    c.cancel.set()
+                return False
+            return True
         if not running:
             return False
         names = "\n".join(f"• {self.store.devices[j.device_id].name if j.device_id in self.store.devices else '?'}"
@@ -2122,6 +2213,8 @@ class MainWindow(Gtk.ApplicationWindow):
                    "hinterlässt eine unbrauchbare Zieldisk.", ok_label="Trotzdem beenden"):
             for j in running:
                 j.cancel.set()
+            for c in copies:
+                c.cancel.set()
             return False
         return True
 

@@ -295,6 +295,8 @@ Wenn du unsicher bist: Bis 32 GB <b>FAT32</b>, darüber <b>exFAT</b>.
 <b>Reiter rechts</b>
 •  <i>Images</i>: alle Disk-Images und ISO-Dateien, in Ordnern sortiert.
 •  <i>Dateien</i>: die Dateien auf dem NAS, wie in einem Datei-Manager.
+   Dateien und Ordner kannst du aus dem Dateimanager hineinziehen. Dann werden sie auf das NAS kopiert.
+   So kommen zum Beispiel Clonezilla-Images von einer externen Festplatte aufs NAS.
 •  <i>Backups</i>: alle Datei-Backups, nach Gerät sortiert, mit Suche.
 
 <b>Fortschritt</b>
