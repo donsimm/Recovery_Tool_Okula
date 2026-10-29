@@ -2,6 +2,7 @@
 
 Backups und Disk-Images von Maschinen im LAN, gespeichert auf einem NAS.
 Server: Debian 13 + Xfce, Python 3 + GTK 3.
+Änderungen, Entscheidungen und offene Punkte: [docs/AENDERUNGEN.md](docs/AENDERUNGEN.md).
 
 ![Oberfläche](docs/screenshot.png)
 
