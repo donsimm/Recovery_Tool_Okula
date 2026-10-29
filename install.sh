@@ -25,11 +25,20 @@ apt-get install -y --no-install-recommends \
     util-linux dosfstools grub-pc-bin grub2-common squashfs-tools \
     partclone zstd pigz lz4 lzop bzip2 xz-utils \
     xorriso wimtools e2fsprogs exfatprogs ntfs-3g
-# Formatieren: weitere Dateisysteme – einzeln, ein fehlendes Paket bricht die Installation nicht ab
-for pkg in btrfs-progs xfsprogs f2fs-tools hfsprogs udftools; do
-    apt-get install -y --no-install-recommends "$pkg" >/dev/null 2>&1 \
-        || echo "Hinweis: Paket $pkg nicht installiert – dieses Dateisystem fehlt beim Formatieren"
-done
+
+# Formatieren: weitere Dateisysteme. Sichtbar installieren (Btrfs/XFS bauen das initramfs neu, das dauert);
+# fehlt ein Paket in den Quellen, einzeln weiter – das bricht die Installation nicht ab.
+echo "==> Zusatzpakete zum Formatieren (Btrfs, XFS, F2FS, HFS+, UDF) – kann 1–2 Minuten dauern"
+OPTIONAL="btrfs-progs xfsprogs f2fs-tools hfsprogs udftools"
+APT_OPTS="-y --no-install-recommends -o DPkg::Lock::Timeout=120"
+# shellcheck disable=SC2086
+if ! DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTS $OPTIONAL; then
+    for pkg in $OPTIONAL; do
+        # shellcheck disable=SC2086
+        DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTS "$pkg" \
+            || echo "Hinweis: Paket $pkg nicht installiert – dieses Dateisystem fehlt beim Formatieren"
+    done
+fi
 
 echo "==> Programm nach $APP_DIR kopieren"
 if [ "$SRC_DIR" != "$APP_DIR" ]; then
