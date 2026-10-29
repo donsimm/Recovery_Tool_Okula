@@ -27,7 +27,7 @@ Alles läuft über das Netzwerk. Die Sicherungen liegen auf dem <b>NAS</b>.
 •  <b>Links</b> stehen alle Geräte (Computer). Ein grüner Punkt heisst: verbunden.
 •  <b>Rechts</b> siehst du das NAS mit den Reitern <i>Images</i>, <i>Dateien</i> und <i>Backups</i>.
 •  <b>Oben rechts</b> siehst du, wie stark der Server gerade arbeitet (CPU, RAM, LAN).
-•  <b>Oben</b> ist die Menüleiste: <i>Menü</i>, <i>Tools</i> und <i>Hilfe</i>.
+•  <b>Oben</b> ist die Menüleiste: <i>Menü</i>, <i>Tools</i>, <i>Extras</i> und <i>Hilfe</i>.
 
 Wichtig: Auf den Computern wird <b>nichts installiert</b>.
 Sie starten nur kurz von einem USB-Stick, dem <b>Agent-Stick</b>."""),
@@ -227,7 +227,7 @@ Mit allen Partitionen, Dateien und – falls vorhanden – mit der Startfähigke
 
 <b>So gehts:</b>
 1.  Beide Datenträger am Server einstecken.
-2.  <i>Tools → USB klonen …</i> öffnen.
+2.  <i>Extras → USB klonen …</i> öffnen.
 3.  <b>Quelle</b> wählen: Von hier wird kopiert. Die Quelle wird nur gelesen.
 4.  <b>Ziel</b> wählen: Hierhin wird kopiert. <b>Alles auf dem Ziel wird gelöscht.</b>
 5.  Art wählen:
@@ -249,7 +249,7 @@ Mit <i>Abbrechen</i> stoppst du. Das Ziel ist dann aber unvollständig.
 
 <b>So gehts:</b>
 1.  Datenträger am Server einstecken.
-2.  <i>Tools → USB formatieren …</i> öffnen.
+2.  <i>Extras → USB formatieren …</i> öffnen.
 3.  Datenträger wählen. Darunter siehst du, was jetzt darauf ist.
 4.  Dateisystem wählen (siehe unten). Das Tool schlägt eines vor.
 5.  Einen Namen eingeben, wenn du willst.

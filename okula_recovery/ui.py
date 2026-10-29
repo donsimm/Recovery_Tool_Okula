@@ -157,10 +157,12 @@ class MainWindow(Gtk.ApplicationWindow):
             ("_Restore-Stick aus Image …", lambda: self.on_restore_stick(None), None),
             ("IS_O hinzufügen …", self.on_add_iso, None),
             ("_Boot-Stick aus ISO …", self.on_boot_stick, None),
-            ("_USB klonen …", lambda: CloneDialog(self), None),
-            ("USB forma_tieren …", lambda: FormatDialog(self), None),
             None,
             ("Images _aktualisieren", self.refresh_images, "F5"),
+        ]))
+        bar.append(menu("E_xtras", [
+            ("_USB klonen …", lambda: CloneDialog(self), None),
+            ("USB _formatieren …", lambda: FormatDialog(self), None),
         ]))
         bar.append(menu("_Hilfe", [
             ("_So funktioniert das Tool", self.show_help, "F1"),
@@ -344,9 +346,7 @@ class MainWindow(Gtk.ApplicationWindow):
         bottom.pack_end(self.btn_boot_stick, False, False, 0)
         box.pack_start(bottom, False, False, 0)
         hint = Gtk.Label(xalign=0, wrap=True)
-        hint.set_markup("<small>Images und ISOs per Maus in Ordner ziehen · ISO-Dateien aus dem Dateimanager "
-                        "hierher ziehen = hochladen · Doppelklick auf ISO = Details · Rechtsklick für weitere "
-                        "Aktionen</small>")
+        hint.set_markup("<small>Image und ISO per Maus in Ordner ziehen · Rechtsklick für weitere Aktionen</small>")
         hint.get_style_context().add_class("status-idle")
         box.pack_start(hint, False, False, 0)
         self._on_image_selected(view.get_selection())
@@ -1303,19 +1303,10 @@ class MainWindow(Gtk.ApplicationWindow):
         actions.pack_end(self.btn_power, False, False, 0)
         box.pack_start(actions, False, False, 0)
 
-        legend = Gtk.Box(spacing=12)
-        for icon, label in (("okula-led-on", "verbunden"), ("okula-led-off", "nicht verbunden")):
-            item = Gtk.Box(spacing=4)
-            item.pack_start(Gtk.Image.new_from_icon_name(icon, Gtk.IconSize.MENU), False, False, 0)
-            lbl = Gtk.Label(label=label)
-            lbl.get_style_context().add_class("status-idle")
-            item.pack_start(lbl, False, False, 0)
-            legend.pack_start(item, False, False, 0)
-        hint = Gtk.Label(xalign=1, wrap=True)
-        hint.set_markup("<small>Doppelklick öffnet das Gerät · per Maus in Ordner ziehen</small>")
+        hint = Gtk.Label(xalign=0, wrap=True)
+        hint.set_markup("<small>Gerät per Maus in Ordner ziehen</small>")
         hint.get_style_context().add_class("status-idle")
-        legend.pack_end(hint, False, False, 0)
-        box.pack_start(legend, False, False, 0)
+        box.pack_start(hint, False, False, 0)
         return box
 
     # ---------- Geräte: Anzeige ----------
