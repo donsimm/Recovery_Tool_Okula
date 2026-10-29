@@ -18,7 +18,7 @@ import threading
 import time
 from pathlib import Path
 
-from okula_recovery import __version__, discovery, filebackup, imaging, inventory, network, wininstall, wire
+from okula_recovery import __version__, deploy, discovery, filebackup, imaging, inventory, network, wininstall, wire
 
 
 # So lange ohne IPv4, dann DHCP nachfassen bzw. Link-Local-Adresse setzen
@@ -288,7 +288,8 @@ def run_job(tls, addr, req: dict, kind: str) -> None:
     parallel zu Aufträgen auf anderen Disks."""
     disk = str(req.get("disk") or "")
     label = {"image": "Disk-Image", "restore": "Zurückspielen", "install": "Windows-Installation",
-             "bootprep": "Installation", "backup": "Backup", "filerestore": "Dateien zurückschreiben"}[kind]
+             "bootprep": "Installation", "backup": "Backup", "filerestore": "Dateien zurückschreiben",
+             "customize": "Anpassen", "deliver": "Ordner senden"}[kind]
     if not disk_locks.acquire(disk, kind):
         wire.send_json(tls, {"type": "error", "message": f"Auf {disk} läuft bereits ein Auftrag"})
         return
@@ -307,7 +308,9 @@ def run_job(tls, addr, req: dict, kind: str) -> None:
                  "install": f"Windows-Installation wird auf {disk} vorbereitet",
                  "bootprep": f"Installation wird auf {disk} vorbereitet",
                  "backup": f"Backup von {disk} läuft",
-                 "filerestore": f"Dateien werden auf {disk} zurückgeschrieben"}[kind] + " – Maschine nicht ausschalten"
+                 "filerestore": f"Dateien werden auf {disk} zurückgeschrieben",
+                 "customize": f"System auf {disk} wird angepasst (Name, Key)",
+                 "deliver": f"Ordner werden auf den Desktop gelegt ({disk})"}[kind] + " – Maschine nicht ausschalten"
         # Mehrere parallele Aufträge: keine Balken (würden sich überschreiben), nur Meldungen
         bar = ConsoleBar(console, title) if console and alone else None
         job_state.update(job, label, 0.0)
@@ -324,6 +327,10 @@ def run_job(tls, addr, req: dict, kind: str) -> None:
             filebackup.backup(tls, req, log, report)
         elif kind == "filerestore":
             filebackup.restore_files(tls, req, log, report)
+        elif kind == "customize":
+            wire.send_json(tls, deploy.customize(req, log))
+        elif kind == "deliver":
+            deploy.deliver(tls, req, log, report)
         elif kind in ("install", "bootprep"):
             entry = (wininstall.install if kind == "install" else wininstall.bootprep)(tls, req, log, report)
             wire.send_json(tls, {"type": "done", "boot": entry})
@@ -339,12 +346,14 @@ def run_job(tls, addr, req: dict, kind: str) -> None:
             done_text = {"image": "fertig", "restore": "zurückgespielt – Stick abziehen und neu starten",
                          "install": "vorbereitet – Neustart, Windows wird installiert (Stick abziehen)",
                          "bootprep": "vorbereitet – Neustart, Installation startet (Stick JETZT abziehen)",
-                         "backup": "fertig", "filerestore": "fertig"}[kind]
-            result = done_text if ok else ("abgebrochen" if kind == "image" else "abgebrochen – Disk ist unvollständig")
+                         "backup": "fertig", "filerestore": "fertig", "customize": "fertig",
+                         "deliver": "fertig"}[kind]
+            result = done_text if ok else ("abgebrochen" if kind in ("image", "customize", "deliver")
+                                           else "abgebrochen – Disk ist unvollständig")
             bar.finish(f"» {label} auf {disk}: {result}")
         job_state.finish(job)
         disk_locks.release(disk)
-    if ok and kind == "restore":
+    if ok and kind in ("restore", "customize"):
         threading.Thread(target=inventory_state.collect, daemon=True).start()  # neues Betriebssystem erfassen
     if ok and kind in ("install", "bootprep") and req.get("reboot"):
         if disk_locks.busy():
@@ -372,7 +381,7 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
                 wire.send_json(tls, {"type": "info", "hostname": socket.gethostname(), "version": __version__,
                                      "disks": imaging.list_disks(), "tools": imaging.tool_status(),
                                      "busy": disk_locks.busy(), "active": disk_locks.active()})
-            elif cmd in ("image", "restore", "install", "bootprep", "backup", "filerestore"):
+            elif cmd in ("image", "restore", "install", "bootprep", "backup", "filerestore", "customize", "deliver"):
                 run_job(tls, addr, req, cmd)
             elif cmd in ("profiles", "browse", "estimate"):
                 # kurze Abfragen fürs Backup; hängen Partitionen lesend ein – nicht auf Disks mit Auftrag
@@ -413,6 +422,22 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
                 else:
                     job_state.set_notice(job, fraction)
                 job_state.notice(title, fraction, str(req.get("label") or "")[:40], result)
+                wire.send_json(tls, {"type": "ok"})
+            elif cmd == "countdown":
+                # Automatisierung: am Gerät herunterzählen, Esc bricht ab
+                job_state.set_notice("Automatisierung startet …", None)
+                try:
+                    result = deploy.countdown(tls, req, console, log)
+                finally:
+                    job_state.clear_notice()
+                try:
+                    wire.send_json(tls, {"type": "countdown", "result": result})
+                except OSError:
+                    pass
+            elif cmd == "banner":
+                lines = [str(x)[:200] for x in (req.get("lines") or [])][:10]
+                deploy.banner(console, lines, bool(req.get("error")))
+                log(" / ".join(lines))
                 wire.send_json(tls, {"type": "ok"})
             elif cmd == "bootorder":
                 # Netzwerkstart zuerst (Fernsteuerung) bzw. zurück – ändert nur die UEFI-Startreihenfolge

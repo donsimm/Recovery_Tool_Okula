@@ -89,13 +89,16 @@ class _Builder:
 
 
 def _international(b: _Builder, pass_name: str, opts: WinOptions, winpe: bool) -> None:
+    if not opts.ui_language and not opts.swiss_region:
+        return  # Master-Image: Sprache und Formate bleiben wie im Image
     comp = b.component(pass_name, "Microsoft-Windows-International-Core" + ("-WinPE" if winpe else ""))
     if winpe:
         setup = b.sub(comp, "SetupUILanguage")
         b.sub(setup, "UILanguage", opts.ui_language)
     b.sub(comp, "InputLocale", SWISS_KEYBOARD if opts.swiss_region else opts.ui_language)
     b.sub(comp, "SystemLocale", SWISS_LOCALE if opts.swiss_region else opts.ui_language)
-    b.sub(comp, "UILanguage", opts.ui_language)
+    if opts.ui_language:  # leer (Master-Image): Sprache von Windows bleibt die installierte
+        b.sub(comp, "UILanguage", opts.ui_language)
     b.sub(comp, "UserLocale", SWISS_LOCALE if opts.swiss_region else opts.ui_language)
 
 
@@ -199,3 +202,15 @@ def summary(opts: WinOptions) -> list[str]:
     if opts.product_key:
         lines.append(f"Produktschlüssel …{opts.product_key[-5:]} (Aktivierung, sobald Internet da ist)")
     return lines
+
+
+def master_unattend(computer: str, product_key: str = "", swiss_region: bool = True, account: str = "") -> str:
+    """Antwortdatei für ein zurückgespieltes Master-Image (Sysprep): Windows/Panther/unattend.xml.
+
+    Computername und Key immer; Region Schweiz und lokales Konto optional. Ohne Konto fragt Windows beim ersten
+    Start nach einem Benutzer; mit Konto ohne Passwort wird das Passwort beim ersten Anmelden gesetzt (es wird
+    nirgends gespeichert)."""
+    opts = WinOptions(bypass_requirements=False, local_account=account, password="", skip_privacy=True,
+                      no_bitlocker=True, swiss_region=swiss_region, ui_language="", computer_name=computer,
+                      skip_network=bool(account), product_key=product_key)
+    return build(opts, pe=False, system=True)

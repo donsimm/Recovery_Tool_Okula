@@ -548,3 +548,123 @@ def bootprep(ip: str, key: bytes, plan, disk: str, progress: Progress, cancel: t
         raise AgentError(f"Verbindung zum Agent abgebrochen: {e}") from None
     finally:
         sock.close()
+
+
+# ---------- Anpassen, Ordner senden, Countdown (Automatisierung) ----------
+
+def _old_agent(message: str) -> str:
+    if "Unbekannter Befehl" in message:
+        return "Agent zu alt – Agent-Stick bzw. Netzwerkstart mit dem aktuellen Tool neu erstellen"
+    return message
+
+
+def customize(ip: str, key: bytes, disk: str, unattend: str, hostname: str, port: int = wire.PORT) -> list[dict]:
+    """Systeme auf der Disk anpassen: Windows-Master (Sysprep) → unattend.xml, Linux → Hostname.
+    Ergebnis je Partition: {part, system, action} mit action unattend | hostname | not_generalized | none | error."""
+    with _connect(ip, key, port) as sock:
+        sock.settimeout(300)
+        wire.send_json(sock, {"cmd": "customize", "disk": disk, "unattend": unattend, "hostname": hostname})
+        reply = wire.recv_json(sock)
+    if reply.get("type") != "done":
+        raise AgentError(_old_agent(str(reply.get("message", "Agent hat abgelehnt"))))
+    return list(reply.get("results") or [])
+
+
+def deliver(ip: str, key: bytes, disk: str, items: list[str], files, total: int, progress: Progress,
+            cancel: threading.Event, port: int = wire.PORT) -> dict:
+    """Ordner auf den öffentlichen Desktop: files liefert (Typ "file"/"dir", Pfad, Grösse, mtime, Quelle)."""
+    sock = _connect(ip, key, port)
+    try:
+        sock.settimeout(900)
+        wire.send_json(sock, {"cmd": "deliver", "disk": disk, "items": items, "bytes": total})
+        msg = wire.recv_json(sock)
+        if msg.get("type") != "ready":
+            raise AgentError(_old_agent(str(msg.get("message", "Agent hat abgelehnt"))))
+        sent, n, started, last = 0, 0, time.monotonic(), 0.0
+        for kind, rel, size, mtime, source in files:
+            if cancel.is_set():
+                raise AgentError("Abgebrochen – auf dem Gerät bleibt der alte Stand")
+            if kind == "dir":
+                wire.send_json(sock, {"type": "dir", "path": rel})
+                continue
+            h = hashlib.sha256()
+            got = 0
+            try:
+                wire.send_json(sock, {"type": "file", "path": rel, "size": size, "mtime": mtime})
+                with open(source, "rb") as fh:
+                    while chunk := fh.read(wire.CHUNK):
+                        wire.send_data(sock, chunk)
+                        h.update(chunk)
+                        got += len(chunk)
+                        sent += len(chunk)
+                        if time.monotonic() - last >= 0.5:
+                            last = time.monotonic()
+                            progress({"phase": "data", "fraction": min(1.0, sent / (total or 1)), "file": rel,
+                                      "files": n, "speed": sent / max(time.monotonic() - started, 0.001)})
+                wire.send_json(sock, {"type": "file_end", "file": rel, "size": got, "sha256": h.hexdigest()})
+            except (BrokenPipeError, ConnectionResetError, ssl.SSLError) as e:
+                raise AgentError(_agent_error(sock) or f"Verbindung zum Agent abgebrochen: {e}") from None
+            n += 1
+        wire.send_json(sock, {"type": "end"})
+        result = _expect(sock, "done")
+        progress({"phase": "done", "files": result.get("files", n)})
+        return result
+    except wire.ProtocolError as e:
+        raise AgentError(f"Verbindung zum Agent gestört: {e}") from None
+    except (TimeoutError, ConnectionError) as e:
+        raise AgentError(f"Verbindung zum Agent abgebrochen: {e}") from None
+    finally:
+        sock.close()
+
+
+def countdown(ip: str, key: bytes, seconds: int, title: str, cancel: threading.Event,
+              tick: Callable[[int], None] = lambda left: None, port: int = wire.PORT) -> str:
+    """Countdown am Gerät (Esc bricht ab) und im Tool (cancel). Ergebnis: start | esc | tool.
+    Alter Agent ohne Countdown: nur im Tool herunterzählen."""
+    end = time.monotonic() + seconds
+    sock = None
+    try:
+        sock = _connect(ip, key, port)
+        wire.send_json(sock, {"cmd": "countdown", "seconds": seconds, "title": title})
+    except (AgentError, OSError):
+        sock = None
+    try:
+        while True:
+            left = end - time.monotonic()
+            tick(max(0, int(left + 0.999)))
+            if cancel.is_set():
+                return "tool"
+            if sock is not None:
+                sock.settimeout(max(0.1, min(0.5, left + 5)))
+                try:
+                    reply = wire.recv_json(sock)
+                except (TimeoutError, ssl.SSLError) as e:
+                    if isinstance(e, ssl.SSLError) and "timed out" not in str(e):
+                        sock = None
+                    reply = None
+                except (OSError, wire.ProtocolError):
+                    sock, reply = None, None
+                if reply is not None:
+                    if reply.get("type") == "countdown":
+                        return str(reply.get("result") or "start")
+                    sock = None  # alter Agent („Unbekannter Befehl“): selbst zählen
+            elif left <= 0:
+                return "start"
+            else:
+                time.sleep(min(0.5, left))
+            if sock is not None and left < -10:
+                return "start"
+    finally:
+        if sock is not None:
+            sock.close()
+
+
+def banner(ip: str, key: bytes, lines: list[str], error: bool = False, port: int = wire.PORT) -> bool:
+    """Gut sichtbare Meldung am Bildschirm des Geräts; False, wenn das nicht ging."""
+    try:
+        with _connect(ip, key, port) as sock:
+            sock.settimeout(10)
+            wire.send_json(sock, {"cmd": "banner", "lines": lines, "error": error})
+            return wire.recv_json(sock).get("type") == "ok"
+    except (AgentError, OSError, wire.ProtocolError):
+        return False
