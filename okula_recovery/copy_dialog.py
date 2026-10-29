@@ -41,7 +41,7 @@ class CopyDialog(Gtk.Dialog):
         self.running = True
         self.btn = self.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
         self.connect("response", self._on_response)
-        self.connect("delete-event", lambda *_a: self.running)
+        self.connect("delete-event", self._on_delete)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=14)
         names = ", ".join(s.name for s in plan.sources[:3]) + (" …" if len(plan.sources) > 3 else "")
         head = Gtk.Label(xalign=0, wrap=True)
@@ -83,10 +83,17 @@ class CopyDialog(Gtk.Dialog):
     def _finished(self, result) -> bool:
         self.running = False
         self.btn.set_label("Schliessen")
+        self.btn.set_sensitive(True)
         if isinstance(result, Exception):
-            self.bar.set_text("Abgebrochen" if self.cancel.is_set() else "Fehlgeschlagen")
-            self.file.set_text("Auf dem NAS bleibt nichts Halbes zurück." if self.cancel.is_set() else str(result))
             self.on_done(None)
+            if self.cancel.is_set():  # vom Benutzer abgebrochen: Fenster zu, Meldung in der Statuszeile
+                parent = self.get_transient_for()
+                if hasattr(parent, "status"):
+                    parent.status("Kopieren abgebrochen – auf dem NAS bleibt nichts Halbes zurück")
+                self.destroy()
+                return False
+            self.bar.set_text("Fehlgeschlagen")
+            self.file.set_text(str(result))
             return False
         self.bar.set_fraction(1.0)
         found = clonezilla_images(nasfiles.resolve(self.root, self.rel), result)
@@ -98,8 +105,18 @@ class CopyDialog(Gtk.Dialog):
 
     def _on_response(self, _dlg, response: int) -> None:
         if self.running:
-            self.cancel.set()
-            self.btn.set_sensitive(False)
-            self.bar.set_text("Breche ab …")
+            self._abort()
         else:
             self.destroy()
+
+    def _on_delete(self, *_a) -> bool:
+        """✕ während des Kopierens = Abbrechen (Fenster schliesst sich, sobald aufgeräumt ist)."""
+        if self.running:
+            self._abort()
+            return True
+        return False
+
+    def _abort(self) -> None:
+        self.cancel.set()
+        self.btn.set_sensitive(False)
+        self.bar.set_text("Breche ab … (räume auf)")
