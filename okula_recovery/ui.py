@@ -56,6 +56,15 @@ CSS = b"""
 .load-name { color: #757575; font-size: 90%; }
 .load-value { font-weight: bold; font-size: 90%; font-feature-settings: "tnum"; }
 .load-high { color: #c62828; }
+/* Fortschritt gruen: Balken in Listen (Geraete, Auftraege; auch markierte Zeile) und in Dialogen */
+treeview.view.progressbar, treeview.view .progressbar,
+treeview.view.progressbar:selected, treeview.view .progressbar:selected,
+treeview.view.progressbar:selected:focus, treeview.view .progressbar:selected:focus {
+    background-color: #2e7d32; background-image: none; border-color: #1b5e20; color: #ffffff; }
+treeview.view.trough, treeview.view .trough, treeview.view.trough:selected, treeview.view .trough:selected,
+treeview.view.trough:selected:focus, treeview.view .trough:selected:focus {
+    background-color: #e0e0e0; background-image: none; border-color: #bdbdbd; }
+progressbar progress { background-color: #2e7d32; background-image: none; border-color: #1b5e20; }
 """
 
 
