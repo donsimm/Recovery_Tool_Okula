@@ -123,7 +123,7 @@ Dann brauchst du den Stick nicht mehr.
 <b>Einmal einrichten:</b>
 1.  <i>Tools → Netzwerkstart (PXE) …</i> öffnen.
 2.  Server-IP und Debian-Live-ISO wählen, dann <i>Vorbereiten</i>. Das dauert einige Minuten.
-3.  Geräte freischalten: Haken setzen. Oder im Gerätefenster unter <i>Übersicht</i> den Schalter
+3.  Geräte freischalten: Haken setzen. Oder im Gerätefenster unter <i>Aufträge</i> den Schalter
      „Netzwerkstart“ einschalten. Das Zahnrad daneben öffnet die Einstellungen.
 4.  <i>Einschalten</i>.
 

@@ -110,6 +110,7 @@ class DeviceWindow(Gtk.Window):
 
     def _build_jobs(self) -> Gtk.Widget:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=6)
+        box.pack_start(self._build_netboot(), False, False, 0)
         # id, Auftrag, Status, Fortschritt (0–100), Detail, Start
         self.job_store = Gtk.ListStore(int, str, str, int, str, str)
         view = Gtk.TreeView(model=self.job_store)
@@ -282,17 +283,17 @@ class DeviceWindow(Gtk.Window):
             self.info_grid.attach(key, 0, i, 1, 1)
             self.info_grid.attach(val, 1, i, 1, 1)
         self._key_row(len(rows))
-        self._netboot_row(len(rows) + 1)
         self.info_grid.show_all()
 
-    def _netboot_row(self, row: int) -> None:
+    def _build_netboot(self) -> Gtk.Widget:
         """Netzwerkstart (PXE) für dieses Gerät ein/aus; Zahnrad öffnet die PXE-Einstellungen.
         Ausgegraut, solange der Netzwerkstart nicht eingerichtet/eingeschaltet ist oder keine Kabel-Netzwerkkarte
         bekannt ist – ohne Freigabe bekommt das Gerät vom Tool nie eine Antwort."""
-        label = Gtk.Label(label="Netzwerkstart", xalign=0, yalign=0.5)
-        label.get_style_context().add_class("status-idle")
-        self.info_grid.attach(label, 0, row, 1, 1)
         box = Gtk.Box(spacing=8)
+        box.get_style_context().add_class("nas-bar")   # gleiche dezente Leiste wie der NAS-Status
+        label = Gtk.Label(label="Netzwerkstart", xalign=0)
+        label.get_style_context().add_class("pane-title")
+        box.pack_start(label, False, False, 0)
         self.netboot_switch = Gtk.Switch(valign=Gtk.Align.CENTER)
         self.netboot_switch.connect("notify::active", self._on_netboot_switch)
         box.pack_start(self.netboot_switch, False, False, 0)
@@ -302,9 +303,9 @@ class DeviceWindow(Gtk.Window):
         gear.set_relief(Gtk.ReliefStyle.NONE)
         gear.set_tooltip_text("Netzwerkstart einrichten, ein-/ausschalten (Tools → Netzwerkstart (PXE))")
         gear.connect("clicked", lambda _b: self.main.open_pxe_dialog())
-        box.pack_start(gear, False, False, 0)
-        self.info_grid.attach(box, 1, row, 1, 1)
+        box.pack_end(gear, False, False, 0)
         self.update_netboot()
+        return box
 
     def update_netboot(self) -> None:
         """Schalter auf den aktuellen Stand bringen (auch wenn der Netzwerkstart anderswo geändert wurde)."""
