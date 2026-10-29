@@ -113,7 +113,10 @@ class MainWindow(Gtk.ApplicationWindow):
         root.pack_start(self.statusbar, False, False, 0)
         self.add(root)
 
+        merged = self.store.merge_duplicates()   # doppelt erfasst (z. B. nach einem Import): zusammenführen
         self.refresh_devices()
+        if merged:
+            self.status(f"Doppelt erfasste Geräte zusammengeführt: {', '.join(merged)}")
         self._start_listener()
         # beim Start einmal mit gespeicherten Zugangsdaten einhängen. Nicht refresh_nas_status direkt übergeben:
         # es gibt True zurück (für den 30-s-Timer), und idle_add würde es dann pausenlos wiederholen.
@@ -1761,6 +1764,7 @@ class MainWindow(Gtk.ApplicationWindow):
             if dev.folder:
                 add("Nach „Neu / nicht einsortiert“", lambda: self._device_op(
                     lambda: self.store.move_device(dev, ""), "Nach „Neu / nicht einsortiert“ verschoben"))
+            add("Zusammenführen mit …", lambda: self.on_merge_device(dev), len(self.store.devices) > 1)
             add("Aus der Liste löschen …", lambda: self.on_delete_device_entry(None), agent is None)
             menu.append(Gtk.SeparatorMenuItem())
         add("Neuer Ordner …", lambda: self.on_new_device_folder(None))
@@ -1846,6 +1850,63 @@ class MainWindow(Gtk.ApplicationWindow):
             if win:
                 win.destroy()
             self._device_op(lambda: self.store.delete(dev), f"„{dev.name}“ gelöscht")
+
+    def on_merge_device(self, dev: devices.Device) -> None:
+        """Doppelten Eintrag in ein anderes Gerät übernehmen (Name und Ordner des gewählten Geräts bleiben)."""
+        others = sorted((d for d in self.store.devices.values() if d.id != dev.id),
+                        key=lambda d: (d.folder.lower(), d.name.lower()))
+        if not others:
+            return
+        dlg = Gtk.Dialog(title="Geräte zusammenführen", transient_for=self, modal=True)
+        dlg.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
+        dlg.add_button("Zusammenführen", Gtk.ResponseType.OK).get_style_context().add_class("destructive-action")
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=14)
+        intro = Gtk.Label(xalign=0, wrap=True, max_width_chars=60)
+        intro.set_markup(f"<b>{GLib.markup_escape_text(dev.name)}</b> ist dasselbe Gerät wie:")
+        box.pack_start(intro, False, False, 0)
+        combo = Gtk.ComboBoxText()
+        for d in others:
+            where = d.folder or "Neu / nicht einsortiert"
+            combo.append(d.id, f"{d.name} – {where}" + (f" – {d.hardware}" if d.hardware else ""))
+        same = next((d for d in others if dev.hardware and d.hardware == dev.hardware), others[0])
+        combo.set_active_id(same.id)
+        box.pack_start(combo, False, False, 0)
+        hint = Gtk.Label(xalign=0, wrap=True, max_width_chars=60)
+        hint.set_text("Das gewählte Gerät behält Name und Ordner. Verlauf, Netzwerkkarten, Disks und Notizen "
+                      "werden übernommen, das Inventar kommt vom zuletzt verbundenen Eintrag. "
+                      f"„{dev.name}“ verschwindet danach aus der Liste.")
+        hint.get_style_context().add_class("status-idle")
+        box.pack_start(hint, False, False, 0)
+        dlg.get_content_area().add(box)
+        dlg.show_all()
+        ok = dlg.run() == Gtk.ResponseType.OK
+        keep = self.store.devices.get(combo.get_active_id() or "")
+        dlg.destroy()
+        if ok and keep is not None:
+            self.merge_devices(keep, dev)
+
+    def merge_devices(self, keep: devices.Device, other: devices.Device) -> bool:
+        if self.jobs.summary(keep.id) or self.jobs.summary(other.id):
+            self.status("Während Aufträge laufen, lassen sich die Geräte nicht zusammenführen")
+            return False
+        win = self.device_windows.pop(other.id, None)
+        if win:
+            win.destroy()
+        aid = self.online.pop(other.id, None)
+        if not self._device_op(lambda: self.store.merge(keep, other),
+                               f"„{other.name}“ mit „{keep.name}“ zusammengeführt"):
+            return False
+        for a, dev_id in list(self.device_of_agent.items()):
+            if dev_id == other.id:
+                self.device_of_agent[a] = keep.id
+        if aid and keep.id not in self.online:
+            self.online[keep.id] = aid
+        self.update_device_rows()
+        self.sync_netboot()
+        win = self.device_windows.get(keep.id)
+        if win:
+            win.refresh()
+        return True
 
     def _on_device_drag_received(self, view, context, x, y, selection, _info, time_) -> None:
         view.stop_emission_by_name("drag-data-received")

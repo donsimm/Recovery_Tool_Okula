@@ -100,6 +100,7 @@ Sonst findet das Tool die Geräte nicht."""),
 
 Neue Geräte stehen zuerst unter <i>„Neu / nicht einsortiert“</i>.
 Du kannst sie mit der Maus in eigene Ordner ziehen, zum Beispiel nach Kunde.
+Steht ein Gerät doppelt in der Liste: Rechtsklick auf den doppelten Eintrag → <i>„Zusammenführen mit …“</i>.
 
 <b>Die Punkte bedeuten:</b>
 •  <span foreground="#2e7d32">●</span> grün: Gerät ist verbunden und bereit.

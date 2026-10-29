@@ -93,6 +93,27 @@ class TransferTest(unittest.TestCase):
             self.assertEqual(bytes.fromhex((backup / "agent.key").read_text().strip()), other_key)
             self.assertTrue((backup / "geraete" / "d1.json").is_file())
 
+
+    def test_same_hardware_with_other_id_is_merged(self):
+        # auf dem neuen Rechner schon mit dem Stick gestartet, bevor importiert wurde → andere ID, gleiche UUID
+        uuid = "4c4c4544-0035-3010-8052-b3c04f4a3133"
+        with self.old:
+            base = devices.default_base()
+            write_device(base, "XX", "d3", "DoNs_EliteBook_1", "2026-10-28T09:56:00", key=f"uuid:{uuid}",
+                         agent_ids=[uuid], first_seen="2026-08-01T10:00:00")
+            out = self.root / "export.okula.zip"
+            transfer.export_all(out)
+        with self.new:
+            write_device(devices.default_base(), "", "x9", "Hewlett-Packard HP EliteBook 850 G1",
+                         "2026-10-29T13:16:00", key=f"uuid:{uuid}", agent_ids=[uuid],
+                         first_seen="2026-10-29T13:16:00", last_ip="192.168.110.50")
+            result = transfer.import_all(transfer.read_export(out))
+            self.assertEqual(result.merged, ["DoNs_EliteBook_1"])
+            self.assertIn("Doppelt erfasst und zusammengeführt: DoNs_EliteBook_1", result.lines())
+            store = devices.DeviceStore()
+            self.assertNotIn("x9", store.devices)
+            self.assertEqual((store.devices["d3"].folder, store.devices["d3"].last_ip), ("XX", "192.168.110.50"))
+
     def test_export_without_key_and_nas_file(self):
         out = self.root / "ohne-schluessel.okula.zip"
         nas_file = self.root / "nas.json"

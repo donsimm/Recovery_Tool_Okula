@@ -260,6 +260,7 @@ class ImportResult:
     added: int = 0
     updated: int = 0
     kept: int = 0                 # vorhandenes Gerät war neuer
+    merged: list[str] = field(default_factory=list)   # doppelt (gleiche Hardware, andere ID) → zusammengeführt
     backup_dir: str = ""
 
     def lines(self) -> list[str]:
@@ -272,6 +273,8 @@ class ImportResult:
         if self.added or self.updated or self.kept:
             out.append(f"Geräte: {self.added} neu, {self.updated} aktualisiert"
                        + (f", {self.kept} vorhandene waren neuer und bleiben" if self.kept else ""))
+        if self.merged:
+            out.append(f"Doppelt erfasst und zusammengeführt: {', '.join(self.merged)}")
         if self.backup_dir:
             out.append(f"Bisherige Daten gesichert in {self.backup_dir}")
         return out
@@ -345,4 +348,6 @@ def import_all(export: ExportFile, use_config: bool = True, use_key: bool = True
                 result.added += 1
             else:
                 result.updated += 1
+        # dasselbe Gerät schon hier erfasst (andere ID, z. B. vor dem Import mit dem Stick gestartet)
+        result.merged = devices.DeviceStore(base).merge_duplicates()
     return result

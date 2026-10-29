@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import shutil
 import threading
@@ -22,6 +23,7 @@ from okula_recovery import nasfiles
 MAX_DEPTH = 3
 MAX_HISTORY = 500
 STRONG = ("uuid:", "sn:")  # eindeutige Schlüssel; MAC/Disk sind nur Hinweise
+UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 
 
 class DeviceError(Exception):
@@ -237,6 +239,64 @@ class DeviceStore:
             if product_key is not None:
                 dev.product_key = normalize_key(product_key)
             self.save(dev)
+
+    def merge(self, keep: Device, other: Device) -> None:
+        """Zwei Einträge desselben Geräts vereinen: keep behält ID, Name und Ordner, other verschwindet.
+        Inventar und „zuletzt gesehen“ kommen vom zuletzt gesehenen Eintrag, Verlauf und Kennungen von beiden."""
+        with self.lock:
+            if keep.id == other.id:
+                raise DeviceError("Ein Gerät kann nicht mit sich selbst zusammengeführt werden")
+            if other.last_seen > keep.last_seen:
+                keep.inventory = other.inventory or keep.inventory
+                keep.last_seen, keep.last_ip = other.last_seen, other.last_ip or keep.last_ip
+                keep.boot_status = other.boot_status or keep.boot_status
+            if other.key.startswith(STRONG) and not keep.key.startswith(STRONG):
+                keep.key = other.key
+            keep.first_seen = min((t for t in (keep.first_seen, other.first_seen) if t), default="")
+            for attr in ("agent_ids", "macs", "disk_serials"):
+                values = getattr(keep, attr)
+                values += [v for v in getattr(other, attr) if v not in values]
+            if other.notes.strip() and other.notes.strip() not in keep.notes:
+                keep.notes = f"{keep.notes.rstrip()}\n\n{other.notes.strip()}".strip()
+            keep.product_key = keep.product_key or other.product_key
+            keep.netboot = keep.netboot or other.netboot
+            keep.boot_request = keep.boot_request or other.boot_request
+            if other.netfirst and not keep.netfirst:
+                keep.netfirst, keep.boot_saved = True, other.boot_saved
+            keep.history = sorted(keep.history + other.history, key=lambda h: str(h.get("time", "")))
+            self.add_history(keep, "zusammengeführt", f"Mit „{other.name}“ zusammengeführt", save=False)
+            self._path(other).unlink(missing_ok=True)
+            self.devices.pop(other.id, None)
+            self.save(keep)
+
+    def duplicates(self) -> list[tuple[Device, Device]]:
+        """Einträge, die sicher dasselbe Gerät sind: gleiche Board-UUID/Seriennummer oder gleiche Agent-ID
+        (= Board-UUID). Paare (behalten, auflösen): einsortiert vor „Neu“, sonst der zuerst erfasste."""
+        def same(a: Device, b: Device) -> bool:
+            if a.key.startswith(STRONG) and b.key.startswith(STRONG):
+                return a.key == b.key
+            return any(UUID_RE.match(x) for x in set(a.agent_ids) & set(b.agent_ids))
+
+        with self.lock:
+            devs = sorted(self.devices.values(), key=lambda d: (not d.folder, d.first_seen or "~", d.id))
+            pairs, gone = [], set()
+            for i, a in enumerate(devs):
+                if a.id in gone:
+                    continue
+                for b in devs[i + 1:]:
+                    if b.id not in gone and same(a, b):
+                        pairs.append((a, b))
+                        gone.add(b.id)
+            return pairs
+
+    def merge_duplicates(self) -> list[str]:
+        """Doppelte Einträge (z. B. nach einem Import) zusammenführen; gibt die Namen der behaltenen zurück."""
+        with self.lock:
+            merged = []
+            for keep, other in self.duplicates():
+                self.merge(keep, other)
+                merged.append(keep.name)
+            return merged
 
     def delete(self, dev: Device) -> None:
         with self.lock:

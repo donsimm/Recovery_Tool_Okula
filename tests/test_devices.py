@@ -113,8 +113,43 @@ class DeviceStoreTest(unittest.TestCase):
         self.assertEqual(self.store.devices, {})
 
 
-if __name__ == "__main__":
-    unittest.main()
+    def test_merge_duplicates_same_board(self):
+        # alter Eintrag (einsortiert, Notiz) und ein zweiter mit anderer ID – z. B. vor dem Import neu erfasst
+        old, _ = self.store.register("4c4c4544-0035-3010-8052-b3c04f4a3133", "10.0.0.5", "", inv())
+        self.store.move_device(old, self.store.make_folder("", "XX"))
+        self.store.update(old, name="DoNs_EliteBook_1", notes="Akku schwach")
+        old.netboot = True
+        self.store.save(old)
+        dup = devices.Device(id="neu123", key=old.key, name="Hewlett-Packard HP EliteBook 850 G1",
+                             first_seen="2099-01-01T10:00:00", last_seen="2099-01-01T10:00:00", last_ip="10.0.0.9",
+                             agent_ids=list(old.agent_ids), macs=["aa:bb:cc:dd:ee:01"],
+                             inventory=inv(os_name=""), history=[{"time": "2099-01-01T10:00:00", "kind": "erfasst",
+                                                                  "text": "Erstmals erfasst", "ok": None}])
+        self.store.devices[dup.id] = dup
+        self.store.save(dup)
+        self.assertEqual([(a.id, b.id) for a, b in self.store.duplicates()], [(old.id, "neu123")])
+        self.assertEqual(self.store.merge_duplicates(), ["DoNs_EliteBook_1"])
+        store = devices.DeviceStore(self.store.base)  # auch auf der Platte nur noch ein Eintrag
+        self.assertEqual(list(store.devices), [old.id])
+        merged = store.devices[old.id]
+        self.assertEqual((merged.name, merged.folder, merged.notes), ("DoNs_EliteBook_1", "XX", "Akku schwach"))
+        self.assertEqual((merged.last_ip, merged.os_name), ("10.0.0.9", ""))  # Inventar vom zuletzt gesehenen
+        self.assertIn("aa:bb:cc:dd:ee:01", merged.macs)
+        self.assertTrue(merged.netboot)
+        self.assertEqual([h["kind"] for h in merged.history][-2:], ["erfasst", "zusammengeführt"])
+        self.assertEqual(store.duplicates(), [])
+
+    def test_no_auto_merge_for_different_boards_or_mac_ids(self):
+        a, _ = self.store.register("uuid-a", "10.0.0.5", "", inv())
+        b, _ = self.store.register("uuid-b", "10.0.0.6", "", inv(uuid="11111111-2222-3333-4444-555555555555",
+                                                                serial="ABC", mac="aa:aa:aa:aa:aa:aa",
+                                                                disk_serial="OTHER"))
+        # Agent-ID = MAC (kein DMI): geteilter USB-Adapter darf nicht automatisch zusammenführen
+        for d, key in ((a, "mac:aa"), (b, "mac:bb")):
+            d.key, d.agent_ids = key, ["00:e0:4c:68:00:01"]
+        self.assertEqual(self.store.duplicates(), [])
+        with self.assertRaises(devices.DeviceError):
+            self.store.merge(a, a)
 
 
 class ProductKeyTest(unittest.TestCase):
@@ -140,3 +175,7 @@ class ProductKeyTest(unittest.TestCase):
         self.assertEqual(devices.normalize_key(""), "")
         with self.assertRaisesRegex(devices.DeviceError, "25 Zeichen"):
             devices.normalize_key("ABC-123")
+
+
+if __name__ == "__main__":
+    unittest.main()
