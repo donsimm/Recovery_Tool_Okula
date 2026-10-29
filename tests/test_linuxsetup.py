@@ -1,9 +1,12 @@
 """Linux-Direktinstallation: Bausteine und Ende-zu-Ende (Tool → Agent) auf einer Loop-Disk."""
 
 import gzip
+import os
 import re
+import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -79,6 +82,51 @@ class FedoraDetectTest(unittest.TestCase):
         self.assertIn("repo=updates-released-f$releasever", online)
         self.assertIn("@^workstation-product-environment", online)
 
+
+
+@unittest.skipUnless(shutil.which("xorriso"), "xorriso fehlt")
+class ExtractTest(unittest.TestCase):
+    """Debian-ISOs haben schreibgeschützte Ordner (mkisofs -r) – mehrere Pfade müssen trotzdem nach dest."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        os.chmod(self.tmp.name, 0o755)
+        self.d = Path(self.tmp.name)
+        src = self.d / "src"
+        for f in ("EFI/boot/bootx64.efi", "boot/grub/grub.cfg", "boot/grub/x86_64-efi/x.mod", ".disk/info"):
+            (src / f).parent.mkdir(parents=True, exist_ok=True)
+            (src / f).write_text(f)
+        self.iso = self.d / "debian.iso"
+        subprocess.run(["xorriso", "-as", "mkisofs", "-r", "-V", "T", "-o", str(self.iso), str(src)],
+                       check=True, capture_output=True)
+        self.iso.chmod(0o644)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_read_only_dirs(self):
+        dest = self.d / "out"
+        code = ("import sys; from pathlib import Path; from okula_recovery import linuxsetup; "
+                "linuxsetup._extract(Path(sys.argv[1]), Path(sys.argv[2]), ['/EFI', '/boot/grub', '/.disk'])")
+        cmd = [sys.executable, "-c", code, str(self.iso), str(dest)]
+        if os.geteuid() == 0 and shutil.which("setpriv"):  # als normaler Benutzer, sonst greifen die Rechte nicht
+            shutil.chown(self.d, "nobody")
+            cmd = ["setpriv", "--reuid=nobody", "--regid=nogroup", "--clear-groups", *cmd]
+        r = subprocess.run(cmd, capture_output=True, text=True, cwd=Path(__file__).resolve().parent.parent,
+                           env={**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parent.parent)})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual((dest / "boot/grub/x86_64-efi/x.mod").read_text(), "boot/grub/x86_64-efi/x.mod")
+        self.assertEqual((dest / ".disk/info").read_text(), ".disk/info")
+        self.assertEqual(dest.stat().st_mode & 0o777, 0o755)
+        self.assertEqual((dest / "EFI/boot/bootx64.efi").stat().st_mode & 0o777, 0o644)
+
+    def test_error_names_reason(self):
+        fail = subprocess.CompletedProcess([], 5, "", "xorriso : FAILURE : While restoring '/x' : Permission denied\n"
+                                           "xorriso : aborting : -abort_on 'FAILURE' encountered 'FAILURE'\n")
+        with mock.patch.object(oslib, "_xorriso_paths", return_value=["/EFI"]), \
+                mock.patch.object(linuxsetup.subprocess, "run", return_value=fail):
+            with self.assertRaisesRegex(linuxsetup.LinuxSetupError, r"^xorriso: While restoring '/x' : Permission"):
+                linuxsetup._extract(self.iso, self.d / "out", ["/EFI"])
 
 class PartsTest(unittest.TestCase):
     def test_names_and_password(self):

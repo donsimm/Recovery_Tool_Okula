@@ -251,11 +251,15 @@ def _extract(iso: Path, dest: Path, paths: list[str]) -> None:
             args += ["-extract", real, str(dest / real.lstrip("/"))]
     if not args:
         raise LinuxSetupError("Keine Bootdateien im Medium gefunden")
-    r = subprocess.run(["xorriso", "-osirrox", "on", "-indev", str(iso), *args], capture_output=True, text=True,
-                       timeout=600)
+    # auto_chmod_on: Debian-ISOs haben schreibgeschützte Ordner (r-x); ohne das scheitert der zweite Pfad unter dest
+    r = subprocess.run(["xorriso", "-osirrox", "on:auto_chmod_on", "-indev", str(iso), *args], capture_output=True,
+                       text=True, timeout=600)
     if r.returncode != 0:
-        raise LinuxSetupError(f"xorriso: {r.stderr.strip().splitlines()[-1:]}")
-    for f in dest.rglob("*"):
+        lines = [ln.strip() for ln in r.stderr.splitlines() if ln.strip()]
+        failed = [ln for ln in lines if ": FAILURE :" in ln or ": SORRY :" in ln] or lines
+        reason = failed[-1].split(" : ", 2)[-1] if failed else f"Fehlercode {r.returncode}"
+        raise LinuxSetupError(f"xorriso: {reason}")
+    for f in [dest, *dest.rglob("*")]:
         f.chmod(0o755 if f.is_dir() else 0o644)  # Dateien aus der ISO sind schreibgeschützt
 
 
