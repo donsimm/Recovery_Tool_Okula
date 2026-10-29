@@ -116,7 +116,7 @@ class DeviceWindow(Gtk.Window):
     def _build_jobs(self) -> Gtk.Widget:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=6)
         # id, Auftrag, Status, Fortschritt (0–100), Detail, Start
-        self.job_store = Gtk.ListStore(int, str, str, int, str, str)
+        self.job_store = Gtk.ListStore(int, str, str, int, str, str, bool)   # …, Balken grün (False = rot)
         view = Gtk.TreeView(model=self.job_store)
         for i, title in ((1, "Auftrag"), (2, "Status")):
             col = Gtk.TreeViewColumn(title, Gtk.CellRendererText(), text=i)
@@ -128,6 +128,7 @@ class DeviceWindow(Gtk.Window):
         prog.set_fixed_size(120, -1)
         col.pack_start(prog, False)
         col.add_attribute(prog, "value", 3)
+        col.add_attribute(prog, "sensitive", 6)   # nicht „sensitive“ = Fehler → roter Balken (CSS :disabled)
         info = Gtk.CellRendererText(ellipsize=Pango.EllipsizeMode.END)
         col.pack_start(info, True)
         col.add_attribute(info, "markup", 4)
@@ -563,8 +564,8 @@ class DeviceWindow(Gtk.Window):
             rest = " · ".join(p for p in (job.phase if job.running else "", jobs.eta_text(job.remaining),
                                           job.detail if job.running else "") if p)
             text = f"<b>{f * 100:.0f} %</b>  {GLib.markup_escape_text(rest)}"
-            values = [job.id, job.title, job.state, int(f * 100), text,
-                      datetime.fromtimestamp(job.started).strftime("%H:%M:%S")]
+            values = [job.id, job.title, job.state, 100 if job.state == jobs.FAILED else int(f * 100), text,
+                      datetime.fromtimestamp(job.started).strftime("%H:%M:%S"), job.state != jobs.FAILED]
             if job.id in rows:
                 for i, v in enumerate(values):
                     rows[job.id][i] = v

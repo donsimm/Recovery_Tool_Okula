@@ -92,6 +92,15 @@ class JobManager:
         with self.lock:
             return [j for j in self.jobs if j.running]
 
+    def last_failed(self, device_id: str) -> Job | None:
+        """Letzter Auftrag des Geräts, falls er fehlgeschlagen ist und seither keiner läuft (roter Balken)."""
+        with self.lock:
+            mine = [j for j in self.jobs if j.device_id == device_id]
+        if not mine or any(j.running for j in mine):
+            return None
+        last = max(mine, key=lambda j: j.started)
+        return last if last.state == FAILED else None
+
     def summary(self, device_id: str) -> str:
         """Kurzstatus für die Geräteliste, z. B. „Disk-Image 45 % · noch 6 min“."""
         return self.status(device_id)[0]

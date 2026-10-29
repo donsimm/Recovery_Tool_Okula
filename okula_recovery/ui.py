@@ -65,6 +65,11 @@ treeview.view.trough, treeview.view .trough, treeview.view.trough:selected, tree
 treeview.view.trough:selected:focus, treeview.view .trough:selected:focus {
     background-color: #e0e0e0; background-image: none; border-color: #bdbdbd; }
 progressbar progress { background-color: #2e7d32; background-image: none; border-color: #1b5e20; }
+/* Fehler: roter Balken (Zelle nicht sensitive) */
+treeview.view.progressbar:disabled, treeview.view .progressbar:disabled,
+treeview.view.progressbar:disabled:selected, treeview.view .progressbar:disabled:selected {
+    background-color: #c62828; background-image: none; border-color: #8e0000; color: #ffffff; }
+progressbar.error progress { background-color: #c62828; border-color: #8e0000; }
 """
 
 
@@ -1506,9 +1511,9 @@ class MainWindow(Gtk.ApplicationWindow):
 
     # Spalten des Gerätebaums: LED bzw. Ordner-Icon, Name, Status, Betriebssystem, zuletzt verbunden, IP,
     # Geräte-ID, Art (unsorted/folder/device), Ordner-rel, Fortschritt 0–100, Balken-Text (leer), Balken zeigen
-    D_ICON, D_NAME, D_STATUS, D_OS, D_SEEN, D_IP, D_ID, D_KIND, D_REL, D_PROG, D_PCT, D_BAR, D_AUTO, D_AUTOVIS = \
-        range(14)
-    NO_PROGRESS = [0, "", False, False, False]
+    D_ICON, D_NAME, D_STATUS, D_OS, D_SEEN, D_IP, D_ID, D_KIND, D_REL, D_PROG, D_PCT, D_BAR, D_AUTO, D_AUTOVIS, \
+        D_BAROK = range(15)
+    NO_PROGRESS = [0, "", False, False, False, True]
     DEV_DND_TARGET = "okula/device-row"
 
     def _build_device_pane(self) -> Gtk.Widget:
@@ -1532,7 +1537,8 @@ class MainWindow(Gtk.ApplicationWindow):
             self.dev_buttons[key] = b
         box.pack_start(head, False, False, 0)
 
-        self.device_store = Gtk.TreeStore(str, str, str, str, str, str, str, str, str, int, str, bool, bool, bool)
+        self.device_store = Gtk.TreeStore(str, str, str, str, str, str, str, str, str, int, str, bool, bool, bool,
+                                          bool)
         view = Gtk.TreeView(model=self.device_store)
         col = Gtk.TreeViewColumn("Gerät")
         icon = Gtk.CellRendererPixbuf()
@@ -1556,7 +1562,9 @@ class MainWindow(Gtk.ApplicationWindow):
         bar = Gtk.CellRendererProgress()
         bar.set_fixed_size(90, -1)
         col.pack_start(bar, False)
-        for attr, idx in (("value", self.D_PROG), ("text", self.D_PCT), ("visible", self.D_BAR)):
+        # „sensitive“ aus = Auftrag fehlgeschlagen → roter Balken (CSS :disabled)
+        for attr, idx in (("value", self.D_PROG), ("text", self.D_PCT), ("visible", self.D_BAR),
+                          ("sensitive", self.D_BAROK)):
             col.add_attribute(bar, attr, idx)
         text = Gtk.CellRendererText(ellipsize=Pango.EllipsizeMode.END)
         col.pack_start(text, True)
@@ -1639,16 +1647,21 @@ class MainWindow(Gtk.ApplicationWindow):
     def _device_values(self, dev: devices.Device) -> list:
         agent = self.online_agent(dev)
         what, fraction, eta = self.device_progress(dev)
+        failed = self.jobs.last_failed(dev.id) if fraction is None else None
+        if failed is not None:   # letzter Auftrag fehlgeschlagen: roter Balken, bis der nächste startet
+            what, fraction, eta = f"{failed.label} fehlgeschlagen" + (f" · {what}" if what else ""), \
+                failed.fraction, ""
         bar = fraction is not None
         status = GLib.markup_escape_text(" · ".join(p for p in (what, eta) if p))
         if bar:
-            status = f"<b>{fraction * 100:.0f} %</b>  {status}"
+            status = f"<b>{'bei ' if failed else ''}{fraction * 100:.0f} %</b>  {status}"
         if "Automatisierung: Fehler" in what or "fehlgeschlagen" in what:
             status = f'<span foreground="#c62828">{status}</span>'
         return ["okula-led-on" if agent else "okula-led-off", dev.name, status,
                 dev.os_name or "–", "jetzt" if agent else devices.short_time(dev.last_seen) or "–",
                 agent.ip if agent else dev.last_ip, dev.id, "device", dev.folder,
-                int(fraction * 100) if bar else 0, "", bar, automation.settings(dev).enabled, True]
+                100 if failed else int(fraction * 100) if bar else 0, "", bar, automation.settings(dev).enabled, True,
+                failed is None]
 
     def refresh_devices(self) -> None:
         """Baum neu aufbauen (neue Geräte, Ordner, Umbenennen) – Auf- und Zuklappen bleibt erhalten."""

@@ -136,6 +136,34 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class LastFailedTest(unittest.TestCase):
+    """Roter Balken: letzter Auftrag fehlgeschlagen – bis der nächste startet."""
+
+    def wait(self, job):
+        for _ in range(200):
+            if not job.running:
+                return
+            time.sleep(0.01)
+
+    def test_last_failed(self):
+        jm = jobs.JobManager()
+        self.assertIsNone(jm.last_failed("d1"))
+
+        def fail(job, m):
+            raise RuntimeError("kaputt")
+
+        bad = jm.start("d1", "restore", "/dev/sda", "Zurückspielen", fail)
+        self.wait(bad)
+        self.assertIs(jm.last_failed("d1"), bad)
+        self.assertIsNone(jm.last_failed("d2"))
+        release = threading.Event()
+        ok = jm.start("d1", "image", "/dev/sda", "Image", lambda job, m: release.wait(5) and "ok")
+        self.assertIsNone(jm.last_failed("d1"))   # läuft wieder etwas: kein roter Balken
+        release.set()
+        self.wait(ok)
+        self.assertIsNone(jm.last_failed("d1"))   # neuester Auftrag erfolgreich
+
+
 class EtaTest(unittest.TestCase):
     def test_remaining_and_text(self):
         job = jobs.Job(1, "dev", "image", "/dev/sda", "Disk-Image sda", started=time.time() - 600, fraction=0.25)

@@ -405,6 +405,9 @@ Wenn du unsicher bist: Bis 32 GB <b>FAT32</b>, darüber <b>exFAT</b>.
 
 <b>Fortschritt</b>
 In der Geräteliste siehst du bei jedem Gerät einen Balken mit Prozent und Restzeit.
+•  <span foreground="#2e7d32">grün</span>: Der Auftrag läuft.
+•  <span foreground="#c62828">rot</span>: Der Auftrag ist fehlgeschlagen. Daneben steht, bei wie viel Prozent.
+   Den Grund findest du im Gerätefenster unter <i>Aufträge</i>. Der rote Balken bleibt, bis der nächste Auftrag startet.
 
 <b>Spalte „Auto“ und Status der Automatisierung</b>
 •  Häkchen gesetzt: Die Automatisierung ist eingeschaltet.
