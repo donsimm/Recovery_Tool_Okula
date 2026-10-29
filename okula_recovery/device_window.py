@@ -91,6 +91,7 @@ class DeviceWindow(Gtk.Window):
         self.tabs.append_page(scrolled(self.disk_view), Gtk.Label(label="Disks"))
         self.tabs.append_page(self._build_images(), Gtk.Label(label="Images"))
         self.tabs.append_page(self._build_backups(), Gtk.Label(label="Backups"))
+        self.tabs.append_page(self._build_network(), Gtk.Label(label="Netzwerk"))
         self.history_view, self.history_store = table(["Zeit", "Ereignis", "Ergebnis"], (str, str, str), expand=1)
         self.tabs.append_page(scrolled(self.history_view), Gtk.Label(label="Verlauf"))
         self.notes = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR)
@@ -110,7 +111,6 @@ class DeviceWindow(Gtk.Window):
 
     def _build_jobs(self) -> Gtk.Widget:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=6)
-        box.pack_start(self._build_netboot(), False, False, 0)
         # id, Auftrag, Status, Fortschritt (0–100), Detail, Start
         self.job_store = Gtk.ListStore(int, str, str, int, str, str)
         view = Gtk.TreeView(model=self.job_store)
@@ -224,6 +224,7 @@ class DeviceWindow(Gtk.Window):
     def refresh(self) -> None:
         """Kopf, Aktionen, Übersicht, Disks und Verlauf aus dem gespeicherten Gerät neu füllen."""
         self.refresh_head()
+        self.update_netboot()
         self._fill_overview()
         self._fill_disks()
         self.history_store.clear()
@@ -307,8 +308,86 @@ class DeviceWindow(Gtk.Window):
         self.update_netboot()
         return box
 
+    def _build_network(self) -> Gtk.Widget:
+        """Reiter „Netzwerk“: Netzwerkstart, Netzwerkkarten, Wake-on-LAN, Netzwerkstart zuerst."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin=8)
+        box.pack_start(self._build_netboot(), False, False, 0)
+
+        # Netzwerkkarten: Name, MAC, Art, für Netzwerkstart/WoL
+        self.nic_view, self.nic_store = table(["Netzwerkkarte", "MAC-Adresse", "Art", "Netzwerkstart / Wake-on-LAN"],
+                                              (str, str, str, str), expand=3)
+        sw = scrolled(self.nic_view)
+        sw.set_vexpand(False)                 # nur so hoch wie nötig – kein Leerraum zwischen den Abschnitten
+        sw.set_propagate_natural_height(True)
+        sw.set_max_content_height(160)
+        box.pack_start(sw, False, False, 0)
+
+        def section(title: str) -> Gtk.Box:
+            frame = Gtk.Frame(label=title)
+            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=8)
+            frame.add(inner)
+            box.pack_start(frame, False, False, 0)
+            return inner
+
+        wake = section("Aus der Ferne einschalten (Wake-on-LAN)")
+        row = Gtk.Box(spacing=6)
+        self.btn_wake = Gtk.Button(label="Einschalten")
+        self.btn_wake.set_tooltip_text("Gerät per Wake-on-LAN einschalten – es startet wie gewohnt (z. B. Windows)")
+        self.btn_wake.connect("clicked", lambda _b: self.main.wake_device(self.dev))
+        self.btn_wake_agent = Gtk.Button(label="Einschalten und Agent starten")
+        self.btn_wake_agent.set_tooltip_text("Agent beim nächsten Start vormerken und Gerät einschalten – es "
+                                             "verbindet sich danach mit dem Tool (braucht „Netzwerkstart zuerst“)")
+        self.btn_wake_agent.connect("clicked", lambda _b: self.main.wake_device(self.dev, with_agent=True))
+        row.pack_start(self.btn_wake, False, False, 0)
+        row.pack_start(self.btn_wake_agent, False, False, 0)
+        wake.pack_start(row, False, False, 0)
+        self.wake_text = self._hint("Am Gerät muss Wake-on-LAN im BIOS/UEFI aktiv sein und das Netzwerkkabel stecken. "
+                                    "Das Gerät muss im selben Netz wie der Server sein.")
+        wake.pack_start(self.wake_text, False, False, 0)
+
+        first = section("Netzwerkstart zuerst (Startreihenfolge im Gerät)")
+        row = Gtk.Box(spacing=8)
+        self.netfirst_switch = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.netfirst_switch.connect("notify::active", self._on_netfirst_switch)
+        row.pack_start(self.netfirst_switch, False, False, 0)
+        self.netfirst_text = Gtk.Label(xalign=0, wrap=True)
+        row.pack_start(self.netfirst_text, True, True, 0)
+        self.btn_bootcheck = Gtk.Button(label="Prüfen")
+        self.btn_bootcheck.set_tooltip_text("Startreihenfolge vom Gerät lesen (Windows-Updates können sie zurücksetzen)")
+        self.btn_bootcheck.connect("clicked", lambda _b: self.main.check_bootorder(self.dev))
+        row.pack_end(self.btn_bootcheck, False, False, 0)
+        first.pack_start(row, False, False, 0)
+        self.request_check = Gtk.CheckButton(label="Beim nächsten Start den Agent laden (danach wieder normal)")
+        self.request_check.connect("toggled", self._on_request_toggled)
+        first.pack_start(self.request_check, False, False, 0)
+        first.pack_start(self._hint(
+            "Das Gerät fragt bei jedem Start zuerst das Tool. Ohne Auftrag startet es nach etwa 2 Sekunden normal von "
+            "der Festplatte; ist ein Agent angefordert, startet der Agent. Ändern nur, während das Gerät mit dem "
+            "Agent verbunden ist (UEFI). Ist der Server aus, dauert der Start etwas länger (Netzwerk-Wartezeit)."),
+            False, False, 0)
+        self.update_netboot()
+        return box
+
+    @staticmethod
+    def _hint(text: str) -> Gtk.Label:
+        lbl = Gtk.Label(label=text, xalign=0, wrap=True)
+        lbl.get_style_context().add_class("status-idle")
+        return lbl
+
+    def _on_netfirst_switch(self, switch, _param) -> None:
+        if getattr(self, "_netboot_updating", False):
+            return
+        on = switch.get_active()
+        if on != self.dev.netfirst:
+            self.main.set_netfirst(self.dev, on)
+
+    def _on_request_toggled(self, check) -> None:
+        if getattr(self, "_netboot_updating", False):
+            return
+        self.main.request_agent(self.dev, check.get_active())
+
     def update_netboot(self) -> None:
-        """Schalter auf den aktuellen Stand bringen (auch wenn der Netzwerkstart anderswo geändert wurde)."""
+        """Alle Netzwerk-Schalter auf den aktuellen Stand bringen (auch nach Änderungen anderswo)."""
         switch = getattr(self, "netboot_switch", None)
         if switch is None:
             return
@@ -332,6 +411,48 @@ class DeviceWindow(Gtk.Window):
                          f"Kabel-Netzwerkkarten: {', '.join(wired)}")
         for w in (switch, self.netboot_text):
             w.set_tooltip_text(tip)
+        if getattr(self, "nic_store", None) is None:
+            return
+        # Netzwerkkarten
+        self.nic_store.clear()
+        nics = self.dev.inventory.get("network") or []
+        known = {n.get("mac", "").lower() for n in nics}
+        for n in nics + [{"name": "–", "mac": m} for m in self.dev.macs if m.lower() not in known]:
+            mac = (n.get("mac") or "").lower()
+            self.nic_store.append([n.get("name", ""), mac, "WLAN" if n.get("wireless") else "Kabel",
+                                   "ja" if mac in wired else "nein (WLAN kann kein PXE/Wake-on-LAN)"
+                                   if n.get("wireless") else "–"])
+        # Wake-on-LAN
+        connected = self.main.online_agent(self.dev) is not None
+        usable = ready and bool(wired) and self.dev.netboot
+        self.btn_wake.set_sensitive(bool(wired) and not connected)
+        self.btn_wake_agent.set_sensitive(usable and self.dev.netfirst and not connected)
+        self.btn_wake.set_tooltip_text("Gerät ist schon eingeschaltet und verbunden" if connected else
+                                       "Gerät per Wake-on-LAN einschalten – es startet wie gewohnt (z. B. Windows)")
+        # Netzwerkstart zuerst
+        st = self.dev.boot_status or {}
+        self._netboot_updating = True
+        self.netfirst_switch.set_active(self.dev.netfirst)
+        self.request_check.set_active(self.dev.boot_request)
+        self._netboot_updating = False
+        self.netfirst_switch.set_sensitive(usable and connected)
+        self.request_check.set_sensitive(usable and self.dev.netfirst)
+        self.btn_bootcheck.set_sensitive(connected)
+        if not usable:
+            text = "Erst den Netzwerkstart oben einschalten" if not reason else reason.split(" – ")[0]
+        elif st.get("uefi") is False:
+            text = "Gerät startet im BIOS-Modus – Startreihenfolge nur im BIOS-Setup änderbar"
+        elif self.dev.netfirst:
+            ok = st.get("netfirst")
+            checked = devices.short_time(st.get("checked", "")) if st.get("checked") else ""
+            text = ("Ein – Netzwerk steht an erster Stelle" if ok else
+                    "Ein – aber Netzwerk steht NICHT mehr an erster Stelle (z. B. nach Windows-Update): aus- und "
+                    "wieder einschalten") + (f" (geprüft {checked})" if checked else "")
+            if self.dev.boot_request:
+                text += " · Agent beim nächsten Start angefordert"
+        else:
+            text = "Aus" + ("" if connected else " – zum Ändern das Gerät verbinden (Agent)")
+        self.netfirst_text.set_text(text)
 
     def _on_netboot_switch(self, switch, _param) -> None:
         if getattr(self, "_netboot_updating", False):

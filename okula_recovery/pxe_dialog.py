@@ -211,8 +211,9 @@ class PxeDialog(Gtk.Dialog):
             self._run(["stop"], "", "Schalte Netzwerkstart aus …")
             return
         server = self.server.get_active_id()
-        macs = devices.netboot_macs(self.main.store.devices.values())
-        self._run(["allow"], "".join(f"{m}\n" for m in macs), f"Schalte {len(macs)} MAC-Adressen frei …",
+        modes = devices.netboot_modes(self.main.store.devices.values())
+        self._run(["allow"], "".join(f"{m} {mode}\n" for m, mode in modes.items()),
+                  f"Schalte {len(modes)} MAC-Adressen frei …",
                   then=lambda: self._run(["start", "--server", server], "", "Starte Netzwerkstart …"))
 
     def download(self) -> None:

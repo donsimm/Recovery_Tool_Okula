@@ -414,6 +414,22 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
                     job_state.set_notice(job, fraction)
                 job_state.notice(title, fraction, str(req.get("label") or "")[:40], result)
                 wire.send_json(tls, {"type": "ok"})
+            elif cmd == "bootorder":
+                # Netzwerkstart zuerst (Fernsteuerung) bzw. zurück – ändert nur die UEFI-Startreihenfolge
+                action = req.get("action")
+                try:
+                    if action == "status":
+                        reply = {"type": "bootorder", **wininstall.boot_status()}
+                    elif action in ("netfirst", "normal"):
+                        saved = [str(n)[:4] for n in req.get("saved") or []]
+                        reply = {"type": "bootorder", **wininstall.set_netfirst(action == "netfirst", saved)}
+                        log("Startreihenfolge: " + ("Netzwerk zuerst" if action == "netfirst" else "wie vorher")
+                            + f" (Tool {addr[0]})", show=True)
+                    else:
+                        reply = {"type": "error", "message": f"Unbekannte Aktion: {action}"}
+                except (imaging.ImagingError, OSError) as e:
+                    reply = {"type": "error", "message": str(e)}
+                wire.send_json(tls, reply)
             elif cmd == "power":
                 action = req.get("action")
                 if action not in ("poweroff", "reboot"):

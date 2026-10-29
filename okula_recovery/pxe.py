@@ -83,9 +83,12 @@ do_httpmount ()
 fi
 """
 
-GRUB_CFG = """# Okula Recovery Tool – Netzwerkstart (nur ASCII)
+GRUB_CFG = """# Okula Recovery Tool - Netzwerkstart (nur ASCII)
 set timeout=3
 set default=0
+# Startart des Geraets: je freigeschaltete MAC eine Datei (lokal: default=2, timeout=0 = von der Festplatte).
+# Bewusst per source geladen: Dateitests brauchen ein Verzeichnis-Listing, das TFTP nicht kann.
+source /okula/mode/${{net_default_mac}}
 menuentry "Okula Recovery Agent (Netzwerk)" {{
     linux /okula/vmlinuz {params}
     initrd /okula/initrd.img
@@ -99,7 +102,7 @@ menuentry "Von der Festplatte starten" {{
 }}
 """
 
-PXELINUX_CFG = """# Okula Recovery Tool – Netzwerkstart (BIOS)
+PXELINUX_CFG = """# Okula Recovery Tool - Netzwerkstart (BIOS, nur ASCII)
 DEFAULT okula
 TIMEOUT 30
 PROMPT 0
@@ -110,6 +113,19 @@ LABEL okula
 LABEL local
     LOCALBOOT 0
 """
+
+
+PXELINUX_LOCAL = """# Okula Recovery Tool - Startart lokal: ohne Auftrag von der Festplatte (BIOS)
+DEFAULT local
+PROMPT 0
+TIMEOUT 1
+LABEL local
+    LOCALBOOT 0
+"""
+
+# Startarten pro MAC: always = Agent (F12 → Netzwerk), local = von der Festplatte weiter (Gerät fragt bei jedem
+# Start zuerst hier), once = beim nächsten Start einmal Agent, danach wieder local
+MODES = ("always", "local", "once")
 
 
 class PxeError(StickError):
@@ -123,16 +139,29 @@ def kernel_params(server: str) -> str:
     return (f"{stick.BOOT_PARAMS} fetch={base}/filesystem.squashfs okula.layer={base}/{stick.AGENT_LAYER}")
 
 
-def normalize_macs(lines: list[str]) -> list[str]:
-    macs = []
+def parse_allow(lines: list[str]) -> dict[str, str]:
+    """Zeilen „mac [startart]“ → {mac: startart}; ohne Startart „always“."""
+    modes = {}
     for line in lines:
-        mac = line.strip().lower().replace("-", ":")
-        if not mac:
+        parts = line.split()
+        if not parts:
             continue
-        if not MAC_RE.match(mac):
+        mac = parts[0].lower().replace("-", ":")
+        mode = parts[1] if len(parts) > 1 else "always"
+        if not MAC_RE.match(mac) or len(parts) > 2:
             raise PxeError(f"Ungültige MAC-Adresse: {line.strip()}")
-        macs.append(mac)
-    return sorted(set(macs))
+        if mode not in MODES:
+            raise PxeError(f"Unbekannte Startart: {mode}")
+        modes[mac] = mode
+    return dict(sorted(modes.items()))
+
+
+def normalize_macs(lines: list[str]) -> list[str]:
+    return list(parse_allow(lines))
+
+
+def pxelinux_name(mac: str) -> str:
+    return "01-" + mac.replace(":", "-")
 
 
 def hosts_file(macs: list[str]) -> str:
@@ -145,6 +174,40 @@ def read_allowed(base: Path = PXE_DIR) -> set[str]:
         return {line.split(",")[0] for line in (base / "allowed").read_text().splitlines() if line.strip()}
     except OSError:
         return set()
+
+
+def read_modes(base: Path = PXE_DIR) -> dict[str, str]:
+    try:
+        modes = json.loads((base / "modes.json").read_text())
+        return {m: v for m, v in modes.items() if MAC_RE.match(m) and v in MODES}
+    except (OSError, ValueError, AttributeError):
+        return {m: "always" for m in sorted(read_allowed(base))}
+
+
+GRUB_MODE = {"local": "# Okula: ohne Auftrag sofort von der Festplatte\nset default=2\nset timeout=0\n",
+             "always": "# Okula: Agent starten\n", "once": "# Okula: einmal Agent starten\n"}
+
+
+def apply_modes(modes: dict[str, str], base: Path = PXE_DIR) -> None:
+    """Startart je MAC: Datei für grub (UEFI, per „source“ geladen) und bei „lokal“ eine pxelinux-Konfiguration (BIOS)."""
+    tftp = base / "tftp"
+    if not tftp.is_dir():
+        return
+    local = tftp / "okula" / "mode"
+    if local.exists():
+        shutil.rmtree(local)
+    local.mkdir(parents=True)
+    os.chmod(local, 0o755)
+    cfg = tftp / "pxelinux.cfg"
+    cfg.mkdir(exist_ok=True)
+    for old in cfg.glob("01-*"):
+        old.unlink()
+    for mac, mode in modes.items():
+        (local / mac).write_text(GRUB_MODE[mode])
+        os.chmod(local / mac, 0o644)
+        if mode == "local":
+            (cfg / pxelinux_name(mac)).write_text(PXELINUX_LOCAL)
+            os.chmod(cfg / pxelinux_name(mac), 0o644)
 
 
 def interface_for(server: str) -> tuple[str, ipaddress.IPv4Interface]:
@@ -243,6 +306,17 @@ class Handler(BaseHTTPRequestHandler):
             if not head:
                 self.wfile.flush()
                 self.connection.sendfile(f)
+        if not head and name == stick.AGENT_LAYER:
+            self._once_done()
+
+    def _once_done(self) -> None:
+        """„Einmal Agent“ ist erledigt: das Gerät startet beim nächsten Mal wieder von der Festplatte."""
+        mac = mac_of(self.client_address[0], self.arp)
+        modes = read_modes(self.base)
+        if modes.get(mac) == "once":
+            modes[mac] = "local"
+            write_allowed(modes, self.base)
+            self.log_message("%s: Agent einmal gestartet – ab jetzt wieder lokal", mac)
 
 
 def serve(bind: str, base: Path = PXE_DIR) -> None:
@@ -343,6 +417,7 @@ def prepare(iso: str, server: str, key: bytes, emit: Emit, base: Path = PXE_DIR,
         if not (base / "allowed").exists():
             (base / "allowed").write_text("")
         os.chmod(base / "allowed", 0o644)
+        apply_modes(read_modes(base), base)   # Startarten der Geräte bleiben erhalten
     finally:
         if new.exists():
             shutil.rmtree(new, ignore_errors=True)
@@ -362,12 +437,16 @@ def is_active() -> bool:
     return r.returncode == 0
 
 
-def write_allowed(macs: list[str], base: Path = PXE_DIR) -> None:
+def write_allowed(entries: list[str] | dict[str, str], base: Path = PXE_DIR) -> None:
+    """Freigabeliste (dnsmasq) und Startarten schreiben; entries: MACs (Startart „always“) oder {mac: startart}."""
+    modes = dict(entries) if isinstance(entries, dict) else {m: "always" for m in entries}
     base.mkdir(parents=True, exist_ok=True)
-    tmp = base / "allowed.tmp"
-    tmp.write_text(hosts_file(macs))
-    os.chmod(tmp, 0o644)
-    tmp.replace(base / "allowed")
+    for name, text in (("allowed", hosts_file(sorted(modes))), ("modes.json", json.dumps(modes, indent=1))):
+        tmp = base / f"{name}.tmp"
+        tmp.write_text(text)
+        os.chmod(tmp, 0o644)
+        tmp.replace(base / name)
+    apply_modes(modes, base)
 
 
 def start(server: str, emit: Emit, base: Path = PXE_DIR) -> None:
@@ -392,11 +471,12 @@ def stop(emit: Emit) -> None:
     emit("INFO", "Netzwerkstart ausgeschaltet")
 
 
-def allow(macs: list[str], emit: Emit, base: Path = PXE_DIR) -> None:
-    write_allowed(macs, base)
+def allow(modes: dict[str, str], emit: Emit, base: Path = PXE_DIR) -> None:
+    write_allowed(modes, base)
     if is_active():
         subprocess.run(["systemctl", "reload", UNITS[0]], capture_output=True)
-    emit("INFO", f"{len(macs)} MAC-Adressen freigeschaltet")
+    local = sum(1 for m in modes.values() if m != "always")
+    emit("INFO", f"{len(modes)} MAC-Adressen freigeschaltet" + (f", davon {local} mit Netzwerkstart zuerst" if local else ""))
 
 
 def main(argv: list[str]) -> int:
@@ -439,7 +519,7 @@ def main(argv: list[str]) -> int:
             stop(emit)
             emit("DONE", "Netzwerkstart ausgeschaltet")
         elif args.cmd == "allow":
-            allow(normalize_macs(sys.stdin.read().splitlines()), emit)
+            allow(parse_allow(sys.stdin.read().splitlines()), emit)
             emit("DONE", "Freigabeliste aktualisiert")
     except (StickError, ValueError, OSError) as e:
         emit("ERROR", str(e))

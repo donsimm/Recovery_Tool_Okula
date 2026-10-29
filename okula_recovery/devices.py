@@ -52,6 +52,10 @@ class Device:
     notes: str = ""
     product_key: str = ""              # Windows-Schlüssel von Hand (Retail/Volumen); OEM kommt aus dem Inventar
     netboot: bool = False              # darf den Agent per Netzwerk (PXE) starten – nur mit dieser Freigabe
+    netfirst: bool = False             # UEFI-Startreihenfolge: Netzwerk zuerst (Fernsteuerung), ohne Auftrag lokal
+    boot_request: bool = False         # beim nächsten Start einmal den Agent laden
+    boot_saved: list[str] = field(default_factory=list)   # Startreihenfolge vor „Netzwerk zuerst“ (zum Zurückstellen)
+    boot_status: dict = field(default_factory=dict)       # zuletzt vom Agent gemeldet (netfirst, network, labels, …)
     history: list[dict] = field(default_factory=list)
     folder: str = ""                   # nicht gespeichert: ergibt sich aus dem Ablageort
 
@@ -334,6 +338,24 @@ def short_time(iso: str) -> str:
         return datetime.fromisoformat(iso).strftime("%d.%m.%Y %H:%M")
     except (TypeError, ValueError):
         return ""
+
+
+def boot_mode(dev: Device) -> str:
+    """Startart beim Netzwerkstart: always (F12 → Netzwerk = Agent), local (Netzwerk zuerst, ohne Auftrag von der
+    Festplatte), once (Netzwerk zuerst, beim nächsten Start einmal der Agent)."""
+    if not dev.netfirst:
+        return "always"
+    return "once" if dev.boot_request else "local"
+
+
+def netboot_modes(store_devices) -> dict[str, str]:
+    """{MAC: Startart} aller freigeschalteten Geräte (nur Kabel-Netzwerkkarten)."""
+    modes = {}
+    for dev in store_devices:
+        if dev.netboot:
+            for mac in netboot_macs([dev]):
+                modes[mac] = boot_mode(dev)
+    return dict(sorted(modes.items()))
 
 
 def netboot_macs(store_devices) -> list[str]:

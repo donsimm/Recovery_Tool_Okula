@@ -80,6 +80,73 @@ def efibootmgr(*args: str) -> str:
     return _run(["efibootmgr", *args])
 
 
+# ---------- Startreihenfolge: Netzwerkstart zuerst (Fernsteuerung über das Tool) ----------
+
+BOOT_LINE = re.compile(r"^Boot([0-9A-Fa-f]{4})(\*?)\s+(.*)$")
+NET_LABEL = re.compile(r"PXE|\bIPv?4\b|\bNetwork\b|\bNIC\b|\bLAN\b", re.I)  # nicht „Generic“ o. ä.
+NOT_NET = re.compile(r"IPv6|IPV6|IP6|HTTP|Uri\(", re.I)
+
+
+def parse_boot(out: str) -> dict:
+    """efibootmgr -v → {current, order, entries: {nummer: (aktiv, text)}}."""
+    info = {"current": "", "order": [], "entries": {}}
+    for line in out.splitlines():
+        if line.startswith("BootCurrent:"):
+            info["current"] = line.split(":", 1)[1].strip()
+        elif line.startswith("BootOrder:"):
+            info["order"] = [n.strip().upper() for n in line.split(":", 1)[1].split(",") if n.strip()]
+        else:
+            m = BOOT_LINE.match(line.strip())
+            if m:
+                info["entries"][m.group(1).upper()] = (m.group(2) == "*", m.group(3))
+    return info
+
+
+def network_entry(info: dict) -> str:
+    """Starteintrag für den Netzwerkstart per IPv4 (PXE), sonst ""; kein IPv6/HTTP-Boot."""
+    candidates = []
+    for num, (active, text) in info["entries"].items():
+        if NOT_NET.search(text):
+            continue
+        if ("MAC(" in text and "IPv4(" in text) or NET_LABEL.search(text.split("\t")[0]):
+            candidates.append((0 if "IPv4(" in text else 1, 0 if active else 1, num))
+    return min(candidates)[2] if candidates else ""
+
+
+def boot_status() -> dict:
+    """Für das Tool: UEFI? Netzwerkeintrag? Steht er an erster Stelle?"""
+    if not Path("/sys/firmware/efi").is_dir():
+        return {"uefi": False, "message": "Gerät startet im BIOS-Modus – Startreihenfolge nur im BIOS-Setup änderbar"}
+    info = parse_boot(efibootmgr("-v"))
+    net = network_entry(info)
+    labels = {n: t.split("\t")[0].split("  ")[0][:60] for n, (_a, t) in info["entries"].items()}
+    return {"uefi": True, "order": info["order"], "network": net, "labels": labels,
+            "netfirst": bool(net) and bool(info["order"]) and info["order"][0] == net}
+
+
+def set_netfirst(on: bool, saved: list[str] | None = None) -> dict:
+    """Netzwerkstart an die erste Stelle (on) bzw. zurück: gespeicherte Reihenfolge oder Netzwerk ans Ende."""
+    status = boot_status()
+    if not status["uefi"]:
+        raise ImagingError(status["message"])
+    net, order = status["network"], status["order"]
+    if not net:
+        raise ImagingError("Kein Netzwerk-Starteintrag (PXE IPv4) – im BIOS/UEFI-Setup den Netzwerkstart "
+                           "(Network Stack, PXE) aktivieren")
+    if on:
+        new = [net] + [n for n in order if n != net]
+    elif saved and set(saved) == set(order) and saved[0] != net:
+        new = list(saved)
+    else:
+        new = [n for n in order if n != net] + [net]
+    efibootmgr("--bootorder", ",".join(new))
+    if on:
+        efibootmgr("--active", "--bootnum", net)
+    result = boot_status()
+    result["previous"] = order
+    return result
+
+
 def set_bootnext(disk: str, part: int, label: str) -> str:
     """Starteintrag für die Setup-Partition anlegen und nur für den nächsten Start wählen."""
     before = set(re.findall(r"^Boot([0-9A-Fa-f]{4})", efibootmgr(), re.M))

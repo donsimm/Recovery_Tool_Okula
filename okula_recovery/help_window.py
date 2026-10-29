@@ -123,7 +123,7 @@ Dann brauchst du den Stick nicht mehr.
 <b>Einmal einrichten:</b>
 1.  <i>Tools → Netzwerkstart (PXE) …</i> öffnen.
 2.  Server-IP und Debian-Live-ISO wählen, dann <i>Vorbereiten</i>. Das dauert einige Minuten.
-3.  Geräte freischalten: Haken setzen. Oder im Gerätefenster unter <i>Aufträge</i> den Schalter
+3.  Geräte freischalten: Haken setzen. Oder im Gerätefenster unter <i>Netzwerk</i> den Schalter
      „Netzwerkstart“ einschalten. Das Zahnrad daneben öffnet die Einstellungen.
 4.  <i>Einschalten</i>.
 
@@ -135,7 +135,18 @@ Dann brauchst du den Stick nicht mehr.
 <b>Sicher für die anderen Rechner:</b>
 •  Nur freigeschaltete Geräte bekommen eine Antwort. Alle anderen Rechner merken nichts.
 •  Das Tool verteilt keine IP-Adressen. Das macht weiterhin euer Router bzw. DHCP-Server.
-•  Neue Geräte sind nie automatisch freigeschaltet."""),
+•  Neue Geräte sind nie automatisch freigeschaltet.
+
+<b>Ganz aus der Ferne (Reiter „Netzwerk“ im Gerätefenster):</b>
+•  <i>Einschalten</i>: schaltet ein ausgeschaltetes Gerät über das Netzwerk ein (Wake-on-LAN).
+   Im BIOS des Geräts muss Wake-on-LAN eingeschaltet sein.
+•  <i>Netzwerkstart zuerst</i>: Das Gerät fragt bei jedem Start zuerst das Tool.
+   Ohne Auftrag startet es nach 1–2 Sekunden ganz normal (z. B. Windows).
+   Einschalten geht, während das Gerät mit dem Agent verbunden ist.
+•  <i>Beim nächsten Start den Agent laden</i>: Beim nächsten Start kommt der Agent statt Windows. Nur einmal.
+•  <i>Einschalten und Agent starten</i>: beides zusammen. Das Gerät erscheint danach im Tool,
+   ohne dass jemand hingehen muss.
+•  Nach Windows-Updates kann die Startreihenfolge zurückgesetzt sein. Das Tool prüft das und zeigt es an."""),
 
     ("Disk-Image", """<big><b>Ganze Festplatte sichern (Disk-Image)</b></big>
 

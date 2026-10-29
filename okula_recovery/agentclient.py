@@ -108,6 +108,20 @@ def power(ip: str, key: bytes, action: str = "poweroff", port: int = wire.PORT, 
         raise AgentError(reply.get("message", "Agent hat abgelehnt"))
 
 
+def bootorder(ip: str, key: bytes, action: str = "status", saved: list[str] | None = None,
+              port: int = wire.PORT) -> dict:
+    """UEFI-Startreihenfolge des Geräts: „status“, „netfirst“ (Netzwerkstart zuerst) oder „normal“ (zurück)."""
+    with _connect(ip, key, port) as sock:
+        wire.send_json(sock, {"cmd": "bootorder", "action": action, "saved": saved or []})
+        reply = wire.recv_json(sock)
+    if reply.get("type") != "bootorder":
+        message = reply.get("message", "Agent hat abgelehnt")
+        if "Unbekannter Befehl" in message:
+            message = "Agent zu alt – Agent-Stick bzw. Netzwerkstart mit dem aktuellen Tool neu erstellen"
+        raise AgentError(message)
+    return reply
+
+
 class Notifier:
     """Meldet dem Agent, was das Tool gerade für ihn vorbereitet (z. B. Image-Prüfung).
 

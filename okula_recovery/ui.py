@@ -14,7 +14,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 
 from okula_recovery import (__version__, agentclient, archive, backups, clonezilla, config, devices, pxe,  # noqa: E402
-                            discovery, jobs, nas, nasfiles, oslib)
+                            discovery, jobs, nas, nasfiles, oslib, wol)
 from okula_recovery.backup_dialogs import (BackupDetailsDialog, BackupDialog, RestoreFilesDialog,  # noqa: E402
                                            edit_note)
 from okula_recovery.device_window import DeviceWindow  # noqa: E402
@@ -223,6 +223,14 @@ class MainWindow(Gtk.ApplicationWindow):
         """Gerät für den Netzwerkstart freischalten bzw. sperren; Freigabeliste des Dienstes nachführen."""
         if dev.netboot == on:
             return
+        if not on and dev.netfirst and not confirm(
+                parent or self._parent_for(dev), "Netzwerkstart trotzdem sperren?",
+                f"„{dev.name}“ fragt bei jedem Start zuerst das Netzwerk (Netzwerkstart zuerst). Ohne Freigabe "
+                "wartet es jedes Mal vergeblich und startet erst danach von der Festplatte.\n\nBesser: Gerät "
+                "verbinden und im Reiter Netzwerk zuerst „Netzwerkstart zuerst“ ausschalten.",
+                ok_label="Trotzdem sperren"):
+            self.netboot_changed()   # Schalter zurückstellen
+            return
         self.store.update(dev, netboot=on)
         self.store.add_history(dev, "notiz", "Netzwerkstart " + ("erlaubt" if on else "gesperrt"))
         self.sync_netboot()
@@ -235,7 +243,8 @@ class MainWindow(Gtk.ApplicationWindow):
         """Läuft der Netzwerkstart, die MAC-Freigabeliste des Dienstes auf den Stand der Geräte bringen."""
         if not pxe.is_active():
             return
-        macs = devices.netboot_macs(self.store.devices.values())
+        modes = devices.netboot_modes(self.store.devices.values())
+        macs = list(modes)
         try:
             cmd = helper_subcommand("pxe", ["allow"])
         except FileNotFoundError as e:
@@ -247,7 +256,94 @@ class MainWindow(Gtk.ApplicationWindow):
                         else f"Netzwerkstart: Freigabeliste nicht aktualisiert – {error}")
             return False
 
-        run_helper(cmd, "".join(f"{m}\n" for m in macs), lambda *_a: False, lambda *_a: False, done)
+        run_helper(cmd, "".join(f"{m} {mode}\n" for m, mode in modes.items()), lambda *_a: False, lambda *_a: False,
+                   done)
+
+    # ---------- Fernsteuerung: Wake-on-LAN, Netzwerkstart zuerst, Agent beim nächsten Start ----------
+
+    def wake_device(self, dev: devices.Device, with_agent: bool = False) -> None:
+        """Gerät per Wake-on-LAN einschalten; mit Agent: vorher „Agent beim nächsten Start“ vormerken."""
+        parent = self._parent_for(dev)
+        macs = devices.netboot_macs([devices.Device(id="x", netboot=True, macs=dev.macs, inventory=dev.inventory)])
+        if not macs:
+            confirm_error(parent, "Keine Kabel-Netzwerkkarte bekannt – Gerät einmal mit dem Agent-Stick starten.")
+            return
+        if with_agent:
+            self.request_agent(dev, True)
+        try:
+            sent = wol.wake(macs)
+        except (OSError, ValueError) as e:
+            confirm_error(parent, f"Wake-on-LAN nicht gesendet: {e}")
+            return
+        what = "Einschalten + Agent" if with_agent else "Einschalten"
+        self.store.add_history(dev, "notiz", f"{what} per Wake-on-LAN gesendet ({', '.join(macs)})")
+        self.status(f"Wake-on-LAN an {dev.name} gesendet ({sent} Pakete) – das Gerät startet in einigen Sekunden, "
+                    "falls Wake-on-LAN im BIOS aktiv ist")
+        self.netboot_changed()
+
+    def request_agent(self, dev: devices.Device, on: bool) -> None:
+        """Beim nächsten Start einmal den Agent laden (nur mit „Netzwerkstart zuerst“)."""
+        if dev.boot_request == on:
+            return
+        dev.boot_request = on
+        self.store.save(dev)
+        self.store.add_history(dev, "notiz", "Agent beim nächsten Start " + ("angefordert" if on else "abbestellt"))
+        self.sync_netboot()
+        self.netboot_changed()
+
+    def set_netfirst(self, dev: devices.Device, on: bool) -> None:
+        """UEFI-Startreihenfolge des Geräts ändern (über den Agent) und die Startart beim Tool nachführen."""
+        parent = self._parent_for(dev)
+        agent = self._ready_agent(dev, parent)
+        if agent is None:
+            self.netboot_changed()   # Schalter zurückstellen
+            return
+        key, saved = self.key, list(dev.boot_saved)
+
+        def done(result) -> None:
+            if isinstance(result, Exception):
+                confirm_error(parent, f"Startreihenfolge nicht geändert: {result}")
+            else:
+                dev.netfirst = on
+                dev.boot_request = False
+                if on:
+                    dev.boot_saved = list(result.get("previous") or [])
+                dev.boot_status = {k: result.get(k) for k in ("uefi", "netfirst", "network", "order", "labels")}
+                dev.boot_status["checked"] = devices.now()
+                self.store.save(dev)
+                self.store.add_history(dev, "notiz", "Netzwerkstart zuerst " + ("eingeschaltet" if on else
+                                                                                "ausgeschaltet (Reihenfolge wie vorher)"))
+                self.sync_netboot()
+                self.status(f"{dev.name}: Startreihenfolge geändert")
+            self.netboot_changed()
+
+        run_async(lambda: agentclient.bootorder(agent.ip, key, "netfirst" if on else "normal", saved,
+                                                agent.control_port), done)
+
+    def check_bootorder(self, dev: devices.Device, quiet: bool = False) -> None:
+        """Startreihenfolge vom Agent lesen (z. B. nach Windows-Updates, die sie zurücksetzen können)."""
+        agent = self.online_agent(dev)
+        if agent is None or not agent.control_port:
+            if not quiet:
+                confirm_error(self._parent_for(dev), f"„{dev.name}“ ist nicht verbunden.")
+            return
+        key = self.key
+
+        def done(result) -> None:
+            if isinstance(result, Exception):
+                if not quiet:
+                    confirm_error(self._parent_for(dev), f"Startreihenfolge nicht lesbar: {result}")
+                return
+            dev.boot_status = {k: result.get(k) for k in ("uefi", "netfirst", "network", "order", "labels",
+                                                          "message")}
+            dev.boot_status["checked"] = devices.now()
+            self.store.save(dev)
+            if dev.netfirst and not result.get("netfirst"):
+                self.status(f"Achtung {dev.name}: Netzwerkstart steht nicht mehr an erster Stelle (z. B. nach einem "
+                            "Windows-Update) – im Reiter Netzwerk neu einschalten")
+            self.netboot_changed()
+
+        run_async(lambda: agentclient.bootorder(agent.ip, key, "status", None, agent.control_port), done)
 
     def on_import_settings(self) -> None:
         if import_settings(self, busy=bool(self.jobs.running())):
@@ -1869,6 +1965,12 @@ class MainWindow(Gtk.ApplicationWindow):
         self.online[dev.id] = aid
         info = self.agents[aid]
         self.store.touch(dev, info.ip, True)
+        if dev.boot_request:   # „Agent beim nächsten Start“ ist erfüllt
+            dev.boot_request = False
+            self.store.save(dev)
+            self.sync_netboot()
+        if dev.netfirst and info.control_port:
+            GLib.timeout_add_seconds(3, lambda: (self.check_bootorder(dev, quiet=True), False)[1])
         note = " – Link-Local, im Netz gibt es kein DHCP" if info.ip.startswith("169.254.") else ""
         self.status(f"Gerät verbunden: {dev.name} ({info.ip}){note}")
         win = self.device_windows.get(dev.id)

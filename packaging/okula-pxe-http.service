@@ -8,12 +8,13 @@ WorkingDirectory=/opt/okula-recovery
 ExecStart=/usr/bin/python3 -m okula_recovery.pxe serve
 Restart=on-failure
 RestartSec=5
-# liest nur /var/lib/okula-recovery/pxe und die ARP-Tabelle
+# liest die ARP-Tabelle; schreibt nur die Startarten unter /var/lib/okula-recovery/pxe
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 ReadOnlyPaths=/
+ReadWritePaths=/var/lib/okula-recovery/pxe
 
 [Install]
 WantedBy=multi-user.target
