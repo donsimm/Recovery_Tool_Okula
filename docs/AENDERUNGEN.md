@@ -68,6 +68,10 @@ der genaue Verlauf in `git log`.
 - **Ordner an Geräte senden** (entschieden, noch nicht programmiert): `Software` und `Test Files` (fix) sowie
   gewählte Projekte aus `Content` vom NAS auf den öffentlichen Desktop kopieren, erneut senden ersetzt.
   Plan: [ORDNER-SENDEN.md](ORDNER-SENDEN.md).
+- **Automatisierung** (entschieden, noch nicht programmiert): erfasste Geräte mit Häkchen „Automatisierung“ werden
+  30 s nach dem Auftauchen im LAN einmal neu aufgesetzt – Backup (optional), Master- oder eigenes Image, Anpassen,
+  Ordner senden (optional), Abschluss; Vorlagen, höchstens N gleichzeitig, Protokoll.
+  Plan: [AUTOMATISIERUNG.md](AUTOMATISIERUNG.md).
 - **Gerätename = Name im Tool** bei Neuinstallation und Zurückspielen (offen: fix oder im Dialog änderbar).
 
 - Nobara/Zorin direkt installieren: nur möglich, falls deren Installer eine unbeaufsichtigte Installation
