@@ -62,5 +62,10 @@ der genaue Verlauf in `git log`.
 
 ## Ideen
 
+- **Windows-Master-Image mit Sysprep** (entschieden, noch nicht programmiert): Image beim Zurückspielen pro Gerät
+  anpassen – Gerätename aus dem Tool, Windows-Key, Benutzer, Region Schweiz. Anleitung und Plan:
+  [MASTER-IMAGE.md](MASTER-IMAGE.md).
+- **Gerätename = Name im Tool** bei Neuinstallation und Zurückspielen (offen: fix oder im Dialog änderbar).
+
 - Nobara/Zorin direkt installieren: nur möglich, falls deren Installer eine unbeaufsichtigte Installation
   erhält; aktuell nicht vorgesehen.
