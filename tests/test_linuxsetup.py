@@ -141,6 +141,37 @@ class PartsTest(unittest.TestCase):
         self.assertEqual(ai["timezone"], "Europe/Zurich")
         self.assertIn("okula-cleanup", " ".join(ai["late-commands"]))
 
+    def test_software_selection(self):
+        opts = linuxsetup.LinuxOptions("Okula", "pw1234", "Kasse 1", desktop_env="kde", ssh=True, web=True,
+                                       standard=False, root_password="geheim",
+                                       packages=linuxsetup.parse_packages("htop, curl  vim"))
+        text = linuxsetup.debian_preseed(opts, "$6$x$y", "/dev/sda", "$6$r$s")
+        self.assertIn("tasksel tasksel/first multiselect desktop, kde-desktop, web-server, ssh-server\n", text)
+        self.assertIn("d-i passwd/root-login boolean true\nd-i passwd/root-password-crypted password $6$r$s", text)
+        late = next(line for line in text.splitlines() if "late_command" in line)
+        self.assertIn("usermod -aG sudo okula", late)
+        self.assertIn("for p in htop curl vim; do apt-get install -y $p || true; done", late)
+        self.assertNotIn("pkgsel/include", text)  # Tippfehler dürfen die Installation nicht anhalten
+        server = linuxsetup.LinuxOptions("Okula", "pw1234", "x", desktop_env="")
+        self.assertEqual(linuxsetup.debian_tasks(server), "standard")
+        self.assertIn("passwd/root-login boolean false", linuxsetup.debian_preseed(server, "h", "/dev/sda"))
+        # Ubuntu: SSH-Server, Pakete am Schluss
+        ud = linuxsetup.ubuntu_userdata(opts, "h")
+        self.assertIn("  ssh:\n    install-server: true\n    allow-pw: true\n", ud)
+        if yaml:
+            ai = yaml.safe_load(ud)["autoinstall"]
+            self.assertEqual(ai["ssh"], {"install-server": True, "allow-pw": True})
+            self.assertIn("apt-get install -y $p || true", ai["late-commands"][-1])
+        # Fedora: sshd aktiv, fehlende Pakete überspringen
+        ks = linuxsetup.kickstart(opts, "h", "/dev/sda", {"linux": {"distro": "fedora", "repo": True}})
+        self.assertIn("services --enabled=sshd\nfirewall --enabled --service=ssh\n", ks)
+        self.assertIn("%packages --ignoremissing\n@^workstation-product-environment\nopenssh-server\nhtop\n", ks)
+        for bad in ("htop&rm", "a'b", "$(reboot)", "x|y", "-o"):
+            with self.assertRaises(linuxsetup.LinuxSetupError):
+                linuxsetup.parse_packages(bad)
+        self.assertEqual(linuxsetup.parse_packages("@^server-product-environment g++ libc6:i386"),
+                         ["@^server-product-environment", "g++", "libc6:i386"])
+
     def test_preseed_and_cpio(self):
         opts = linuxsetup.LinuxOptions("Okula", "pw1234", "Kasse 1", desktop=False)
         text = linuxsetup.debian_preseed(opts, "$6$x$y", "/dev/nvme0n1")

@@ -594,13 +594,35 @@ class InstallDialog(Gtk.Dialog):
         self.l_pass = Gtk.Entry(visibility=False, width_chars=26, placeholder_text="mind. 4 Zeichen")
         self.l_pass2 = Gtk.Entry(visibility=False, width_chars=26, placeholder_text="wiederholen")
         self.l_desktop = Gtk.CheckButton(label="Desktop (GNOME) installieren", active=True)
-        for w in (self.l_user, self.l_pass, self.l_pass2):
+        # Debian: Softwareauswahl wie im Debian-Installer
+        self.l_env = Gtk.ComboBoxText()
+        self.l_env.append("", "Kein Desktop (Server)")
+        for key, label in self.linuxsetup.DESKTOPS.items():
+            self.l_env.append(key, label)
+        self.l_env.set_active_id("gnome")
+        self.l_standard = Gtk.CheckButton(label="Standard-Systemwerkzeuge", active=True)
+        self.l_ssh = Gtk.CheckButton(label="SSH-Server (Fernzugriff per SSH)")
+        self.l_web = Gtk.CheckButton(label="Webserver (Apache)")
+        self.l_root = Gtk.Entry(visibility=False, width_chars=26,
+                                placeholder_text="leer = kein Root-Konto, Benutzer nutzt sudo")
+        self.l_packages = Gtk.Entry(width_chars=40, placeholder_text="z. B. htop curl vim – durch Leerzeichen getrennt")
+        self.l_packages.set_tooltip_text("Werden am Schluss aus dem Internet installiert. Unbekannte Namen werden "
+                                         "übersprungen, die Installation läuft trotzdem durch.")
+        for w in (self.l_user, self.l_pass, self.l_pass2, self.l_root, self.l_packages):
             w.connect("changed", lambda _e: self._update())
-        for i, (label, w) in enumerate((("Benutzername", self.l_user), ("Passwort", self.l_pass),
-                                        ("Passwort bestätigen", self.l_pass2))):
-            lbox.attach(Gtk.Label(label=label, xalign=0), 0, i, 1, 1)
+        rows = (("Benutzername", self.l_user), ("Passwort", self.l_pass), ("Passwort bestätigen", self.l_pass2),
+                ("Desktop", self.l_env), ("Root-Passwort", self.l_root), ("Zusätzliche Pakete", self.l_packages))
+        self.l_labels = {}
+        for i, (label, w) in enumerate(rows):
+            lbl = Gtk.Label(label=label, xalign=0)
+            self.l_labels[label] = lbl
+            lbox.attach(lbl, 0, i, 1, 1)
             lbox.attach(w, 1, i, 1, 1)
-        lbox.attach(self.l_desktop, 0, 3, 3, 1)
+        soft = Gtk.Box(spacing=16)
+        for cb in (self.l_standard, self.l_ssh, self.l_web):
+            soft.pack_start(cb, False, False, 0)
+        lbox.attach(soft, 0, len(rows), 3, 1)
+        lbox.attach(self.l_desktop, 0, len(rows) + 1, 3, 1)
         self.lin.add(lbox)
         grid.attach(self.lin, 0, r, 2, 1)
         r += 1
@@ -693,7 +715,11 @@ class InstallDialog(Gtk.Dialog):
         self.swiss.set_visible(not why)
         self.name.set_sensitive(not why)
         kind = self.linuxsetup.kind(iso.meta) if iso and not windows else ""
-        self.l_desktop.set_visible(kind in ("debian", "fedora"))
+        debian = kind == "debian"
+        self.l_desktop.set_visible(kind == "fedora")
+        for w in (self.l_env, self.l_labels["Desktop"], self.l_root, self.l_labels["Root-Passwort"],
+                  self.l_standard, self.l_web):
+            w.set_visible(debian)
         self.l_desktop.set_label("Desktop (GNOME) installieren" if kind == "debian" else
                                  "Desktop (Workstation/GNOME) installieren – Pakete aus dem Internet")
         texts = {
@@ -765,6 +791,14 @@ class InstallDialog(Gtk.Dialog):
             elif self.l_pass.get_text() != self.l_pass2.get_text():
                 problems.append("Passwörter stimmen nicht überein")
                 ok = False
+            if self.l_root.get_visible() and 0 < len(self.l_root.get_text()) < 4:
+                problems.append("Root-Passwort: mindestens 4 Zeichen (oder leer lassen)")
+                ok = False
+            try:
+                self.linuxsetup.parse_packages(self.l_packages.get_text())
+            except self.linuxsetup.LinuxSetupError as e:
+                problems.append(str(e))
+                ok = False
         self.check.set_markup("\n".join(GLib.markup_escape_text(p) for p in problems)
                               if problems else (f"Disk passt: {_gb(disk['size'])}" if disk else ""))
         typed = disk is not None and self.confirm.get_text().strip() == disk["name"]
@@ -785,7 +819,11 @@ class InstallDialog(Gtk.Dialog):
         return self.linuxsetup.LinuxOptions(
             username=self.l_user.get_text().strip(), password=self.l_pass.get_text(),
             hostname=self.name.get_text().strip() or self.device.name, swiss_region=self.swiss.get_active(),
-            desktop=self.l_desktop.get_active())
+            desktop=self.l_desktop.get_active() if self.l_desktop.get_visible() else bool(self.l_env.get_active_id()),
+            desktop_env=self.l_env.get_active_id() or "", standard=self.l_standard.get_active(),
+            ssh=self.l_ssh.get_active(), web=self.l_web.get_active(),
+            root_password=self.l_root.get_text() if self.l_root.get_visible() else "",
+            packages=self.linuxsetup.parse_packages(self.l_packages.get_text()))
 
     def _on_response(self, _dlg, response: int) -> None:
         if response != Gtk.ResponseType.APPLY:

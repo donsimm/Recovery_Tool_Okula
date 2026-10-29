@@ -59,7 +59,51 @@ class LinuxOptions:
     password: str
     hostname: str
     swiss_region: bool = True
-    desktop: bool = True             # Debian: GNOME-Desktop (Ubuntu Desktop hat ihn immer)
+    desktop: bool = True             # Fedora: Workstation; Debian: siehe desktop_env (Ubuntu Desktop hat ihn immer)
+    desktop_env: str = "gnome"       # Debian: gnome, kde, xfce, cinnamon, mate, lxde, lxqt ("" = ohne Desktop)
+    standard: bool = True            # Debian: Standard-Systemwerkzeuge
+    ssh: bool = False                # SSH-Server (alle)
+    web: bool = False                # Debian: Webserver (Apache)
+    root_password: str = ""          # Debian: Root-Konto mit Passwort (leer = gesperrt, Benutzer mit sudo)
+    packages: list[str] = field(default_factory=list)   # zusätzliche Pakete (alle)
+
+    @property
+    def debian_desktop(self) -> str:
+        return self.desktop_env if self.desktop and self.desktop_env in DESKTOPS else ""
+
+
+# Debian-Desktops (tasksel-Aufgabe „<name>-desktop“) – wie die Softwareauswahl im Debian-Installer
+DESKTOPS = {"gnome": "GNOME", "kde": "KDE Plasma", "xfce": "Xfce", "cinnamon": "Cinnamon", "mate": "MATE",
+            "lxde": "LXDE", "lxqt": "LXQt"}
+PACKAGE_RE = re.compile(r"^@?\^?[A-Za-z0-9][A-Za-z0-9+._:-]*$")
+
+
+def parse_packages(text: str) -> list[str]:
+    """„htop, curl vim“ → [htop, curl, vim]; nur gültige Paketnamen (kommen in Preseed/Kickstart/YAML)."""
+    names = [n for n in re.split(r"[\s,;]+", text.strip()) if n]
+    bad = [n for n in names if not PACKAGE_RE.match(n) or len(n) > 100]
+    if bad:
+        raise LinuxSetupError(f"Ungültiger Paketname: {', '.join(bad)}")
+    return list(dict.fromkeys(names))
+
+
+def software_lines(opts: LinuxOptions, which: str) -> list[str]:
+    """Kurzbeschreibung der Softwareauswahl fürs Log."""
+    parts = []
+    if which == "debian":
+        parts.append(f"Desktop: {DESKTOPS[opts.debian_desktop]}" if opts.debian_desktop else "ohne Desktop")
+        if opts.standard:
+            parts.append("Standard-Systemwerkzeuge")
+        if opts.web:
+            parts.append("Webserver")
+    if opts.ssh:
+        parts.append("SSH-Server")
+    if opts.packages:
+        parts.append("zusätzlich: " + " ".join(opts.packages))
+    out = ["Software: " + ", ".join(parts)] if parts else []
+    if which == "debian" and opts.root_password:
+        out.append("Root-Konto mit eigenem Passwort (Benutzer bleibt in sudo)")
+    return out
 
 
 @dataclass
@@ -286,19 +330,43 @@ def ubuntu_userdata(opts: LinuxOptions, password_hash: str) -> str:
         lines += ['  locale: "de_CH.UTF-8"', "  keyboard:", '    layout: "ch"', '  timezone: "Europe/Zurich"']
     lines += ["  identity:", f"    hostname: {q(hostname(opts.hostname))}", f"    realname: {q(opts.username)}",
               f"    username: {q(username(opts.username))}", f"    password: {q(password_hash)}",
-              "  storage:", "    layout:", "      name: direct", "      mode: use_gap",
-              "  late-commands:"] + [f"    - {q(c)}" for c in late] + ["  shutdown: reboot"]
+              "  storage:", "    layout:", "      name: direct", "      mode: use_gap"]
+    if opts.ssh:
+        lines += ["  ssh:", "    install-server: true", "    allow-pw: true"]
+    if opts.packages:  # einzeln, unbekannte überspringen – sonst bricht die Installation ab
+        late.append("curtin in-target -- sh -c 'for p in " + " ".join(opts.packages)
+                    + "; do apt-get install -y $p || true; done'")
+    lines += ["  late-commands:"] + [f"    - {q(c)}" for c in late] + ["  shutdown: reboot"]
     return "\n".join(lines) + "\n"
 
 
-def debian_preseed(opts: LinuxOptions, password_hash: str, disk: str) -> str:
+def debian_tasks(opts: LinuxOptions) -> str:
+    """tasksel-Aufgaben wie in der Softwareauswahl des Debian-Installers."""
+    tasks = ["standard"] if opts.standard else []
+    if opts.debian_desktop:
+        tasks += ["desktop", f"{opts.debian_desktop}-desktop"]
+    if opts.web:
+        tasks.append("web-server")
+    if opts.ssh:
+        tasks.append("ssh-server")
+    return ", ".join(tasks)
+
+
+def debian_preseed(opts: LinuxOptions, password_hash: str, disk: str, root_hash: str = "") -> str:
     user = username(opts.username)
     host = hostname(opts.hostname)
     locale = "de_CH.UTF-8" if opts.swiss_region else "en_US.UTF-8"
-    tasks = "standard, gnome-desktop" if opts.desktop else "standard"
+    tasks = debian_tasks(opts)
     late = ("in-target sh -c 'for b in $(efibootmgr | sed -n \"s/^Boot\\([0-9A-Fa-f]\\{4\\}\\)\\*\\{0,1\\} Okula.*/\\1/p\"); "
             "do efibootmgr -q -B -b $b; done'; rm -rf /target/boot/efi/okula /target/boot/efi/boot "
             "/target/boot/efi/.disk")
+    if root_hash:  # mit Root-Konto legt der Installer den Benutzer nicht in sudo – hier nachholen
+        late += f"; in-target apt-get install -y sudo; in-target usermod -aG sudo {user}"
+        root = f"d-i passwd/root-login boolean true\nd-i passwd/root-password-crypted password {root_hash}"
+    else:
+        root = "d-i passwd/root-login boolean false"
+    if opts.packages:  # einzeln am Schluss: ein Tippfehler darf die automatische Installation nicht anhalten
+        late += f"; in-target sh -c 'for p in {' '.join(opts.packages)}; do apt-get install -y $p || true; done'"
     return f"""# Okula Recovery Tool – Debian-Direktinstallation
 d-i debian-installer/locale string {locale}
 d-i localechooser/supported-locales multiselect {locale}
@@ -312,7 +380,7 @@ d-i mirror/country string manual
 d-i mirror/http/hostname string deb.debian.org
 d-i mirror/http/directory string /debian
 d-i mirror/http/proxy string
-d-i passwd/root-login boolean false
+{root}
 d-i passwd/user-fullname string {opts.username}
 d-i passwd/username string {user}
 d-i passwd/user-password-crypted password {password_hash}
@@ -363,6 +431,9 @@ def kickstart(opts: LinuxOptions, password_hash: str, disk: str, meta: dict) -> 
         f"echo {_b64(CLEANUP_SERVICE)} | base64 -d > /etc/systemd/system/okula-cleanup.service",
         "systemctl enable okula-cleanup.service"])
     name = username(opts.username)
+    extra = (["openssh-server"] if opts.ssh else []) + list(opts.packages)
+    packages = "".join(f"{n}\n" for n in dict.fromkeys(extra))
+    services = "services --enabled=sshd\nfirewall --enabled --service=ssh\n" if opts.ssh else ""
     return f"""# Okula Recovery Tool – Anaconda-Direktinstallation
 text
 lang {"de_CH.UTF-8" if opts.swiss_region else "en_US.UTF-8"}
@@ -377,9 +448,9 @@ clearpart --none
 autopart
 bootloader --boot-drive={disk.removeprefix("/dev/")}
 firstboot --disable
-%packages
+{services}%packages --ignoremissing
 @^{env}
-%end
+{packages}%end
 %post
 {post}
 %end
@@ -481,7 +552,8 @@ menuentry "Okula: Ubuntu automatisch installieren" {{
                 {"part": "cidata", "path": "user-data", "text": ubuntu_userdata(opts, pw)},
                 {"part": "cidata", "path": "meta-data", "text": f"instance-id: okula-{install_id}\n"}]
             lines = [f"Ubuntu: ISO ({size / 1000**3:.1f} GB) auf die Setup-Partition, Autoinstall in den freien "
-                     "Platz (use_gap)", f"Benutzer {username(opts.username)}, Computername {hostname(opts.hostname)}"]
+                     "Platz (use_gap)", *software_lines(opts, "ubuntu"),
+                     f"Benutzer {username(opts.username)}, Computername {hostname(opts.hostname)}"]
         elif which == "fedora":
             lx = meta["linux"]
             _extract(iso, boot, ["/EFI"])
@@ -511,11 +583,13 @@ menuentry "Okula: {meta.get('title') or 'Fedora'} automatisch installieren" {{
             lines = [f"{meta.get('title') or 'Fedora'}: Anaconda mit Kickstart, Partitionen im freien Platz"
                      + (" – Pakete aus dem Internet (Gerät braucht Internet)" if online else " – Pakete von der ISO"),
                      "Desktop: Workstation (GNOME)" if opts.desktop else "ohne Desktop",
+                     *software_lines(opts, "fedora"),
                      f"Benutzer {username(opts.username)} (Administrator), Computername {hostname(opts.hostname)}"]
         else:
             _extract(iso, boot, ["/EFI", "/boot/grub", "/.disk"])
             linux, initrd = netboot(codename(meta))
-            preseed = gzip.compress(cpio_newc({"preseed.cfg": debian_preseed(opts, pw, disk).encode()}))
+            root_pw = hash_password(opts.root_password) if opts.root_password else ""
+            preseed = gzip.compress(cpio_newc({"preseed.cfg": debian_preseed(opts, pw, disk, root_pw).encode()}))
             pre = root / "preseed.cpio.gz"
             pre.write_bytes(preseed)
             tbl, parts = table(disk_size)
@@ -534,7 +608,7 @@ menuentry "Okula: Debian automatisch installieren" {{
                                           ("esp", "okula/preseed.cpio.gz", len(preseed), pre)]
             extra = _grub_copies(cfg)
             lines = [f"Debian {codename(meta)}: Netzwerk-Installer mit Preseed, Partitionen im freien Platz – "
-                     "das Gerät braucht Internet", "Desktop: GNOME" if opts.desktop else "ohne Desktop",
+                     "das Gerät braucht Internet", *software_lines(opts, "debian"),
                      f"Benutzer {username(opts.username)}, Computername {hostname(opts.hostname)}"]
         if opts.swiss_region:
             lines.append("Region Schweiz: de_CH.UTF-8, Tastatur Schweiz, Zeitzone Zürich")

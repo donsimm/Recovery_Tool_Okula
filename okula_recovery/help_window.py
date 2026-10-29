@@ -193,7 +193,10 @@ Mit <i>Notiz …</i> änderst du die Notiz. Mit <i>Löschen …</i> entfernst du
 2.  <i>OS installieren …</i> klicken.
 3.  ISO und Ziel-Festplatte wählen.
 4.  Einstellungen wählen: Benutzer, Passwort, bei Windows die Edition.
+     Bei Linux auch die Software: zum Beispiel Desktop, SSH-Server (Fernzugriff) oder weitere Pakete.
+     Bei Debian gibt es die ganze Auswahl wie im Debian-Installer.
 5.  Starten. Das Gerät startet danach neu und installiert selbständig.
+     An der Maschine wird nichts gefragt. Was du nicht auswählst, wird nicht installiert.
 
 Direkt installieren geht mit Windows 10/11, Ubuntu Desktop ab 24.04, Debian und Fedora.
 Bei anderen Systemen zeigt das Tool den Grund. Dann hilft ein Boot-Stick (nächstes Kapitel).
