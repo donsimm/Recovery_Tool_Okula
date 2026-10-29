@@ -62,6 +62,12 @@ an ein Gerät gebunden, also pro Gerät hinterlegen, nicht pro Image.
 
 Linux/Clonezilla später ähnlich: `/etc/hostname` und `/etc/hosts` nach dem Zurückspielen anpassen.
 
+## Master-Images markieren
+
+Images bekommen die Option **„Als Master-Image markieren“** (Rechtsklick/Details im Images-Baum, Kennzeichen in der
+Liste). Die Automatisierung bietet bei *Master-Image* nur markierte Images an
+(siehe [AUTOMATISIERUNG.md](AUTOMATISIERUNG.md)).
+
 ## Noch offen
 
 - Gerätename: immer fix der Tool-Name oder im Dialog änderbar? (Windows: max. 15 Zeichen, `_` wird `-`,

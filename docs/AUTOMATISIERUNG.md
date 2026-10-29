@@ -26,7 +26,7 @@ Stand: Idee/Entscheid vom 29.10.2026. Im Tool ist dafür noch nichts gebaut.
 | # | Schritt | Einstellung |
 |---|---|---|
 | 1 | Vorher sichern (Backup der Benutzerdaten) | Option ein/aus |
-| 2 | Image zurückspielen | Auswahl: **Master-Image** oder **eigenes Image** wählen |
+| 2 | Image zurückspielen | Auswahl: **Master-Image** (markierte Images) oder **eigenes Image** |
 | 3 | Anpassen: Gerätename aus dem Tool, Windows-Key | immer (siehe [MASTER-IMAGE.md](MASTER-IMAGE.md)) |
 | 4 | Ordner senden: Software, Test Files, Content-Projekte | Option im Reiter (siehe [ORDNER-SENDEN.md](ORDNER-SENDEN.md)) |
 | 5 | Abschluss: Neustart in Windows / herunterfahren / nichts | Option im Reiter |
@@ -35,7 +35,7 @@ Nach Schritt 5 setzt das Tool die Startreihenfolge auf „lokal“ zurück (fall
 
 ## Sicherheit
 
-1. **Countdown sichtbar** im Tool und am Gerät: *„Automatisierung startet in 30 s – Taste drücken zum Abbrechen“*;
+1. **Countdown sichtbar** im Tool und am Gerät: *„Automatisierung startet in 30 s – Esc zum Abbrechen“*;
    im Tool ein Abbrechen-Knopf.
 2. **Nur einmal:** nach erfolgreichem Durchlauf schaltet sich das Häkchen selbst aus (keine Endlosschleife bei jedem
    Start mit Stick/Netzwerkstart).
@@ -45,7 +45,7 @@ Nach Schritt 5 setzt das Tool die Startreihenfolge auf „lokal“ zurück (fall
 
 ## Gleichzeitige Automatisierungen
 
-- **Höchstens N gleichzeitig** (schont Netz und NAS); weitere Geräte warten in einer Warteschlange.
+- **Höchstens N gleichzeitig** (N in Menü → Einstellungen; schont Netz und NAS); weitere Geräte warten in einer Warteschlange.
 - In der **Übersicht klar anzeigen:** Countdown, wartet (Platz in der Warteschlange), läuft (Schritt x/5, Fortschritt),
   fertig, Fehler.
 
@@ -54,10 +54,22 @@ Nach Schritt 5 setzt das Tool die Startreihenfolge auf „lokal“ zurück (fall
 - Jeder Schritt mit Startzeit, Dauer und Ergebnis im **Verlauf des Geräts**.
 - Bei Fehler: Schritt und Meldung im Verlauf, Status „Fehler“ in der Übersicht.
 
+## Entscheide (29.10.2026)
+
+- **Wert für N:** einstellbar über **Menüleiste → Menü → Einstellungen …** (Vorschlag Standard: 2).
+- **Master-Image:** Images bekommen eine Option **„Als Master-Image markieren“** (Rechtsklick und Details im
+  Images-Baum, Symbol/Kennzeichen in der Liste). Im Reiter „Automatisierung“ wird bei *Master-Image* aus den markierten
+  Images gewählt; *eigenes Image* = beliebiges Image.
+- **Bei Fehler:** sofort abbrechen und das Gerät in den **normalen Agent-Betrieb** zurückversetzen (verbunden, bereit
+  für Arbeiten von Hand). Ist das nicht möglich, den Fehler **überall anzeigen, wo es geht**:
+  - Tool: Status „Fehler“ (rot) in der Übersicht, Meldung in der Statuszeile, Gerätefenster, Verlauf des Geräts;
+  - am Gerät (Agent-Bildschirm): *„Automatisierung fehlgeschlagen: <Schritt/Grund>. Gerät neu starten bzw. neu
+    anschliessen.“*
+  - kein automatischer neuer Versuch; das Häkchen bleibt an, damit ein neuer Start (Gerät neu anschliessen) es erneut
+    versucht.
+- **Abbrechen am Gerät:** Taste **Esc** (üblichste Abbruchtaste – BIOS/Boot-Menüs, Windows-Dialoge). Im Countdown
+  steht: *„Automatisierung startet in 30 s – Esc zum Abbrechen“*.
+
 ## Noch offen
 
-- Wert für N (Vorschlag: 2–3, im Menü einstellbar).
-- Was gilt als **Master-Image**? Vorschlag: ein im Images-Baum markiertes Image oder das neueste Image in einem
-  Ordner „Master“ – so wird ein aktualisierter Master automatisch verwendet.
-- Verhalten bei **Fehler:** Häkchen bleibt an, aber kein automatischer neuer Versuch, bis das Gerät neu startet?
-- Abbrechen am Gerät: welche Taste (Vorschlag: beliebige Taste bzw. Esc).
+- Schritt 3 „Anpassen“: immer an (so notiert) oder wie das Backup als Option ausschaltbar?
