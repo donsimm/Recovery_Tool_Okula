@@ -430,6 +430,7 @@ In der Geräteliste siehst du bei jedem Gerät einen Balken mit Prozent und Rest
 
 <b>Spalte „Auto“ und Status der Automatisierung</b>
 •  Häkchen gesetzt: Die Automatisierung ist eingeschaltet.
+•  Häkchen grau: Alles ist pausiert (roter Stopp-Knopf ■ gedrückt).
 •  <i>startet in 25 s</i>: Countdown läuft. Am Gerät bricht Esc ab.
 •  <i>wartet (Platz 2)</i>: Es laufen schon so viele Geräte wie erlaubt. Das Gerät kommt gleich dran.
 •  <i>Schritt 2/5: Image zurückspielen</i>: Die Automatisierung arbeitet.

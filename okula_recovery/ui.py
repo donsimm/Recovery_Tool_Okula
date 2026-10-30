@@ -73,6 +73,9 @@ treeview.view.progressbar:disabled, treeview.view .progressbar:disabled,
 treeview.view.progressbar:disabled:selected, treeview.view .progressbar:disabled:selected {
     background-color: #c62828; background-image: none; border-color: #8e0000; color: #ffffff; }
 progressbar.error progress { background-color: #c62828; border-color: #8e0000; }
+/* Automatisierung pausiert: Haekchen in der Geraeteliste ausgegraut */
+treeview.view check:disabled, treeview.view check:checked:disabled, treeview.view check:disabled:selected {
+    background-image: none; background-color: #d6d6d6; border-color: #b0b0b0; color: #8a8a8a; box-shadow: none; }
 """
 
 
@@ -1525,8 +1528,8 @@ class MainWindow(Gtk.ApplicationWindow):
     # Spalten des Gerätebaums: LED bzw. Ordner-Icon, Name, Status, Betriebssystem, zuletzt verbunden, IP,
     # Geräte-ID, Art (unsorted/folder/device), Ordner-rel, Fortschritt 0–100, Balken-Text (leer), Balken zeigen
     D_ICON, D_NAME, D_STATUS, D_OS, D_SEEN, D_IP, D_ID, D_KIND, D_REL, D_PROG, D_PCT, D_BAR, D_AUTO, D_AUTOVIS, \
-        D_BAROK = range(15)
-    NO_PROGRESS = [0, "", False, False, False, True]
+        D_BAROK, D_AUTOACT = range(16)
+    NO_PROGRESS = [0, "", False, False, False, True, False]
     DEV_DND_TARGET = "okula/device-row"
 
     def _build_device_pane(self) -> Gtk.Widget:
@@ -1558,7 +1561,7 @@ class MainWindow(Gtk.ApplicationWindow):
         box.pack_start(head, False, False, 0)
 
         self.device_store = Gtk.TreeStore(str, str, str, str, str, str, str, str, str, int, str, bool, bool, bool,
-                                          bool)
+                                          bool, bool)
         view = Gtk.TreeView(model=self.device_store)
         col = Gtk.TreeViewColumn("Gerät")
         icon = Gtk.CellRendererPixbuf()
@@ -1574,7 +1577,9 @@ class MainWindow(Gtk.ApplicationWindow):
         # Automatisierung ein/aus (nur Gerätezeilen)
         toggle = Gtk.CellRendererToggle()
         toggle.connect("toggled", self._on_auto_toggled)
-        col = Gtk.TreeViewColumn("Auto", toggle, active=self.D_AUTO, visible=self.D_AUTOVIS)
+        # pausiert (roter Stopp-Knopf): Häkchen ausgegraut und nicht klickbar
+        col = Gtk.TreeViewColumn("Auto", toggle, active=self.D_AUTO, visible=self.D_AUTOVIS,
+                                 sensitive=self.D_AUTOACT, activatable=self.D_AUTOACT)
         view.append_column(col)
         self.auto_column = col
         # Status: solange etwas läuft, Fortschrittsbalken mit Prozent, daneben Auftrag und Restzeit
@@ -1681,7 +1686,7 @@ class MainWindow(Gtk.ApplicationWindow):
                 dev.os_name or "–", "jetzt" if agent else devices.short_time(dev.last_seen) or "–",
                 agent.ip if agent else dev.last_ip, dev.id, "device", dev.folder,
                 100 if failed else int(fraction * 100) if bar else 0, "", bar, automation.settings(dev).enabled, True,
-                failed is None]
+                failed is None, not self.cfg.automation_paused]
 
     def refresh_devices(self) -> None:
         """Baum neu aufbauen (neue Geräte, Ordner, Umbenennen) – Auf- und Zuklappen bleibt erhalten."""
@@ -2108,6 +2113,8 @@ class MainWindow(Gtk.ApplicationWindow):
         self.status("Alle Automatisierungen pausiert" if paused else "Automatisierungen wieder aktiv")
         self._update_pause_button()
         self.update_device_rows()
+        for win in self.device_windows.values():
+            win.refresh_automation()
 
     def _update_pause_button(self) -> None:
         button = getattr(self, "pause_button", None)

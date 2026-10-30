@@ -219,6 +219,10 @@ class AutomationTab(Gtk.Box):
             text = f"läuft – {run.job.label} {run.job.shown_fraction * 100:.0f} %"
         self.state.set_text(text)
         self.btn_cancel.set_visible(run is not None and run.active)
+        paused = self.main.cfg.automation_paused   # roter Stopp-Knopf: Schalter ausgegraut
+        self.switch.set_sensitive(not paused)
+        self.switch.set_tooltip_text("Automatisierung ist pausiert (roter Stopp-Knopf in der Geräteliste)"
+                                     if paused else None)
         if self.switch.get_active() != s.enabled:
             self._updating = True
             self.switch.set_active(s.enabled)
