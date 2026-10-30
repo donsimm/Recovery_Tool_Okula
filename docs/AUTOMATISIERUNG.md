@@ -18,7 +18,7 @@ Stand: **umgesetzt** (29.10.2026). Bedienung im [README](../README.md); Prüfung
   *„Die Automatisierung läuft einmal und schaltet sich nach erfolgreichem Durchlauf selbst aus. Nach 24 Stunden
   schaltet sie sich wieder ein (abschaltbar).“* (Keine Option „immer“.)
 - **Option im Reiter: „Nach 24 h wieder einschalten“** – Standard **ein**.
-- **Hauptschalter:** roter Knopf „Automatisierung pausieren“ über der Geräteliste (auch Menü → Einstellungen).
+- **Hauptschalter:** roter Stopp-Knopf ■ über der Geräteliste (auch Menü → Einstellungen).
 - **Vorlagen** im Reiter: Einstellungen als Vorlage speichern (z. B. „Schulungs-PC zurücksetzen“) und anderen
   Geräten zuweisen.
 
