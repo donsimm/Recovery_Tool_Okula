@@ -1,9 +1,69 @@
-# Änderungen, Entscheidungen und offene Punkte
+# Änderungen, Bugs, Ideen und Entscheidungen
 
-Arbeitsnotizen zum Okula Recovery Tool. Details zu jeder Funktion stehen im [README](../README.md),
-der genaue Verlauf in `git log`.
+Zentrale Übersicht zum Okula Recovery Tool. Details zu jeder Funktion stehen im [README](../README.md),
+der genaue Verlauf in `git log`, Prüfungen in [TESTS.md](TESTS.md).
 
-## Änderungsprotokoll
+**Ablauf:** Spontane Notizen kommen nach [EINGANG.md](EINGANG.md). Claude sortiert sie hier in die passende
+Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
+
+**IDs:** `B-` Bug · `Ä-` Änderung/Verbesserung · `I-` Idee · Status: **offen**, **in Arbeit**, **erledigt**
+(→ ins Protokoll verschieben), **zurückgestellt**. Priorität: 🔴 hoch · 🟡 mittel · ⚪ tief.
+
+## Kurzübersicht
+
+| Kategorie | Offen | In Arbeit | Zurückgestellt |
+|---|---|---|---|
+| 🐞 Bugs | 0 | 0 | 0 |
+| 🔧 Änderungen | 0 | 0 | 0 |
+| 💡 Ideen | 1 | 0 | 2 |
+| 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
+
+Als Nächstes: Tests „Fixes von heute“ in [TESTS.md](TESTS.md) (Debian-Direktinstallation, doppelter HP-Eintrag).
+
+## 🐞 Bugs
+
+| ID | Prio | Status | Beschreibung | Gemeldet |
+|---|---|---|---|---|
+| – | | | keine offenen Bugs | |
+
+## 🔧 Änderungen / Verbesserungen
+
+| ID | Prio | Status | Beschreibung | Gemeldet |
+|---|---|---|---|---|
+| – | | | keine offenen Änderungswünsche | |
+
+## 💡 Ideen
+
+| ID | Prio | Status | Beschreibung |
+|---|---|---|---|
+| I-001 | ⚪ | offen | **Virtuelle Maschine (VM) im Tool:** ISOs/Images in einer VM auf dem Server installieren, testen, ändern und wieder Images erstellen. Details und offene Fragen: [VM.md](VM.md) |
+| I-002 | ⚪ | zurückgestellt | Nobara/Zorin direkt installieren – nur möglich, falls deren Installer eine unbeaufsichtigte Installation erhält |
+| I-003 | ⚪ | zurückgestellt | Nicht generalisierte 1:1-Images anpassen (Name per Registry, Key per Skript) |
+
+Umgesetzte Ideen: Windows-Master-Image mit Sysprep ([MASTER-IMAGE.md](MASTER-IMAGE.md)), Ordner an Geräte senden
+([ORDNER-SENDEN.md](ORDNER-SENDEN.md)), Automatisierung ([AUTOMATISIERUNG.md](AUTOMATISIERUNG.md)),
+Gerätename = Name im Tool.
+
+## 📌 Entscheidungen
+
+- **Netzwerkstart nur für freigeschaltete Geräte:** Nur Geräte, die schon mit dem Agent-Stick liefen und
+  freigeschaltet sind, bekommen eine PXE-Antwort. Andere Rechner im Netz bleiben unberührt, IP-Adressen vergibt
+  weiterhin der bestehende DHCP-Server.
+- **NAS-Passwort nie im Repo oder Export:** liegt nur root-lesbar in `/etc/okula-recovery/nas.cred`.
+  Exporte mit Agent-Schlüssel haben Rechte 0600.
+- **Nur Boot-Stick (keine Direktinstallation):** Nobara (Calamares), Zorin OS (ohne Autoinstall), Windows 32-Bit.
+  Bewusst so belassen.
+- **Auf Zielgeräten wird nichts installiert:** Agent läuft im RAM (Stick oder Netzwerkstart).
+- **Automatisches Zusammenführen nur bei sicherer Identität** (gleiche Board-UUID/Seriennummer); eine gleiche MAC
+  allein reicht nie (geteilter USB-Netzwerkadapter).
+- **Gerätename im Tool = Computername** bei Neuinstallation, Anpassen und Automatisierung; ändern = Gerät umbenennen.
+- **Windows anpassen nur bei Master-Images (Sysprep)**; ein nicht generalisiertes Windows wird nicht verändert.
+- **Passwörter werden nicht gespeichert:** lokales Konto ohne Passwort, Windows verlangt es beim ersten Anmelden.
+- **Umsetzungsreihenfolge:** zuerst Agent (Fundament, ein neuer Stick reicht), dann Tool-Logik, zuletzt Oberfläche.
+
+## ✅ Erledigt – Änderungsprotokoll
+
+Neueste zuoberst.
 
 ### 30.10.2026
 - **Demo-Gerät (Vorführung):** Extras → Demo-Gerät startet einen simulierten Agent auf dem Server („DEMO-PC“).
@@ -58,36 +118,3 @@ der genaue Verlauf in `git log`.
 ### 27.10.2026
 - Grundgerüst: GTK-Oberfläche, NAS einhängen, Agent-USB-Stick, Disk-Image erstellen und zurückspielen,
   Clonezilla-Images, Restore-Stick, Agent-Fortschritt am Bildschirm, install.sh.
-
-## Entscheidungen
-
-- **Netzwerkstart nur für freigeschaltete Geräte:** Nur Geräte, die schon mit dem Agent-Stick liefen und
-  freigeschaltet sind, bekommen eine PXE-Antwort. Andere Rechner im Netz bleiben unberührt, IP-Adressen vergibt
-  weiterhin der bestehende DHCP-Server.
-- **NAS-Passwort nie im Repo oder Export:** liegt nur root-lesbar in `/etc/okula-recovery/nas.cred`.
-  Exporte mit Agent-Schlüssel haben Rechte 0600.
-- **Nur Boot-Stick (keine Direktinstallation):** Nobara (Calamares), Zorin OS (ohne Autoinstall), Windows 32-Bit.
-  Bewusst so belassen.
-- **Auf Zielgeräten wird nichts installiert:** Agent läuft im RAM (Stick oder Netzwerkstart).
-- **Automatisches Zusammenführen nur bei sicherer Identität** (gleiche Board-UUID/Seriennummer); eine gleiche MAC
-  allein reicht nie (geteilter USB-Netzwerkadapter).
-- **Gerätename im Tool = Computername** bei Neuinstallation, Anpassen und Automatisierung; ändern = Gerät umbenennen.
-- **Windows anpassen nur bei Master-Images (Sysprep)**; ein nicht generalisiertes Windows wird nicht verändert.
-- **Passwörter werden nicht gespeichert:** lokales Konto ohne Passwort, Windows verlangt es beim ersten Anmelden.
-- **Umsetzungsreihenfolge:** zuerst Agent (Fundament, ein neuer Stick reicht), dann Tool-Logik, zuletzt Oberfläche.
-
-## Offene Punkte / zu testen
-
-Alle Prüfungen – erledigte und offene – stehen in [TESTS.md](TESTS.md).
-
-## Ideen
-
-- ~~Windows-Master-Image mit Sysprep~~ – umgesetzt, siehe [MASTER-IMAGE.md](MASTER-IMAGE.md).
-- ~~Ordner an Geräte senden~~ – umgesetzt, siehe [ORDNER-SENDEN.md](ORDNER-SENDEN.md).
-- ~~Automatisierung~~ – umgesetzt, siehe [AUTOMATISIERUNG.md](AUTOMATISIERUNG.md).
-- ~~Gerätename = Name im Tool~~ – umgesetzt (fest, ändern = Gerät umbenennen).
-- **Virtuelle Maschine (VM) im Tool** (Idee, offen): ISOs/Images in einer VM auf dem Server installieren, testen,
-  ändern und wieder Images erstellen. Details und offene Fragen: [VM.md](VM.md).
-- Nobara/Zorin direkt installieren: nur möglich, falls deren Installer eine unbeaufsichtigte Installation
-  erhält; aktuell nicht vorgesehen.
-- Nicht generalisierte 1:1-Images anpassen (Name per Registry, Key per Skript) – vorerst nicht vorgesehen.
