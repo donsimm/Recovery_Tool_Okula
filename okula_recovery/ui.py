@@ -195,7 +195,6 @@ class MainWindow(Gtk.ApplicationWindow):
             ("_Backup erstellen …", lambda: self._with_device(self.start_backup), None),
             ("Backup zur_ückspielen …", lambda: self._with_device(lambda d: self.start_file_restore(None, d)), None),
             ("Ordner _senden …", lambda: self._with_device(self.on_send_folders), None),
-            ("Automatisierung …", lambda: self._with_device(lambda d: self.open_device(d).show_automation()), None),
             ("_Inventar neu einlesen", lambda: self._with_device(self.refresh_inventory), None),
             ("Gerät _herunterfahren", lambda: self._with_device(lambda d: self.power(d, "poweroff")), None),
             None,
@@ -206,11 +205,6 @@ class MainWindow(Gtk.ApplicationWindow):
             None,
             ("Images _aktualisieren", self.refresh_images, "F5"),
         ]))
-        tools = bar.get_children()[-1].get_submenu()
-        self.pause_item = Gtk.CheckMenuItem.new_with_mnemonic("Automatisierungen _pausieren")
-        self.pause_item.set_active(self.cfg.automation_paused)
-        self.pause_item.connect("toggled", lambda i: self.set_automation_paused(i.get_active()))
-        tools.insert(self.pause_item, 8)
         bar.append(menu("E_xtras", [
             ("_USB klonen …", lambda: CloneDialog(self), None),
             ("USB _formatieren …", lambda: FormatDialog(self), None),
@@ -1554,6 +1548,12 @@ class MainWindow(Gtk.ApplicationWindow):
             b.connect("clicked", handler)
             head.pack_start(b, False, False, 0)
             self.dev_buttons[key] = b
+        # Hauptschalter der Automatisierung: abgesetzt und rot, damit er auffällt
+        self.pause_button = Gtk.ToggleButton(margin_start=18)
+        self.pause_button.get_style_context().add_class("destructive-action")
+        self.pause_button.connect("toggled", lambda b: self.set_automation_paused(b.get_active()))
+        head.pack_start(self.pause_button, False, False, 0)
+        self._update_pause_button()
         box.pack_start(head, False, False, 0)
 
         self.device_store = Gtk.TreeStore(str, str, str, str, str, str, str, str, str, int, str, bool, bool, bool,
@@ -2105,9 +2105,19 @@ class MainWindow(Gtk.ApplicationWindow):
         cfg.automation_paused = self.cfg.automation_paused = paused
         config.save(cfg)
         self.status("Alle Automatisierungen pausiert" if paused else "Automatisierungen wieder aktiv")
-        if self.pause_item.get_active() != paused:
-            self.pause_item.set_active(paused)
+        self._update_pause_button()
         self.update_device_rows()
+
+    def _update_pause_button(self) -> None:
+        button = getattr(self, "pause_button", None)
+        if button is None:
+            return
+        paused = self.cfg.automation_paused
+        button.set_label("Automatisierung fortsetzen" if paused else "Automatisierung pausieren")
+        button.set_tooltip_text("Alle Automatisierungen sind angehalten – klicken zum Fortsetzen" if paused else
+                                "Alle Automatisierungen anhalten (z. B. bei Wartung am NAS)")
+        if button.get_active() != paused:
+            button.set_active(paused)
 
     def open_settings(self) -> None:
         dlg = SettingsDialog(self, self.cfg)

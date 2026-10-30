@@ -255,7 +255,7 @@ Tipp: Speichere die Einstellungen als <i>Vorlage</i> und verwende sie für ander
 •  Bei einem Fehler steht das in der Liste (rot), im Gerätefenster und am Bildschirm des Geräts.
      Für einen neuen Versuch das Gerät neu starten.
 •  Es laufen höchstens 2 Geräte gleichzeitig (ändern: Menü → Einstellungen). Die anderen warten.
-•  Alles anhalten: Tools → <i>Automatisierungen pausieren</i>."""),
+•  Alles anhalten: oben links der rote Knopf <i>Automatisierung pausieren</i>."""),
 
     ("Datei-Backup", """<big><b>Nur Dateien sichern (Datei-Backup)</b></big>
 
@@ -494,7 +494,7 @@ Damit nimmst du nur die NAS-Einstellungen mit (ohne Passwort)."""),
 
 <b>Die Automatisierung startet nicht</b>
 •  Steht in der Liste <i>Einstellungen unvollständig</i>? Im Reiter <i>Automatisierung</i> steht, was fehlt.
-•  Steht <i>pausiert</i>? Unter <i>Tools</i> das Häkchen <i>Automatisierungen pausieren</i> entfernen.
+•  Steht <i>pausiert</i>? Oben links auf den roten Knopf <i>Automatisierung fortsetzen</i> klicken.
 •  Steht <i>wieder aktiv in …</i>? Sie lief schon. Häkchen <i>Auto</i> neu setzen, wenn sie sofort laufen soll.
 •  Nach einem Fehler oder Esc: Gerät neu starten, dann versucht sie es wieder.
 •  Meldung „Agent zu alt“: Agent-Stick neu erstellen bzw. Netzwerkstart neu vorbereiten.

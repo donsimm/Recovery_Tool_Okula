@@ -8,7 +8,7 @@ Server: Debian 13 + Xfce, Python 3 + GTK 3.
 
 - **Menüleiste:**
   - **Menü:** NAS-Verbindung … (Ctrl+N), Einstellungen … (Automatisierung), Agent-USB-Stick erstellen …, Einstellungen exportieren / importieren …, Beenden
-  - **Tools:** Gerät öffnen (Ctrl+O), Disk-Image erstellen, Image zurückspielen, OS installieren, Backup erstellen, Backup zurückspielen, Ordner senden, Automatisierung, Automatisierungen pausieren, Inventar neu einlesen, Gerät herunterfahren, Restore-Stick aus Image, ISO hinzufügen, Boot-Stick aus ISO, Netzwerkstart (PXE), Images aktualisieren (F5)
+  - **Tools:** Gerät öffnen (Ctrl+O), Disk-Image erstellen, Image zurückspielen, OS installieren, Backup erstellen, Backup zurückspielen, Ordner senden, Inventar neu einlesen, Gerät herunterfahren, Restore-Stick aus Image, ISO hinzufügen, Boot-Stick aus ISO, Netzwerkstart (PXE), Images aktualisieren (F5)
   - **Extras:** USB klonen, USB formatieren, Demo-Gerät (Vorführung), Demo: nächster Auftrag mit Fehler
   - **Hilfe:** **So funktioniert das Tool** (F1, Anleitung in einfacher Sprache mit Kapiteln), Tastenkürzel, Über
 - **Links (Geräte):** Alle Geräte, die je mit dem Agent-Stick gebootet wurden, in einer Ordnerstruktur. ● grün = verbunden, ● rot = nicht verbunden (Erklärung auch unter Hilfe → So funktioniert das Tool); dazu Status, Betriebssystem, zuletzt verbunden und IP. Details siehe [Geräte](#geräte).
@@ -358,7 +358,7 @@ Erfasste Geräte mit eingeschalteter Automatisierung werden **neu aufgesetzt, so
 - **Zieldisk** über die Seriennummer: Steckt eine andere Disk im Gerät, bricht die Automatisierung ab, bevor etwas gelöscht wird.
 - **Einmal pro 24 h:** Nach erfolgreichem Durchlauf schaltet sich das Häkchen aus und 24 h später wieder ein (Option „Nach 24 h wieder einschalten“, Standard ein). Die Liste zeigt z. B. „wieder aktiv in 5 h“.
 - **Fehler:** sofort abbrechen, das Gerät bleibt im normalen Agent-Betrieb. Der Fehler steht in der Liste (rot), im Gerätefenster, im Verlauf und am Bildschirm des Geräts („Automatisierung fehlgeschlagen … Gerät neu starten bzw. neu anschliessen“). Kein automatischer neuer Versuch – erst wenn das Gerät neu angeschlossen wird.
-- **Gleichzeitig:** höchstens N Geräte (Menü → **Einstellungen …**, Standard 2); weitere warten („wartet, Platz 2 in der Warteschlange“). **Hauptschalter:** Tools → „Automatisierungen pausieren“ (auch in den Einstellungen).
+- **Gleichzeitig:** höchstens N Geräte (Menü → **Einstellungen …**, Standard 2); weitere warten („wartet, Platz 2 in der Warteschlange“). **Hauptschalter:** roter Knopf **„Automatisierung pausieren“** oben über der Geräteliste (bzw. „fortsetzen“; auch in den Einstellungen).
 - **Vorlagen:** Im Reiter Einstellungen als Vorlage speichern (z. B. „Schulungs-PC“) und bei anderen Geräten anwenden. Vorlagen enthalten keine Zieldisk (pro Gerät).
 - **Protokoll:** Jeder Schritt steht im Log des Auftrags und im Verlauf des Geräts.
 
