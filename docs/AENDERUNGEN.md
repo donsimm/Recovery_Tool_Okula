@@ -73,8 +73,8 @@ Neueste zuoberst.
 - **Fortschrittsbalken:** grün während des Auftrags, rot wenn er fehlgeschlagen ist (bis der nächste startet).
 - Hilfe: alle Kapitel auf den neuen Stand (Master-Image, Ordner senden, Automatisierung, Demo-Gerät).
 - **Automatisierung, Schritt 1 Backup:** wahlweise Benutzerdaten oder **ganze Disk als Disk-Image** aufs NAS.
-- **Hauptschalter Automatisierung:** roter Stopp-Knopf ■ über der Geräteliste (statt Menü Tools); solange pausiert,
-  sind die Häkchen „Auto“ und der Schalter im Reiter ausgegraut.
+- **Hauptschalter Automatisierung:** Stopp-Knopf ■ über der Geräteliste (statt Menü Tools), im Normalbetrieb wie
+  die anderen Symbole, **rot nur solange pausiert**; dann sind die Häkchen „Auto“ und der Schalter im Reiter ausgegraut.
 - **Rechtsklick Gerät:** „Automatisierung …“ entfernt, Herunterfahren/Neu starten in eigenem Block.
 - **Gerätefenster:** Reiter „Automatisierung“ mit nummerierten Schritten (Kreis, Titel, Trennlinien), Reiter
   „Netzwerk“ im gleichen Stil ohne Nummern.

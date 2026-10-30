@@ -81,7 +81,7 @@ bestätigt.
 - [ ] **Andere Disk** im Gerät (oder Zieldisk absichtlich falsch) → Fehler rot, Meldung am Gerät, nichts gelöscht
 - [ ] **Backup vorher** an → Backup erscheint im Reiter Backups mit Notiz „Automatisierung – vor dem Zurückspielen“
 - [ ] **Backup vorher – ganze Disk** → Disk-Image der alten Disk im Reiter Images, erst danach wird zurückgespielt
-- [ ] Hauptschalter: roter Stopp-Knopf ■ über der Geräteliste → Gerät startet keinen Countdown
+- [ ] Hauptschalter: Stopp-Knopf ■ über der Geräteliste (wird rot) → Gerät startet keinen Countdown
 - [ ] Vorlage speichern („Schulungs-PC“), bei zweitem Gerät anwenden, Zieldisk dort wählen
 - [ ] Nach 24 h: Häkchen wieder an (oder Option aus → bleibt aus)
 

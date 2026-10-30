@@ -1554,10 +1554,9 @@ class MainWindow(Gtk.ApplicationWindow):
             b.connect("clicked", handler)
             head.pack_start(b, False, False, 0)
             self.dev_buttons[key] = b
-        # Hauptschalter der Automatisierung: abgesetzt und rot, damit er auffällt
+        # Hauptschalter der Automatisierung: wie die anderen Symbole, rot nur solange pausiert
         self.pause_button = Gtk.ToggleButton(margin_start=12)
         self.pause_button.set_image(Gtk.Image.new_from_icon_name("media-playback-stop-symbolic", Gtk.IconSize.BUTTON))
-        self.pause_button.get_style_context().add_class("destructive-action")
         self.pause_button.connect("toggled", lambda b: self.set_automation_paused(b.get_active()))
         head.pack_start(self.pause_button, False, False, 0)
         self._update_pause_button()
@@ -2124,6 +2123,8 @@ class MainWindow(Gtk.ApplicationWindow):
         if button is None:
             return
         paused = self.cfg.automation_paused
+        ctx = button.get_style_context()
+        (ctx.add_class if paused else ctx.remove_class)("destructive-action")
         button.set_tooltip_text("Automatisierung pausiert – klicken zum Fortsetzen" if paused else
                                 "Automatisierung pausieren (alle Geräte, z. B. bei Wartung am NAS)")
         if button.get_active() != paused:

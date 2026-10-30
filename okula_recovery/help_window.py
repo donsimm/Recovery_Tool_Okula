@@ -256,7 +256,7 @@ Tipp: Speichere die Einstellungen als <i>Vorlage</i> und verwende sie für ander
 •  Bei einem Fehler steht das in der Liste (rot), im Gerätefenster und am Bildschirm des Geräts.
      Für einen neuen Versuch das Gerät neu starten.
 •  Es laufen höchstens 2 Geräte gleichzeitig (ändern: Menü → Einstellungen). Die anderen warten.
-•  Alles anhalten: oben über der Geräteliste der rote Stopp-Knopf ■. Nochmals klicken = weiter."""),
+•  Alles anhalten: oben über der Geräteliste der Stopp-Knopf ■. Pausiert ist er rot. Nochmals klicken = weiter."""),
 
     ("Datei-Backup", """<big><b>Nur Dateien sichern (Datei-Backup)</b></big>
 
@@ -431,7 +431,7 @@ In der Geräteliste siehst du bei jedem Gerät einen Balken mit Prozent und Rest
 
 <b>Spalte „Auto“ und Status der Automatisierung</b>
 •  Häkchen gesetzt: Die Automatisierung ist eingeschaltet.
-•  Häkchen grau: Alles ist pausiert (roter Stopp-Knopf ■ gedrückt).
+•  Häkchen grau: Alles ist pausiert (Stopp-Knopf ■ ist rot).
 •  <i>startet in 25 s</i>: Countdown läuft. Am Gerät bricht Esc ab.
 •  <i>wartet (Platz 2)</i>: Es laufen schon so viele Geräte wie erlaubt. Das Gerät kommt gleich dran.
 •  <i>Schritt 2/5: Image zurückspielen</i>: Die Automatisierung arbeitet.
@@ -496,7 +496,7 @@ Damit nimmst du nur die NAS-Einstellungen mit (ohne Passwort)."""),
 
 <b>Die Automatisierung startet nicht</b>
 •  Steht in der Liste <i>Einstellungen unvollständig</i>? Im Reiter <i>Automatisierung</i> steht, was fehlt.
-•  Steht <i>pausiert</i>? Oben über der Geräteliste den roten Stopp-Knopf ■ nochmals klicken.
+•  Steht <i>pausiert</i>? Oben über der Geräteliste den roten Stopp-Knopf ■ klicken.
 •  Steht <i>wieder aktiv in …</i>? Sie lief schon. Häkchen <i>Auto</i> neu setzen, wenn sie sofort laufen soll.
 •  Nach einem Fehler oder Esc: Gerät neu starten, dann versucht sie es wieder.
 •  Meldung „Agent zu alt“: Agent-Stick neu erstellen bzw. Netzwerkstart neu vorbereiten.
