@@ -69,22 +69,32 @@ class AutomationTab(Gtk.Box):
             row.pack_start(b, False, False, 0)
         self.pack_start(row, False, False, 0)
 
-        grid = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        grid = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=12)
 
-        def section(title: str) -> Gtk.Box:
-            frame = Gtk.Frame(label=title)
-            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=8)
-            frame.add(inner)
-            grid.pack_start(frame, False, False, 0)
+        def section(number: str, title: str, note: str = "") -> Gtk.Box:
+            """Abschnitt: Nummer im Kreis, fetter Titel, grauer Zusatz; Inhalt eingerückt, Trennlinie davor."""
+            if grid.get_children():
+                grid.pack_start(Gtk.Separator(margin_top=6, margin_bottom=6), False, False, 0)
+            head = Gtk.Box(spacing=10)
+            num = Gtk.Label(label=number, valign=Gtk.Align.CENTER)
+            num.get_style_context().add_class("step-number")
+            head.pack_start(num, False, False, 0)
+            text = Gtk.Label(xalign=0)
+            text.set_markup(f"<b>{GLib.markup_escape_text(title)}</b>" + (
+                f"   <span foreground='#757575'>{GLib.markup_escape_text(note)}</span>" if note else ""))
+            head.pack_start(text, False, False, 0)
+            grid.pack_start(head, False, False, 0)
+            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_start=36, margin_top=4)
+            grid.pack_start(inner, False, False, 0)
             return inner
 
-        s1 = section("1  Backup (Option)")
+        s1 = section("1", "Backup", "Option")
         self.backup = Gtk.CheckButton(label="Vorher Benutzerdaten aller Benutzer auf der Zieldisk sichern "
                                             "(Desktop, Dokumente, Bilder … wie „Backup erstellen“)")
         self.backup.connect("toggled", lambda _c: self._changed())
         s1.pack_start(self.backup, False, False, 0)
 
-        s2 = section("2  Image zurückspielen")
+        s2 = section("2", "Image zurückspielen")
         r = Gtk.Box(spacing=8)
         self.mode_master = Gtk.RadioButton(label="Master-Image")
         self.mode_own = Gtk.RadioButton(label="Eigenes Image", group=self.mode_master)
@@ -105,7 +115,7 @@ class AutomationTab(Gtk.Box):
                             "bricht die Automatisierung ab – es wird nichts gelöscht. Das Image wird vor dem "
                             "Schreiben vollständig geprüft."), False, False, 0)
 
-        s3 = section("3  Anpassen (läuft immer)")
+        s3 = section("3", "Anpassen", "läuft immer")
         self.custom_text = Gtk.Label(xalign=0, wrap=True, selectable=True)
         s3.pack_start(self.custom_text, False, False, 0)
         self.swiss = Gtk.CheckButton(label="Region Schweiz: Formate de-CH, Tastatur Schweiz, Zeitzone Zürich")
@@ -119,7 +129,7 @@ class AutomationTab(Gtk.Box):
         r.pack_start(_hint("Passwort beim ersten Anmelden setzen (wird nirgends gespeichert)"), False, False, 0)
         s3.pack_start(r, False, False, 0)
 
-        s4 = section("4  Ordner senden (Option) – auf den Desktop für alle Benutzer, ersetzt vorhandene")
+        s4 = section("4", "Ordner senden", "Option – auf den Desktop für alle Benutzer, ersetzt vorhandene Ordner")
         r = Gtk.Box(spacing=12)
         self.software = Gtk.CheckButton(label=distribute.FIXED[0])
         self.testfiles = Gtk.CheckButton(label=distribute.FIXED[1])
@@ -132,7 +142,7 @@ class AutomationTab(Gtk.Box):
         s4.pack_start(self.projects_box, False, False, 0)
         self.project_checks: dict[str, Gtk.CheckButton] = {}
 
-        s5 = section("5  Abschluss")
+        s5 = section("5", "Abschluss")
         self.finish = Gtk.ComboBoxText()
         for key, label in (("reboot", "Neustart (startet danach Windows)"), ("poweroff", "Herunterfahren"),
                            ("none", "Nichts – Gerät bleibt im Agent")):

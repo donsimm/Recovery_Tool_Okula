@@ -73,6 +73,9 @@ treeview.view.progressbar:disabled, treeview.view .progressbar:disabled,
 treeview.view.progressbar:disabled:selected, treeview.view .progressbar:disabled:selected {
     background-color: #c62828; background-image: none; border-color: #8e0000; color: #ffffff; }
 progressbar.error progress { background-color: #c62828; border-color: #8e0000; }
+/* Schritt-Nummer im Kreis (Reiter Automatisierung) */
+.step-number { background-color: #455a64; color: #ffffff; font-weight: bold; border-radius: 12px;
+    min-width: 24px; min-height: 24px; padding: 0 2px; }
 /* Automatisierung pausiert: Haekchen in der Geraeteliste ausgegraut */
 treeview.view check:disabled, treeview.view check:checked:disabled, treeview.view check:disabled:selected {
     background-image: none; background-color: #d6d6d6; border-color: #b0b0b0; color: #8a8a8a; box-shadow: none; }
