@@ -383,6 +383,25 @@ Wenn du unsicher bist: Bis 32 GB <b>FAT32</b>, darüber <b>exFAT</b>.
 •  <i>Mit Nullen überschreiben</i>: alte Daten sind danach sicher weg. Dauert lange.
 •  <i>Vollständiger Test</i>: prüft jeden Block. Dauert sehr lange."""),
 
+    ("Demo-Gerät", """<big><b>Das Tool vorführen (Demo-Gerät)</b></big>
+
+Zum Zeigen gibt es ein Gerät, das es gar nicht gibt: den <b>DEMO-PC</b>.
+
+<b>So gehts:</b>
+1.  <i>Extras → Demo-Gerät (Vorführung)</i> anhaken.
+2.  Nach ein paar Sekunden steht links <i>DEMO-PC</i> mit grünem Punkt.
+3.  Jetzt kannst du alles zeigen: Image erstellen, zurückspielen, Backup, Ordner senden, Automatisierung …
+     Ein Auftrag dauert etwa eine Minute.
+
+<b>Einen Fehler zeigen:</b>
+<i>Extras → Demo: nächster Auftrag mit Fehler</i>. Der nächste Auftrag bricht ab, der Balken wird rot.
+
+<b>Gut zu wissen:</b>
+•  Der DEMO-PC fasst nichts an. Es gibt keine echte Festplatte dahinter.
+•  Andere Geräte im Netzwerk merken nichts davon.
+•  Ein Image vom DEMO-PC kann nur auf den DEMO-PC zurückgespielt werden.
+•  Zum Beenden das Häkchen wieder entfernen."""),
+
     ("Anzeigen im Fenster", """<big><b>Was die Anzeigen bedeuten</b></big>
 
 <b>Oben rechts: Serverlast</b>

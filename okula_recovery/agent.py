@@ -475,10 +475,10 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
         log(f"Verbindung zu {addr[0]} beendet: {e}")
 
 
-def serve_control(key: bytes, port: int) -> None:
+def serve_control(key: bytes, port: int, host: str = "") -> None:
     ctx = wire.server_context(key)
     try:
-        server = socket.create_server(("", port))
+        server = socket.create_server((host, port))
     except OSError as e:
         log(f"Steuerdienst kann TCP {port} nicht öffnen: {e}")
         return

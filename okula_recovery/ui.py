@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import atexit
+import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -89,6 +92,10 @@ class MainWindow(Gtk.ApplicationWindow):
         self.automation = automation.Engine(self.store, self.jobs, self.key, self._nas_root, lambda: self.cfg,
                                             lambda dev_id: GLib.idle_add(self._on_automation_change, dev_id))
         self._image_tree: archive.Tree | None = None   # zuletzt gelesene Images (für die Automatisierung)
+        self.demo_proc: subprocess.Popen | None = None  # Demo-Gerät (simulierter Agent auf diesem Server)
+        self.connect("destroy", lambda *_a: self.set_demo(False))
+        atexit.register(lambda: self.demo_proc is not None and self.demo_proc.poll() is None
+                        and self.demo_proc.terminate())
         self.agents: dict[str, discovery.AgentInfo] = {}  # Agent-ID → letzter Beacon (nur verbundene)
         self.device_of_agent: dict[str, str] = {}   # Agent-ID → Geräte-ID
         self.online: dict[str, str] = {}            # Geräte-ID → Agent-ID der verbundenen Geräte
@@ -207,7 +214,15 @@ class MainWindow(Gtk.ApplicationWindow):
         bar.append(menu("E_xtras", [
             ("_USB klonen …", lambda: CloneDialog(self), None),
             ("USB _formatieren …", lambda: FormatDialog(self), None),
+            None,
+            ("Demo: nächster Auftrag mit _Fehler", self.demo_fail_next, None),
         ]))
+        extras = bar.get_children()[-1].get_submenu()
+        self.demo_item = Gtk.CheckMenuItem.new_with_mnemonic("_Demo-Gerät (Vorführung)")
+        self.demo_item.set_tooltip_text("Simuliertes Gerät „DEMO-PC“ zum Vorführen – fasst keine echte Disk an")
+        self.demo_item.connect("toggled", lambda i: self.set_demo(i.get_active()))
+        extras.insert(self.demo_item, 3)
+        self.menu_items["Demo: nächster Auftrag mit Fehler"].set_sensitive(False)
         bar.append(menu("_Hilfe", [
             ("_So funktioniert das Tool", self.show_help, "F1"),
             ("_Tastenkürzel", self.show_shortcuts, None),
@@ -707,6 +722,10 @@ class MainWindow(Gtk.ApplicationWindow):
             self.status("Zuerst rechts im Reiter „Images“ ein Disk- oder Clonezilla-Image wählen")
             return
         path = model[it][self.C_PATH]
+        if is_demo_image(path):
+            confirm_error(self, "Das ist ein Demo-Image (Attrappe vom Demo-Gerät) – daraus lässt sich kein "
+                                "Restore-Stick erstellen.")
+            return
         disks = clonezilla.disks(Path(path)) if model[it][self.C_TYPE] == "Clonezilla" else None
         StickDialog(self, image=path, source_disks=disks)
 
@@ -1977,6 +1996,52 @@ class MainWindow(Gtk.ApplicationWindow):
             win.refresh()
         return True
 
+    # ---------- Demo-Gerät ----------
+
+    def demo_running(self) -> bool:
+        return self.demo_proc is not None and self.demo_proc.poll() is None
+
+    def set_demo(self, on: bool) -> None:
+        """Demo-Gerät starten/beenden: simulierter Agent nur für dieses Tool (127.0.0.1)."""
+        if on != self.demo_running():
+            base = config.config_path().parent
+            if on:
+                (base / "demo-fehler").unlink(missing_ok=True)
+                base.mkdir(parents=True, exist_ok=True)
+                with open(base / "demo-geraet.log", "w") as log:
+                    env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parent.parent)}
+                    self.demo_proc = subprocess.Popen(
+                        [sys.executable, "-m", "okula_recovery.demo_agent", "--key-file", str(agentclient.key_path()),
+                         "--fail-flag", str(base / "demo-fehler")], stdout=log, stderr=subprocess.STDOUT, env=env)
+                self.status("Demo-Gerät gestartet – erscheint in wenigen Sekunden als „DEMO-PC“ in der Liste")
+                GLib.timeout_add(2000, self._demo_check)
+            else:
+                self.demo_proc.terminate()
+                try:
+                    self.demo_proc.wait(5)
+                except subprocess.TimeoutExpired:
+                    self.demo_proc.kill()
+                self.status("Demo-Gerät beendet")
+        if hasattr(self, "demo_item") and self.demo_item.get_active() != self.demo_running():
+            self.demo_item.set_active(self.demo_running())
+        if "Demo: nächster Auftrag mit Fehler" in getattr(self, "menu_items", {}):
+            self.menu_items["Demo: nächster Auftrag mit Fehler"].set_sensitive(self.demo_running())
+
+    def _demo_check(self) -> bool:
+        if self.demo_proc is not None and self.demo_proc.poll() is not None:
+            try:
+                tail = (config.config_path().parent / "demo-geraet.log").read_text().strip().splitlines()[-1:]
+            except OSError:
+                tail = []
+            self.set_demo(False)
+            confirm_error(self, "Demo-Gerät konnte nicht starten" + (f":\n{tail[0]}" if tail else ""))
+        return False
+
+    def demo_fail_next(self) -> None:
+        if self.demo_running():
+            (config.config_path().parent / "demo-fehler").touch()
+            self.status("Demo: der nächste Auftrag auf dem DEMO-PC bricht bei etwa 40 % mit einem Fehler ab")
+
     # ---------- Automatisierung, Ordner senden, Master-Images ----------
 
     def restorable_images(self) -> list[nas.ImageInfo]:
@@ -2659,6 +2724,13 @@ class MainWindow(Gtk.ApplicationWindow):
     def status(self, text: str) -> None:
         self.statusbar.pop(0)
         self.statusbar.push(0, text)
+
+
+def is_demo_image(path: str | Path) -> bool:
+    try:
+        return bool(json.loads((Path(path) / agentclient.IMAGE_META).read_text()).get("demo"))
+    except (OSError, ValueError, AttributeError):
+        return False
 
 
 def beacon_inventory(info: discovery.AgentInfo) -> dict:

@@ -36,6 +36,8 @@ bestätigt.
 | **Ordner senden:** Software, Test Files, Content-Projekte, Ersetzen, Abbruch behält alten Stand | A, V | NTFS-Loop-Disk |
 | **Automatisierung:** Countdown + Esc, Warteschlange (N), 5 Schritte, falsche Disk = nichts gelöscht, Fehler, 24 h | A, V | ganzer Durchlauf über den echten Agent auf Loop-Disks |
 | Computername = Gerätename (OS installieren, Anpassen) | A, V | |
+| Grüne/rote Fortschrittsbalken | A, V | |
+| Demo-Gerät: alle Aufträge, Fehler, Neustart, nur 127.0.0.1, Demo-Image gesperrt | A, V | echter Prozess |
 
 ## Offen – am realen System testen
 
@@ -82,6 +84,14 @@ bestätigt.
 - [ ] Vorlage speichern („Schulungs-PC“), bei zweitem Gerät anwenden, Zieldisk dort wählen
 - [ ] Nach 24 h: Häkchen wieder an (oder Option aus → bleibt aus)
 
-### 6. Allgemein
+### 6. Demo-Gerät (Vorführung)
+- [ ] Extras → Demo-Gerät: DEMO-PC erscheint grün, Inventar sichtbar
+- [ ] Disk-Image vom DEMO-PC (≈ 45 s, grüner Balken), danach Zurückspielen auf den DEMO-PC
+- [ ] Demo-Image auf ein echtes Gerät zurückspielen → wird verweigert
+- [ ] „Demo: nächster Auftrag mit Fehler“ → roter Balken bei ~40 %
+- [ ] Automatisierung auf dem DEMO-PC (Countdown, Schritte 1–5, „wieder aktiv in 24 h“)
+- [ ] Tool schliessen → Demo-Prozess ist beendet
+
+### 7. Allgemein
 - [ ] Gerätename mit Umlaut/Unterstrich (z. B. „Büro_PC_01“) bei OS installieren → Hinweis zeigt Name auf dem Gerät
 - [ ] Export auf altem/neuem Server: Vorlagen und „höchstens gleichzeitig“ kommen mit

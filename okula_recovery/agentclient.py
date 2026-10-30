@@ -25,6 +25,7 @@ from typing import Callable
 from okula_recovery import __version__, clonezilla, config, wire
 
 IMAGE_META = "okula-image.json"
+DEMO_IP = "127.0.0.1"   # das Demo-Gerät läuft immer auf dem Server selbst
 SAFE_FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$")
 
 # Fehlermeldungen von partclone → Hinweis
@@ -209,6 +210,8 @@ def create_image(ip: str, key: bytes, disk: str, nas_root: str | Path, machine: 
             msg = payload
             t = msg.get("type")
             if t == "begin":
+                if msg.get("demo"):
+                    meta["demo"] = True   # Demo-Gerät: lässt sich nur auf das Demo-Gerät zurückspielen
                 meta["disk"] = msg.get("disk", {})
                 meta["plan"] = msg.get("plan", [])
                 meta["compression"] = msg.get("compression", "")
@@ -352,7 +355,7 @@ def okula_source(image_path: Path) -> dict:
     for st in steps:
         if st.get("file"):
             st["pieces"] = [image_path / st["file"]]
-    return {"source": disk, "steps": steps, "format": "okula",
+    return {"source": disk, "steps": steps, "format": "okula", "demo": bool(meta.get("demo")),
             "sfdisk": (image_path / sfdisk_file).read_text() if sfdisk_file in names else "",
             "head": (image_path / head_file).read_bytes(),
             "verify": lambda progress, cancel: verify_image(image_path, meta, progress, cancel)}
@@ -381,6 +384,8 @@ def restore_image(ip: str, key: bytes, image_path: str | Path, target_disk: str,
                   cancel: threading.Event, port: int = wire.PORT, verify: bool = True,
                   source_disk: str | None = None) -> None:
     src = image_source(image_path, source_disk)
+    if src.get("demo") and ip != DEMO_IP:
+        raise AgentError("Das ist ein Demo-Image (Attrappe) – es lässt sich nur auf das Demo-Gerät zurückspielen")
     if verify:
         name = Path(image_path).name
         notifier = Notifier(ip, key, port, f"Image wird im Tool geprüft ({name}) – gleich wird zurückgespielt",
