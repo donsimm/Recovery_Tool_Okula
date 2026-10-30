@@ -314,7 +314,7 @@ class DeviceWindow(Gtk.Window):
     def _build_network(self) -> Gtk.Widget:
         """Reiter „Netzwerk“: Netzwerkstart, Netzwerkkarten, Wake-on-LAN, Netzwerkstart zuerst."""
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=12)
-        numbered_section(box, "1", "Netzwerkstart", "Agent ohne Stick starten (PXE)").pack_start(
+        numbered_section(box, "", "Netzwerkstart", "Agent ohne Stick starten (PXE)").pack_start(
             self._build_netboot(), False, False, 0)
 
         # Netzwerkkarten: Name, MAC, Art, für Netzwerkstart/WoL
@@ -324,9 +324,9 @@ class DeviceWindow(Gtk.Window):
         sw.set_vexpand(False)                 # nur so hoch wie nötig – kein Leerraum zwischen den Abschnitten
         sw.set_propagate_natural_height(True)
         sw.set_max_content_height(160)
-        numbered_section(box, "2", "Netzwerkkarten").pack_start(sw, False, False, 0)
+        numbered_section(box, "", "Netzwerkkarten").pack_start(sw, False, False, 0)
 
-        wake = numbered_section(box, "3", "Aus der Ferne einschalten", "Wake-on-LAN")
+        wake = numbered_section(box, "", "Aus der Ferne einschalten", "Wake-on-LAN")
         row = Gtk.Box(spacing=6)
         self.btn_wake = Gtk.Button(label="Einschalten")
         self.btn_wake.set_tooltip_text("Gerät per Wake-on-LAN einschalten – es startet wie gewohnt (z. B. Windows)")
@@ -342,7 +342,7 @@ class DeviceWindow(Gtk.Window):
                                     "Das Gerät muss im selben Netz wie der Server sein.")
         wake.pack_start(self.wake_text, False, False, 0)
 
-        first = numbered_section(box, "4", "Netzwerkstart zuerst", "Startreihenfolge im Gerät")
+        first = numbered_section(box, "", "Netzwerkstart zuerst", "Startreihenfolge im Gerät")
         row = Gtk.Box(spacing=8)
         self.netfirst_switch = Gtk.Switch(valign=Gtk.Align.CENTER)
         self.netfirst_switch.connect("notify::active", self._on_netfirst_switch)

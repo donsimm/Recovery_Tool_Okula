@@ -119,19 +119,20 @@ def pane_title(text: str) -> Gtk.Label:
 
 
 def numbered_section(container: Gtk.Box, number: str, title: str, note: str = "") -> Gtk.Box:
-    """Abschnitt wie im Reiter Automatisierung: Nummer im Kreis, fetter Titel, grauer Zusatz, Trennlinie davor;
-    gibt die eingerückte Box für den Inhalt zurück."""
+    """Abschnitt: Nummer im Kreis (nur bei Schritten, sonst number=""), fetter Titel, grauer Zusatz, Trennlinie
+    davor; gibt die eingerückte Box für den Inhalt zurück."""
     if container.get_children():
         container.pack_start(Gtk.Separator(margin_top=6, margin_bottom=6), False, False, 0)
     head = Gtk.Box(spacing=10)
-    num = Gtk.Label(label=number, valign=Gtk.Align.CENTER)
-    num.get_style_context().add_class("step-number")
-    head.pack_start(num, False, False, 0)
+    if number:
+        num = Gtk.Label(label=number, valign=Gtk.Align.CENTER)
+        num.get_style_context().add_class("step-number")
+        head.pack_start(num, False, False, 0)
     text = Gtk.Label(xalign=0)
     text.set_markup(f"<b>{GLib.markup_escape_text(title)}</b>" + (
         f"   <span foreground='#757575'>{GLib.markup_escape_text(note)}</span>" if note else ""))
     head.pack_start(text, False, False, 0)
     container.pack_start(head, False, False, 0)
-    inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_start=36, margin_top=4)
+    inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_start=36 if number else 12, margin_top=4)
     container.pack_start(inner, False, False, 0)
     return inner
