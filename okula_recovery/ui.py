@@ -1844,7 +1844,7 @@ class MainWindow(Gtk.ApplicationWindow):
                 sub.append(item)
             send.set_submenu(sub)
             menu.append(send)
-            add("Automatisierung …", lambda: self.open_device(dev).show_automation())
+            menu.append(Gtk.SeparatorMenuItem())   # Strom abgesetzt von den Aufträgen
             add("Herunterfahren", lambda: self.power(dev, "poweroff"), ready)
             add("Neu starten", lambda: self.power(dev, "reboot"), ready)
             menu.append(Gtk.SeparatorMenuItem())
