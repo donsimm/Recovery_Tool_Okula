@@ -71,6 +71,12 @@ Neueste zuoberst.
   Demo-Images nur auf den DEMO-PC zurückspielbar.
 - **Fortschrittsbalken:** grün während des Auftrags, rot wenn er fehlgeschlagen ist (bis der nächste startet).
 - Hilfe: alle Kapitel auf den neuen Stand (Master-Image, Ordner senden, Automatisierung, Demo-Gerät).
+- **Automatisierung, Schritt 1 Backup:** wahlweise Benutzerdaten oder **ganze Disk als Disk-Image** aufs NAS.
+- **Hauptschalter Automatisierung:** roter Stopp-Knopf ■ über der Geräteliste (statt Menü Tools); solange pausiert,
+  sind die Häkchen „Auto“ und der Schalter im Reiter ausgegraut.
+- **Rechtsklick Gerät:** „Automatisierung …“ entfernt, Herunterfahren/Neu starten in eigenem Block.
+- **Gerätefenster:** Reiter „Automatisierung“ mit nummerierten Schritten (Kreis, Titel, Trennlinien), Reiter
+  „Netzwerk“ im gleichen Stil ohne Nummern.
 
 ### 29.10.2026 (Abend) – Master-Image, Ordner senden, Automatisierung
 - **Automatisierung:** Häkchen „Auto“ in der Geräteliste und Reiter „Automatisierung“ im Gerätefenster. Erfasste
