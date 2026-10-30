@@ -86,6 +86,8 @@ Alle Prüfungen – erledigte und offene – stehen in [TESTS.md](TESTS.md).
 - ~~Ordner an Geräte senden~~ – umgesetzt, siehe [ORDNER-SENDEN.md](ORDNER-SENDEN.md).
 - ~~Automatisierung~~ – umgesetzt, siehe [AUTOMATISIERUNG.md](AUTOMATISIERUNG.md).
 - ~~Gerätename = Name im Tool~~ – umgesetzt (fest, ändern = Gerät umbenennen).
+- **Virtuelle Maschine (VM) im Tool** (Idee, offen): ISOs/Images in einer VM auf dem Server installieren, testen,
+  ändern und wieder Images erstellen. Details und offene Fragen: [VM.md](VM.md).
 - Nobara/Zorin direkt installieren: nur möglich, falls deren Installer eine unbeaufsichtigte Installation
   erhält; aktuell nicht vorgesehen.
 - Nicht generalisierte 1:1-Images anpassen (Name per Registry, Key per Skript) – vorerst nicht vorgesehen.
