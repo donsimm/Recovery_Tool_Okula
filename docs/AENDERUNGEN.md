@@ -15,7 +15,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 |---|---|---|---|
 | 🐞 Bugs | 0 | 0 | 0 |
 | 🔧 Änderungen | 0 | 0 | 0 |
-| 💡 Ideen | 1 | 0 | 2 |
+| 💡 Ideen | 2 | 0 | 2 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Als Nächstes: Tests „Fixes von heute“ in [TESTS.md](TESTS.md) (Debian-Direktinstallation, doppelter HP-Eintrag).
@@ -39,6 +39,7 @@ Als Nächstes: Tests „Fixes von heute“ in [TESTS.md](TESTS.md) (Debian-Direk
 | I-001 | ⚪ | offen | **Virtuelle Maschine (VM) im Tool:** ISOs/Images in einer VM auf dem Server installieren, testen, ändern und wieder Images erstellen. Details und offene Fragen: [VM.md](VM.md) |
 | I-002 | ⚪ | zurückgestellt | Nobara/Zorin direkt installieren – nur möglich, falls deren Installer eine unbeaufsichtigte Installation erhält |
 | I-003 | ⚪ | zurückgestellt | Nicht generalisierte 1:1-Images anpassen (Name per Registry, Key per Skript) |
+| I-004 | 🟡 | offen | **Webinterface für den Fernzugriff:** Geräteübersicht und Gerätereiter im Browser (HTTPS, Anmeldung, über VPN); pro Gerät „Im Webinterface sichtbar“ (Reiter Netzwerk). Offen: nur anschauen oder auch Aktionen, Benutzer/Rechte, LAN oder VPN. Details: [WEBINTERFACE.md](WEBINTERFACE.md) |
 
 Umgesetzte Ideen: Windows-Master-Image mit Sysprep ([MASTER-IMAGE.md](MASTER-IMAGE.md)), Ordner an Geräte senden
 ([ORDNER-SENDEN.md](ORDNER-SENDEN.md)), Automatisierung ([AUTOMATISIERUNG.md](AUTOMATISIERUNG.md)),
