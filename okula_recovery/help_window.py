@@ -240,7 +240,8 @@ Mit der Automatisierung setzt das Tool ein Gerät selbst neu auf, sobald es mit 
 <b>Einrichten (einmal pro Gerät):</b>
 1.  Gerät öffnen → Reiter <i>Automatisierung</i>.
 2.  Image wählen (Master-Image oder ein eigenes) und die Ziel-Festplatte.
-3.  Wenn du willst: vorher Backup, Ordner senden, am Ende Neustart oder Herunterfahren.
+3.  Wenn du willst: vorher Backup (nur Benutzerdaten oder die ganze Disk),
+     Ordner senden, am Ende Neustart oder Herunterfahren.
 4.  Schalter <i>Automatisierung</i> einschalten – oder in der Liste das Häkchen <i>Auto</i> setzen.
 Tipp: Speichere die Einstellungen als <i>Vorlage</i> und verwende sie für andere Geräte.
 

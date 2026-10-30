@@ -26,7 +26,7 @@ Stand: **umgesetzt** (29.10.2026). Bedienung im [README](../README.md); Prüfung
 
 | # | Schritt | Einstellung |
 |---|---|---|
-| 1 | Vorher sichern (Backup der Benutzerdaten) | Option ein/aus |
+| 1 | Vorher sichern | Option ein/aus; Auswahl **Benutzerdaten** oder **ganze Disk (Disk-Image)** |
 | 2 | Image zurückspielen | Auswahl: **Master-Image** (markierte Images) oder **eigenes Image** |
 | 3 | Anpassen: Gerätename aus dem Tool, Windows-Key | läuft **immer** (siehe [MASTER-IMAGE.md](MASTER-IMAGE.md)) |
 | 4 | Ordner senden: Software, Test Files, Content-Projekte | Option im Reiter (siehe [ORDNER-SENDEN.md](ORDNER-SENDEN.md)) |

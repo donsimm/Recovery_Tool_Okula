@@ -40,7 +40,8 @@ class AutomationError(Exception):
 class Settings:
     enabled: bool = False
     rearm: bool = True               # nach erfolgreichem Durchlauf 24 h später wieder einschalten
-    backup: bool = False             # 1: vorher Benutzerdaten sichern
+    backup: bool = False             # 1: vorher sichern
+    backup_mode: str = "files"       #    files (Benutzerdaten) | image (ganze Disk als Disk-Image)
     image_mode: str = "master"       # 2: master | own
     image: str = ""                  #    Image-Pfad relativ zum NAS
     source_disk: str = ""            #    Clonezilla: welche Disk aus dem Image (leer = erste)
@@ -65,6 +66,8 @@ class Settings:
             s.image_mode = "master"
         if s.finish not in FINISH:
             s.finish = "reboot"
+        if s.backup_mode not in ("files", "image"):
+            s.backup_mode = "files"
         return s
 
     def to_dict(self) -> dict:
@@ -76,7 +79,7 @@ class Settings:
 
 
 # Was eine Vorlage enthält (ohne gerätebezogene Werte wie Zieldisk und Zustand)
-TEMPLATE_FIELDS = ("rearm", "backup", "image_mode", "image", "source_disk", "swiss", "account", "software",
+TEMPLATE_FIELDS = ("rearm", "backup", "backup_mode", "image_mode", "image", "source_disk", "swiss", "account", "software",
                    "testfiles", "projects", "finish")
 
 
@@ -457,7 +460,30 @@ def automation_work(ip: str, key: bytes, port: int, dev, s: Settings, nas_root: 
             jm.log(job, f"Zieldisk {disk_label(disk)} = {target}")
 
             # 1 Backup
-            if s.backup:
+            if s.backup and s.backup_mode == "image":
+                begin(0, "ganze Disk sichern (Disk-Image aufs NAS)")
+                sizes = {p["name"]: int(p.get("size") or 0) for p in disk.get("partitions") or []
+                         if p.get("fstype") != "swap"}
+                total = sum(sizes.values()) or 1
+                state = {"part": "", "done": set()}
+
+                def image_progress(ev: dict) -> None:
+                    if ev.get("phase") == "file":
+                        if state["part"] and state["part"] != ev.get("part"):
+                            state["done"].add(state["part"])
+                        state["part"] = ev.get("part", "")
+                    elif ev.get("phase") == "data":
+                        part, pct = ev.get("part") or state["part"], ev.get("pct")
+                        done = sum(sizes.get(p, 0) for p in state["done"])
+                        if part in sizes and pct is not None:
+                            done += sizes[part] * pct / 100
+                        step(0, done / total, f"{part or 'Partitionstabelle'} · {ev.get('speed', 0) / 1e6:.0f} MB/s")
+
+                source = {"device_id": dev.id, "device_name": dev.name, "note": "Automatisierung – vor dem Zurückspielen"}
+                path = agentclient.create_image(ip, key, target, nas_root, dev.name, image_progress, job.cancel, port,
+                                                source)
+                jm.log(job, f"  Disk-Image: {path}")
+            elif s.backup:
                 begin(0, "Benutzerdaten sichern")
                 sources, users = [], []
                 for p in backups.get_profiles(ip, key, port):

@@ -75,10 +75,18 @@ class AutomationTab(Gtk.Box):
             return numbered_section(grid, number, title, note)
 
         s1 = section("1", "Backup", "Option")
-        self.backup = Gtk.CheckButton(label="Vorher Benutzerdaten aller Benutzer auf der Zieldisk sichern "
-                                            "(Desktop, Dokumente, Bilder … wie „Backup erstellen“)")
+        self.backup = Gtk.CheckButton(label="Vorher sichern, bevor das Image zurückgespielt wird")
         self.backup.connect("toggled", lambda _c: self._changed())
         s1.pack_start(self.backup, False, False, 0)
+        self.backup_files = Gtk.RadioButton(label="Benutzerdaten aller Benutzer auf der Zieldisk (Desktop, Dokumente, "
+                                                  "Bilder … wie „Backup erstellen“) – schnell, klein")
+        self.backup_image = Gtk.RadioButton(label="Ganze Disk als Disk-Image aufs NAS (wie „Disk-Image erstellen“) – "
+                                                  "alles, dauert länger", group=self.backup_files)
+        self.backup_choice = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, margin_start=24)
+        for b in (self.backup_files, self.backup_image):
+            b.connect("toggled", lambda b: b.get_active() and self._changed())
+            self.backup_choice.pack_start(b, False, False, 0)
+        s1.pack_start(self.backup_choice, False, False, 0)
 
         s2 = section("2", "Image zurückspielen")
         r = Gtk.Box(spacing=8)
@@ -174,6 +182,7 @@ class AutomationTab(Gtk.Box):
             if s.template:
                 self.template.set_active_id(s.template)
             self.backup.set_active(s.backup)
+            (self.backup_image if s.backup_mode == "image" else self.backup_files).set_active(True)
             (self.mode_master if s.image_mode == "master" else self.mode_own).set_active(True)
             self._fill_images(s)
             self.disk.remove_all()
@@ -215,6 +224,7 @@ class AutomationTab(Gtk.Box):
             text = f"läuft – {run.job.label} {run.job.shown_fraction * 100:.0f} %"
         self.state.set_text(text)
         self.btn_cancel.set_visible(run is not None and run.active)
+        self.backup_choice.set_sensitive(s.backup)
         paused = self.main.cfg.automation_paused   # roter Stopp-Knopf: Schalter ausgegraut
         self.switch.set_sensitive(not paused)
         self.switch.set_tooltip_text("Automatisierung ist pausiert (roter Stopp-Knopf in der Geräteliste)"
@@ -252,6 +262,7 @@ class AutomationTab(Gtk.Box):
         s.enabled = self.switch.get_active()
         s.rearm = self.rearm.get_active()
         s.backup = self.backup.get_active()
+        s.backup_mode = "image" if self.backup_image.get_active() else "files"
         s.image_mode = "master" if self.mode_master.get_active() else "own"
         s.image = self.image.get_active_id() or ""
         key = self.disk.get_active_id() or ""

@@ -296,7 +296,8 @@ class AutomationE2ETest(unittest.TestCase):
         dev.name, dev.product_key = "DoNs_EliteBook_1", "AAAAA-BBBBB-CCCCC-DDDDD-EEEEE"
         dev.automation = automation.Settings(
             enabled=True, image=str(image.relative_to(self.nas)), disk_key=automation.disk_key(dst_disk),
-            disk_label=automation.disk_label(dst_disk), account="Benutzer", software=True,
+            disk_label=automation.disk_label(dst_disk), account="Benutzer", software=True, backup=True,
+            backup_mode="image",
             projects=["Projekt A"], finish="reboot").to_dict()
         store.save(dev)
         jm = jobs.JobManager()
@@ -310,6 +311,10 @@ class AutomationE2ETest(unittest.TestCase):
         self.assertEqual(engine.run(dev.id).phase, "done", "\n".join(job.log if job else []))
         log = "\n".join(job.log)
         self.assertIn("Schritt 2/5 – Image zurückspielen", log)
+        self.assertIn("Schritt 1/5 – Backup: ganze Disk sichern", log)
+        backup = Path(log.split("Disk-Image: ", 1)[1].splitlines()[0])
+        self.assertTrue((backup / agentclient.IMAGE_META).is_file())   # Disk vor dem Zurückspielen gesichert
+        self.assertEqual(backup.parent.name, "DoNs_EliteBook_1")
         self.assertIn("Windows (Master): Name DoNs-EliteBook, Key gesetzt", log)
         self.assertIn("Schritt 4/5 – Ordner senden: Software, Content: Projekt A", log)
         self.assertFalse(automation.settings(dev).enabled)
