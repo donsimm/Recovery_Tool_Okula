@@ -10,7 +10,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
 from okula_recovery import automation, config, devices, distribute, linuxsetup, winunattend  # noqa: E402
-from okula_recovery.uikit import ask_text, confirm, confirm_error, scrolled  # noqa: E402
+from okula_recovery.uikit import ask_text, confirm, confirm_error, numbered_section, scrolled  # noqa: E402
 
 if TYPE_CHECKING:
     from okula_recovery.ui import MainWindow
@@ -72,21 +72,7 @@ class AutomationTab(Gtk.Box):
         grid = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=12)
 
         def section(number: str, title: str, note: str = "") -> Gtk.Box:
-            """Abschnitt: Nummer im Kreis, fetter Titel, grauer Zusatz; Inhalt eingerückt, Trennlinie davor."""
-            if grid.get_children():
-                grid.pack_start(Gtk.Separator(margin_top=6, margin_bottom=6), False, False, 0)
-            head = Gtk.Box(spacing=10)
-            num = Gtk.Label(label=number, valign=Gtk.Align.CENTER)
-            num.get_style_context().add_class("step-number")
-            head.pack_start(num, False, False, 0)
-            text = Gtk.Label(xalign=0)
-            text.set_markup(f"<b>{GLib.markup_escape_text(title)}</b>" + (
-                f"   <span foreground='#757575'>{GLib.markup_escape_text(note)}</span>" if note else ""))
-            head.pack_start(text, False, False, 0)
-            grid.pack_start(head, False, False, 0)
-            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_start=36, margin_top=4)
-            grid.pack_start(inner, False, False, 0)
-            return inner
+            return numbered_section(grid, number, title, note)
 
         s1 = section("1", "Backup", "Option")
         self.backup = Gtk.CheckButton(label="Vorher Benutzerdaten aller Benutzer auf der Zieldisk sichern "
