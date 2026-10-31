@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -11,7 +12,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
-from okula_recovery import archive, bootkeys, devices, jobs, nas, warranty, win11  # noqa: E402
+from okula_recovery import archive, bootkeys, devices, imagecheck, jobs, nas, warranty, win11  # noqa: E402
 from okula_recovery.automation_tab import AutomationTab  # noqa: E402
 from okula_recovery.uikit import ask_text, confirm_error, numbered_section, run_async, scrolled  # noqa: E402
 
@@ -193,10 +194,19 @@ class DeviceWindow(Gtk.Window):
 
     def _build_images(self) -> Gtk.Widget:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=6)
-        self.image_view, self.image_store = table(["Image", "Datum", "Grösse", "Ablage"], (str, str, str, str, str))
+        # Image, Datum, Grösse, Ablage, Pfad (versteckt), Geprüft (Markup), Tooltip
+        self.image_view, self.image_store = table(["Image", "Datum", "Grösse", "Ablage"],
+                                                  (str, str, str, str, str, str, str))
+        cell = Gtk.CellRendererText()
+        col = Gtk.TreeViewColumn("Geprüft", cell, markup=5)
+        col.set_resizable(True)
+        self.image_view.append_column(col)
+        self.image_view.set_tooltip_column(6)
         self.image_view.connect("row-activated", lambda *_a: self.main.start_restore(self.dev, self._sel_image()))
+        self.image_view.connect("button-press-event", self._on_image_button)
         box.pack_start(scrolled(self.image_view), True, True, 0)
-        hint = Gtk.Label(label="Doppelklick: dieses Image auf das Gerät zurückspielen", xalign=0)
+        hint = Gtk.Label(label="Doppelklick: dieses Image auf das Gerät zurückspielen · Rechtsklick: Image prüfen",
+                         xalign=0)
         hint.get_style_context().add_class("status-idle")
         box.pack_start(hint, False, False, 0)
         return box
@@ -631,7 +641,27 @@ class DeviceWindow(Gtk.Window):
         for img in images:
             rel = str(img.path.parent.relative_to(root)) if img.path.is_relative_to(root) else ""
             self.image_store.append([img.name, img.mtime.strftime("%d.%m.%Y %H:%M"), nas.format_size(img.size),
-                                     rel, str(img.path)])
+                                     rel, str(img.path), imagecheck.cell(img.check), imagecheck.tooltip(img.check)])
+
+    def _on_image_button(self, view, event) -> bool:
+        if event.button != 3:
+            return False
+        hit = view.get_path_at_pos(int(event.x), int(event.y))
+        if not hit:
+            return False
+        view.get_selection().select_path(hit[0])
+        path = self._sel_image()
+        menu = Gtk.Menu()
+        for label, handler, sensitive in (
+                ("Zurückspielen …", lambda: self.main.start_restore(self.dev, path), True),
+                ("Image prüfen …", lambda: self.main.check_images([path], Path(path).name),
+                 path not in self.main.checking)):
+            item = Gtk.MenuItem(label=label, sensitive=sensitive)
+            item.connect("activate", lambda _i, h=handler: h())
+            menu.append(item)
+        menu.show_all()
+        menu.popup_at_pointer(event)
+        return True
 
     def _sel_image(self) -> str | None:
         model, it = self.image_view.get_selection().get_selected()

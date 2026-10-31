@@ -17,11 +17,11 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 |---|---|---|---|
 | 🐞 Bugs | 0 | 0 | 0 |
 | 🔧 Änderungen | 10 | 1 | 0 |
-| 💡 Ideen | 25 | 1 | 0 |
+| 💡 Ideen | 25 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
-In Arbeit: **I-007** Image prüfen (von Hand) → **Ä-027** Demo ohne NAS.
+In Arbeit: ~~I-007~~ ✔ → **Ä-027** Demo ohne NAS.
 Als Nächstes: Tests am realen System in [TESTS.md](TESTS.md) – „Fixes von heute“ und Abschnitt 7 (neue Funktionen inkl. Ä-015 bis Ä-025).
 Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laien, klein) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-009, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
@@ -56,7 +56,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laie
 | I-004 | 🟡 | offen | Dominik | **Webinterface für den Fernzugriff:** Geräteübersicht und Gerätereiter im Browser (HTTPS, Anmeldung, über VPN); pro Gerät „Im Webinterface sichtbar“ (Reiter Netzwerk). Offen: nur anschauen oder auch Aktionen, Benutzer/Rechte, LAN oder VPN. Details: [WEBINTERFACE.md](WEBINTERFACE.md) |
 | I-005 | 🔴 | offen | Claude | **Aufbewahrungsregeln:** Pro Gerät die letzten N Images bzw. Backups behalten, ältere automatisch löschen; Master-Images sind geschützt. Vor jedem Auftrag den Platz prüfen (belegte Blöcke + Reserve), sonst gar nicht erst starten |
 | I-006 | 🔴 | offen | Claude | **Zweite Kopie (3-2-1-Regel):** Das NAS ist heute die einzige Kopie. Images und Backups zusätzlich auf eine USB-Disk, ein zweites NAS oder extern spiegeln (rsync bzw. Synology Hyper Backup). Dazu die Tool-Konfiguration (Geräte, Vorlagen, Einstellungen) täglich automatisch aufs NAS exportieren |
-| I-007 | 🟡 | **in Arbeit** | Claude | **Image prüfen (von Hand):** Rechtsklick auf ein Image bzw. einen Ordner → „Image prüfen …“. Okula-Images über SHA256 aus `okula-image.json` (`agentclient.verify_image`), Clonezilla-Images über `clonezilla.verify` (partclone.chkimg bzw. CRC). Ergebnis ✔/✖ mit Datum in der Liste. **Nicht automatisch** (Entscheid Dominik 31.10.) |
 | I-008 | 🟡 | offen | Claude | **Benachrichtigungen:** E-Mail (SMTP) oder Push (ntfy/Teams) bei Fehlern, beim Ende einer Automatisierung, bei knappem NAS-Speicher, bei SMART-Warnungen und bei fehlgeschlagener Image-Prüfung |
 | I-009 | 🟡 | offen | Claude | **Disk sicher löschen (Ausmusterung, Leasing-Rückgabe):** NVMe Sanitize/Format, ATA Secure Erase oder `blkdiscard`, sonst Überschreiben. Danach ein Löschprotokoll als PDF mit Seriennummer, Methode, Datum und Prüfung (Nachweis nach revDSG) |
 | I-010 | 🟡 | offen | Claude | **Zeitgesteuerte Backups:** z. B. freitags 18:00: Wake-on-LAN → einmal Netzwerkstart in den Agent → Datei-Backup → herunterfahren. Die Bausteine (WOL, Agent beim nächsten Start, Backup) gibt es schon. Läuft nur, solange das Tool geöffnet ist (Autostart nach dem Login; Systemdienst Ä-001 wurde verworfen) |
@@ -118,6 +117,14 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 31.10.2026
+- **I-007 Image prüfen (von Hand):** Rechtsklick auf ein Okula- oder Clonezilla-Image → „Image prüfen …“, auf einen
+  Ordner (auch „Nicht einsortiert“) → „Alle Images im Ordner prüfen …“ (mit Unterordnern), ebenso im Gerätefenster
+  (Reiter Images). Prüfung auf dem Server ohne Gerät (`imagecheck.py`: SHA256 bzw. `clonezilla.verify`), nur lesend;
+  eigenes Fenster mit Prozent, Restzeit, Abbrechen und Zusammenfassung („3 Images geprüft: 2 ✔, 1 ✖“).
+  Ergebnis mit Datum, Datei und Meldung in `okula-image.json` („check“) bzw. `okula-check.json`; Spalte „Geprüft“
+  (✔ Datum grün / ✖ beschädigt rot, Tooltip). Beschädigt: roter Hinweis beim Zurückspielen und in der
+  Automatisierung (Reiter und Log), Zurückspielen bleibt möglich. Löschen während der Prüfung gesperrt; Eintrag im
+  Verlauf des Geräts. Kein Zeitplan (Entscheid Dominik). Tests `tests/test_imagecheck.py`.
 - **Ä-026 README kurz:** Startseite auf GitHub nur noch Zweck, Funktionen, Installation und Links; die ausführliche
   Beschreibung steht neu in [TECHNIK.md](TECHNIK.md) (Verweise in den Docs angepasst).
 - **Ä-025 Hilfe abgeschlossen (H23–H25), README im Handbuch-Stil** (Von: Dominik):

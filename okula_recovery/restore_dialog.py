@@ -12,7 +12,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
-from okula_recovery import agentclient, archive, clonezilla, devices, discovery, nas, winunattend  # noqa: E402
+from okula_recovery import agentclient, archive, clonezilla, devices, discovery, imagecheck, nas, winunattend  # noqa: E402
 
 
 def _gb(n: int) -> str:
@@ -50,6 +50,9 @@ class RestoreDialog(Gtk.Dialog):
         row += 1
         self.source_info = Gtk.Label(xalign=0, wrap=True, selectable=True)
         grid.attach(self.source_info, 1, row, 1, 1)
+        row += 1
+        self.check_warning = Gtk.Label(xalign=0, wrap=True, no_show_all=True)
+        grid.attach(self.check_warning, 1, row, 1, 1)
 
         row += 1
         title = Gtk.Label(xalign=0)
@@ -162,7 +165,8 @@ class RestoreDialog(Gtk.Dialog):
                     images[f"{img.path}\t{disk.get('name', '')}"] = {
                         "path": str(img.path), "disk": None, "machine": meta.get("machine", "?"),
                         "completed": meta.get("completed", ""), "disk_info": disk, "format": "Okula",
-                        "product": meta.get("source", {}).get("product", ""), "master": img.master}
+                        "product": meta.get("source", {}).get("product", ""), "master": img.master,
+                        "check": img.check}
                 elif img.kind == "Clonezilla":
                     for d in clonezilla.disks(img.path):
                         try:
@@ -173,7 +177,7 @@ class RestoreDialog(Gtk.Dialog):
                         images[f"{img.path}\t{d}"] = {
                             "path": str(img.path), "disk": d, "machine": img.path.name,
                             "completed": img.mtime.isoformat(timespec="minutes"), "disk_info": src["source"],
-                            "format": "Clonezilla", "product": "", "master": img.master}
+                            "format": "Clonezilla", "product": "", "master": img.master, "check": img.check}
             try:
                 info = agentclient.get_info(agent.ip, key, agent.control_port)
             except Exception as e:
@@ -227,6 +231,11 @@ class RestoreDialog(Gtk.Dialog):
             self.source_info.set_text(f"Quelle ({meta['format']}): {meta['product'] or meta['machine']} · "
                                       f"{d.get('model', '')} {_gb(int(d.get('size') or 0))} · "
                                       f"{d.get('pttype', '')} · {parts}")
+        # Letzte Prüfung „beschädigt“ (I-007): deutlicher Hinweis, Zurückspielen bleibt möglich
+        warning = imagecheck.warning(meta.get("check")) if meta else ""
+        self.check_warning.set_markup(f'<span foreground="#c62828"><b>{GLib.markup_escape_text(warning)}</b></span>'
+                                      if warning else "")
+        self.check_warning.set_visible(bool(warning))
         self.target_store.clear()
         if disk:
             for p in disk["partitions"] or [{"name": disk["name"], "fstype": disk["fstype"], "size": disk["size"],

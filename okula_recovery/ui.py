@@ -18,9 +18,10 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 
 from okula_recovery import (__version__, agentclient, archive, automation, backups, clonezilla, config,  # noqa: E402
-                            devices, discovery, distribute, jobs, nas, nasfiles, oslib, pxe, warranty, wol)
+                            devices, discovery, distribute, imagecheck, jobs, nas, nasfiles, oslib, pxe, warranty, wol)
 from okula_recovery.automation_tab import SendFoldersDialog, SettingsDialog  # noqa: E402
 from okula_recovery.inventory_dialog import InventoryExportDialog  # noqa: E402
+from okula_recovery.imagecheck_dialog import CheckWindow  # noqa: E402
 from okula_recovery.backup_dialogs import (BackupDetailsDialog, BackupDialog, RestoreFilesDialog,  # noqa: E402
                                            edit_note)
 from okula_recovery.device_window import DeviceWindow  # noqa: E402
@@ -529,7 +530,7 @@ class MainWindow(Gtk.ApplicationWindow):
         col.set_expand(True)
         col.set_resizable(True)
         view.append_column(col)
-        col.set_min_width(220)
+        col.set_min_width(150)
         for title, idx in (("Typ", self.C_TYPE), ("Grösse", self.C_SIZE), ("Datum", self.C_DATE)):
             cell = Gtk.CellRendererText()
             if idx == self.C_TYPE:  # „Windows-ISO · 2 Editionen“ darf gekürzt werden, der Name nicht
@@ -538,6 +539,15 @@ class MainWindow(Gtk.ApplicationWindow):
             c = Gtk.TreeViewColumn(title, cell, text=idx)
             c.set_resizable(True)
             view.append_column(c)
+        # Geprüft: ✔ Datum (grün) / ✖ beschädigt (rot) / leer – aus dem Prüfergebnis des Images (I-007)
+        cell = Gtk.CellRendererText()
+        c = Gtk.TreeViewColumn("Geprüft", cell)
+        c.set_cell_data_func(cell, self._check_cell)
+        c.set_resizable(True)
+        c.set_min_width(115)
+        view.append_column(c)
+        self._image_checks: dict[str, dict | None] = {}   # Image-Pfad → letztes Prüfergebnis
+        self.checking: set[str] = set()                    # werden gerade geprüft (Löschen gesperrt)
         view.set_enable_tree_lines(True)
         view.set_tooltip_column(self.C_TIP)
         view.get_selection().connect("changed", self._on_image_selected)
@@ -665,7 +675,14 @@ class MainWindow(Gtk.ApplicationWindow):
         if kind == "folder":
             add("Umbenennen …", self.on_rename_archive_folder)
             add("Löschen (nur leer)", self.on_delete_image)
+        if kind in ("folder", "unsorted"):
+            rel = model[it][self.C_REL] if kind == "folder" else None
+            add("Alle Images im Ordner prüfen …", lambda _x: self.check_folder(rel))
         if kind == "image":
+            checkable = model[it][self.C_TYPE] in ("Disk-Image", "Clonezilla")
+            path = model[it][self.C_PATH]
+            add("Image prüfen …", lambda _x: self.check_images([path], Path(path).name),
+                checkable and path not in self.checking)
             if model[it][self.C_AREA] == "archive":
                 add("Nach „Nicht einsortiert“", self.on_unsort_image)
             add("Restore-Stick aus Image …", self.on_restore_stick,
@@ -1175,6 +1192,9 @@ class MainWindow(Gtk.ApplicationWindow):
             return
         if model[it][self.C_KIND] != "image":
             return
+        if model[it][self.C_PATH] in self.checking:
+            confirm_error(self, "Dieses Image wird gerade geprüft – Löschen ist erst danach möglich.")
+            return
         try:
             rel_path = os.path.relpath(model[it][self.C_PATH], root)
         except ValueError:
@@ -1298,9 +1318,88 @@ class MainWindow(Gtk.ApplicationWindow):
         run_async(work, self._on_images)
 
     def _image_row(self, img: nas.ImageInfo, rel: str, area: str) -> list:
+        self._image_checks[str(img.path)] = img.check
+        tip = str(img.path) + ("\n" + imagecheck.tooltip(img.check) if imagecheck.checkable(img) else "")
         return [IMAGE_ICONS.get(img.kind, FILE_IMAGE_ICON), ("★ Master · " if img.master else "") + img.name,
                 img.kind, nas.format_size(img.size),
-                img.mtime.strftime("%d.%m.%Y %H:%M"), img.size, str(img.path), "image", rel, area, str(img.path)]
+                img.mtime.strftime("%d.%m.%Y %H:%M"), img.size, str(img.path), "image", rel, area, tip]
+
+    def _check_cell(self, _col, cell, model, it, _data=None) -> None:
+        if model[it][self.C_KIND] != "image":
+            cell.set_property("markup", "")
+            return
+        path = model[it][self.C_PATH]
+        if path in self.checking:
+            cell.set_property("markup", '<span foreground="#757575">wird geprüft …</span>')
+        else:
+            cell.set_property("markup", imagecheck.cell(self._image_checks.get(path)))
+
+    # ---------- Image prüfen (I-007) ----------
+
+    def check_folder(self, rel: str | None) -> None:
+        """Alle Images eines Ordners (mit Unterordnern) prüfen; rel=None = „Nicht einsortiert“."""
+        tree = getattr(self, "_image_tree", None)
+        if tree is None:
+            return
+        if rel is None:
+            images, title = list(tree.unsorted), "Nicht einsortiert"
+        else:
+            def find(folders):
+                for f in folders:
+                    if f.rel == rel:
+                        return f
+                    hit = find(f.folders)
+                    if hit:
+                        return hit
+                return None
+            folder = find(tree.folders)
+            images, title = (archive.Tree([], [folder]).all_images() if folder else []), f"Ordner „{rel}“"
+        paths = [str(i.path) for i in images if imagecheck.checkable(i)]
+        if not paths:
+            self.status(f"{title}: keine prüfbaren Images (nur Okula- und Clonezilla-Images)")
+            return
+        self.check_images(paths, title)
+
+    def check_images(self, paths: list[str], title: str) -> None:
+        paths = [p for p in paths if p not in self.checking]
+        if not paths:
+            self.status("Diese Images werden schon geprüft")
+            return
+        self.checking.update(paths)
+        self.image_view.queue_draw()
+        self.status(f"{title}: Image wird geprüft …" if len(paths) == 1
+                    else f"{title}: {len(paths)} Images werden geprüft …")
+
+        def result(path: str, res: dict) -> None:
+            self.checking.discard(path)
+            self._image_checks[path] = res
+            self.image_view.queue_draw()
+            self._check_history(path, res)
+
+        def finished(results: list, cancelled: bool) -> None:
+            self.checking.difference_update(paths)
+            self.status(imagecheck.summary(results, cancelled))
+            self.refresh_images()
+            for win in self.device_windows.values():
+                win.load_images()
+
+        CheckWindow(self, paths, title, result, finished)
+
+    def _check_history(self, path: str, res: dict) -> None:
+        """Eintrag im Verlauf des Geräts, zu dem das Image gehört (Okula-Images: Herkunft aus okula-image.json)."""
+        try:
+            src = json.loads((Path(path) / nas.OKULA_META).read_text()).get("source") or {}
+        except (OSError, ValueError):
+            return
+        dev = self.store.devices.get(src.get("device_id", "")) or next(
+            (d for d in self.store.devices.values() if src.get("agent_id") and src["agent_id"] in d.agent_ids), None)
+        if dev is None:
+            return
+        status = res.get("status")
+        text = f"Image geprüft: {imagecheck.SYMBOL.get(status, '')} {imagecheck.LABEL.get(status, '')} – " \
+               f"{Path(path).name}" + (f" ({res['file']})" if res.get("file") and status != imagecheck.OK else "")
+        self.store.add_history(dev, "image", text, ok=status == imagecheck.OK if status != imagecheck.UNCHECKABLE
+                               else None)
 
     def _iso_row(self, iso: oslib.IsoInfo) -> list:
         sha = iso.meta.get("sha256", "")

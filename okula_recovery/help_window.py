@@ -332,6 +332,7 @@ Das Original bleibt unverändert. Das dauert etwas länger.
 Nicht möglich bei verschlüsselten Disks (BitLocker) – dort fehlt die Option.
 
 <b>Gut zu wissen:</b>
+•  Zeigte die letzte Prüfung „beschädigt“, steht im Dialog ein roter Hinweis. Zurückspielen geht trotzdem.
 •  Auch Images von Clonezilla funktionieren.
 •  Nach einem Abbruch ist die Zieldisk unvollständig.
 •  Bei einem Master-Image passt das Tool Windows danach an: Kapitel <i>Master-Image</i>."""),
@@ -598,6 +599,12 @@ Alle Aktionen über Rechtsklick.
 •  Images mit der Maus in einen Ordner ziehen. <i>Nach „Nicht einsortiert“</i> nimmt sie zurück.
 
 <b>Disk-Image</b>
+•  <i>Image prüfen …</i>: liest das Image auf dem NAS und vergleicht die Prüfsummen. Nichts wird verändert,
+    kein Gerät nötig. Ordner: <i>Alle Images im Ordner prüfen …</i> (mit Unterordnern, auch „Nicht einsortiert“).
+    Fortschritt und Restzeit stehen in einem eigenen Fenster, <i>Abbrechen</i> beendet die Prüfung.
+    Spalte <i>Geprüft</i>: <span background="#2e7d32" foreground="#ffffff"> ✔ Datum </span> in Ordnung,
+    <span background="#c62828" foreground="#ffffff"> ✖ beschädigt </span> (Maus darüber: welche Datei), leer = nie geprüft.
+    Ein beschädigtes Image lässt sich trotzdem zurückspielen; vorher wird nochmals geprüft.
 •  <i>Als Master-Image markieren</i> bzw. <i>Master-Markierung entfernen</i> (Stern ★).
 •  <i>Restore-Stick aus Image …</i>: Kapitel <i>Sticks erstellen</i>.
 •  <i>Umbenennen …</i> und <i>Löschen …</i> Gelöschte Images sind endgültig weg (kein Papierkorb).
@@ -648,6 +655,11 @@ In der Geräteliste steht bei jedem Gerät ein Balken mit Prozent und Restzeit.
 
 <b>Stern ★ bei Images</b>
 Das Image ist als Master-Image markiert.
+
+<b>Spalte „Geprüft“ bei Images</b>
+•  ✔ mit Datum: Bei der letzten Prüfung war das Image in Ordnung.
+•  ✖ beschädigt: Eine Datei stimmt nicht. Die Maus über der Zeile zeigt, welche.
+•  leer: noch nie geprüft. Rechtsklick → <i>Image prüfen …</i> (Kapitel <i>Images verwalten</i>).
 
 <b>Windows 11 und Garantie</b>
 Kapitel <i>Inventar, Garantie, Windows 11</i>."""),

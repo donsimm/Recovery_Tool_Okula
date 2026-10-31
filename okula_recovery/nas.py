@@ -60,6 +60,8 @@ class ImageInfo:
     size: int
     mtime: datetime
     master: bool = False   # als Master-Image markiert (Automatisierung)
+    check: dict | None = None   # letzte Prüfung (imagecheck): status, date, file, message
+    demo: bool = False     # Image vom Demo-Gerät (Attrappe)
 
 
 def test_connection(cfg: NasConfig, timeout: float = 3.0) -> list[Check]:
@@ -261,6 +263,7 @@ def _image_kind(name: str) -> str | None:
 
 
 OKULA_META = "okula-image.json"
+CHECK_FILE = "okula-check.json"     # Prüfergebnis bei Clonezilla-Images (imagecheck)
 MASTER_FILE = "okula-master.json"   # liegt im Image-Ordner: als Master-Image markiert
 
 
@@ -297,7 +300,9 @@ def _okula_image(path: Path, root: Path) -> ImageInfo | None:
         name = name[len("images/"):]
     disk = meta.get("disk") or {}
     model = disk.get("model") or ""
-    return ImageInfo(f"{name}  ({model})" if model else name, path, "Disk-Image", size, mtime, is_master(path))
+    check = meta.get("check") if isinstance(meta.get("check"), dict) else None
+    return ImageInfo(f"{name}  ({model})" if model else name, path, "Disk-Image", size, mtime, is_master(path),
+                     check, bool(meta.get("demo")))
 
 
 def _is_clonezilla_dir(path: Path) -> bool:
@@ -326,8 +331,13 @@ def image_at(p: Path, root: Path) -> ImageInfo | None:
             if (p / OKULA_META).is_file():
                 return _okula_image(p, root)
             if _is_clonezilla_dir(p):
+                try:
+                    check = json.loads((p / CHECK_FILE).read_text())
+                except (OSError, ValueError):
+                    check = None
                 return ImageInfo(str(p.relative_to(root)), p, "Clonezilla", _dir_size(p),
-                                 datetime.fromtimestamp(p.stat().st_mtime), is_master(p))
+                                 datetime.fromtimestamp(p.stat().st_mtime), is_master(p),
+                                 check if isinstance(check, dict) else None)
             return None
         kind = _image_kind(p.name)
         if kind and p.is_file():

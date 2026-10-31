@@ -514,6 +514,10 @@ def automation_work(ip: str, key: bytes, port: int, dev, s: Settings, nas_root: 
 
             # 2 Image zurückspielen (prüft zuerst die Prüfsummen, erst dann wird gelöscht)
             begin(1, f"{s.image} → {target}")
+            from okula_recovery import imagecheck
+            warning = imagecheck.warning(imagecheck.load(image))
+            if warning:
+                jm.log(job, "  " + warning)
             src = agentclient.image_source(image, s.source_disk or None)
             need = int((src.get("source") or {}).get("size") or 0)
             source_disk = s.source_disk or None

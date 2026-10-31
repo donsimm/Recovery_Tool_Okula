@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import gi
@@ -9,7 +10,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
-from okula_recovery import automation, config, devices, distribute, linuxsetup, warranty, winunattend  # noqa: E402
+from okula_recovery import automation, config, devices, distribute, imagecheck, linuxsetup, warranty, winunattend  # noqa: E402
 from okula_recovery.uikit import ask_text, confirm, confirm_error, numbered_section, run_async, scrolled  # noqa: E402
 
 if TYPE_CHECKING:
@@ -105,6 +106,8 @@ class AutomationTab(Gtk.Box):
         self.image = Gtk.ComboBoxText()
         self.image.connect("changed", lambda _c: self._changed())
         s2.pack_start(self.image, False, False, 0)
+        self.image_warning = Gtk.Label(xalign=0, wrap=True, no_show_all=True)   # letzte Prüfung: beschädigt
+        s2.pack_start(self.image_warning, False, False, 0)
         self.adapt = Gtk.CheckButton(label="Ist die Zieldisk kleiner als das Image: Image dafür anpassen "
                                            "(neues Image, Original bleibt – dauert länger)")
         self.adapt.connect("toggled", lambda _c: self._changed())
@@ -173,8 +176,9 @@ class AutomationTab(Gtk.Box):
         root = self.main._nas_root()
         for img in self._images(s.image_mode == "master"):
             rel = str(img.path.relative_to(root)) if root else str(img.path)
+            broken = (img.check or {}).get("status") == imagecheck.BROKEN
             self.image.append(rel, f"{'★ ' if img.master else ''}{img.name} – {img.kind} – "
-                                   f"{img.mtime.strftime('%d.%m.%Y')}")
+                                   f"{img.mtime.strftime('%d.%m.%Y')}" + (" – ✖ beschädigt" if broken else ""))
         if s.image and not self.image.set_active_id(s.image):
             self.image.append(s.image, f"{s.image} (nicht gefunden)")
             self.image.set_active_id(s.image)
@@ -253,6 +257,13 @@ class AutomationTab(Gtk.Box):
             "Nur bei Master-Images (mit Sysprep). Name ändern: Gerät oben umbenennen.")
         missing = automation.problems(s, self.main._nas_root())
         self.problems.set_text(("Noch nötig: " + " · ".join(missing)) if missing else "")
+        root = self.main._nas_root()
+        chosen = next((i for i in self.main.restorable_images()
+                       if root and s.image and str(i.path) == str(Path(root) / s.image)), None)
+        warning = imagecheck.warning(chosen.check) if chosen else ""
+        self.image_warning.set_markup(f'<span foreground="#c62828"><b>{GLib.markup_escape_text(warning)}</b></span>'
+                                      if warning else "")
+        self.image_warning.set_visible(bool(warning))
         self.error.set_text(f"Letzter Fehler: {s.last_error}" if s.last_error else "")
 
     # ---------- Ändern ----------

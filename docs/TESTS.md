@@ -44,6 +44,7 @@ bestätigt.
 | Inventar-Export: CSV (BOM, Semikolon), PDF je Ordner oder alle in einem (A4 quer, mehrseitig), Auswahl, Key maskiert/aus | A, V | |
 | Unicode-Namen (NFC/NFD, Steuerzeichen, Umschrift), monotone Laufzeit, Win-11-Option nur von Hand | A, V | |
 | Hilfe: Reihenfolge, Suche, Test auf Menüeinträge/Querverweise/Anrede/Ich-Form, Sichtprüfung hell/dunkel | A, V | 24 Kapitel als Screenshot |
+| Image prüfen: ✔, ein Byte geändert → ✖ mit Datei, fehlende Datei, Abbrechen, Ordner mit Unterordnern, Clonezilla, Ergebnis nach Neustart | A, V | Loop-Disk und Clonezilla-Testimage |
 | Gerätefenster passt sich der Übersicht an (1920×1080 ganz sichtbar, 1366×768 begrenzt) | A, V | |
 | Garantie-Abfrage: Dell/HP/Lenovo-Antworten, Farben grün/gelb/rot, Schlüssel 0600 nur beim Root-Helfer | A, V | gemockte Antworten – Hersteller-Server waren gesperrt |
 
@@ -102,6 +103,8 @@ bestätigt.
 - [ ] Tool schliessen → Demo-Prozess ist beendet
 
 ### 7. Allgemein
+- [ ] I-007: Rechtsklick auf ein **grosses Image** (z. B. 200 GB) → „Image prüfen …“ – **Dauer notieren** (Lesen vom NAS), Fortschritt/Restzeit plausibel, Tool bleibt bedienbar; Abbrechen beendet sofort, nichts gespeichert
+- [ ] I-007: Ordner prüfen (mehrere Images, ein Clonezilla-Image) → Zusammenfassung; Spalte „Geprüft“ ✔/✖ bleibt nach Neustart des Tools; während der Prüfung lässt sich das Image nicht löschen; Verlauf des Geräts zeigt die Prüfung
 - [ ] Ä-025: F1 → Kapitelliste in der Reihenfolge des Ablaufs, „Demo-Gerät“ zuletzt; Suchfeld (Ctrl+F): „garantie“ zeigt nur passende Kapitel, Treffer gelb, Esc leert; Hilfe im dunklen Design: Farbfelder grün/gelb/rot lesbar
 - [ ] Ä-025: Menüleiste unverändert (alle Einträge, Demo-Häkchen unter Extras), Hilfe → Tastenkürzel zeigt Ctrl+F
 - [ ] **Hilfe (F1):** alle Kapitel öffnen – Text vollständig, keine Formatierungsfehler, Menü- und Knopfnamen stimmen (Ä-024)
