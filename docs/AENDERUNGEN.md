@@ -17,7 +17,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 |---|---|---|---|
 | 🐞 Bugs | 0 | 0 | 0 |
 | 🔧 Änderungen | 8 | 0 | 0 |
-| 💡 Ideen | 25 | 0 | 0 |
+| 💡 Ideen | 24 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
@@ -72,7 +72,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 | I-028 | ⚪ | offen | Claude | **Windows reparieren:** UEFI-Booteinträge und BCD neu schreiben, `ntfsfix`, Passwort eines lokalen Kontos zurücksetzen (wird protokolliert). Typische Recovery-Fälle ohne Neuinstallation |
 | I-029 | ⚪ | offen | Claude | **Intel vPro/AMT:** Gerät ein- und ausschalten, ins BIOS starten und den Bildschirm sehen, auch ohne Agent und bei abgestürztem OS (MeshCentral) |
 | I-030 | ⚪ | offen | Claude | **Bandbreite begrenzen** je Auftrag oder Zeitfenster, damit das Kundennetz tagsüber nicht ausgelastet ist |
-| I-031 | ⚪ | offen | Claude | **Geräte-Etikett mit QR-Code:** Name, Seriennummer und Kunde drucken (z. B. Brother-Etikettendrucker); scannen öffnet das Gerät im Tool bzw. im Webinterface |
 
 Umgesetzte Ideen: Windows-Master-Image mit Sysprep ([MASTER-IMAGE.md](MASTER-IMAGE.md)), Ordner an Geräte senden
 ([ORDNER-SENDEN.md](ORDNER-SENDEN.md)), Automatisierung ([AUTOMATISIERUNG.md](AUTOMATISIERUNG.md)),

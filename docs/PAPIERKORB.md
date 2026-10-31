@@ -13,3 +13,4 @@ vorgeschlagen. Zurückholen: Zeile nach [AENDERUNGEN.md](AENDERUNGEN.md) zurück
 | Ä-009 | 31.10.2026 | Claude | **Vorauswahl** von Zieldisk und Master im Reiter Automatisierung, Standard-Vorlage für neue Geräte. | Nicht gewünscht (Entscheid Dominik). |
 | – | 31.10.2026 | Claude | **Multicast automatisch in der Automatisierung** (Variante A: Geräte mit gleichem Master sammeln und gemeinsam aufsetzen). | Nicht gewünscht (Entscheid Dominik): Multicast nur von Hand über Extras → Multicast (I-011). |
 | – | 31.10.2026 | Claude | **Herunterfahren bei laufendem Windows/Linux** (Fernabschaltung per `net rpc shutdown`, SSH oder Vorbereitung im Master). | Nicht aufnehmen (Entscheid Dominik): Herunterfahren nur über den Agent genügt; Windows-Weg bräuchte gespeicherte Admin-Passwörter. |
+| I-031 | 31.10.2026 | Claude | **Geräte-Etikett mit QR-Code** (Name, Seriennummer, Kunde drucken; Scan öffnet das Gerät). | Nicht gewünscht (Entscheid Dominik). |
