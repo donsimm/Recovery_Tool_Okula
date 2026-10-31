@@ -17,7 +17,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 |---|---|---|---|
 | 🐞 Bugs | 0 | 0 | 0 |
 | 🔧 Änderungen | 13 | 0 | 0 |
-| 💡 Ideen | 13 | 0 | 2 |
+| 💡 Ideen | 29 | 0 | 2 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Als Nächstes: Tests „Fixes von heute“ in [TESTS.md](TESTS.md) (Debian-Direktinstallation, doppelter HP-Eintrag).
@@ -66,6 +66,22 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laie
 | I-013 | 🟡 | offen | Claude | **Inventar-Export:** alle oder ausgewählte Geräte als CSV/PDF: Modell, Seriennummer, CPU/RAM, Disks mit SMART-Befund, OS, Windows-Key maskiert, letztes Image bzw. Backup. Für Inventarliste und Übergabe an Kunden |
 | I-014 | ⚪ | offen | Claude | **Treiber für Master-Images:** Treiberordner pro Modell auf dem NAS; nach dem Restore nach `Windows\Drivers\Okula` kopieren und in `unattend.xml` per `DriverPaths` (offlineServicing) einbinden. Damit passt ein Master auf verschiedene Hardware |
 | I-015 | ⚪ | offen | Claude | **Firmware/BIOS über den Agent:** `fwupd`/LVFS, wo der Hersteller es unterstützt (Dell, Lenovo, teilweise HP). Die BIOS-Version steht schon im Inventar; Hinweis anzeigen, wenn sie veraltet ist |
+| I-016 | 🔴 | offen | Claude | **Schutz vor Ransomware und Fehllöschung:** Das Tool-Konto hat heute volles Schreib- und Löschrecht auf dem NAS; wer den Server übernimmt, kann alle Backups löschen. Lösung: unveränderliche NAS-Snapshots (Synology Snapshot Replication mit Immutable), auf die das Tool-Konto keinen Zugriff hat, und ein Papierkorb im Tool (heute: „keinen Papierkorb – gelöschte Daten sind weg“). Das NCSC/BACS empfiehlt Offline- oder WORM-Medien und mindestens zwei Generationen |
+| I-017 | 🟡 | offen | Claude | **Defekte Disk retten:** partclone bricht bei Lesefehlern ab. Ein Rettungsmodus mit `ddrescue` (Fehlerkarte, mehrere Durchgänge) bzw. `partclone -R` sichert, was noch lesbar ist. Dazu TestDisk und PhotoRec im Agent, um gelöschte Partitionen und Dateien wiederherzustellen (wie Rescuezilla und FOG) |
+| I-018 | 🟡 | offen | Claude | **Einzelne Dateien aus einem Disk-Image holen:** Disk-Image auf dem Server einhängen (partclone → Loop, ntfs-3g read-only), darin suchen und einzelne Dateien oder Ordner aufs NAS oder ans Gerät senden. Heute gibt es Einzeldateien nur aus Datei-Backups (Rescuezilla: Image Explorer, Macrium: Durchsuchen) |
+| I-019 | 🟡 | offen | Claude | **Disk direkt klonen:** alte HDD → neue SSD im selben Gerät (beide angeschlossen) oder Gerät → Gerät, ohne Umweg über das NAS. Mit Anpassen der Partitionsgrösse (vgl. Ä-002) |
+| I-020 | 🟡 | offen | Claude | **Software nach dem Aufsetzen installieren:** pro Vorlage eine winget-Liste (z. B. 7-Zip, Adobe Reader, Teams), installiert per `FirstLogonCommands`/`SetupComplete.cmd` – der Mechanismus ist schon da (`winunattend.py`). So bleibt der Master klein, und die Software ist immer aktuell (FOG: Snapins, SmartDeploy: Application Packs) |
+| I-021 | 🟡 | offen | Claude | **Firmen-Anmeldung:** Domänenbeitritt (`UnattendedJoin` in unattend.xml) bzw. Entra ID. Dazu den Autopilot-Hardware-Hash erfassen (beim ersten Start per `Get-WindowsAutopilotInfo`) und als CSV aufs NAS legen, für den Import in Intune |
+| I-022 | 🟡 | offen | Claude | **Geräte vorab erfassen (CSV-Import):** Liste mit Seriennummer oder MAC, Name, Ordner/Kunde und Vorlage, z. B. vom Lieferschein. Startet das Gerät zum ersten Mal mit dem Agent, ist alles schon zugeordnet und die Automatisierung läuft (Acronis Snap Deploy: Einstellungen pro MAC). Passt zu Ä-006 |
+| I-023 | 🟡 | offen | Claude | **Hardware-Diagnose am Gerät:** SMART-Selbsttest (kurz/lang), Oberflächentest der Disk, RAM-Test (memtest86+ im PXE- bzw. Stick-Menü). Ergebnis im Verlauf und im Inventar. Heute wird SMART nur gelesen |
+| I-024 | 🟡 | offen | Claude | **Windows-11-Tauglichkeit im Inventar:** TPM 2.0, Secure Boot, CPU-Generation, RAM, UEFI. Als Spalte bzw. Filter „Win 11 ✔/✖“ (Windows 10 erhält seit Oktober 2025 keine regulären Updates mehr). Heute wird TPM nur bei der Installation umgangen, aber nicht erfasst |
+| I-025 | ⚪ | offen | Claude | **Garantie-Abfrage:** Garantieende per Seriennummer bei Dell, Lenovo und HP (Hersteller-APIs) abfragen, im Inventar anzeigen und vor dem Ablauf warnen (Lansweeper, PDQ) |
+| I-026 | ⚪ | offen | Claude | **Hardware-Änderungen erkennen:** RAM, Disk oder Seriennummer anders als beim letzten Mal → Hinweis im Verlauf (Diebstahl, Tausch, Defekt) |
+| I-027 | ⚪ | offen | Claude | **Neu aufsetzen direkt am Gerät:** Auf dem Agent-Bildschirm ein Menü „Mit Master neu aufsetzen“, geschützt mit PIN, damit Techniker vor Ort das Tool nicht brauchen (Acronis: user-initiated deployment) |
+| I-028 | ⚪ | offen | Claude | **Windows reparieren:** UEFI-Booteinträge und BCD neu schreiben, `ntfsfix`, Passwort eines lokalen Kontos zurücksetzen (wird protokolliert). Typische Recovery-Fälle ohne Neuinstallation |
+| I-029 | ⚪ | offen | Claude | **Intel vPro/AMT:** Gerät ein- und ausschalten, ins BIOS starten und den Bildschirm sehen, auch ohne Agent und bei abgestürztem OS (MeshCentral) |
+| I-030 | ⚪ | offen | Claude | **Bandbreite begrenzen** je Auftrag oder Zeitfenster, damit das Kundennetz tagsüber nicht ausgelastet ist |
+| I-031 | ⚪ | offen | Claude | **Geräte-Etikett mit QR-Code:** Name, Seriennummer und Kunde drucken (z. B. Brother-Etikettendrucker); scannen öffnet das Gerät im Tool bzw. im Webinterface |
 
 Umgesetzte Ideen: Windows-Master-Image mit Sysprep ([MASTER-IMAGE.md](MASTER-IMAGE.md)), Ordner an Geräte senden
 ([ORDNER-SENDEN.md](ORDNER-SENDEN.md)), Automatisierung ([AUTOMATISIERUNG.md](AUTOMATISIERUNG.md)),
