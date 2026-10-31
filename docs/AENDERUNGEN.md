@@ -1,6 +1,6 @@
 # Änderungen, Bugs, Ideen und Entscheidungen
 
-Zentrale Übersicht zum Okula Recovery Tool. Details zu jeder Funktion stehen im [README](../README.md),
+Zentrale Übersicht zum Okula Recovery Tool. Details zu jeder Funktion stehen in [TECHNIK.md](TECHNIK.md),
 der genaue Verlauf in `git log`, Prüfungen in [TESTS.md](TESTS.md).
 
 **Ablauf:** Spontane Notizen kommen nach [EINGANG.md](EINGANG.md). Claude sortiert sie hier in die passende
@@ -118,6 +118,8 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 31.10.2026
+- **Ä-026 README kurz:** Startseite auf GitHub nur noch Zweck, Funktionen, Installation und Links; die ausführliche
+  Beschreibung steht neu in [TECHNIK.md](TECHNIK.md) (Verweise in den Docs angepasst).
 - **Ä-025 Hilfe abgeschlossen (H23–H25), README im Handbuch-Stil** (Von: Dominik):
   - H23: Kapitel nach Arbeitsablauf (Datei-Backup nach Image zurückspielen, Demo-Gerät ans Ende), Kapitel
     „Inventar, Garantie, Windows 11“; alle Querverweise „Kapitel <i>…</i>“ zeigen auf bestehende Kapitel.

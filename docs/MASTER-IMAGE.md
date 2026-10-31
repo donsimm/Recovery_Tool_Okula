@@ -3,7 +3,7 @@
 Ziel: ein Windows-Image für viele Geräte. Beim Zurückspielen passt das Tool es pro Gerät an (Gerätename, Windows-Key,
 Benutzer, Region Schweiz), ohne Klicks am Gerät.
 
-Stand: **umgesetzt** (29.10.2026). Bedienung im [README](../README.md); Prüfungen am realen System: [TESTS.md](TESTS.md).
+Stand: **umgesetzt** (29.10.2026). Details in [TECHNIK.md](TECHNIK.md), Bedienung in der Hilfe (F1); Prüfungen am realen System: [TESTS.md](TESTS.md).
 
 ## Master-Image erstellen
 

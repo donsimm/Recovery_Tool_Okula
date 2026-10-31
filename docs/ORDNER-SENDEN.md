@@ -2,7 +2,7 @@
 
 Ziel: vordefinierte Ordner vom NAS per Mausklick auf den Desktop eines Geräts kopieren.
 
-Stand: **umgesetzt** (29.10.2026). Bedienung im [README](../README.md); Prüfungen am realen System: [TESTS.md](TESTS.md).
+Stand: **umgesetzt** (29.10.2026). Details in [TECHNIK.md](TECHNIK.md), Bedienung in der Hilfe (F1); Prüfungen am realen System: [TESTS.md](TESTS.md).
 
 ## Struktur auf dem NAS
 
