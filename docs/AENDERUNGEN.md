@@ -17,10 +17,10 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 |---|---|---|---|
 | 🐞 Bugs | 0 | 0 | 0 |
 | 🔧 Änderungen | 11 | 1 | 0 |
-| 💡 Ideen | 26 | 3 | 2 |
+| 💡 Ideen | 26 | 2 | 2 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
-In Arbeit (Reihenfolge): ~~Ä-014~~ ✔ → ~~Ä-011~~ ✔ → **I-024** Windows-11-Tauglichkeit → **Ä-002** kleinere Disk → **I-025** Garantie → **I-013** Inventar-Export (ein neuer Agent-Stick für I-024 und Ä-002).
+In Arbeit (Reihenfolge): ~~Ä-014~~ ✔ → ~~Ä-011~~ ✔ → ~~I-024~~ ✔ → **Ä-002** kleinere Disk → **I-025** Garantie → **I-013** Inventar-Export (ein neuer Agent-Stick für I-024 und Ä-002).
 Als Nächstes danach: Tests „Fixes von heute“ in [TESTS.md](TESTS.md) (Debian-Direktinstallation, doppelter HP-Eintrag).
 Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laien, klein) → **Ä-001** (Dienst) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-009, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
@@ -74,7 +74,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laie
 | I-021 | 🟡 | offen | Claude | **Firmen-Anmeldung:** Domänenbeitritt (`UnattendedJoin` in unattend.xml) bzw. Entra ID. Dazu den Autopilot-Hardware-Hash erfassen (beim ersten Start per `Get-WindowsAutopilotInfo`) und als CSV aufs NAS legen, für den Import in Intune |
 | I-022 | 🟡 | offen | Claude | **Geräte vorab erfassen (CSV-Import):** Liste mit Seriennummer oder MAC, Name, Ordner/Kunde und Vorlage, z. B. vom Lieferschein. Startet das Gerät zum ersten Mal mit dem Agent, ist alles schon zugeordnet und die Automatisierung läuft (Acronis Snap Deploy: Einstellungen pro MAC). Passt zu Ä-006 |
 | I-023 | 🟡 | offen | Claude | **Hardware-Diagnose am Gerät:** SMART-Selbsttest (kurz/lang), Oberflächentest der Disk, RAM-Test (memtest86+ im PXE- bzw. Stick-Menü). Ergebnis im Verlauf und im Inventar. Heute wird SMART nur gelesen |
-| I-024 | 🟡 | **in Arbeit** | Claude | **Windows-11-Tauglichkeit im Inventar:** TPM 2.0, Secure Boot, CPU-Generation, RAM, UEFI. Als Spalte bzw. Filter „Win 11 ✔/✖“ (Windows 10 erhält seit Oktober 2025 keine regulären Updates mehr). Heute wird TPM nur bei der Installation umgangen, aber nicht erfasst |
 | I-025 | ⚪ | **in Arbeit** | Claude | **Garantie-Abfrage:** Garantieende per Seriennummer bei Dell, Lenovo und HP (Hersteller-APIs) abfragen, im Inventar anzeigen und vor dem Ablauf warnen (Lansweeper, PDQ) |
 | I-026 | ⚪ | offen | Claude | **Hardware-Änderungen erkennen:** RAM, Disk oder Seriennummer anders als beim letzten Mal → Hinweis im Verlauf (Diebstahl, Tausch, Defekt) |
 | I-027 | ⚪ | offen | Claude | **Neu aufsetzen direkt am Gerät:** Auf dem Agent-Bildschirm ein Menü „Mit Master neu aufsetzen“, geschützt mit PIN, damit Techniker vor Ort das Tool nicht brauchen (Acronis: user-initiated deployment) |
@@ -109,6 +108,11 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 31.10.2026
+- **I-024 Windows-11-Tauglichkeit:** Agent erfasst TPM-Version, UEFI/BIOS und Secure Boot (`inventory.platform`);
+  Bewertung auf dem Server (`win11.py`: TPM 2.0, UEFI, RAM ≥ 4 GB, Disk ≥ 64 GB, Prozessor nach
+  `data/win11_cpus.txt` mit Quelle Microsoft). Spalte „Win 11“ ✔/✖/? in der Geräteliste, Grund im Gerätefenster.
+  Version 0.2.0 – **Agent-Stick neu erstellen**. Hinweis: learn.microsoft.com war in der Entwicklungsumgebung gesperrt,
+  die Prozessorliste ist nach Microsofts Generationen-Regeln aufgebaut; unbekannte Modelle zeigen „?“.
 - **Ä-011 Boot-Menü-Taste je Hersteller:** Modul `bootkeys.py` (HP, Dell, Lenovo ThinkPad/IdeaPad, Asus Notebook/
   Desktop, Acer, MSI, Gigabyte, Fujitsu, Medion, Toshiba/Dynabook, Surface, Apple Intel; Quellen im Code). Tabelle im
   Stick-Dialog, in Hilfe und README; im Gerätefenster „Starttasten“ aus DMI (sys_vendor, Modell, Gehäuse, bei

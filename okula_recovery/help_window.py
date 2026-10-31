@@ -447,6 +447,12 @@ In der Geräteliste siehst du bei jedem Gerät einen Balken mit Prozent und Rest
 •  <i>wieder aktiv in 5 h</i>: Sie ist fertig und schaltet sich nach 24 Stunden wieder ein.
 •  <span foreground="#c62828">rot</span>: Es gab einen Fehler. Details im Gerätefenster.
 
+<b>Spalte „Win 11“</b>
+•  ✔ Das Gerät kann Windows 11.
+•  ✖ Es kann Windows 11 nicht, zum Beispiel wegen altem TPM oder Prozessor. Den Grund siehst du im
+   Gerätefenster unter <i>Übersicht → Windows 11</i>.
+•  ? Noch unbekannt: Agent-Stick neu erstellen und das Inventar neu einlesen.
+
 <b>Stern ★ bei Images</b>
 Das Image ist als Master-Image markiert."""),
 

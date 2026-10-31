@@ -11,7 +11,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
-from okula_recovery import archive, bootkeys, devices, jobs, nas  # noqa: E402
+from okula_recovery import archive, bootkeys, devices, jobs, nas, win11  # noqa: E402
 from okula_recovery.automation_tab import AutomationTab  # noqa: E402
 from okula_recovery.uikit import ask_text, confirm_error, numbered_section, run_async, scrolled  # noqa: E402
 
@@ -36,6 +36,16 @@ def table(columns: list[str], types: tuple, expand: int = 0) -> tuple[Gtk.TreeVi
         view.append_column(col)
     return view, store
 
+
+
+def platform_text(p: dict | None) -> str:
+    """„TPM 2.0 · UEFI · Secure Boot an“ aus dem Inventar (älterer Agent: leer)."""
+    if not isinstance(p, dict):
+        return "unbekannt – Agent-Stick neu erstellen und Inventar neu einlesen"
+    tpm = f"TPM {p['tpm']}" if p.get("tpm") else "kein TPM"
+    boot = "UEFI" if p.get("uefi") else "BIOS-Modus (Legacy)"
+    sb = {True: " · Secure Boot an", False: " · Secure Boot aus"}.get(p.get("secure_boot"), "")
+    return f"{tpm} · {boot}{sb if p.get('uefi') else ''}"
 
 class DeviceWindow(Gtk.Window):
     def __init__(self, main: "MainWindow", dev: devices.Device):
@@ -276,7 +286,9 @@ class DeviceWindow(Gtk.Window):
                 ("BIOS", " ".join(p for p in (d.get("bios_vendor"), d.get("bios_version"), d.get("bios_date")) if p)),
                 ("Prozessor", f"{cpu.get('model', '')}  ({cpu.get('cores', '?')} Kerne / {cpu.get('threads', '?')} "
                               "Threads)" if cpu else ""),
-                ("Arbeitsspeicher", f"{inv['memory'] / 1024**3:.0f} GB" if inv.get("memory") else "")]
+                ("Arbeitsspeicher", f"{inv['memory'] / 1024**3:.0f} GB" if inv.get("memory") else ""),
+                ("Windows 11", win11.check(inv).text()),
+                ("TPM / Start", platform_text(inv.get("platform")))]
         for b in inv.get("batteries") or []:
             rows.append((f"Akku {b.get('name', '')}", f"{b.get('manufacturer', '')} {b.get('model', '')} – Zustand "
                          f"{b['health_percent']} %" if b.get("health_percent") is not None else b.get("model", "")))

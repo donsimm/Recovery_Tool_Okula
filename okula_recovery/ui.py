@@ -17,7 +17,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 
 from okula_recovery import (__version__, agentclient, archive, automation, backups, clonezilla, config,  # noqa: E402
-                            devices, discovery, distribute, jobs, nas, nasfiles, oslib, pxe, wol)
+                            devices, discovery, distribute, jobs, nas, nasfiles, oslib, pxe, win11, wol)
 from okula_recovery.automation_tab import SendFoldersDialog, SettingsDialog  # noqa: E402
 from okula_recovery.backup_dialogs import (BackupDetailsDialog, BackupDialog, RestoreFilesDialog,  # noqa: E402
                                            edit_note)
@@ -1543,8 +1543,8 @@ class MainWindow(Gtk.ApplicationWindow):
     # Spalten des Gerätebaums: LED bzw. Ordner-Icon, Name, Status, Betriebssystem, zuletzt verbunden, IP,
     # Geräte-ID, Art (unsorted/folder/device), Ordner-rel, Fortschritt 0–100, Balken-Text (leer), Balken zeigen
     D_ICON, D_NAME, D_STATUS, D_OS, D_SEEN, D_IP, D_ID, D_KIND, D_REL, D_PROG, D_PCT, D_BAR, D_AUTO, D_AUTOVIS, \
-        D_BAROK, D_AUTOACT = range(16)
-    NO_PROGRESS = [0, "", False, False, False, True, False]
+        D_BAROK, D_AUTOACT, D_WIN11 = range(17)
+    NO_PROGRESS = [0, "", False, False, False, True, False, ""]
     DEV_DND_TARGET = "okula/device-row"
 
     def _build_device_pane(self) -> Gtk.Widget:
@@ -1575,7 +1575,7 @@ class MainWindow(Gtk.ApplicationWindow):
         box.pack_start(head, False, False, 0)
 
         self.device_store = Gtk.TreeStore(str, str, str, str, str, str, str, str, str, int, str, bool, bool, bool,
-                                          bool, bool)
+                                          bool, bool, str)
         view = Gtk.TreeView(model=self.device_store)
         col = Gtk.TreeViewColumn("Gerät")
         icon = Gtk.CellRendererPixbuf()
@@ -1596,6 +1596,11 @@ class MainWindow(Gtk.ApplicationWindow):
                                  sensitive=self.D_AUTOACT, activatable=self.D_AUTOACT)
         view.append_column(col)
         self.auto_column = col
+        # Windows-11-tauglich: ✔ / ✖ / ? (Gründe im Gerätefenster, Übersicht)
+        cell = Gtk.CellRendererText(xalign=0.5)
+        col = Gtk.TreeViewColumn("Win 11", cell, text=self.D_WIN11)
+        col.set_alignment(0.5)
+        view.append_column(col)
         # Status: solange etwas läuft, Fortschrittsbalken mit Prozent, daneben Auftrag und Restzeit
         col = Gtk.TreeViewColumn("Status")
         bar = Gtk.CellRendererProgress()
@@ -1700,7 +1705,7 @@ class MainWindow(Gtk.ApplicationWindow):
                 dev.os_name or "–", "jetzt" if agent else devices.short_time(dev.last_seen) or "–",
                 agent.ip if agent else dev.last_ip, dev.id, "device", dev.folder,
                 100 if failed else int(fraction * 100) if bar else 0, "", bar, automation.settings(dev).enabled, True,
-                failed is None, not self.cfg.automation_paused]
+                failed is None, not self.cfg.automation_paused, win11.check(dev.inventory).symbol]
 
     def refresh_devices(self) -> None:
         """Baum neu aufbauen (neue Geräte, Ordner, Umbenennen) – Auf- und Zuklappen bleibt erhalten."""

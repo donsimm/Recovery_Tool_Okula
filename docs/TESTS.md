@@ -8,6 +8,9 @@ bestätigt.
 
 ## Vorbereitung am neuen Server (einmal, vor allen Tests)
 
+> **Ab Version 0.2.0 (I-024 und Ä-002): Agent-Stick neu erstellen und Netzwerkstart neu „Vorbereiten“** – der neue
+> Agent erfasst TPM/Secure Boot.
+
 - [ ] Update: `cd ~/recovery_tool_okula && git pull && sudo ./install.sh`, Tool neu starten
 - [ ] Einstellungen vom alten Server importiert (NAS-Passwort einmal neu eingeben)
 - [ ] **Agent-Stick neu erstellen** (neuer Agent mit Anpassen, Ordner senden, Countdown) – alte Sticks können das nicht
@@ -94,6 +97,7 @@ bestätigt.
 - [ ] Tool schliessen → Demo-Prozess ist beendet
 
 ### 7. Allgemein
+- [ ] I-024: Agent-Stick neu erstellen, Gerät starten, Inventar neu einlesen → Spalte „Win 11“ zeigt ✔/✖; Gerätefenster → Übersicht: „Windows 11“ mit Grund und „TPM / Start“ stimmen (mit BIOS-Angaben vergleichen: TPM/PTT, Secure Boot); je ein altes (z. B. 7. Gen. Intel) und ein neues Gerät
 - [ ] Ä-011: Gerätefenster → Übersicht → „Starttasten“ stimmt für eure Geräte (HP, Dell, Lenovo …); Tabelle im Stick-Dialog sichtbar
 - [ ] Ä-014: NAS-Fenster → „NAS-Webseite öffnen“ und Symbol in der NAS-Statuszeile → DSM öffnet sich im Browser (https 5001); auf http 5000 umstellen → richtige Adresse
 - [ ] Gerätename mit Umlaut/Unterstrich (z. B. „Büro_PC_01“) bei OS installieren → Hinweis zeigt Name auf dem Gerät

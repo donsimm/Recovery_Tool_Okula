@@ -231,6 +231,28 @@ def oem_key(path: Path = Path("/sys/firmware/acpi/tables/MSDM")) -> str:
     return key if KEY_RE.match(key) else ""
 
 
+SECURE_BOOT_VAR = "SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c"
+
+
+def platform(sys_root: Path = Path("/sys")) -> dict:
+    """Für die Windows-11-Prüfung: TPM-Version, UEFI- oder BIOS-Start, Secure Boot an/aus (None = unbekannt)."""
+    tpm = ""
+    tpm_dir = sys_root / "class" / "tpm" / "tpm0"
+    if tpm_dir.exists():
+        major = _read(tpm_dir / "tpm_version_major")
+        tpm = {"2": "2.0", "1": "1.2"}.get(major, "?")
+    efi = sys_root / "firmware" / "efi"
+    uefi = efi.is_dir()
+    secure_boot = None
+    if uefi:
+        try:
+            data = (efi / "efivars" / SECURE_BOOT_VAR).read_bytes()
+            secure_boot = len(data) >= 5 and data[4] == 1   # 4 Byte Attribute, dann der Wert
+        except OSError:
+            secure_boot = None
+    return {"tpm": tpm, "uefi": uefi, "secure_boot": secure_boot}
+
+
 def collect(with_os: bool = True, skip: set[str] = frozenset()) -> dict:
     disks = imaging.list_disks()
     for d in disks:
@@ -238,4 +260,5 @@ def collect(with_os: bool = True, skip: set[str] = frozenset()) -> dict:
     systems = operating_systems(disks, skip) if with_os else []
     return {"collected": time.strftime("%Y-%m-%dT%H:%M:%S"), "dmi": dmi(), "cpu": cpu(), "memory": memory(),
             "batteries": batteries(), "network": network(), "disks": disks, "systems": systems,
+            "platform": platform(),
             "oem_key": oem_key()}

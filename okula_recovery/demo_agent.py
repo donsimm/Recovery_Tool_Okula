@@ -66,6 +66,7 @@ INVENTORY = {
     "systems": [{"family": "Windows", "name": "Windows 11 Pro 24H2", "build": "26100", "edition": "Professional",
                  "hostname": DEMO_HOST, "partition": "demo-nvme0n1p3", "disk": "demo-nvme0n1"}],
     "oem_key": "DEMOA-DEMOB-DEMOC-DEMOD-DEMOE",
+    "platform": {"tpm": "2.0", "uefi": True, "secure_boot": True},
 }
 
 USERS = ("Anna", "Demo")
