@@ -74,8 +74,11 @@ class SettingsTest(unittest.TestCase):
             self.assertIn("NAS nicht verbunden", automation.problems(s, None))
         now = datetime(2026, 10, 30, 12, 0)
         s = automation.Settings(enabled=False, rearm=True, done_at="2026-10-30T07:00:00")
-        self.assertEqual(automation.rearm_text(s, now), "wieder aktiv in 19 h")
-        self.assertEqual(automation.rearm_text(s, now + timedelta(hours=18, minutes=30)), "wieder aktiv in 30 min")
+        self.assertEqual(automation.REARM_HOURS, 72)                                      # 3 Tage
+        self.assertEqual(automation.rearm_text(s, now), "wieder aktiv in 2 Tagen 19 h")
+        self.assertEqual(automation.rearm_text(s, now + timedelta(hours=48)), "wieder aktiv in 19 h")
+        self.assertEqual(automation.rearm_text(s, now + timedelta(hours=43)), "wieder aktiv in 1 Tag")
+        self.assertEqual(automation.rearm_text(s, now + timedelta(hours=66, minutes=30)), "wieder aktiv in 30 min")
         s.rearm = False
         self.assertEqual(automation.rearm_text(s, now), "")
 
@@ -162,14 +165,14 @@ class EngineTest(unittest.TestCase):
         self.assertFalse(sa.enabled)
         self.assertTrue(sa.done_at)
         self.assertEqual(self.engine.text(a), "Automatisierung fertig")
-        self.assertIn("Automatisierung erfolgreich – wird in 24 h wieder eingeschaltet",
+        self.assertIn("Automatisierung erfolgreich – wird in 3 Tagen wieder eingeschaltet",
                       [h["text"] for h in a.history])
-        # erledigt bleibt erledigt, bis das Gerät getrennt war; dann 24 h-Anzeige
+        # erledigt bleibt erledigt, bis das Gerät getrennt war; dann 3-Tage-Anzeige
         self.assertFalse(self.engine.consider(a, self.agent()))
         self.engine.offline(a.id)
-        self.assertEqual(self.engine.text(a), "wieder aktiv in 24 h")
-        self.assertEqual(self.engine.tick(datetime.now() + timedelta(hours=23)), [])
-        self.assertEqual([d.id for d in self.engine.tick(datetime.now() + timedelta(hours=24, minutes=1))], [a.id])
+        self.assertEqual(self.engine.text(a), "wieder aktiv in 3 Tagen")
+        self.assertEqual(self.engine.tick(datetime.now() + timedelta(hours=71)), [])
+        self.assertEqual([d.id for d in self.engine.tick(datetime.now() + timedelta(hours=72, minutes=1))], [a.id])
         self.assertTrue(automation.settings(a).enabled)
         self.release.setdefault(b.id, threading.Event()).set()
         self.assertTrue(wait_for(lambda: self.engine.run(b.id).phase == "done"))

@@ -15,7 +15,7 @@ from okula_recovery.uikit import ask_text, confirm, confirm_error, numbered_sect
 if TYPE_CHECKING:
     from okula_recovery.ui import MainWindow
 
-HINT = ("Die Automatisierung läuft einmal und schaltet sich nach erfolgreichem Durchlauf selbst aus. Nach 24 Stunden "
+HINT = ("Die Automatisierung läuft einmal und schaltet sich nach erfolgreichem Durchlauf selbst aus. Nach 3 Tagen "
         "schaltet sie sich wieder ein (abschaltbar). Sie startet 30 Sekunden, nachdem das Gerät im LAN auftaucht "
         "(Agent-Stick oder Netzwerkstart) – am Gerät bricht Esc ab.")
 
@@ -59,7 +59,7 @@ class AutomationTab(Gtk.Box):
         top.pack_end(self.btn_cancel, False, False, 0)
         self.pack_start(top, False, False, 0)
         self.pack_start(_hint(HINT), False, False, 0)
-        self.rearm = Gtk.CheckButton(label="Nach 24 h wieder einschalten")
+        self.rearm = Gtk.CheckButton(label="Nach 3 Tagen wieder einschalten")
         self.rearm.connect("toggled", lambda _c: self._changed())
         self.pack_start(self.rearm, False, False, 0)
 

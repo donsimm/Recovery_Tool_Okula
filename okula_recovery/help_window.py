@@ -260,7 +260,7 @@ Tipp: Speichere die Einstellungen als <i>Vorlage</i> und verwende sie für ander
 1.  Das Gerät startet mit dem Agent (Stick oder Netzwerkstart).
 2.  30 Sekunden Countdown – am Gerät bricht <b>Esc</b> ab, im Tool <i>Abbrechen</i>.
 3.  Backup (wenn gewählt), Image zurückspielen, Name und Windows-Schlüssel setzen, Ordner senden.
-4.  Neustart. Danach schaltet sich die Automatisierung aus – und nach 24 Stunden wieder ein.
+4.  Neustart. Danach schaltet sich die Automatisierung aus – und nach 3 Tagen wieder ein.
 
 <b>Gut zu wissen:</b>
 •  Steckt eine andere Festplatte im Gerät, bricht das Tool ab. Es wird nichts gelöscht.
@@ -327,7 +327,10 @@ Bei anderen Systemen zeigt das Tool den Grund. Dann hilft ein Boot-Stick (nächs
 <b>Boot-Stick aus ISO</b> (wie das Programm „Rufus“)
 •  Rechts eine ISO wählen und <i>Boot-Stick aus ISO …</i> klicken.
 •  Mit dem Stick kannst du Windows oder Linux an jedem Computer installieren.
-•  Bei Windows kannst du Dinge einstellen: ohne Microsoft-Konto, ohne TPM-Prüfung, Region Schweiz.
+•  Bei Windows kannst du Dinge einstellen: ohne Microsoft-Konto, Region Schweiz.
+•  Altes Gerät, das Windows 11 nicht kann? Microsoft rät ab (keine Updates garantiert).
+   Nur auf Wunsch des Kunden: Häkchen <i>Trotzdem installieren</i> bzw. beim Stick
+   <i>Auch für nicht unterstützte Hardware</i>. Das Gerät bekommt dann einen Vermerk.
 •  Das Tool kann den Stick vorher testen. So erkennst du gefälschte Sticks.
 
 <b>Restore-Stick aus Image</b>
@@ -446,7 +449,7 @@ In der Geräteliste siehst du bei jedem Gerät einen Balken mit Prozent und Rest
 •  <i>startet in 25 s</i>: Countdown läuft. Am Gerät bricht Esc ab.
 •  <i>wartet (Platz 2)</i>: Es laufen schon so viele Geräte wie erlaubt. Das Gerät kommt gleich dran.
 •  <i>Schritt 2/5: Image zurückspielen</i>: Die Automatisierung arbeitet.
-•  <i>wieder aktiv in 5 h</i>: Sie ist fertig und schaltet sich nach 24 Stunden wieder ein.
+•  <i>wieder aktiv in 2 Tagen 5 h</i>: Sie ist fertig und schaltet sich nach 3 Tagen wieder ein.
 •  <span foreground="#c62828">rot</span>: Es gab einen Fehler. Details im Gerätefenster.
 
 <b>Windows 11</b> (Gerätefenster → <i>Übersicht → Windows 11</i>)

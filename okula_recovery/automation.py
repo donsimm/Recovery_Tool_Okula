@@ -5,8 +5,8 @@ Ablauf pro Gerät: 30 s Countdown (im Tool und am Gerät, Esc bricht ab) → War
 → 1 Backup (Option) → 2 Image zurückspielen (Master oder eigenes) → 3 Anpassen (Name, Key; immer)
 → 4 Ordner senden (Option) → 5 Abschluss (Neustart / Herunterfahren / nichts).
 
-Läuft einmal: nach Erfolg schaltet sich die Automatisierung aus und – falls „Nach 24 h wieder einschalten“ an ist
-(Standard) – 24 h später wieder ein. Bei einem Fehler wird abgebrochen; das Gerät bleibt im normalen
+Läuft einmal: nach Erfolg schaltet sich die Automatisierung aus und – falls „Nach 3 Tagen wieder einschalten“ an ist
+(Standard) – 3 Tage später wieder ein. Bei einem Fehler wird abgebrochen; das Gerät bleibt im normalen
 Agent-Betrieb, der Fehler steht überall (Übersicht, Gerätefenster, Verlauf, Bildschirm des Geräts).
 Ein neuer Versuch erst, wenn das Gerät neu angeschlossen wird. Kein GTK hier.
 """
@@ -25,7 +25,8 @@ from typing import Callable
 from okula_recovery import agentclient, config, distribute, jobs, nas
 
 COUNTDOWN = 30
-REARM_HOURS = 24
+REARM_HOURS = 72                 # 3 Tage
+REARM_LABEL = "3 Tagen"          # für Texte: „nach 3 Tagen wieder einschalten“
 STEPS = ("Backup", "Image zurückspielen", "Anpassen", "Ordner senden", "Abschluss")
 FINISH = {"reboot": "Neustart", "poweroff": "Herunterfahren", "none": "nichts"}
 # Gesamtfortschritt: Anteil der Schritte (Zurückspielen dauert am längsten)
@@ -39,7 +40,7 @@ class AutomationError(Exception):
 @dataclass
 class Settings:
     enabled: bool = False
-    rearm: bool = True               # nach erfolgreichem Durchlauf 24 h später wieder einschalten
+    rearm: bool = True               # nach erfolgreichem Durchlauf 3 Tage später wieder einschalten
     backup: bool = False             # 1: vorher sichern
     backup_mode: str = "files"       #    files (Benutzerdaten) | image (ganze Disk als Disk-Image)
     image_mode: str = "master"       # 2: master | own
@@ -141,7 +142,7 @@ def rearm_at(s: Settings) -> datetime | None:
 
 
 def rearm_text(s: Settings, now: datetime | None = None) -> str:
-    """„wieder aktiv in 5 h“ – leer, wenn nichts ansteht."""
+    """„wieder aktiv in 2 Tagen 5 h“ / „in 5 h“ / „in 30 min“ – leer, wenn nichts ansteht."""
     at = rearm_at(s)
     if at is None:
         return ""
@@ -150,7 +151,11 @@ def rearm_text(s: Settings, now: datetime | None = None) -> str:
         return "wird wieder eingeschaltet"
     if left < 3600:
         return f"wieder aktiv in {max(1, math.ceil(left / 60))} min"
-    return f"wieder aktiv in {math.ceil(left / 3600)} h"
+    hours = math.ceil(left / 3600)
+    days, hours = divmod(hours, 24)
+    if not days:
+        return f"wieder aktiv in {hours} h"
+    return f"wieder aktiv in {days} Tag{'en' if days != 1 else ''}" + (f" {hours} h" if hours else "")
 
 
 # ---------- Vorlagen ----------
@@ -295,7 +300,7 @@ class Engine:
             self.cond.notify_all()
 
     def tick(self, now: datetime | None = None) -> list:
-        """Regelmässig aufrufen: nach 24 h wieder einschalten. Gibt die wieder eingeschalteten Geräte zurück."""
+        """Regelmässig aufrufen: nach 3 Tagen wieder einschalten. Gibt die wieder eingeschalteten Geräte zurück."""
         now = now or datetime.now()
         back = []
         for dev in list(self.store.devices.values()):
@@ -304,7 +309,7 @@ class Engine:
             if at is not None and at <= now:
                 s.enabled = True
                 self._save(dev, s)
-                self.store.add_history(dev, "automatisierung", "Automatisierung nach 24 h wieder eingeschaltet")
+                self.store.add_history(dev, "automatisierung", f"Automatisierung nach {REARM_LABEL} wieder eingeschaltet")
                 self.runs.pop(dev.id, None)
                 back.append(dev)
                 self.on_change(dev.id)
@@ -405,7 +410,7 @@ class Engine:
             self._save(dev, s)
             run.phase = "done"
             self.store.add_history(dev, "automatisierung", "Automatisierung erfolgreich" +
-                                   (" – wird in 24 h wieder eingeschaltet" if s.rearm else ""), ok=True)
+                                   (f" – wird in {REARM_LABEL} wieder eingeschaltet" if s.rearm else ""), ok=True)
         else:
             message = error.get("message") or (run.job.log[-1].split(" ", 1)[-1] if run.job and run.job.log
                                                else "unbekannter Fehler")

@@ -14,6 +14,8 @@ import base64
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 
+from okula_recovery import textnorm
+
 NS = "urn:schemas-microsoft-com:unattend"
 WCM = "http://schemas.microsoft.com/WMIConfig/2002/State"
 
@@ -24,9 +26,16 @@ SWISS_TIMEZONE = "W. Europe Standard Time"
 LABCONFIG = ("BypassTPMCheck", "BypassSecureBootCheck", "BypassRAMCheck", "BypassStorageCheck", "BypassCPUCheck")
 
 
+# Microsoft: Installation auf nicht unterstützter Hardware „nicht empfohlen“, kein Support, keine Update-Garantie,
+# Schäden nicht von der Herstellergarantie gedeckt (support.microsoft.com, Artikel 0b2dc4a2…, Stand 12.12.2024)
+UNSUPPORTED_WARNING = ("Microsoft rät davon ab: kein Support, Updates (auch Sicherheitsupdates) nicht garantiert, "
+                       "Schäden durch Inkompatibilität nicht von der Herstellergarantie gedeckt, Wasserzeichen auf "
+                       "dem Desktop. Nur auf Wunsch des Kunden und mit seinem Einverständnis.")
+
+
 @dataclass
 class WinOptions:
-    bypass_requirements: bool = True
+    bypass_requirements: bool = False  # LabConfig: Setup-Prüfung TPM/Secure Boot/RAM/CPU umgehen – nur von Hand
     local_account: str = "Benutzer"    # leer = Windows fragt selbst
     password: str = ""                 # leer = beim ersten Anmelden setzen
     skip_privacy: bool = True
@@ -37,6 +46,7 @@ class WinOptions:
     arch: str = "amd64"
     skip_network: bool = False         # Netzwerk-Seite im Willkommens-Assistenten überspringen
     product_key: str = ""              # nur Direktinstallation: wird beim ersten Start gesetzt
+    unsupported_hardware: bool = False  # Direktinstallation: Windows 11 trotz „nicht tauglich“ (am Gerät vermerken)
 
 
 def encode_password(password: str, kind: str = "Password") -> str:
@@ -46,9 +56,7 @@ def encode_password(password: str, kind: str = "Password") -> str:
 
 def computer_name(name: str) -> str:
     """Gültiger NetBIOS-Name: max. 15 Zeichen, nur A–Z, 0–9 und Bindestrich."""
-    for a, b in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("Ä", "Ae"), ("Ö", "Oe"), ("Ü", "Ue"), ("é", "e"),
-                 ("è", "e"), ("à", "a")):
-        name = name.replace(a, b)
+    name = textnorm.to_ascii(name)          # ä→ae, ß→ss, é→e – auch in NFD-Form (vom Mac)
     cleaned = "".join(c if c.isascii() and (c.isalnum() or c == "-") else "-" for c in name.strip())
     cleaned = cleaned.strip("-")[:15].strip("-")
     return "" if cleaned.isdigit() else cleaned
@@ -187,7 +195,10 @@ def summary(opts: WinOptions) -> list[str]:
     """Was die Anpassung bewirkt – für Dialog und Log."""
     lines = []
     if opts.bypass_requirements:
-        lines.append("Anforderungen umgangen: TPM 2.0, Secure Boot, RAM, CPU")
+        lines.append("Anforderungen umgangen: TPM 2.0, Secure Boot, RAM, CPU – nicht unterstützt, Updates nicht "
+                     "garantiert")
+    if opts.unsupported_hardware:
+        lines.append("Windows 11 auf nicht unterstützter Hardware – Updates nicht garantiert")
     if opts.local_account:
         lines.append(f"Lokales Konto „{opts.local_account}“"
                      + (" mit Passwort" if opts.password else " – Passwort beim ersten Anmelden setzen"))

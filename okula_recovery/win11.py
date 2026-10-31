@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
@@ -52,6 +53,17 @@ def cpu_supported(model: str) -> bool | None:
         if pattern.search(model or ""):
             return ok
     return None
+
+
+def unsupported_note(installed: str) -> str:
+    """Vermerk, wenn Windows 11 trotz „nicht tauglich“ installiert wurde (Datum JJJJ-MM-TT)."""
+    if not installed:
+        return ""
+    try:
+        when = date.fromisoformat(installed).strftime("%d.%m.%Y")
+    except ValueError:
+        when = installed
+    return f"\n⚠ Am {when} trotzdem installiert (auf Wunsch) – nicht unterstützt, Updates nicht garantiert"
 
 
 def check(inv: dict | None) -> Result:

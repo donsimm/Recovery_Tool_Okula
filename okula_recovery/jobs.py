@@ -30,13 +30,15 @@ class Job:
     fraction: float = 0.0
     detail: str = ""
     log: list[str] = field(default_factory=list)
-    started: float = field(default_factory=time.time)
+    started: float = field(default_factory=time.time)        # Uhrzeit (Anzeige, Sortierung)
     ended: float | None = None
+    t0: float = field(default_factory=time.monotonic)        # für Laufzeit/Restzeit: springt nicht bei Uhr-Korrektur
+    t_end: float | None = None
     result: str = ""
     cancel: threading.Event = field(default_factory=threading.Event)
     phase: str = ""                # Schritt bei mehrstufigen Aufträgen, z. B. „Image prüfen (1/2)“
     phase_fraction: float = 0.0    # Fortschritt innerhalb des Schritts
-    phase_started: float = 0.0
+    phase_started: float = 0.0     # time.monotonic() beim Start des Schritts
     source: str = ""               # gelesener Backup-Ordner (darf währenddessen nicht gelöscht werden)
 
     @property
@@ -56,12 +58,17 @@ class Job:
         return self.phase_fraction if self.phase else self.fraction
 
     @property
+    def duration(self) -> float:
+        """Laufzeit in Sekunden (monoton – NTP-Korrektur oder Zeitumstellung verfälschen sie nicht)."""
+        return (self.t_end if self.t_end is not None else time.monotonic()) - self.t0
+
+    @property
     def remaining(self) -> float | None:
         """Geschätzte Restzeit (des aktuellen Schritts) in Sekunden, None = noch unklar."""
         fraction = self.shown_fraction
         if not self.running or fraction < 0.02:
             return None
-        elapsed = time.time() - (self.phase_started if self.phase else self.started)
+        elapsed = time.monotonic() - (self.phase_started if self.phase else self.t0)
         if elapsed < 10:
             return None
         return elapsed * (1 - fraction) / fraction
@@ -141,7 +148,7 @@ class JobManager:
                 job.state = CANCELLED if job.cancel.is_set() else FAILED
                 self.log(job, f"{'Abgebrochen' if job.cancel.is_set() else 'Fehler'}: {e}")
             finally:
-                job.ended = time.time()
+                job.ended, job.t_end = time.time(), time.monotonic()
                 self.on_change(job)
 
         threading.Thread(target=run, daemon=True, name=f"job-{job.id}").start()
@@ -155,7 +162,7 @@ class JobManager:
                  phase_fraction: float = 0.0) -> None:
         """fraction = Gesamtfortschritt; phase/phase_fraction = aktueller Schritt (Anzeige und Restzeit)."""
         if phase != job.phase:
-            job.phase, job.phase_started = phase, time.time()
+            job.phase, job.phase_started = phase, time.monotonic()
         job.fraction, job.detail = max(0.0, min(1.0, fraction)), detail
         job.phase_fraction = max(0.0, min(1.0, phase_fraction))
         self.on_change(job)

@@ -18,7 +18,12 @@ def component(root, pass_name, name):
 
 class UnattendTest(unittest.TestCase):
     def test_defaults_swiss_local_account_bypass(self):
-        xml = wu.build(wu.WinOptions(ui_language="de-DE"))
+        # Standard: Setup prüft die Windows-11-Anforderungen (Umgehen nur von Hand, mit Warnung)
+        plain = ET.fromstring(wu.build(wu.WinOptions(ui_language="de-DE")))
+        setup = component(plain, "windowsPE", "Microsoft-Windows-Setup")
+        self.assertEqual([p.text for p in setup.iter(f"{{{wu.NS}}}Path")], [])
+        self.assertNotIn("Anforderungen umgangen", " ".join(wu.summary(wu.WinOptions())))
+        xml = wu.build(wu.WinOptions(ui_language="de-DE", bypass_requirements=True))
         self.assertTrue(xml.startswith('<?xml version="1.0" encoding="utf-8"?>'))
         root = ET.fromstring(xml)
         self.assertEqual([s.get("pass") for s in root.findall("u:settings", N)],

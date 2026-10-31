@@ -30,7 +30,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from okula_recovery import oslib
+from okula_recovery import oslib, textnorm
 
 SECTOR = 512
 ALIGN = 2048                         # 1 MiB
@@ -130,8 +130,7 @@ class BootPlan:
 
 def hostname(name: str) -> str:
     """Gültiger Linux-Hostname: Kleinbuchstaben, Ziffern, Bindestrich, max. 63 Zeichen."""
-    for a, b in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("Ä", "ae"), ("Ö", "oe"), ("Ü", "ue")):
-        name = name.replace(a, b)
+    name = textnorm.to_ascii(name)          # ä→ae, ß→ss, é→e – auch in NFD-Form (vom Mac)
     cleaned = re.sub(r"[^a-z0-9-]+", "-", name.lower()).strip("-")[:63].strip("-")
     return cleaned or "okula-pc"
 

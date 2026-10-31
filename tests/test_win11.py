@@ -93,3 +93,37 @@ class PlatformTest(unittest.TestCase):
             (efivars / inventory.SECURE_BOOT_VAR).write_bytes(b"\x06\x00\x00\x00\x00")
             (root / "class/tpm/tpm0/tpm_version_major").write_text("1\n")
             self.assertEqual(inventory.platform(root), {"tpm": "1.2", "uefi": True, "secure_boot": False})
+
+
+class UnsupportedInstallTest(unittest.TestCase):
+    """Windows 11 trotz „nicht tauglich“: nur von Hand, Warnung, Vermerk am Gerät und im Export."""
+
+    def test_note_and_export(self):
+        from okula_recovery import inventory_export
+        self.assertEqual(win11.unsupported_note(""), "")
+        self.assertIn("Am 31.10.2026 trotzdem installiert", win11.unsupported_note("2026-10-31"))
+        self.assertIn("Updates nicht garantiert", win11.unsupported_note("2026-10-31"))
+        text = inventory_export.win11_text(inv(tpm="1.2"), "2026-10-31")
+        self.assertEqual(text, "nein (TPM 1.2 (2.0 nötig)) – trotzdem installiert 31.10.2026, Updates nicht garantiert")
+        self.assertEqual(inventory_export.win11_text(inv()), "ja")
+
+    def test_options_default_off_and_summary(self):
+        from okula_recovery import winunattend
+        opts = winunattend.WinOptions()
+        self.assertFalse(opts.bypass_requirements)
+        self.assertFalse(opts.unsupported_hardware)
+        lines = winunattend.summary(winunattend.WinOptions(bypass_requirements=True, unsupported_hardware=True))
+        self.assertTrue(any("nicht garantiert" in line for line in lines))
+        self.assertIn("Herstellergarantie", winunattend.UNSUPPORTED_WARNING)
+
+    def test_device_field_saved_and_merged(self):
+        from okula_recovery import devices
+        with tempfile.TemporaryDirectory() as tmp:
+            store = devices.DeviceStore(Path(tmp))
+            a, _ = store.register("a", "10.0.0.5", "", {"dmi": {"product_uuid": "11111111-1111-1111-1111-111111111111"}})
+            a.win11_unsupported = "2026-10-31"
+            store.save(a)
+            self.assertEqual(devices.DeviceStore(Path(tmp)).devices[a.id].win11_unsupported, "2026-10-31")
+            b, _ = store.register("b", "10.0.0.6", "", {"dmi": {"product_uuid": "22222222-2222-2222-2222-222222222222"}})
+            store.merge(b, a)
+            self.assertEqual(b.win11_unsupported, "2026-10-31")

@@ -15,9 +15,9 @@ Stand: **umgesetzt** (29.10.2026). Bedienung im [README](../README.md); Prüfung
 
 - **Geräteübersicht:** zusätzliche Spalte mit Häkchen **„Automatisierung“** ein/aus.
 - **Gerätefenster:** neuer Reiter **„Automatisierung“** mit allen Einstellungen und dem Hinweis:
-  *„Die Automatisierung läuft einmal und schaltet sich nach erfolgreichem Durchlauf selbst aus. Nach 24 Stunden
+  *„Die Automatisierung läuft einmal und schaltet sich nach erfolgreichem Durchlauf selbst aus. Nach 3 Tagen
   schaltet sie sich wieder ein (abschaltbar).“* (Keine Option „immer“.)
-- **Option im Reiter: „Nach 24 h wieder einschalten“** – Standard **ein**.
+- **Option im Reiter: „Nach 3 Tagen wieder einschalten“** – Standard **ein**.
 - **Hauptschalter:** Stopp-Knopf ■ über der Geräteliste, rot nur solange pausiert (auch Menü → Einstellungen).
 - **Vorlagen** im Reiter: Einstellungen als Vorlage speichern (z. B. „Schulungs-PC zurücksetzen“) und anderen
   Geräten zuweisen.
@@ -38,9 +38,9 @@ Nach Schritt 5 setzt das Tool die Startreihenfolge auf „lokal“ zurück (fall
 
 1. **Countdown sichtbar** im Tool und am Gerät: *„Automatisierung startet in 30 s – Esc zum Abbrechen“*;
    im Tool ein Abbrechen-Knopf.
-2. **Nur einmal pro 24 h:** nach erfolgreichem Durchlauf schaltet sich das Häkchen selbst aus (keine Endlosschleife
-   bei jedem Start mit Stick/Netzwerkstart). Nach **24 Stunden** (gerechnet ab Ende des erfolgreichen Durchlaufs)
-   schaltet das Tool es **wieder ein** – ausser im Reiter ist „Nach 24 h wieder einschalten“ aus. Die Übersicht zeigt
+2. **Nur einmal in 3 Tagen:** nach erfolgreichem Durchlauf schaltet sich das Häkchen selbst aus (keine Endlosschleife
+   bei jedem Start mit Stick/Netzwerkstart). Nach **3 Tagen** (gerechnet ab Ende des erfolgreichen Durchlaufs)
+   schaltet das Tool es **wieder ein** – ausser im Reiter ist „Nach 3 Tagen wieder einschalten“ aus. Die Übersicht zeigt
    in dieser Zeit z. B. *„wieder aktiv in 5 h“*.
 3. **Zieldisk über die Seriennummer** festgelegt, nicht `/dev/sda`. Andere Disk eingebaut → Abbruch, nichts gelöscht.
 4. **Hauptschalter** zum Pausieren aller Automatisierungen.
@@ -74,5 +74,5 @@ Nach Schritt 5 setzt das Tool die Startreihenfolge auf „lokal“ zurück (fall
   steht: *„Automatisierung startet in 30 s – Esc zum Abbrechen“*.
 
 - **Schritt 3 „Anpassen“** läuft immer (keine Option).
-- **Wieder einschalten nach 24 h:** Option im Reiter, Standard ein. Ist sie aus, bleibt das Häkchen nach dem
+- **Wieder einschalten nach 3 Tagen** (bis 31.10.2026: 24 h): Option im Reiter, Standard ein. Ist sie aus, bleibt das Häkchen nach dem
   Durchlauf aus, bis es jemand von Hand einschaltet.

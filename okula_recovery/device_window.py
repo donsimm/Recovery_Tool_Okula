@@ -306,7 +306,7 @@ class DeviceWindow(Gtk.Window):
                 ("Prozessor", f"{cpu.get('model', '')}  ({cpu.get('cores', '?')} Kerne / {cpu.get('threads', '?')} "
                               "Threads)" if cpu else ""),
                 ("Arbeitsspeicher", f"{inv['memory'] / 1024**3:.0f} GB" if inv.get("memory") else ""),
-                ("Windows 11", win11.check(inv).text()),
+                ("Windows 11", win11.check(inv).text() + win11.unsupported_note(dev.win11_unsupported)),
                 ("TPM / Start", platform_text(inv.get("platform")))]
         for b in inv.get("batteries") or []:
             rows.append((f"Akku {b.get('name', '')}", f"{b.get('manufacturer', '')} {b.get('model', '')} – Zustand "

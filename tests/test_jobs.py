@@ -166,7 +166,7 @@ class LastFailedTest(unittest.TestCase):
 
 class EtaTest(unittest.TestCase):
     def test_remaining_and_text(self):
-        job = jobs.Job(1, "dev", "image", "/dev/sda", "Disk-Image sda", started=time.time() - 600, fraction=0.25)
+        job = jobs.Job(1, "dev", "image", "/dev/sda", "Disk-Image sda", t0=time.monotonic() - 600, fraction=0.25)
         self.assertAlmostEqual(job.remaining, 1800, delta=5)
         self.assertEqual(jobs.eta_text(job.remaining), "noch 30 min")
         self.assertEqual(jobs.eta_text(4000), "noch 1 h 06 min")
@@ -188,3 +188,17 @@ class EtaTest(unittest.TestCase):
         self.assertIsNone(job.remaining)  # neuer Schritt: Restzeit erst nach einigen Sekunden
         job.phase_started -= 60
         self.assertAlmostEqual(job.remaining, 60, delta=2)
+
+    def test_clock_jump_does_not_change_eta(self):
+        """Laufzeit/Restzeit monoton: NTP-Korrektur oder Zeitumstellung (time.time springt) ändern sie nicht."""
+        from unittest import mock
+        jm = jobs.JobManager()
+        job = jobs.Job(1, "dev", "image", "/dev/sda", "Disk-Image")
+        jm.jobs.append(job)
+        jm.progress(job, 0.5, "x")
+        job.t0 -= 120
+        self.assertAlmostEqual(job.remaining, 120, delta=2)
+        self.assertAlmostEqual(job.duration, 120, delta=2)
+        with mock.patch("time.time", return_value=time.time() + 3600):     # Uhr springt 1 h vor
+            self.assertAlmostEqual(job.remaining, 120, delta=2)
+            self.assertAlmostEqual(job.duration, 120, delta=2)

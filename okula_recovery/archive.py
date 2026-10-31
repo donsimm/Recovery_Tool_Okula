@@ -115,13 +115,13 @@ def scan(root: str | Path) -> Tree:
 
 
 def make_folder(root: str | Path, parent_rel: str, name: str) -> str:
-    rel = str(PurePosixPath(parent_rel) / nasfiles.validate_name(name)) if parent_rel \
-        else nasfiles.validate_name(name)
+    rel = str(PurePosixPath(parent_rel) / nasfiles.validate_name(name, new=True)) if parent_rel \
+        else nasfiles.validate_name(name, new=True)
     if len(PurePosixPath(rel).parts) > MAX_DEPTH:
         raise ArchiveError(f"Mehr als {MAX_DEPTH} Ebenen sind nicht möglich")
     _archive(root).mkdir(exist_ok=True)
     target = _folder_path(root, rel)
-    if target.exists() or target.is_symlink():
+    if nasfiles.name_taken(target):
         raise ArchiveError(f"„{target.name}“ existiert bereits")
     target.mkdir()
     return rel
@@ -132,10 +132,10 @@ def rename_folder(root: str | Path, rel: str, new_name: str) -> str:
     if not rel or not src.is_dir():
         raise ArchiveError("Ordner nicht gefunden")
     parent = str(PurePosixPath(rel).parent)
-    new_rel = str(PurePosixPath(parent) / nasfiles.validate_name(new_name)) if parent != "." \
-        else nasfiles.validate_name(new_name)
+    new_rel = str(PurePosixPath(parent) / nasfiles.validate_name(new_name, new=True)) if parent != "." \
+        else nasfiles.validate_name(new_name, new=True)
     dst = _folder_path(root, new_rel)
-    if dst.exists() or dst.is_symlink():
+    if nasfiles.name_taken(dst, ignore=src):
         raise ArchiveError(f"„{dst.name}“ existiert bereits")
     src.rename(dst)
     return new_rel

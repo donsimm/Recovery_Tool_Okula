@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path, PurePosixPath
 
-from okula_recovery import devices, warranty, win11
+from okula_recovery import devices, textnorm, warranty, win11
 
 COLUMNS = ("Name", "Ordner", "Hersteller", "Modell", "Seriennummer", "CPU", "RAM", "Disks", "OS",
            "Win-11-tauglich", "Garantie bis", "Zuletzt verbunden", "Letztes Image", "Letztes Backup")
@@ -80,12 +80,16 @@ def ram_text(inv: dict) -> str:
     return f"{inv['memory'] / 1024**3:.0f} GB" if inv.get("memory") else ""
 
 
-def win11_text(inv: dict) -> str:
+def win11_text(inv: dict, installed: str = "") -> str:
     r = win11.check(inv)
     text = WIN11_TEXT.get(r.status, r.status)
     # Grund kurz, ohne Modellangabe in Klammern: „nein (Prozessor nicht unterstützt)“
     reasons = [re.sub(r"\s*\(.*\)$", "", x) if x.startswith("Prozessor") else x for x in r.reasons]
-    return f"{text} ({'; '.join(reasons)})" if r.status == "no" and reasons else text
+    text = f"{text} ({'; '.join(reasons)})" if r.status == "no" and reasons else text
+    if installed:
+        when = devices.short_time(installed + "T00:00")[:10] or installed
+        text += f" – trotzdem installiert {when}, Updates nicht garantiert"
+    return text
 
 
 def warranty_text(w: dict) -> str:
@@ -107,7 +111,7 @@ def row(dev: devices.Device, image: Latest | None = None, backup: Latest | None 
         "RAM": ram_text(inv),
         "Disks": disks_text(inv),
         "OS": "; ".join(s["name"] for s in inv.get("systems") or [] if s.get("name")),
-        "Win-11-tauglich": win11_text(inv),
+        "Win-11-tauglich": win11_text(inv, dev.win11_unsupported),
         "Garantie bis": warranty_text(dev.warranty),
         "Zuletzt verbunden": devices.short_time(dev.last_seen),
         "Letztes Image": image.text() if image else "",
@@ -166,6 +170,7 @@ def build(devs: list[devices.Device], images: dict[str, Latest], backups: dict[s
 # ---------- Dateien ----------
 
 def safe_name(text: str) -> str:
+    text = textnorm.clean(text)     # NFC vor dem Kürzen: kein halbes „ü“ (u + Trema) am Ende
     text = re.sub(r"[^\w.\- ]+", "_", text, flags=re.UNICODE).strip(" ._")
     return re.sub(r"[\s_]+", "_", text)[:60].strip("_") or "Inventar"
 

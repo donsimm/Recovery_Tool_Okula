@@ -40,7 +40,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laie
 | Ä-005 | 🟡 | offen | Claude | **Entwicklung absichern:** GitHub Actions, die die 240 Tests bei jedem Push ausführen. Versionsnummer pflegen (steht noch auf `0.1.0`) und Releases taggen, damit der Server einen geprüften Stand zieht statt den Branch-Kopf. `ui.py` (2780 Zeilen) aufteilen | 31.10. (Analyse) |
 | Ä-006 | 🔴 | offen | Claude | **Assistent „Neues Gerät einrichten“:** Sobald ein unbekanntes Gerät auftaucht, fragt ein Hinweis: „Neues Gerät gefunden: HP EliteBook 840 – jetzt einrichten?“. Danach Schritt für Schritt: Name → Ordner/Kunde → Vorlage oder Master-Image → „Sind noch Daten drauf?“ (Ja = Backup) → Zusammenfassung → Start. Heute muss man selbst wissen: Gerät suchen, Doppelklick, Reiter, 5 Abschnitte, Schalter | 31.10. (Laien-Test) |
 | Ä-007 | 🔴 | offen | Claude | **Bestätigung vor dem Löschen:** Wird der Schalter eingeschaltet, während das Gerät verbunden ist, startet die Automatisierung ohne Rückfrage nach 30 s und löscht die Disk (`ui.save_automation` → `consider`). Nötig: rote Zusammenfassung „Disk Samsung 256 GB von HP-PC-07 wird gelöscht, Master ‚Win11 Büro‘, neuer Name …, Backup: nein“ mit Knopf „Löschen und neu aufsetzen“ | 31.10. (Laien-Test) |
-| Ä-008 | 🔴 | offen | Claude | **Nach dem Restore Windows starten, auch wenn der Stick noch steckt:** BootNext auf den Windows Boot Manager setzen (`efibootmgr --bootnext`, wie in `wininstall.set_bootnext`). Heute heisst es nur „Agent-Stick abziehen“; wer das verpasst, landet wieder im Agent. Und nach 24 h wird das Gerät erneut neu aufgesetzt, weil „Nach 24 h wieder einschalten“ standardmässig an ist → Standard **aus**, oder nur bei Netzwerkstart | 31.10. (Laien-Test) |
+| Ä-008 | 🔴 | offen | Claude | **Nach dem Restore Windows starten, auch wenn der Stick noch steckt:** BootNext auf den Windows Boot Manager setzen (`efibootmgr --bootnext`, wie in `wininstall.set_bootnext`). Heute heisst es nur „Agent-Stick abziehen“; wer das verpasst, landet wieder im Agent. Und nach 3 Tagen (bis 31.10.: 24 h) wird das Gerät erneut neu aufgesetzt, weil „Nach 3 Tagen wieder einschalten“ standardmässig an ist → Standard **aus**, oder nur bei Netzwerkstart | 31.10. (Laien-Test) |
 | Ä-009 | 🟡 | offen | Claude | **Vorauswahl:** Ist nur eine interne Disk da, ist sie automatisch die Zieldisk; gibt es nur einen Master, ist er gewählt (heute sind beide Listen leer). Dazu eine Standard-Vorlage (Menü → Einstellungen), die bei jedem neuen Gerät schon eingetragen ist | 31.10. (Laien-Test) |
 | Ä-010 | 🟡 | offen | Claude | **Vorabprüfung mit Ampel statt Fehler mitten im Lauf:** Image passt auf die Disk, UEFI/BIOS-Modus passt zum Master, BitLocker auf der Zieldisk (dann ist kein Datei-Backup möglich), Agent-Stick aktuell, Windows-Edition des Masters passt zum Key (Pro/Home). Anzeige: „✔ Bereit“ bzw. „⚠ Achtung: …“ | 31.10. (Laien-Test) |
 | Ä-012 | 🟡 | offen | Claude | **Einfache Sprache im Reiter Automatisierung:** „Zieldisk“ → „Festplatte, die gelöscht wird“; Sysprep, Master und Content-Projekte mit einem „?“ pro Abschnitt erklären. Gerätenamen wie „DESKTOP-8F3K2LQ“ markieren und zum Umbenennen auffordern; optional Namensschema pro Vorlage (z. B. `KUNDE-001` fortlaufend) | 31.10. (Laien-Test) |
@@ -105,6 +105,10 @@ Gerätename = Name im Tool.
 - **Inventar-Export (I-013, angepasst Ä-016):** keine „Kunden“ – PDF je Ordner (Name wie in der Geräteliste, jeder
   Unterordner eigene Datei) oder auf Wunsch alle Geräte in einem PDF; CSV immer eine Datei. Windows-Key nie vollständig.
 - **Win 11 nicht in der Geräteliste (Ä-017):** nur im Gerätefenster (Übersicht) und im Inventar-Export.
+- **Windows 11 auf nicht unterstützter Hardware (Ä-021):** technisch möglich, Microsoft rät ab (kein Support,
+  keine Update-Garantie, keine Herstellergarantie bei Schäden). Daher nur von Hand mit Warnung und Vermerk, nicht
+  in der Automatisierung. Empfehlung an Kunden: Gerät ersetzen, Windows 10 mit ESU oder Linux.
+- **Automatisierung wieder einschalten nach 3 Tagen** (Entscheid Dominik 31.10., vorher 24 h).
 - **Umsetzungsreihenfolge:** zuerst Agent (Fundament, ein neuer Stick reicht), dann Tool-Logik, zuletzt Oberfläche.
 
 ## ✅ Erledigt – Änderungsprotokoll
@@ -112,6 +116,20 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 31.10.2026
+- **Ä-018 Automatisierung: 3 Tage statt 24 h:** nach erfolgreichem Durchlauf schaltet sie sich nach 3 Tagen wieder
+  ein (`automation.REARM_HOURS = 72`), Anzeige „wieder aktiv in 2 Tagen 5 h“; Texte, Hilfe, README angepasst.
+- **Ä-019 Laufzeit monoton gemessen:** Laufzeit/Restzeit der Aufträge (`jobs.Job.t0`, `duration`) und das
+  Agent-Timeout (`discovery.AgentInfo.last_seen`) mit `time.monotonic()` – eine Uhr-Korrektur (NTP) verfälscht die
+  Restzeit nicht mehr und trennt nicht mehr alle Agents auf einmal. Uhrzeit für Anzeige bleibt `time.time()`.
+- **Ä-020 Unicode-Prüfung:** neues Modul `textnorm.py`. Computernamen mit sauberer Umschrift auch in NFD-Form
+  (vorher „Bu-ro“, „Stra-e“, „ster“ – jetzt „Buero“, „Strasse“, „Oester“). Neue Ordner-/Dateinamen auf NAS und
+  im Tool: NFC, unsichtbare Steuerzeichen (z. B. Rechts-nach-links U+202E, Null-Breite) abgelehnt, „existiert
+  bereits“ auch bei anderer Unicode-Form oder Gross-/Kleinschreibung (SMB). Bestehende Namen bleiben unverändert
+  erreichbar. Gerätenamen vom Gerät: NFC, Steuerzeichen entfernt. Export-Dateinamen nach NFC gekürzt.
+- **Ä-021 Windows 11 auf nicht unterstützter Hardware – nur von Hand:** Die Setup-Umgehung (LabConfig) war beim
+  Boot-Stick **standardmässig an** – jetzt aus, Einschalten nur nach Bestätigung der Microsoft-Hinweise.
+  Direktinstallation (prüft selbst nichts): Windows 11 auf „nicht tauglichem“ Gerät nur mit Häkchen „Trotzdem
+  installieren“; danach Vermerk am Gerät (Übersicht, Verlauf, Inventar-Export). Nie in der Automatisierung.
 - **Ä-015 Gerätefenster zeigt die ganze Übersicht:** Fenster öffnet so hoch, dass alle Zeilen der Übersicht ohne
   Scrollen sichtbar sind (höchstens Bildschirmhöhe; auf kleinen Bildschirmen weiter mit Scrollbalken).
 - **Ä-016 Inventar-Export je Ordner:** statt „je Kunde“ eine PDF-Datei je Ordner (Ordnername wie in der Liste,

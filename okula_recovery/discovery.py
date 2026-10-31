@@ -48,7 +48,7 @@ class AgentInfo:
     job: str = ""                   # was gerade läuft, z. B. „Zurückspielen“
     inventory_version: int = 0      # ändert sich, wenn der Agent das Inventar neu gesammelt hat
     progress: float | None = None   # 0..1
-    last_seen: float = 0.0
+    last_seen: float = 0.0   # time.monotonic() des letzten Beacons (Timeout unabhängig von Uhr-Korrekturen)
 
     @property
     def status(self) -> str:
@@ -153,7 +153,7 @@ def parse_beacon(data: bytes, sender_ip: str) -> AgentInfo | None:
                      control_port=_int(msg.get("control")), busy=bool(msg.get("busy")),
                      job=str(msg.get("job") or "")[:40], progress=_fraction(msg.get("progress")),
                      inventory_version=_int(msg.get("inv")),
-                     last_seen=time.time())
+                     last_seen=time.monotonic())
 
 
 def _fraction(v) -> float | None:

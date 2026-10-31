@@ -13,7 +13,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk, Pango  # noqa: E402
 
-from okula_recovery import isostick, nas, oslib, stick, winunattend  # noqa: E402
+from okula_recovery import isostick, nas, oslib, stick, win11, winunattend  # noqa: E402
 from okula_recovery.stick_dialog import iso_stick_command, run_helper  # noqa: E402
 from okula_recovery.uikit import confirm, scrolled  # noqa: E402
 
@@ -329,7 +329,10 @@ class BootStickDialog(Gtk.Dialog):
         # Windows-Anpassung (autounattend.xml)
         self.win = Gtk.Expander(label="Windows-Anpassung", expanded=True)
         wbox = Gtk.Grid(column_spacing=8, row_spacing=4, margin_start=12, margin_top=4)
-        self.w_bypass = Gtk.CheckButton(label="Anforderungen umgehen: TPM 2.0, Secure Boot, 4 GB RAM, CPU", active=True)
+        self.w_bypass = Gtk.CheckButton(label="Auch für nicht unterstützte Hardware (TPM, Secure Boot, RAM, CPU "
+                                              "nicht prüfen) – nicht empfohlen", active=False)
+        self.w_bypass.set_tooltip_text(winunattend.UNSUPPORTED_WARNING)
+        self.w_bypass.connect("toggled", self._on_bypass)
         self.w_account = Gtk.CheckButton(label="Lokales Konto statt Microsoft-Konto", active=True)
         self.w_user = Gtk.Entry(text="Benutzer", width_chars=16)
         self.w_pass = Gtk.Entry(visibility=False, placeholder_text="leer = beim ersten Anmelden setzen", width_chars=26)
@@ -418,6 +421,12 @@ class BootStickDialog(Gtk.Dialog):
         self.btn_start.set_sensitive(ok)
         for w in (self.btn_close, self.disk_combo, self.mode_combo, self.check_combo, self.btn_refresh):
             w.set_sensitive(not self.busy)
+
+    def _on_bypass(self, check) -> None:
+        """Einschalten nur nach Bestätigung der Microsoft-Hinweise."""
+        if check.get_active() and not confirm(self, "Windows 11 auf nicht unterstützter Hardware?",
+                                              winunattend.UNSUPPORTED_WARNING, ok_label="Trotzdem erlauben"):
+            check.set_active(False)
 
     def options(self) -> winunattend.WinOptions:
         langs = (self.meta.get("windows") or {}).get("languages") or ["de-DE"]
@@ -649,6 +658,17 @@ class InstallDialog(Gtk.Dialog):
         self.check = Gtk.Label(xalign=0, wrap=True)
         grid.attach(self.check, 0, r, 2, 1)
         r += 1
+        # Windows 11 auf nicht tauglichem Gerät: nur mit Häkchen (Direktinstallation prüft selbst nichts)
+        self.unsupported = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, no_show_all=True)
+        self.unsupported_text = Gtk.Label(xalign=0, wrap=True)
+        self.unsupported_text.get_style_context().add_class("status-fail")
+        self.w_unsupported = Gtk.CheckButton(label="Trotzdem installieren – nicht unterstützt, auf Wunsch des Kunden")
+        self.w_unsupported.connect("toggled", lambda _c: self._update())
+        for w in (self.unsupported_text, self.w_unsupported):
+            self.unsupported.pack_start(w, False, False, 0)
+            w.show()
+        grid.attach(self.unsupported, 0, r, 2, 1)
+        r += 1
         self.confirm_label = Gtk.Label(xalign=0)
         grid.attach(self.confirm_label, 0, r, 1, 1)
         self.confirm = Gtk.Entry(placeholder_text="Disk-Namen eintippen")
@@ -731,8 +751,9 @@ class InstallDialog(Gtk.Dialog):
                                  "Desktop (Workstation/GNOME) installieren – Pakete aus dem Internet")
         texts = {
             "windows": "Ablauf: EFI-, Windows- und Setup-Partition anlegen, Setup-Dateien vom NAS übertragen, Neustart. "
-                       "Windows installiert sich selbständig (ohne Setup-Assistent, ohne TPM-/Secure-Boot-Prüfung) und "
-                       "entfernt am Ende die Setup-Partition.",
+                       "Windows installiert sich selbständig (ohne Setup-Assistent) und entfernt am Ende die "
+                       "Setup-Partition. Windows 11 auf einem nicht tauglichen Gerät nur mit Häkchen „Trotzdem "
+                       "installieren“.",
             "ubuntu": "Ablauf: EFI-Partition und Setup-Partition mit der ISO anlegen, Neustart. Der Ubuntu-Installer "
                       "läuft automatisch (Autoinstall) in den freien Platz; beim ersten Start wird die Setup-Partition "
                       "entfernt und das System vergrössert.",
@@ -753,9 +774,23 @@ class InstallDialog(Gtk.Dialog):
                                  "beim Neustart abziehen.</b></small>")
         self._update()
 
+    def unsupported_reasons(self) -> list[str] | None:
+        """Gründe, wenn ein Windows-11-Medium gewählt ist und das Gerät laut Inventar nicht tauglich ist."""
+        iso = self._iso()
+        if iso is None or iso.family != "windows" or iso.meta.get("windows", {}).get("product") != "Windows 11":
+            return None
+        result = win11.check(self.device.inventory)
+        return result.reasons if result.status == "no" else None
+
     def _update(self) -> None:
         iso = self._iso()
         self._update_name_hint(iso is not None and iso.family == "windows")
+        reasons = self.unsupported_reasons()
+        self.unsupported.set_visible(reasons is not None)
+        if reasons is not None:
+            self.unsupported_text.set_markup(
+                "<b>Gerät ist nicht Windows-11-tauglich:</b> " + GLib.markup_escape_text("; ".join(reasons))
+                + "\n<small>" + GLib.markup_escape_text(winunattend.UNSUPPORTED_WARNING) + "</small>")
         if iso is not None and not oslib.installable(iso.meta):
             self.part_store.clear()
             self.check.set_text("")
@@ -809,6 +844,8 @@ class InstallDialog(Gtk.Dialog):
                 ok = False
         self.check.set_markup("\n".join(GLib.markup_escape_text(p) for p in problems)
                               if problems else (f"Disk passt: {_gb(disk['size'])}" if disk else ""))
+        if reasons is not None and not self.w_unsupported.get_active():
+            ok = False
         typed = disk is not None and self.confirm.get_text().strip() == disk["name"]
         self.btn_start.set_sensitive(ok and typed)
 
@@ -831,7 +868,8 @@ class InstallDialog(Gtk.Dialog):
                 skip_privacy=self.w_privacy.get_active(), no_bitlocker=self.w_bitlocker.get_active(),
                 swiss_region=self.swiss.get_active(), ui_language=(w.get("languages") or ["de-DE"])[0],
                 computer_name=self.device.name, arch=w.get("arch") or "amd64", skip_network=True,
-                product_key=self.key if self.w_key.get_active() else "")
+                product_key=self.key if self.w_key.get_active() else "",
+                unsupported_hardware=self.unsupported_reasons() is not None and self.w_unsupported.get_active())
         return self.linuxsetup.LinuxOptions(
             username=self.l_user.get_text().strip(), password=self.l_pass.get_text(),
             hostname=self.device.name, swiss_region=self.swiss.get_active(),

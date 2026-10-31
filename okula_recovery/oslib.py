@@ -86,7 +86,7 @@ def wim_xml(read: Callable[[int, int], bytes]) -> str:
     if not size or size > 64 * 1024 * 1024:
         raise OsLibError("WIM ohne XML-Beschreibung")
     data = read(offset, size)
-    return data.decode("utf-16-le", errors="replace").lstrip("﻿")
+    return data.decode("utf-16-le", errors="replace").lstrip("\ufeff")
 
 
 def parse_wim_xml(text: str) -> list[dict]:
@@ -453,9 +453,9 @@ def find(root: str | Path, iso_path: str | Path) -> tuple[Path, str]:
 def make_folder(root: str | Path, parent: str, name: str) -> str:
     if not parent:
         raise OsLibError("Eigene Ordner bitte innerhalb von Windows, Linux oder Sonstige anlegen")
-    rel = f"{parent}/{nasfiles.validate_name(name)}"
+    rel = f"{parent}/{nasfiles.validate_name(name, new=True)}"
     path = _dir(root, rel)
-    if path.exists():
+    if nasfiles.name_taken(path):
         raise OsLibError(f"„{path.name}“ existiert bereits")
     path.mkdir()
     return rel
@@ -464,9 +464,9 @@ def make_folder(root: str | Path, parent: str, name: str) -> str:
 def rename_folder(root: str | Path, rel: str, new_name: str) -> str:
     if "/" not in rel:
         raise OsLibError("Die Kategorien Windows, Linux und Sonstige bleiben bestehen")
-    new_rel = f"{rel.rsplit('/', 1)[0]}/{nasfiles.validate_name(new_name)}"
+    new_rel = f"{rel.rsplit('/', 1)[0]}/{nasfiles.validate_name(new_name, new=True)}"
     src, dst = _dir(root, rel), _dir(root, new_rel)
-    if dst.exists():
+    if nasfiles.name_taken(dst, ignore=src):
         raise OsLibError(f"„{dst.name}“ existiert bereits")
     src.rename(dst)
     return new_rel
@@ -510,11 +510,11 @@ def move_iso(root: str | Path, iso_path: str | Path, dest_rel: str) -> Path:
 
 def rename_iso(root: str | Path, iso_path: str | Path, new_name: str) -> Path:
     src, _rel = find(root, iso_path)
-    new_name = nasfiles.validate_name(new_name)
+    new_name = nasfiles.validate_name(new_name, new=True)
     if not is_iso_name(new_name):
         new_name += "".join(s for s in SUFFIXES if src.name.lower().endswith(s))[-8:] or ".iso"
     target = src.with_name(new_name)
-    if target.exists() and target != src:
+    if nasfiles.name_taken(target, ignore=src):
         raise OsLibError(f"„{new_name}“ existiert bereits")
     old_meta = _old_meta(src)
     meta = meta_path(src)

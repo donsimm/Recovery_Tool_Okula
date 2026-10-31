@@ -37,11 +37,12 @@ bestätigt.
 | Wake-on-LAN, „Netzwerkstart zuerst“, Agent beim nächsten Start | A | Logik und Pakete; keine echte Hardware |
 | **Master-Image:** Markieren, Erkennen (Sysprep), unattend.xml mit Name/Key/Region/Konto | A, V | NTFS-Loop-Disk, echtes Image erstellt und zurückgespielt |
 | **Ordner senden:** Software, Test Files, Content-Projekte, Ersetzen, Abbruch behält alten Stand | A, V | NTFS-Loop-Disk |
-| **Automatisierung:** Countdown + Esc, Warteschlange (N), 5 Schritte, falsche Disk = nichts gelöscht, Fehler, 24 h | A, V | ganzer Durchlauf über den echten Agent auf Loop-Disks |
+| **Automatisierung:** Countdown + Esc, Warteschlange (N), 5 Schritte, falsche Disk = nichts gelöscht, Fehler, Wiedereinschalten (jetzt 3 Tage) | A, V | ganzer Durchlauf über den echten Agent auf Loop-Disks |
 | Computername = Gerätename (OS installieren, Anpassen) | A, V | |
 | Grüne/rote Fortschrittsbalken | A, V | |
 | Demo-Gerät: alle Aufträge, Fehler, Neustart, nur 127.0.0.1, Demo-Image gesperrt | A, V | echter Prozess |
 | Inventar-Export: CSV (BOM, Semikolon), PDF je Ordner oder alle in einem (A4 quer, mehrseitig), Auswahl, Key maskiert/aus | A, V | |
+| Unicode-Namen (NFC/NFD, Steuerzeichen, Umschrift), monotone Laufzeit, Win-11-Option nur von Hand | A, V | |
 | Gerätefenster passt sich der Übersicht an (1920×1080 ganz sichtbar, 1366×768 begrenzt) | A, V | |
 | Garantie-Abfrage: Dell/HP/Lenovo-Antworten, Farben grün/gelb/rot, Schlüssel 0600 nur beim Root-Helfer | A, V | gemockte Antworten – Hersteller-Server waren gesperrt |
 
@@ -81,7 +82,7 @@ bestätigt.
 - [ ] Gerät mit Agent-Stick starten → Liste „startet in 30 s“, am Gerät Countdown sichtbar
 - [ ] **Esc am Gerät** → abgebrochen, Gerät bleibt im Agent; erst nach Neustart wieder Countdown
 - [ ] Durchlauf ohne Eingriff: Schritt 1–5 in der Liste, Neustart, Windows richtet sich mit Name/Key ein, Ordner auf dem Desktop
-- [ ] Danach: Häkchen aus, Liste „wieder aktiv in 24 h“; Verlauf mit allen Schritten
+- [ ] Danach: Häkchen aus, Liste „wieder aktiv in 3 Tagen“; Verlauf mit allen Schritten
 - [ ] Mit **Netzwerkstart** statt Stick (Gerät freigeschaltet, F12 → Netzwerk)
 - [ ] **Zwei Geräte gleichzeitig** bei N = 1 → zweites „wartet (Platz 1)“, startet danach
 - [ ] **Andere Disk** im Gerät (oder Zieldisk absichtlich falsch) → Fehler rot, Meldung am Gerät, nichts gelöscht
@@ -89,17 +90,21 @@ bestätigt.
 - [ ] **Backup vorher – ganze Disk** → Disk-Image der alten Disk im Reiter Images, erst danach wird zurückgespielt
 - [ ] Hauptschalter: Stopp-Knopf ■ über der Geräteliste (wird rot) → Gerät startet keinen Countdown
 - [ ] Vorlage speichern („Schulungs-PC“), bei zweitem Gerät anwenden, Zieldisk dort wählen
-- [ ] Nach 24 h: Häkchen wieder an (oder Option aus → bleibt aus)
+- [ ] Nach 3 Tagen: Häkchen wieder an (oder Option aus → bleibt aus)
 
 ### 6. Demo-Gerät (Vorführung)
 - [ ] Extras → Demo-Gerät: DEMO-PC erscheint grün, Inventar sichtbar
 - [ ] Disk-Image vom DEMO-PC (≈ 45 s, grüner Balken), danach Zurückspielen auf den DEMO-PC
 - [ ] Demo-Image auf ein echtes Gerät zurückspielen → wird verweigert
 - [ ] „Demo: nächster Auftrag mit Fehler“ → roter Balken bei ~40 %
-- [ ] Automatisierung auf dem DEMO-PC (Countdown, Schritte 1–5, „wieder aktiv in 24 h“)
+- [ ] Automatisierung auf dem DEMO-PC (Countdown, Schritte 1–5, „wieder aktiv in 3 Tagen“)
 - [ ] Tool schliessen → Demo-Prozess ist beendet
 
 ### 7. Allgemein
+- [ ] Ä-021: OS installieren → Windows-11-ISO auf einem nicht tauglichen Gerät (z. B. 4.–7. Gen. Intel) → Grund und Microsoft-Hinweise sichtbar, „Installieren“ erst mit Häkchen „Trotzdem installieren“; danach Gerätefenster → Übersicht → Windows 11 zeigt „⚠ Am … trotzdem installiert“, Verlauf-Eintrag, Inventar-Export Spalte Win-11 mit Vermerk; auf tauglichem Gerät erscheint nichts davon
+- [ ] Ä-021: Boot-Stick aus Windows-11-ISO → „Auch für nicht unterstützte Hardware“ ist aus; Einschalten fragt nach; Stick auf altem Gerät: ohne Häkchen meldet Setup „Dieser PC erfüllt die Anforderungen nicht“, mit Häkchen läuft es durch
+- [ ] Ä-018: Automatisierung durchlaufen lassen → Liste „wieder aktiv in 3 Tagen“, Verlauf „wird in 3 Tagen wieder eingeschaltet“
+- [ ] Ä-020: Ordner „Zürich“ auf dem NAS vom Mac aus anlegen, im Tool denselben Namen anlegen → „existiert bereits“; Gerät „Büro-PC“ → OS installieren zeigt „Buero-PC“
 - [ ] I-013: `sudo ./install.sh` (installiert python3-reportlab); Menü → Inventar exportieren → alle Geräte, CSV + PDF → CSV in Excel öffnen: Umlaute richtig, Spalten getrennt; PDF mit Kopf (Ordnername, Datum), Tabelle lesbar, Seitenzahl
 - [ ] I-013: Rechtsklick auf einen Ordner → nur dessen Geräte (inkl. Unterordner); „Markierte Geräte“ mit 2 Häkchen → nur diese
 - [ ] Ä-016: PDF „je Ordner eine Datei“ → pro Ordner (auch Unterordner) ein PDF mit dem Ordnernamen als Titel; „alle Geräte in einer Datei“ → ein PDF mit allen gewählten Geräten

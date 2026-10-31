@@ -15,6 +15,8 @@ from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Callable
 
+from okula_recovery import textnorm
+
 # Zeichen, die SMB/Windows in Namen nicht erlaubt
 FORBIDDEN_CHARS = set('/\\:*?"<>|\0')
 
@@ -32,8 +34,10 @@ class Entry:
     is_link: bool = False
 
 
-def validate_name(name: str) -> str:
-    name = name.strip()
+def validate_name(name: str, new: bool = False) -> str:
+    """Name eines Eintrags prüfen. new=True (anlegen/umbenennen): zusätzlich NFC und keine unsichtbaren Zeichen –
+    bestehende Namen bleiben unverändert, sonst findet man z. B. NFD-Namen vom Mac nicht mehr."""
+    name = textnorm.nfc(name.strip()) if new else name.strip()
     if not name or name in (".", ".."):
         raise FileError("Name fehlt")
     bad = sorted(c for c in set(name) if c in FORBIDDEN_CHARS)
@@ -43,7 +47,24 @@ def validate_name(name: str) -> str:
         raise FileError("Name darf nicht mit Leerzeichen oder Punkt enden")
     if len(name.encode()) > 255:
         raise FileError("Name ist zu lang")
+    hidden = textnorm.unsafe_chars(name) if new else []
+    if hidden:
+        raise FileError(f"Unsichtbare Steuerzeichen im Namen ({', '.join(hidden)}) – bitte neu eintippen")
     return name
+
+
+def name_taken(path: Path, ignore: Path | None = None) -> bool:
+    """Gibt es im Ordner schon einen Eintrag mit diesem Namen – auch in anderer Unicode-Form (NFD vom Mac) oder
+    anderer Gross-/Kleinschreibung (SMB/Windows unterscheiden nicht)? ignore: der Eintrag selbst (Umbenennen)."""
+    case_only = ignore is not None and textnorm.same_name(path.name, ignore.name)   # nur Schreibweise ändert sich
+    if path.is_symlink() or (path.exists() and not case_only):
+        return True
+    try:
+        siblings = os.listdir(path.parent)
+    except OSError:
+        return False
+    return any(textnorm.same_name(other, path.name) for other in siblings
+               if ignore is None or other != ignore.name)
 
 
 def resolve(root: str | Path, rel: str) -> Path:
@@ -87,8 +108,8 @@ def list_dir(root: str | Path, rel: str = "") -> list[Entry]:
 
 
 def make_dir(root: str | Path, rel: str, name: str) -> Path:
-    path = _entry_path(root, rel, name)
-    if path.exists() or path.is_symlink():
+    path = resolve(root, rel) / validate_name(name, new=True)
+    if name_taken(path):
         raise FileError(f"„{name}“ existiert bereits")
     path.mkdir()
     return path
@@ -96,10 +117,10 @@ def make_dir(root: str | Path, rel: str, name: str) -> Path:
 
 def rename(root: str | Path, rel: str, old: str, new: str) -> Path:
     src = _entry_path(root, rel, old)
-    dst = _entry_path(root, rel, new)
+    dst = resolve(root, rel) / validate_name(new, new=True)
     if not (src.exists() or src.is_symlink()):
         raise FileError(f"„{old}“ existiert nicht")
-    if dst.exists() or dst.is_symlink():
+    if name_taken(dst, ignore=src):
         raise FileError(f"„{new}“ existiert bereits")
     src.rename(dst)
     return dst

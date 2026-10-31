@@ -18,7 +18,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 
-from okula_recovery import nasfiles
+from okula_recovery import nasfiles, textnorm
 
 MAX_DEPTH = 3
 MAX_HISTORY = 500
@@ -60,6 +60,7 @@ class Device:
     boot_status: dict = field(default_factory=dict)       # zuletzt vom Agent gemeldet (netfirst, network, labels, …)
     automation: dict = field(default_factory=dict)        # Einstellungen der Automatisierung (automation.Settings)
     warranty: dict = field(default_factory=dict)          # Garantie (warranty.result/manual): until, source, checked …
+    win11_unsupported: str = ""        # Datum: Windows 11 trotz „nicht tauglich“ installiert (keine Update-Garantie)
     history: list[dict] = field(default_factory=list)
     folder: str = ""                   # nicht gespeichert: ergibt sich aus dem Ablageort
 
@@ -105,11 +106,11 @@ def identity(inv: dict, agent_id: str = "", mac: str = "") -> str:
 
 def default_name(inv: dict, fallback: str = "") -> str:
     for s in (inv or {}).get("systems") or []:
-        if s.get("hostname"):
-            return s["hostname"]  # Windows-Computername bzw. Linux-Hostname
+        if textnorm.clean(s.get("hostname") or ""):
+            return textnorm.clean(s["hostname"])  # Windows-Computername bzw. Linux-Hostname (ohne Steuerzeichen)
     d = (inv or {}).get("dmi") or {}
     hw = " ".join(p for p in (d.get("sys_vendor"), d.get("product_name")) if p)
-    return hw or fallback or "Unbekanntes Gerät"
+    return textnorm.clean(hw or fallback) or "Unbekanntes Gerät"
 
 
 class DeviceStore:
@@ -234,8 +235,8 @@ class DeviceStore:
         with self.lock:
             if netboot is not None:
                 dev.netboot = bool(netboot)
-            if name is not None and name.strip():
-                dev.name = name.strip()
+            if name is not None and textnorm.clean(name):
+                dev.name = textnorm.clean(name)          # NFC, ohne unsichtbare Steuerzeichen
             if notes is not None:
                 dev.notes = notes
             if product_key is not None:
@@ -262,6 +263,7 @@ class DeviceStore:
                 keep.notes = f"{keep.notes.rstrip()}\n\n{other.notes.strip()}".strip()
             keep.product_key = keep.product_key or other.product_key
             keep.warranty = keep.warranty or other.warranty
+            keep.win11_unsupported = keep.win11_unsupported or other.win11_unsupported
             keep.netboot = keep.netboot or other.netboot
             keep.boot_request = keep.boot_request or other.boot_request
             if other.netfirst and not keep.netfirst:
@@ -314,9 +316,10 @@ class DeviceStore:
         return nasfiles.resolve(self.base, rel) if rel else self.base
 
     def make_folder(self, parent: str, name: str) -> str:
-        rel = str(PurePosixPath(parent) / nasfiles.validate_name(name)) if parent else nasfiles.validate_name(name)
+        rel = str(PurePosixPath(parent) / nasfiles.validate_name(name, new=True)) if parent \
+            else nasfiles.validate_name(name, new=True)
         path = self._folder(rel)
-        if path.exists():
+        if nasfiles.name_taken(path):
             raise DeviceError(f"„{path.name}“ existiert bereits")
         path.mkdir()
         self.load()
@@ -325,12 +328,12 @@ class DeviceStore:
     def rename_folder(self, rel: str, new_name: str) -> str:
         src = self._folder(rel)
         parent = str(PurePosixPath(rel).parent)
-        new_rel = str(PurePosixPath(parent) / nasfiles.validate_name(new_name)) if parent != "." \
-            else nasfiles.validate_name(new_name)
+        new_rel = str(PurePosixPath(parent) / nasfiles.validate_name(new_name, new=True)) if parent != "." \
+            else nasfiles.validate_name(new_name, new=True)
         dst = self._folder(new_rel)
         if not rel or not src.is_dir():
             raise DeviceError("Ordner nicht gefunden")
-        if dst.exists():
+        if nasfiles.name_taken(dst, ignore=src):
             raise DeviceError(f"„{dst.name}“ existiert bereits")
         with self.lock:
             src.rename(dst)

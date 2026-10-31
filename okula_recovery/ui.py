@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 import time
+from datetime import date
 from pathlib import Path
 
 import gi
@@ -158,7 +159,7 @@ class MainWindow(Gtk.ApplicationWindow):
         GLib.idle_add(lambda: (self.refresh_nas_status(auto_mount=True), False)[1])
         GLib.timeout_add_seconds(NAS_POLL, self.refresh_nas_status)
         GLib.idle_add(lambda: (self.sync_netboot(), False)[1])  # Freigabeliste nach Geräteänderungen nachführen
-        GLib.timeout_add_seconds(60, self._automation_tick)    # Automatisierung nach 24 h wieder einschalten
+        GLib.timeout_add_seconds(60, self._automation_tick)    # Automatisierung nach 3 Tagen wieder einschalten
 
     # ---------- Menüleiste ----------
 
@@ -2123,7 +2124,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _automation_tick(self) -> bool:
         for dev in self.automation.tick():
-            self.status(f"Automatisierung für {dev.name} nach 24 h wieder eingeschaltet")
+            self.status(f"Automatisierung für {dev.name} nach 3 Tagen wieder eingeschaltet")
             win = self.device_windows.get(dev.id)
             if win is not None:
                 win.refresh_automation(reload=True)
@@ -2406,7 +2407,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _expire_agents(self) -> bool:
         """Agents ohne Beacon gelten nach AGENT_TIMEOUT als getrennt – das Gerät bleibt in der Liste."""
-        limit = time.time() - AGENT_TIMEOUT
+        limit = time.monotonic() - AGENT_TIMEOUT
         for aid, info in list(self.agents.items()):
             if info.last_seen >= limit:
                 continue
@@ -2424,7 +2425,7 @@ class MainWindow(Gtk.ApplicationWindow):
                     win = self.device_windows.get(dev_id)
                     if win:
                         win.refresh()
-        # eingeschaltete Automatisierung bei schon verbundenen Geräten (Häkchen gesetzt, nach 24 h wieder an)
+        # eingeschaltete Automatisierung bei schon verbundenen Geräten (Häkchen gesetzt, nach 3 Tagen wieder an)
         for dev_id, aid in list(self.online.items()):
             dev, info = self.store.devices.get(dev_id), self.agents.get(aid)
             if dev is not None and info is not None and self.automation.consider(dev, info):
@@ -2545,6 +2546,8 @@ class MainWindow(Gtk.ApplicationWindow):
                 kind = "linux"
 
             def after(job, boot, error) -> None:
+                if error is None and getattr(opts, "unsupported_hardware", False):
+                    GLib.idle_add(self._mark_win11_unsupported, dev)
                 GLib.idle_add(self._after_job, dev.id, job, what, boot, error, False)
 
             if kind == "install":
@@ -2557,6 +2560,14 @@ class MainWindow(Gtk.ApplicationWindow):
             self.open_device(dev).show_jobs()
 
         InstallDialog(parent, agent, isos, dev, start, preselect)
+
+    def _mark_win11_unsupported(self, dev: devices.Device) -> bool:
+        """Windows 11 trotz „nicht tauglich“ installiert: am Gerät vermerken (Gerätefenster, Export, Verlauf)."""
+        dev.win11_unsupported = date.today().isoformat()
+        self.store.save(dev)
+        self.store.add_history(dev, "install", "Windows 11 auf nicht unterstützter Hardware installiert (auf Wunsch) – "
+                                               "Updates nicht garantiert")
+        return False
 
     def start_backup(self, dev: devices.Device) -> None:
         parent = self._parent_for(dev)
