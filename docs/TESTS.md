@@ -41,6 +41,7 @@ bestätigt.
 | Computername = Gerätename (OS installieren, Anpassen) | A, V | |
 | Grüne/rote Fortschrittsbalken | A, V | |
 | Demo-Gerät: alle Aufträge, Fehler, Neustart, nur 127.0.0.1, Demo-Image gesperrt | A, V | echter Prozess |
+| Inventar-Export: CSV (BOM, Semikolon), PDF je Kunde (A4 quer, mehrseitig), Auswahl, Key maskiert/aus | A, V | |
 | Garantie-Abfrage: Dell/HP/Lenovo-Antworten, Farben grün/gelb/rot, Schlüssel 0600 nur beim Root-Helfer | A, V | gemockte Antworten – Hersteller-Server waren gesperrt |
 
 ## Offen – am realen System testen
@@ -98,6 +99,9 @@ bestätigt.
 - [ ] Tool schliessen → Demo-Prozess ist beendet
 
 ### 7. Allgemein
+- [ ] I-013: `sudo ./install.sh` (installiert python3-reportlab); Menü → Inventar exportieren → alle Geräte, CSV + PDF → CSV in Excel öffnen: Umlaute richtig, Spalten getrennt; je Kunde ein PDF mit Kopf (Kunde, Datum), Tabelle lesbar, Seitenzahl
+- [ ] I-013: Rechtsklick auf einen Kunden-Ordner → nur dessen Geräte (inkl. Unterordner); „Markierte Geräte“ mit 2 Häkchen → nur diese
+- [ ] I-013: „Windows-Key nicht exportieren“ an → kein Key in CSV/PDF; aus → nur `XXXXX-…-ABCDE`; letztes Image/Backup stimmt mit Gerätefenster überein (NAS verbunden)
 - [ ] I-025: `sudo ./install.sh` erneut (neuer Root-Helfer `okula-warranty`, sudo-Regel); `ls -l /etc/okula-recovery/warranty.cred` nach dem Speichern eines Schlüssels → `-rw------- root root`; Schlüssel stehen **nicht** in `~/.config/okula-recovery/config.json` und nicht in einem Export (`grep` im Export)
 - [ ] I-025 Lenovo (ohne Schlüssel): Gerätefenster → Übersicht → „Beim Hersteller abfragen“ → Datum stimmt mit pcsupport.lenovo.com überein; neues Lenovo-Gerät wird nach dem Erfassen einmal automatisch abgefragt
 - [ ] I-025 Dell (sobald TechDirect-Schlüssel da): Menü → Einstellungen → Garantie-Abfrage → Client-ID/Secret speichern → „✔ gespeichert“; Abfrage → Datum wie auf dell.com/support

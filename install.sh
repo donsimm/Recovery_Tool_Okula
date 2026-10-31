@@ -24,7 +24,8 @@ apt-get install -y --no-install-recommends \
     cifs-utils nfs-common smbclient iputils-ping iproute2 \
     util-linux dosfstools grub-pc-bin grub2-common squashfs-tools \
     partclone zstd pigz lz4 lzop bzip2 xz-utils \
-    xorriso wimtools e2fsprogs exfatprogs ntfs-3g dnsmasq-base
+    xorriso wimtools e2fsprogs exfatprogs ntfs-3g dnsmasq-base \
+    python3-reportlab
 
 # Formatieren: weitere Dateisysteme. Sichtbar installieren (Btrfs/XFS bauen das initramfs neu, das dauert);
 # fehlt ein Paket in den Quellen, einzeln weiter – das bricht die Installation nicht ab.

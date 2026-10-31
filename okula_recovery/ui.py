@@ -19,6 +19,7 @@ from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 from okula_recovery import (__version__, agentclient, archive, automation, backups, clonezilla, config,  # noqa: E402
                             devices, discovery, distribute, jobs, nas, nasfiles, oslib, pxe, warranty, win11, wol)
 from okula_recovery.automation_tab import SendFoldersDialog, SettingsDialog  # noqa: E402
+from okula_recovery.inventory_dialog import InventoryExportDialog  # noqa: E402
 from okula_recovery.backup_dialogs import (BackupDetailsDialog, BackupDialog, RestoreFilesDialog,  # noqa: E402
                                            edit_note)
 from okula_recovery.device_window import DeviceWindow  # noqa: E402
@@ -190,6 +191,8 @@ class MainWindow(Gtk.ApplicationWindow):
             ("_NAS-Verbindung …", self.open_nas_dialog, "<Control>n"),
             ("_Einstellungen …", self.open_settings, None),
             ("_Agent-USB-Stick erstellen …", lambda: StickDialog(self), None),
+            None,
+            ("Inven_tar exportieren (CSV/PDF) …", lambda: self.export_inventory(), None),
             None,
             ("Einstellungen e_xportieren …", lambda: ExportDialog(self).run_export(), None),
             ("Einstellungen _importieren …", self.on_import_settings, None),
@@ -1887,6 +1890,12 @@ class MainWindow(Gtk.ApplicationWindow):
         if kind == "folder":
             add("Ordner umbenennen …", lambda: self.on_rename_device_entry(None))
             add("Ordner löschen (nur leer)", lambda: self.on_delete_device_entry(None))
+        if kind in ("folder", "unsorted"):
+            rel = model[it][self.D_REL] if kind == "folder" else ""
+            menu.append(Gtk.SeparatorMenuItem())
+            add("Inventar exportieren …", lambda: self.export_inventory(folder=rel))
+        elif dev is not None:
+            add("Inventar exportieren …", lambda: self.export_inventory(marked={dev.id}))
         menu.show_all()
         menu.popup_at_pointer(event)
         return True
@@ -2176,6 +2185,12 @@ class MainWindow(Gtk.ApplicationWindow):
                         self.status(" · ".join(msg for _ok, msg in results))
                 run_async(work, done)
         dlg.destroy()
+
+    def export_inventory(self, folder: str | None = None, marked: set[str] | None = None) -> None:
+        if not self.store.devices:
+            self.status("Noch keine Geräte erfasst")
+            return
+        InventoryExportDialog(self, folder, marked).run_export()
 
     def query_warranty(self, dev: devices.Device, button: Gtk.Button | None = None, auto: bool = False) -> None:
         """Garantie beim Hersteller abfragen (Knopfdruck oder einmal nach dem Erfassen) – im Hintergrund."""

@@ -465,7 +465,14 @@ Im Gerätefenster unter <i>Übersicht → Garantie bis</i>:
 •  <span background="#c62828" foreground="#ffffff">rot</span>: Sie ist abgelaufen.
 <i>Beim Hersteller abfragen</i> holt das Datum über die Seriennummer. Das geht bei Dell, HP und Lenovo.
 Für Dell und HP braucht es einen Schlüssel vom Hersteller: <i>Menü → Einstellungen → Garantie-Abfrage</i>.
-Kein Schlüssel, kein Internet oder ein anderer Hersteller? Dann <i>Von Hand …</i> das Datum eintragen."""),
+Kein Schlüssel, kein Internet oder ein anderer Hersteller? Dann <i>Von Hand …</i> das Datum eintragen.
+
+<b>Inventarliste für Kunden</b>
+<i>Menü → Inventar exportieren …</i> oder Rechtsklick auf einen Ordner → <i>Inventar exportieren …</i>
+1.  Wählen: alle Geräte, einen Ordner oder einzelne Geräte (Häkchen setzen).
+2.  Format wählen: CSV (für Excel) und/oder PDF (pro Kunde eine Datei).
+3.  Ordner zum Speichern wählen und <i>Exportieren</i> klicken.
+Der Windows-Key kommt standardmässig nicht mit. Wenn du ihn willst, nur versteckt (XXXXX-…-ABCDE)."""),
 
     ("Neuer Rechner", """<big><b>Das Tool auf einen neuen Rechner umziehen</b></big>
 
