@@ -474,11 +474,13 @@ class MainWindow(Gtk.ApplicationWindow):
         btn_settings.set_relief(Gtk.ReliefStyle.NONE)
         btn_settings.set_tooltip_text("NAS-Verbindung einrichten (Menü → NAS-Verbindung …)")
         btn_settings.connect("clicked", lambda _b: self.open_nas_dialog())
-        bar.pack_end(btn_settings, False, False, 0)
         self.btn_nas_web = Gtk.Button.new_from_icon_name("web-browser-symbolic", Gtk.IconSize.BUTTON)
         self.btn_nas_web.set_relief(Gtk.ReliefStyle.NONE)
         self.btn_nas_web.connect("clicked", lambda _b: open_url(self, nas.web_url(self.cfg.nas)))
-        bar.pack_end(self.btn_nas_web, False, False, 0)
+        icons = Gtk.Box(spacing=0)   # Symbole eng beieinander, Abstand 16 nur zum Text
+        icons.pack_start(self.btn_nas_web, False, False, 0)
+        icons.pack_start(btn_settings, False, False, 0)
+        bar.pack_end(icons, False, False, 0)
         self._update_nas_web()
         box.pack_start(bar, False, False, 0)
 

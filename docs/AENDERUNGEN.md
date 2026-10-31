@@ -21,7 +21,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
-Erledigt 31.10. zusätzlich: I-007 ✔ (Image prüfen) → Ä-027 ✔ (Demo ohne NAS) → Ä-028 ✔ (Ein/Aus-Symbole) → Ä-029 ✔ (Legende).
+Erledigt 31.10. zusätzlich: I-007 ✔ (Image prüfen) → Ä-027 ✔ (Demo ohne NAS) → Ä-028 ✔ (Ein/Aus-Symbole) → Ä-029 ✔ (Legende) → Ä-030 ✔ (NAS-Leiste).
 Als Nächstes: Tests am realen System in [TESTS.md](TESTS.md) – „Fixes von heute“, Abschnitt 6 (Vorführung mit abgestecktem NAS) und 7 (inkl. I-007: Dauer für ein grosses Image).
 Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laien, klein) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-009, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
@@ -120,6 +120,7 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 31.10.2026
+- **Ä-030 NAS-Leiste:** Symbole „NAS im Browser öffnen“ und „NAS-Verbindung einrichten“ direkt nebeneinander (eigene Box ohne Abstand), 16 px Abstand nur noch zum Text (Von: Dominik).
 - **Ä-029 Legende Images:** „Image-Datei“ heisst neu „Sonstiges Image“ (passend zu „Sonstige ISO“) (Von: Dominik).
 - **Ä-028 Herunterfahren / Neu starten als Symbole** (Von: Dominik, Variante 1 von 3): Systemsymbole
   `system-reboot-symbolic` und `system-shutdown-symbolic` wie die übrigen Symbolknöpfe, Name als Tooltip –
