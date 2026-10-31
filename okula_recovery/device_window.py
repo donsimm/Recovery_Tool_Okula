@@ -231,7 +231,7 @@ class DeviceWindow(Gtk.Window):
 
     def load_backups(self) -> None:
         self.backup_store.clear()
-        mine = [b for b in self.main._backups.values()
+        mine = [b for b in self.main.all_backups().values()
                 if b.manifest.get("device_id") == self.dev.id or b.device == self.dev.name]
         for b in sorted(mine, key=lambda b: b.created, reverse=True):
             self.backup_store.append([b.created.strftime("%d.%m.%Y %H:%M"), " ".join(b.note.split()), b.summary,
@@ -240,7 +240,7 @@ class DeviceWindow(Gtk.Window):
 
     def _sel_backup(self):
         model, it = self.backup_view.get_selection().get_selected()
-        return self.main._backups.get(model[it][5]) if it is not None else None
+        return self.main.all_backups().get(model[it][5]) if it is not None else None
 
     def _restore_backup(self) -> None:
         b = self._sel_backup()
@@ -613,7 +613,7 @@ class DeviceWindow(Gtk.Window):
 
     def load_images(self) -> None:
         self.load_backups()
-        root = self.main._nas_root()
+        root = self.main.root_for(self.dev)     # Demo-Gerät: Demo-Speicher
         if root is None:
             return
         dev = self.dev

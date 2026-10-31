@@ -45,6 +45,7 @@ bestätigt.
 | Unicode-Namen (NFC/NFD, Steuerzeichen, Umschrift), monotone Laufzeit, Win-11-Option nur von Hand | A, V | |
 | Hilfe: Reihenfolge, Suche, Test auf Menüeinträge/Querverweise/Anrede/Ich-Form, Sichtprüfung hell/dunkel | A, V | 24 Kapitel als Screenshot |
 | Image prüfen: ✔, ein Byte geändert → ✖ mit Datei, fehlende Datei, Abbrechen, Ordner mit Unterordnern, Clonezilla, Ergebnis nach Neustart | A, V | Loop-Disk und Clonezilla-Testimage |
+| Demo ohne NAS: ganzer Vorführablauf (Image, Prüfen ✔/✖, Zurückspielen, Backup, Ordner senden, Automatisierung) ohne NAS; mit NAS bleibt das NAS unverändert; Sperren Demo ↔ echt; Zurücksetzen | A, V | echter Demo-Prozess, Snapshot des NAS-Ordners |
 | Gerätefenster passt sich der Übersicht an (1920×1080 ganz sichtbar, 1366×768 begrenzt) | A, V | |
 | Garantie-Abfrage: Dell/HP/Lenovo-Antworten, Farben grün/gelb/rot, Schlüssel 0600 nur beim Root-Helfer | A, V | gemockte Antworten – Hersteller-Server waren gesperrt |
 
@@ -101,6 +102,10 @@ bestätigt.
 - [ ] „Demo: nächster Auftrag mit Fehler“ → roter Balken bei ~40 %
 - [ ] Automatisierung auf dem DEMO-PC (Countdown, Schritte 1–5, „wieder aktiv in 3 Tagen“)
 - [ ] Tool schliessen → Demo-Prozess ist beendet
+
+- [ ] Ä-027: **NAS abstecken** (bzw. nicht eingehängt), Tool starten → Extras → Demo-Gerät: Bereich „Demo (lokal, nicht auf dem NAS)“ mit ★ DEMO-Master-Win11 und DEMO-Image-beschaedigt; ganzen Ablauf vorführen: Disk-Image, Image prüfen (✔ bzw. ✖), Zurückspielen, Datei-Backup, Ordner senden, Automatisierung – nirgends eine NAS-Meldung
+- [ ] Ä-027: mit eingehängtem NAS dasselbe → auf dem NAS entsteht nichts (Ordner images/, Backups/, Verteilen/ vorher/nachher vergleichen); DEMO-Images erscheinen bei echten Geräten nicht zur Auswahl, NAS-Images nicht beim DEMO-PC
+- [ ] Ä-027: Extras → Demo-Daten zurücksetzen … → Rückfrage, danach nur noch die zwei fertigen Images; alte Demo-Images auf dem NAS (vor Ä-027) sind ausgeblendet, Rechtsklick auf den Hinweis → „Alte Demo-Images vom NAS löschen …“
 
 ### 7. Allgemein
 - [ ] I-007: Rechtsklick auf ein **grosses Image** (z. B. 200 GB) → „Image prüfen …“ – **Dauer notieren** (Lesen vom NAS), Fortschritt/Restzeit plausibel, Tool bleibt bedienbar; Abbrechen beendet sofort, nichts gespeichert

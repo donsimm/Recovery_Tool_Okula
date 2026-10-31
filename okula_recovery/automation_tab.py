@@ -169,11 +169,11 @@ class AutomationTab(Gtk.Box):
     # ---------- Füllen ----------
 
     def _images(self, master: bool) -> list:
-        return [i for i in self.main.restorable_images() if i.master or not master]
+        return [i for i in self.main.restorable_images(self.dev) if i.master or not master]
 
     def _fill_images(self, s: automation.Settings) -> None:
         self.image.remove_all()
-        root = self.main._nas_root()
+        root = self.main.root_for(self.dev)
         for img in self._images(s.image_mode == "master"):
             rel = str(img.path.relative_to(root)) if root else str(img.path)
             broken = (img.check or {}).get("status") == imagecheck.BROKEN
@@ -213,7 +213,7 @@ class AutomationTab(Gtk.Box):
             for child in self.projects_box.get_children():
                 self.projects_box.remove(child)
             self.project_checks = {}
-            root = self.main._nas_root()
+            root = self.main.root_for(self.dev)
             names = distribute.projects(root) if root else []
             for name in sorted(set(names) | set(s.projects), key=str.lower):
                 check = Gtk.CheckButton(label=name if name in names else f"{name} (fehlt auf dem NAS)",
@@ -255,10 +255,10 @@ class AutomationTab(Gtk.Box):
             f"Gerätename „{self.dev.name}“ → {computer_name_text(self.dev.name)} · Linux: "
             f"{linuxsetup.hostname(self.dev.name)}\nWindows-Schlüssel: {key_text}\n"
             "Nur bei Master-Images (mit Sysprep). Name ändern: Gerät oben umbenennen.")
-        missing = automation.problems(s, self.main._nas_root())
+        missing = automation.problems(s, self.main.root_for(self.dev))
         self.problems.set_text(("Noch nötig: " + " · ".join(missing)) if missing else "")
-        root = self.main._nas_root()
-        chosen = next((i for i in self.main.restorable_images()
+        root = self.main.root_for(self.dev)
+        chosen = next((i for i in self.main.restorable_images(self.dev)
                        if root and s.image and str(i.path) == str(Path(root) / s.image)), None)
         warning = imagecheck.warning(chosen.check) if chosen else ""
         self.image_warning.set_markup(f'<span foreground="#c62828"><b>{GLib.markup_escape_text(warning)}</b></span>'

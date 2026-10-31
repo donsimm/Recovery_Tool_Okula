@@ -12,7 +12,8 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
-from okula_recovery import agentclient, archive, clonezilla, devices, discovery, imagecheck, nas, winunattend  # noqa: E402
+from okula_recovery import (agentclient, archive, clonezilla, demostore, devices, discovery, imagecheck,  # noqa: E402
+                            nas, winunattend)
 
 
 def _gb(n: int) -> str:
@@ -155,7 +156,12 @@ class RestoreDialog(Gtk.Dialog):
 
         def work():
             images, problems = {}, []
+            demo_target = self.device is not None and demostore.is_demo_device(self.device)
             for img in archive.scan(root).all_images():  # auch Images in Archiv-Ordnern
+                if self.device is not None and not demostore.allowed(self.device, img.path, img.demo):
+                    continue      # Demo-Images nur für das Demo-Gerät, echte Images nie für das Demo-Gerät
+                if self.device is None and img.demo != demo_target:
+                    continue
                 if img.kind == "Disk-Image":
                     try:
                         meta = agentclient.load_image(img.path)

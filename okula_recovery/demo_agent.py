@@ -130,13 +130,13 @@ def collect_inventory(with_os: bool = True, skip=frozenset()) -> dict:
     return {**json.loads(json.dumps(INVENTORY)), "collected": time.strftime("%Y-%m-%dT%H:%M:%S")}
 
 
-def stream_disk_image(sock, disk_path: str, log=print, report=None) -> None:
-    if disk_path != DEMO_DISK_PATH:
-        raise ImagingError(f"Disk {disk_path} nicht gefunden")
-    report = report or (lambda f, p, n: None)
+PART_SIZES = {"demo-nvme0n1p1": 400_000, "demo-nvme0n1p2": 100_000, "demo-nvme0n1p3": 9_000_000,
+              "demo-nvme0n1p4": 300_000}
+
+
+def image_plan() -> list[dict]:
+    """Sicherungsplan des Demo-Images – wie ihn der echte Agent schickt (auch für die fertigen Demo-Images)."""
     name = DISK["name"]
-    sizes = {"demo-nvme0n1p1": 400_000, "demo-nvme0n1p2": 100_000, "demo-nvme0n1p3": 9_000_000,
-             "demo-nvme0n1p4": 300_000}
     tools = {"vfat": "partclone.vfat", "ntfs": "partclone.ntfs", "": "partclone.dd"}
     plan = [{"file": f"{name}.sfdisk", "kind": "command", "cmd": ["sfdisk", "-d", DEMO_DISK_PATH], "optional": True},
             {"file": f"{name}-head.img", "kind": "range", "path": DEMO_DISK_PATH, "offset": 0,
@@ -148,12 +148,25 @@ def stream_disk_image(sock, disk_path: str, log=print, report=None) -> None:
         plan.append({"file": f"{p['name']}.{ext}", "kind": "pipe", "part": p["name"], "size": p["size"],
                      "fstype": p["fstype"], "cmds": [[tools[p["fstype"]], "-c", "-s", p["path"], "-o", "-"],
                                                      ["zstd", "-1", "-T0", "-q", "-c"]]})
+    return plan
+
+
+def sfdisk_text() -> str:
+    return (f"label: gpt\nlabel-id: 0DE30000-0000-4000-8000-000000000000\ndevice: {DEMO_DISK_PATH}\n"
+            "unit: sectors\nfirst-lba: 34\nsector-size: 512\n\n" +
+            "".join(f"{p['path']} : start={2048 + i * 1000}, size={p['size'] // 512}, type={p['parttype'].upper()}"
+                    f", uuid={p['uuid'].upper()}\n" for i, p in enumerate(DISK["partitions"])))
+
+
+def stream_disk_image(sock, disk_path: str, log=print, report=None) -> None:
+    if disk_path != DEMO_DISK_PATH:
+        raise ImagingError(f"Disk {disk_path} nicht gefunden")
+    report = report or (lambda f, p, n: None)
+    name = DISK["name"]
+    sizes = PART_SIZES
+    plan = image_plan()
     wire.send_json(sock, {"type": "begin", "disk": DISK, "plan": plan, "compression": "zstd", "demo": True})
-    sfdisk = (f"label: gpt\nlabel-id: 0DE30000-0000-4000-8000-000000000000\ndevice: {DEMO_DISK_PATH}\n"
-              "unit: sectors\nfirst-lba: 34\nsector-size: 512\n\n" +
-              "".join(f"{p['path']} : start={2048 + i * 1000}, size={p['size'] // 512}, type={p['parttype'].upper()}"
-                      f", uuid={p['uuid'].upper()}\n" for i, p in enumerate(DISK["partitions"])))
-    imaging._send_file(sock, f"{name}.sfdisk", [sfdisk.encode()], {}, lambda n: {})
+    imaging._send_file(sock, f"{name}.sfdisk", [sfdisk_text().encode()], {}, lambda n: {})
     imaging._send_file(sock, f"{name}-head.img", [bytes(imaging.HEAD_TAIL)], {}, lambda n: {})
     imaging._send_file(sock, f"{name}-tail.img", [bytes(imaging.HEAD_TAIL)], {}, lambda n: {})
     total = sum(sizes.values())

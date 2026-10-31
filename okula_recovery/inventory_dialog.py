@@ -10,6 +10,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
+from okula_recovery import demostore  # noqa: E402
 from okula_recovery import inventory_export as ie  # noqa: E402
 from okula_recovery.uikit import confirm_error, open_url, run_async, scrolled  # noqa: E402
 
@@ -164,7 +165,7 @@ class InventoryExportDialog(Gtk.Dialog):
         self.destroy()
         main = self.main
         root = main._nas_root()
-        saved = list(main._backups.values())
+        saved = list(main.all_backups().values())
         main.status(f"Inventar wird exportiert ({len(devs)} Geräte) …")
 
         def work():
@@ -172,6 +173,13 @@ class InventoryExportDialog(Gtk.Dialog):
                 images = ie.latest_images(root, devs)
             except OSError:
                 images = {}
+            if demostore.base().is_dir():      # Demo-Gerät: Images im Demo-Speicher
+                try:
+                    for dev_id, img in ie.latest_images(demostore.base(), devs).items():
+                        if dev_id not in images or img.when > images[dev_id].when:
+                            images[dev_id] = img
+                except OSError:
+                    pass
             rows = ie.build(devs, images, ie.latest_backups(saved, devs), with_key)
             return ie.export(target, devs, rows, label, fmt_csv, fmt_pdf, with_key, pdf_single=single)
 

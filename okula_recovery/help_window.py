@@ -656,6 +656,9 @@ In der Geräteliste steht bei jedem Gerät ein Balken mit Prozent und Restzeit.
 <b>Stern ★ bei Images</b>
 Das Image ist als Master-Image markiert.
 
+<b>Bereich „Demo (lokal, nicht auf dem NAS)“</b>
+Erscheint nur bei eingeschaltetem Demo-Gerät: Images des DEMO-PC im Demo-Speicher (Kapitel <i>Demo-Gerät</i>).
+
 <b>Spalte „Geprüft“ bei Images</b>
 •  ✔ mit Datum: Bei der letzten Prüfung war das Image in Ordnung.
 •  ✖ beschädigt: Eine Datei stimmt nicht. Die Maus über der Zeile zeigt, welche.
@@ -772,21 +775,42 @@ Damit kommen nur die NAS-Einstellungen mit (ohne Passwort)."""),
     ("Demo-Gerät", """<big><b>Das Tool vorführen (Demo-Gerät)</b></big>
 
 Zum Vorführen gibt es ein Gerät, das es gar nicht gibt: den <b>DEMO-PC</b>.
+Die Vorführung braucht <b>kein NAS</b>. Alle Demo-Daten liegen lokal auf dem Server im
+<b>Demo-Speicher</b> – das NAS wird weder gelesen noch beschrieben, auch wenn es verbunden ist.
 
 <b>Ablauf:</b>
 1.  <i>Extras → Demo-Gerät (Vorführung)</i> anhaken.
 2.  Nach ein paar Sekunden steht links <i>DEMO-PC</i> mit grünem Punkt.
-3.  Jetzt lässt sich alles zeigen: Image erstellen, zurückspielen, Backup, Ordner senden, Automatisierung …
+    Rechts im Reiter <i>Images</i> erscheint der Bereich <i>Demo (lokal, nicht auf dem NAS)</i> –
+    auch wenn „NAS nicht verbunden“ steht. Das ist bei der Vorführung normal.
+3.  Jetzt lässt sich alles zeigen: Disk-Image erstellen, Image prüfen, zurückspielen, Automatisierung,
+    Backup erstellen und zurückspielen, Ordner senden, Inventar exportieren.
     Ein Auftrag dauert knapp eine Minute.
+
+<b>Fertige Demo-Images</b> (im Bereich <i>Demo</i>):
+•  <i>DEMO-Master-Win11</i>: als Master-Image markiert (★). <i>Image prüfen …</i> ergibt ✔.
+    Damit lassen sich Zurückspielen und die Automatisierung vorführen.
+•  <i>DEMO-Image-beschaedigt</i>: absichtlich beschädigt. <i>Image prüfen …</i> ergibt ✖ und nennt die Datei.
+•  Rechtsklick auf <i>Demo (lokal, nicht auf dem NAS)</i> → <i>Alle Images im Ordner prüfen …</i>
+    zeigt die Zusammenfassung, zum Beispiel „3 Images geprüft: 2 ✔, 1 ✖“.
+•  Für den Ordner <i>Ordner senden</i> gibt es Beispielordner (Software, Test Files, drei Projekte).
 
 <b>Einen Fehler zeigen:</b>
 <i>Extras → Demo: nächster Auftrag mit Fehler</i>. Der nächste Auftrag bricht ab, der Balken wird rot.
 
+<b>Demo-Daten zurücksetzen</b>
+<i>Extras → Demo-Daten zurücksetzen …</i> löscht den Demo-Speicher (nach Rückfrage).
+Beim nächsten Einschalten entsteht der Ausgangszustand mit den zwei fertigen Demo-Images neu.
+
 <b>Gut zu wissen:</b>
 •  Der DEMO-PC fasst nichts an. Es gibt keine echte Disk dahinter.
 •  Andere Geräte im Netzwerk merken nichts davon.
-•  Ein Image vom DEMO-PC lässt sich nur auf den DEMO-PC zurückspielen.
-•  Zum Beenden das Häkchen wieder entfernen."""),
+•  Demo-Images lassen sich nur auf den DEMO-PC zurückspielen, echte Images nie auf den DEMO-PC.
+    Ebenso bei den Backups.
+•  Zum Beenden das Häkchen wieder entfernen. Der Bereich <i>Demo</i> verschwindet,
+    die Demo-Daten bleiben für die nächste Vorführung.
+•  Liegen noch alte Demo-Images auf dem NAS (von früher), sind sie ausgeblendet.
+    Rechtsklick auf den Hinweis → <i>Alte Demo-Images vom NAS löschen …</i>"""),
 ]
 
 

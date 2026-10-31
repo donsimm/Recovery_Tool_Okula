@@ -247,14 +247,19 @@ class Engine:
     """Steuert alle Automatisierungen. on_change(device_id) wird aus Threads aufgerufen (UI: idle_add)."""
 
     def __init__(self, store, job_manager: jobs.JobManager, key: bytes, nas_root: Callable[[], str | None],
-                 cfg: Callable[[], config.Config], on_change: Callable[[str], None] = lambda dev_id: None):
+                 cfg: Callable[[], config.Config], on_change: Callable[[str], None] = lambda dev_id: None,
+                 root_for: Callable[[object], str | None] | None = None):
         self.store, self.jobs, self.key = store, job_manager, key
         self.nas_root, self.cfg, self.on_change = nas_root, cfg, on_change
+        self.root_for = root_for     # Ablage je Gerät (Demo-Gerät: lokaler Demo-Speicher statt NAS)
         self.runs: dict[str, Run] = {}
         self.queue: list[str] = []
         self.running = 0
         self.cond = threading.Condition()
         self.countdown_seconds = COUNTDOWN
+
+    def _root(self, dev) -> str | None:
+        return self.root_for(dev) if self.root_for is not None else self.nas_root()
 
     # --- Abfragen ---
 
@@ -264,7 +269,7 @@ class Engine:
     def text(self, dev, now: datetime | None = None) -> str:
         s = settings(dev)
         return run_text(self.runs.get(dev.id), s, self.cfg().automation_paused,
-                        not problems(s, self.nas_root()), now)
+                        not problems(s, self._root(dev)), now)
 
     # --- Ereignisse ---
 
@@ -273,7 +278,7 @@ class Engine:
         s = settings(dev)
         if not s.enabled or self.cfg().automation_paused or not getattr(agent, "control_port", 0):
             return False
-        if dev.id in self.runs or self.jobs.summary(dev.id) or problems(s, self.nas_root()):
+        if dev.id in self.runs or self.jobs.summary(dev.id) or problems(s, self._root(dev)):
             return False  # läuft schon, ist erledigt/abgebrochen (bis neu angeschlossen) oder unvollständig
         run = Run("countdown", left=self.countdown_seconds)
         self.runs[dev.id] = run
@@ -387,7 +392,7 @@ class Engine:
         s = settings(dev)
         error: dict = {}
         finished = threading.Event()
-        work = automation_work(agent.ip, self.key, agent.control_port, dev, s, self.nas_root(), error)
+        work = automation_work(agent.ip, self.key, agent.control_port, dev, s, self._root(dev), error)
 
         def wrapped(job, jm):
             try:

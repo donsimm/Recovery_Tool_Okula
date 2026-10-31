@@ -18,7 +18,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 
 from okula_recovery import (__version__, agentclient, archive, automation, backups, clonezilla, config,  # noqa: E402
-                            devices, discovery, distribute, imagecheck, jobs, nas, nasfiles, oslib, pxe, warranty, wol)
+                            demostore, devices, discovery, distribute, imagecheck, jobs, nas, nasfiles, oslib, pxe, warranty, wol)
 from okula_recovery.automation_tab import SendFoldersDialog, SettingsDialog  # noqa: E402
 from okula_recovery.inventory_dialog import InventoryExportDialog  # noqa: E402
 from okula_recovery.imagecheck_dialog import CheckWindow  # noqa: E402
@@ -63,7 +63,8 @@ MENU_LABELS: dict[str, list[str | None]] = {
                "_Backup erstellen …", "Backup zur_ückspielen …", "Ordner _senden …", "_Inventar neu einlesen",
                "Gerät _herunterfahren", None, "_Restore-Stick aus Image …", "IS_O hinzufügen …",
                "_Boot-Stick aus ISO …", "_Netzwerkstart (PXE) …", None, "Images _aktualisieren"],
-    "E_xtras": ["_USB klonen …", "USB _formatieren …", None, DEMO_LABEL, "Demo: nächster Auftrag mit _Fehler"],
+    "E_xtras": ["_USB klonen …", "USB _formatieren …", None, DEMO_LABEL, "Demo: nächster Auftrag mit _Fehler",
+                "Demo-Daten _zurücksetzen …"],
     "_Hilfe": ["_So funktioniert das Tool", "_Tastenkürzel", "Ü_ber Okula Recovery Tool"],
 }
 
@@ -117,7 +118,9 @@ class MainWindow(Gtk.ApplicationWindow):
         self.store = devices.DeviceStore()          # erfasste Geräte, lokal auf dem Server
         self.jobs = jobs.JobManager(on_change=lambda job: GLib.idle_add(self._on_job_change, job))
         self.automation = automation.Engine(self.store, self.jobs, self.key, self._nas_root, lambda: self.cfg,
-                                            lambda dev_id: GLib.idle_add(self._on_automation_change, dev_id))
+                                            lambda dev_id: GLib.idle_add(self._on_automation_change, dev_id),
+                                            root_for=self.root_for)
+        self._demo_backups: dict[str, backups.BackupInfo] = {}   # Backups des Demo-Geräts (Demo-Speicher)
         self._image_tree: archive.Tree | None = None   # zuletzt gelesene Images (für die Automatisierung)
         self.demo_proc: subprocess.Popen | None = None  # Demo-Gerät (simulierter Agent auf diesem Server)
         self.connect("destroy", lambda *_a: self.set_demo(False))
@@ -230,6 +233,7 @@ class MainWindow(Gtk.ApplicationWindow):
             "_USB klonen …": (lambda: CloneDialog(self), None),
             "USB _formatieren …": (lambda: FormatDialog(self), None),
             "Demo: nächster Auftrag mit _Fehler": (self.demo_fail_next, None),
+            "Demo-Daten _zurücksetzen …": (self.reset_demo_data, None),
             "_So funktioniert das Tool": (self.show_help, "F1"),
             "_Tastenkürzel": (self.show_shortcuts, None),
             "Ü_ber Okula Recovery Tool": (self.show_about, None),
@@ -547,6 +551,8 @@ class MainWindow(Gtk.ApplicationWindow):
         c.set_min_width(115)
         view.append_column(c)
         self._image_checks: dict[str, dict | None] = {}   # Image-Pfad → letztes Prüfergebnis
+        self._demo_tree: archive.Tree | None = None       # Images im Demo-Speicher (Ä-027)
+        self._old_demo_images: list[nas.ImageInfo] = []   # frühere Demo-Images auf dem NAS (ausgeblendet)
         self.checking: set[str] = set()                    # werden gerade geprüft (Löschen gesperrt)
         view.set_enable_tree_lines(True)
         view.set_tooltip_column(self.C_TIP)
@@ -671,6 +677,12 @@ class MainWindow(Gtk.ApplicationWindow):
             menu.show_all()
             menu.popup_at_pointer(event)
             return True
+        area = model[it][self.C_AREA] if it is not None else ""
+        if area in ("demo", "olddemo"):
+            self._demo_menu(menu, kind, model[it][self.C_PATH], model[it][self.C_TYPE])
+            menu.show_all()
+            menu.popup_at_pointer(event)
+            return True
         add("Neuer Ordner …", self.on_new_archive_folder)
         if kind == "folder":
             add("Umbenennen …", self.on_rename_archive_folder)
@@ -696,6 +708,62 @@ class MainWindow(Gtk.ApplicationWindow):
         menu.show_all()
         menu.popup_at_pointer(event)
         return True
+
+    def _demo_menu(self, menu: Gtk.Menu, kind: str, path: str, img_type: str) -> None:
+        """Rechtsklick im Bereich „Demo (lokal …)“ bzw. auf den Hinweis zu alten Demo-Images auf dem NAS."""
+        def add(label, handler, sensitive=True):
+            item = Gtk.MenuItem(label=label, sensitive=sensitive)
+            item.connect("activate", lambda _i: handler())
+            menu.append(item)
+
+        if kind == "olddemo":
+            add("Alte Demo-Images vom NAS löschen …", self.delete_old_demo_images)
+            return
+        if kind == "demo":
+            images = self._demo_tree.all_images() if self._demo_tree else []
+            add("Alle Images im Ordner prüfen …",
+                lambda: self.check_images([str(i.path) for i in images], demostore.TITLE), bool(images))
+            add("Demo-Daten zurücksetzen …", self.reset_demo_data)
+            return
+        if kind == "image":
+            master = nas.is_master(Path(path))
+            add("Image prüfen …", lambda: self.check_images([path], Path(path).name), path not in self.checking)
+            add("Master-Markierung entfernen" if master else "Als Master-Image markieren",
+                lambda: self.set_master_image(path, not master))
+            add("Löschen …", lambda: self.on_delete_image(None), path not in self.checking)
+
+    def delete_old_demo_images(self) -> None:
+        root = self._nas_root()
+        old = list(self._old_demo_images)
+        if root is None or not old:
+            return
+        if not confirm(self, f"{len(old)} alte Demo-Image{'s' if len(old) != 1 else ''} vom NAS löschen?",
+                       "Diese Images stammen vom Demo-Gerät (Attrappen) und sind auf dem NAS überflüssig:\n"
+                       + "\n".join(f"· {i.path.relative_to(root)}" for i in old[:10])
+                       + ("\n· …" if len(old) > 10 else "")):
+            return
+
+        def work():
+            for img in old:
+                rel = os.path.relpath(img.path, root)
+                nasfiles.delete(root, nasfiles.parent(rel), [os.path.basename(rel)])
+        self._archive_op(work, f"{len(old)} alte Demo-Images vom NAS gelöscht")
+
+    def reset_demo_data(self) -> None:
+        if any(self.jobs.summary(d.id) for d in self.store.devices.values() if demostore.is_demo_device(d)):
+            confirm_error(self, "Beim Demo-Gerät läuft noch ein Auftrag – erst danach zurücksetzen.")
+            return
+        if not confirm(self, "Demo-Daten zurücksetzen?",
+                       f"Alle Demo-Images, Demo-Backups und Demo-Ordner in {demostore.base()} werden gelöscht. "
+                       "Beim nächsten Einschalten des Demo-Geräts entsteht der Ausgangszustand neu "
+                       "(DEMO-Master-Win11, DEMO-Image-beschaedigt). Das NAS bleibt unberührt.",
+                       ok_label="Zurücksetzen"):
+            return
+        demostore.reset()
+        if self.demo_running():
+            demostore.ensure()
+        self.status("Demo-Daten zurückgesetzt")
+        self.refresh_images()
 
     def _os_menu(self, menu: Gtk.Menu, kind: str, rel: str) -> None:
         def add(label, handler, sensitive=True):
@@ -871,6 +939,9 @@ class MainWindow(Gtk.ApplicationWindow):
             row = model[hit[0]]
             dest_area = row[self.C_AREA]
             dest_rel = row[self.C_REL] if row[self.C_KIND] in ("folder", "image", "osfolder", "iso") else ""
+        if "demo" in (model[src][self.C_AREA], dest_area) or "olddemo" in (model[src][self.C_AREA], dest_area):
+            self.status("Demo-Images bleiben im Demo-Speicher – nicht mit dem NAS mischen")
+            return
         self.drop(model[src][self.C_KIND], model[src][self.C_AREA], model[src][self.C_REL],
                   model[src][self.C_PATH], model[src][self.C_NAME], dest_area, dest_rel)
 
@@ -1078,6 +1149,17 @@ class MainWindow(Gtk.ApplicationWindow):
         mp = self.cfg.nas.mount_point
         return mp if os.path.ismount(mp) else None
 
+    def root_for(self, dev: devices.Device | None) -> str | None:
+        """Ablage für Aufträge eines Geräts: beim Demo-Gerät immer der lokale Demo-Speicher (nie das NAS)."""
+        return demostore.root_for(dev, self._nas_root())
+
+    def root_of(self, path: str | Path) -> str | None:
+        """Ablage, in der ein Image bzw. Backup liegt (Demo-Speicher oder NAS)."""
+        demo = demostore.base()
+        if Path(path).is_relative_to(demo):
+            return str(demo)
+        return self._nas_root()
+
     def _selected_files(self) -> list[str]:
         model, paths = self.file_view.get_selection().get_selected_rows()
         return [model[p][1] for p in paths]
@@ -1173,6 +1255,8 @@ class MainWindow(Gtk.ApplicationWindow):
     def on_delete_image(self, _btn) -> None:
         root = self._nas_root()
         model, it = self.image_view.get_selection().get_selected()
+        if it is not None and model[it][self.C_AREA] == "demo":
+            root = str(demostore.base())     # Demo-Images liegen lokal, nie auf dem NAS
         if not root or it is None:
             return
         if model[it][self.C_KIND] == "folder":
@@ -1293,12 +1377,18 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def refresh_images(self) -> None:
         mp = self._nas_root()
-        if mp is None:
-            self.image_store.clear()
-            self.img_count.set_text("NAS nicht verbunden")
-            self._on_image_selected(self.image_view.get_selection())
-            return
+        demo = self.demo_running()
+
         def work():
+            demo_tree = demo_saved = None
+            if demo:   # Demo-Speicher: lokal, unabhängig vom NAS
+                try:
+                    root = demostore.ensure()
+                    demo_tree, demo_saved = archive.scan(root), backups.list_backups(root)
+                except OSError as e:
+                    demo_tree = e
+            if mp is None:
+                return None, None, None, demo_tree, demo_saved
             tree = archive.scan(mp)
             try:
                 distribute.ensure(mp)  # Verteilen/Software, Verteilen/Test Files, Verteilen/Content
@@ -1313,7 +1403,7 @@ class MainWindow(Gtk.ApplicationWindow):
                 saved = backups.list_backups(mp)
             except OSError as e:
                 saved = e
-            return tree, systems, saved
+            return tree, systems, saved, demo_tree, demo_saved
 
         run_async(work, self._on_images)
 
@@ -1520,13 +1610,15 @@ class MainWindow(Gtk.ApplicationWindow):
     def _fill_backups(self, error: str = "") -> None:
         selected = (b := self._selected_backup()) and str(b.path)
         needle = self.bk_filter.get_text().strip().lower()
-        shown = [b for b in self._backups.values() if not needle or needle in b.device.lower()
+        everything = self.all_backups()
+        shown = [b for b in everything.values() if not needle or needle in b.device.lower()
                  or needle in b.note.lower() or needle in b.summary.lower()]
         store = self.backup_store
         store.clear()
         by_device: dict[str, list] = {}
         for b in shown:
-            by_device.setdefault(b.device, []).append(b)
+            demo = str(b.path) in self._demo_backups
+            by_device.setdefault(f"{b.device} – {demostore.TITLE}" if demo else b.device, []).append(b)
         for device, items in sorted(by_device.items(), key=lambda kv: kv[0].lower()):
             size = sum(b.size for b in items)
             it = store.append(None, ["computer-symbolic", f"{device} ({len(items)})", "", "",
@@ -1541,9 +1633,9 @@ class MainWindow(Gtk.ApplicationWindow):
         if selected:
             store.foreach(lambda m, p, i: m[i][self.B_PATH] == selected
                           and (self.backup_view.get_selection().select_iter(i), True)[1])
-        total = sum(b.size for b in self._backups.values())
-        n_dev = len({b.device for b in self._backups.values()})
-        text = error or (f"{len(self._backups)} Backup{'s' if len(self._backups) != 1 else ''} · {n_dev} "
+        total = sum(b.size for b in everything.values())
+        n_dev = len({b.device for b in everything.values()})
+        text = error or (f"{len(everything)} Backup{'s' if len(everything) != 1 else ''} · {n_dev} "
                          f"Gerät{'e' if n_dev != 1 else ''} · {nas.format_size(total)}")
         if needle and not error:
             text += f" · {len(shown)} gefunden"
@@ -1595,7 +1687,7 @@ class MainWindow(Gtk.ApplicationWindow):
             self._archive_op(lambda: backups.set_note(path, text), "Notiz gespeichert")
 
     def delete_backup(self, b: backups.BackupInfo, parent: Gtk.Window | None = None) -> None:
-        root = self._nas_root()
+        root = self.root_of(b.path)
         if root is None:
             confirm_error(parent or self, "NAS ist nicht verbunden – Menü → NAS-Verbindung …")
             return
@@ -1613,21 +1705,68 @@ class MainWindow(Gtk.ApplicationWindow):
         model, it = self.backup_view.get_selection().get_selected()
         if it is None or model[it][self.B_KIND] != "backup":
             return None
-        return self._backups.get(model[it][self.B_PATH])
+        return self.all_backups().get(model[it][self.B_PATH])
+
+    def all_backups(self) -> dict[str, backups.BackupInfo]:
+        """NAS-Backups und – bei eingeschaltetem Demo-Gerät – die Demo-Backups (lokal)."""
+        return {**self._backups, **(self._demo_backups if self.demo_running() else {})}
 
     def _on_images(self, result) -> None:
         if isinstance(result, Exception):
             self.status(f"Images konnten nicht gelesen werden: {result}")
             return
-        tree, systems, saved = result
+        tree, systems, saved, demo_tree, demo_saved = result
+        self._demo_tree = demo_tree if isinstance(demo_tree, archive.Tree) else None
+        self._demo_backups = {str(b.path): b for b in demo_saved or []}
+        old_demo: list[nas.ImageInfo] = []
+        if tree is not None:
+            # Demo-Images, die früher auf dem NAS entstanden sind: ausblenden (Hinweis zum Löschen)
+            old_demo = demostore.nas_demo_images(tree.all_images())
+            tree.unsorted = [i for i in tree.unsorted if not i.demo]
+
+            def strip(folders: list[archive.Folder]) -> None:
+                for f in folders:
+                    f.images = [i for i in f.images if not i.demo]
+                    strip(f.folders)
+            strip(tree.folders)
         self._image_tree = tree
+        self._old_demo_images = old_demo
         keys = self._expanded_keys() if self._images_loaded else {"unsorted:", "osroot:"}
+        keys.add("demo:")   # Bereich „Demo (lokal …)“ immer aufgeklappt
         if self._expand_after_refresh is not None:
             parts = self._expand_after_refresh.split("/") if self._expand_after_refresh else []
             keys |= {"folder:" + "/".join(parts[:i]) for i in range(1, len(parts) + 1)}
             self._expand_after_refresh = None
         store = self.image_store
         store.clear()
+        self._image_checks = {}
+        if self.demo_running():
+            images = self._demo_tree.all_images() if self._demo_tree else []
+            demo_root = store.append(None, ["applications-games-symbolic", f"{demostore.TITLE} ({len(images)})",
+                                            "", nas.format_size(sum(i.size for i in images)), "", 0, "", "demo", "",
+                                            "demo", f"Demo-Speicher {demostore.base()} – nur für das Demo-Gerät, "
+                                            "das NAS wird nie benutzt"])
+            if isinstance(demo_tree, Exception):
+                store.append(demo_root, ["dialog-warning-symbolic", f"Demo-Speicher nicht lesbar: {demo_tree}", "",
+                                         "", "", 0, "", "info", "", "demo", ""])
+            for img in sorted(images, key=lambda i: (not i.master, i.path.name.lower())):
+                img.name = img.path.name           # kurz: „DEMO-Master-Win11“ statt „DEMO-PC – …“
+                store.append(demo_root, self._image_row(img, "", "demo"))
+        if tree is None:
+            self.img_count.set_text("NAS nicht verbunden" + (" · Demo lokal" if self.demo_running() else ""))
+            self._isos = {}
+            self._set_backups([])
+            self._restore_expanded(keys)
+            self._images_loaded = True
+            self._on_image_selected(self.image_view.get_selection())
+            return
+        if old_demo:
+            store.append(None, ["dialog-information-symbolic",
+                                f"{len(old_demo)} alte Demo-Image{'s' if len(old_demo) != 1 else ''} auf dem NAS "
+                                "(ausgeblendet)", "", nas.format_size(sum(i.size for i in old_demo)), "", 0, "",
+                                "olddemo", "", "olddemo",
+                                "Früher auf dem NAS entstandene Demo-Images – Rechtsklick → „Alte Demo-Images vom "
+                                "NAS löschen …“. Demo-Daten liegen heute nur noch lokal."])
         unsorted = store.append(None, ["folder-download-symbolic", f"Nicht einsortiert ({len(tree.unsorted)})", "",
                                        nas.format_size(sum(i.size for i in tree.unsorted)), "", 0, "", "unsorted",
                                        "", "unsorted", ""])
@@ -2155,7 +2294,8 @@ class MainWindow(Gtk.ApplicationWindow):
                     self.demo_proc = subprocess.Popen(
                         [sys.executable, "-m", "okula_recovery.demo_agent", "--key-file", str(agentclient.key_path()),
                          "--fail-flag", str(base / "demo-fehler")], stdout=log, stderr=subprocess.STDOUT, env=env)
-                self.status("Demo-Gerät gestartet – erscheint in wenigen Sekunden als „DEMO-PC“ in der Liste")
+                self.status("Demo-Gerät gestartet – erscheint in wenigen Sekunden als „DEMO-PC“ in der Liste · "
+                            "Demo-Daten liegen lokal, das NAS wird nicht benutzt")
                 GLib.timeout_add(2000, self._demo_check)
             else:
                 self.demo_proc.terminate()
@@ -2168,6 +2308,8 @@ class MainWindow(Gtk.ApplicationWindow):
             self.demo_item.set_active(self.demo_running())
         if "Demo: nächster Auftrag mit Fehler" in getattr(self, "menu_items", {}):
             self.menu_items["Demo: nächster Auftrag mit Fehler"].set_sensitive(self.demo_running())
+        if hasattr(self, "image_store"):
+            self.refresh_images()   # Bereich „Demo (lokal …)“ ein- bzw. ausblenden (legt den Demo-Speicher an)
 
     def _demo_check(self) -> bool:
         if self.demo_proc is not None and self.demo_proc.poll() is not None:
@@ -2186,10 +2328,18 @@ class MainWindow(Gtk.ApplicationWindow):
 
     # ---------- Automatisierung, Ordner senden, Master-Images ----------
 
-    def restorable_images(self) -> list[nas.ImageInfo]:
-        """Images, die sich zurückspielen lassen (Okula, Clonezilla) – Master zuerst, dann neueste."""
-        tree = self._image_tree
+    def restorable_images(self, dev: devices.Device | None = None) -> list[nas.ImageInfo]:
+        """Images, die sich zurückspielen lassen (Okula, Clonezilla) – Master zuerst, dann neueste.
+        Demo-Gerät: nur die Demo-Images aus dem Demo-Speicher; alle anderen Geräte: nie Demo-Images."""
+        if dev is not None and demostore.is_demo_device(dev):
+            try:
+                tree = archive.scan(demostore.ensure())
+            except OSError:
+                tree = None
+        else:
+            tree = self._image_tree
         images = [i for i in (tree.all_images() if tree else []) if i.kind in ("Disk-Image", "Clonezilla")]
+        images = demostore.allowed_images(images, dev) if dev is not None else [i for i in images if not i.demo]
         return sorted(images, key=lambda i: (not i.master, -i.mtime.timestamp()))
 
     def save_automation(self, dev: devices.Device, s: automation.Settings) -> None:
@@ -2214,7 +2364,7 @@ class MainWindow(Gtk.ApplicationWindow):
             return
         s = automation.settings(dev)
         s.enabled = not s.enabled
-        missing = automation.problems(s, self._nas_root())
+        missing = automation.problems(s, self.root_for(dev))
         if s.enabled and missing:
             win = self.open_device(dev)
             win.show_automation()
@@ -2345,7 +2495,7 @@ class MainWindow(Gtk.ApplicationWindow):
         """Ordner senden: Software/Test Files direkt, Content (oder ohne Vorgabe) über die Auswahl."""
         parent = self._parent_for(dev)
         agent = self._ready_agent(dev, parent)
-        root = self._nas_root()
+        root = self.root_for(dev)
         if agent is None:
             return
         if root is None:
@@ -2576,7 +2726,7 @@ class MainWindow(Gtk.ApplicationWindow):
         agent = self._ready_agent(dev, parent)
         if agent is None:
             return
-        root = self._nas_root()
+        root = self.root_for(dev)
         if root is None:
             confirm_error(parent, "NAS ist nicht verbunden – Menü → NAS-Verbindung …")
             return
@@ -2600,7 +2750,7 @@ class MainWindow(Gtk.ApplicationWindow):
         agent = self._ready_agent(dev, parent)
         if agent is None:
             return
-        root = self._nas_root()
+        root = self.root_for(dev)
         if root is None:
             confirm_error(parent, "NAS ist nicht verbunden – Menü → NAS-Verbindung …")
             return
@@ -2683,7 +2833,7 @@ class MainWindow(Gtk.ApplicationWindow):
         agent = self._ready_agent(dev, parent)
         if agent is None:
             return
-        root = self._nas_root()
+        root = self.root_for(dev)
         if root is None:
             confirm_error(parent, "NAS ist nicht verbunden – Menü → NAS-Verbindung …")
             return
@@ -2704,8 +2854,11 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def start_file_restore(self, backup: backups.BackupInfo | None, dev: devices.Device | None = None) -> None:
         """Backup zurückspielen (ins System des Geräts) oder herunterladen."""
+        demo_dev = dev is not None and demostore.is_demo_device(dev)
         if backup is None and dev is not None:
-            mine = [b for b in self._backups.values()
+            # Demo-Gerät nur Demo-Backups, echte Geräte nie Demo-Backups
+            pool = self._demo_backups if demo_dev else self._backups
+            mine = [b for b in pool.values()
                     if b.manifest.get("device_id") == dev.id or b.device == dev.name]
             if not mine:
                 confirm_error(self._parent_for(dev), f"Für „{dev.name}“ gibt es noch kein Backup.")
@@ -2713,8 +2866,14 @@ class MainWindow(Gtk.ApplicationWindow):
             backup = max(mine, key=lambda b: b.created) if len(mine) == 1 else self._choose_backup(dev, mine)
             if backup is None:
                 return
+        is_demo_backup = str(backup.path) in self._demo_backups
+        if dev is not None and is_demo_backup != demostore.is_demo_device(dev):
+            confirm_error(self._parent_for(dev), "Demo-Backups gehören nur zum Demo-Gerät, echte Backups nie zum "
+                                                 "Demo-Gerät.")
+            return
         if dev is None:  # vom Backup aus: verbundenes Gerät wählen (oder nur herunterladen)
-            online = [self.store.devices[d] for d in self.online if d in self.store.devices]
+            online = [self.store.devices[d] for d in self.online if d in self.store.devices
+                      and demostore.is_demo_device(self.store.devices[d]) == is_demo_backup]
             own = next((d for d in online if d.id == backup.manifest.get("device_id")), None)
             dev = own or (online[0] if len(online) == 1 else None)
             if dev is None and len(online) > 1:
@@ -2777,7 +2936,7 @@ class MainWindow(Gtk.ApplicationWindow):
         dlg.show_all()
         answer, chosen = dlg.run(), combo.get_active_id()
         dlg.destroy()
-        return self._backups.get(chosen) if answer == Gtk.ResponseType.OK else None
+        return self.all_backups().get(chosen) if answer == Gtk.ResponseType.OK else None
 
     def install_iso_on_device(self, iso: oslib.IsoInfo | None) -> None:
         """Rechtsklick auf eine ISO: auf welches verbundene Gerät?"""
@@ -2816,7 +2975,9 @@ class MainWindow(Gtk.ApplicationWindow):
                                                       "selbständig", ok=True)
             elif error is None:
                 where = ""
-                if job.kind in ("image", "backup") and path and self._nas_root():
+                if job.kind in ("image", "backup") and path and Path(path).is_relative_to(demostore.base()):
+                    where = f" → Demo-Speicher: {os.path.relpath(path, demostore.base())}"
+                elif job.kind in ("image", "backup") and path and self._nas_root():
                     where = f" → NAS: /{os.path.relpath(path, self._nas_root())}"
                 self.store.add_history(dev, job.kind, f"{what} erfolgreich{where}", ok=True)
             else:
