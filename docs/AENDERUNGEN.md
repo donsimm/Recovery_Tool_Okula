@@ -14,12 +14,12 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 0 | 0 | 0 |
-| 🔧 Änderungen | 5 | 0 | 0 |
+| 🔧 Änderungen | 13 | 0 | 0 |
 | 💡 Ideen | 13 | 0 | 2 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Als Nächstes: Tests „Fixes von heute“ in [TESTS.md](TESTS.md) (Debian-Direktinstallation, doppelter HP-Eintrag).
-Vorschlag Reihenfolge (Analyse 31.10.): **Ä-001** (Dienst) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → I-008 (Meldungen) → Rest nach Bedarf.
+Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laien, klein) → **Ä-001** (Dienst) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-009, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
 ## 🐞 Bugs
 
@@ -36,6 +36,14 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-001** (Dienst) → **I-005/I-006** 
 | Ä-003 | 🟡 | offen | **Images und Backups auf dem NAS verschlüsseln:** Sie enthalten Personendaten (revDSG Art. 8, Datensicherheit). Minimum: SMB3-Verschlüsselung (`mount.cifs … seal`). Besser: Verschlüsselung im Datenstrom (z. B. `age` nach `zstd`), Schlüssel root-lesbar und zusätzlich auf Papier | 31.10. (Analyse) |
 | Ä-004 | 🟡 | offen | **Zentrales Protokoll:** `/var/log/okula-recovery/` mit logrotate. Festhalten, wer wann was auf welches Gerät gespielt hat. Dazu Menü → „Diagnosepaket exportieren“ (Logs, Version, Konfiguration ohne Geheimnisse), um Fehler an Claude Code zu melden | 31.10. (Analyse) |
 | Ä-005 | 🟡 | offen | **Entwicklung absichern:** GitHub Actions, die die 240 Tests bei jedem Push ausführen. Versionsnummer pflegen (steht noch auf `0.1.0`) und Releases taggen, damit der Server einen geprüften Stand zieht statt den Branch-Kopf. `ui.py` (2780 Zeilen) aufteilen | 31.10. (Analyse) |
+| Ä-006 | 🔴 | offen | **Assistent „Neues Gerät einrichten“:** Sobald ein unbekanntes Gerät auftaucht, fragt ein Hinweis: „Neues Gerät gefunden: HP EliteBook 840 – jetzt einrichten?“. Danach Schritt für Schritt: Name → Ordner/Kunde → Vorlage oder Master-Image → „Sind noch Daten drauf?“ (Ja = Backup) → Zusammenfassung → Start. Heute muss man selbst wissen: Gerät suchen, Doppelklick, Reiter, 5 Abschnitte, Schalter | 31.10. (Laien-Test) |
+| Ä-007 | 🔴 | offen | **Bestätigung vor dem Löschen:** Wird der Schalter eingeschaltet, während das Gerät verbunden ist, startet die Automatisierung ohne Rückfrage nach 30 s und löscht die Disk (`ui.save_automation` → `consider`). Nötig: rote Zusammenfassung „Disk Samsung 256 GB von HP-PC-07 wird gelöscht, Master ‚Win11 Büro‘, neuer Name …, Backup: nein“ mit Knopf „Löschen und neu aufsetzen“ | 31.10. (Laien-Test) |
+| Ä-008 | 🔴 | offen | **Nach dem Restore Windows starten, auch wenn der Stick noch steckt:** BootNext auf den Windows Boot Manager setzen (`efibootmgr --bootnext`, wie in `wininstall.set_bootnext`). Heute heisst es nur „Agent-Stick abziehen“; wer das verpasst, landet wieder im Agent. Und nach 24 h wird das Gerät erneut neu aufgesetzt, weil „Nach 24 h wieder einschalten“ standardmässig an ist → Standard **aus**, oder nur bei Netzwerkstart | 31.10. (Laien-Test) |
+| Ä-009 | 🟡 | offen | **Vorauswahl:** Ist nur eine interne Disk da, ist sie automatisch die Zieldisk; gibt es nur einen Master, ist er gewählt (heute sind beide Listen leer). Dazu eine Standard-Vorlage (Menü → Einstellungen), die bei jedem neuen Gerät schon eingetragen ist | 31.10. (Laien-Test) |
+| Ä-010 | 🟡 | offen | **Vorabprüfung mit Ampel statt Fehler mitten im Lauf:** Image passt auf die Disk, UEFI/BIOS-Modus passt zum Master, BitLocker auf der Zieldisk (dann ist kein Datei-Backup möglich), Agent-Stick aktuell, Windows-Edition des Masters passt zum Key (Pro/Home). Anzeige: „✔ Bereit“ bzw. „⚠ Achtung: …“ | 31.10. (Laien-Test) |
+| Ä-011 | 🟡 | offen | **Boot-Menü-Taste je Hersteller:** im Stick-Dialog, in der Hilfe und bei bekannten Geräten aus den Inventardaten (DMI), z. B. HP F9, Dell F12, Lenovo F12, Asus F8/Esc, Acer F12, MSI F11. Der Hinweis „meist F12, F11, F8 oder Esc“ reicht einem Laien nicht | 31.10. (Laien-Test) |
+| Ä-012 | 🟡 | offen | **Einfache Sprache im Reiter Automatisierung:** „Zieldisk“ → „Festplatte, die gelöscht wird“; Sysprep, Master und Content-Projekte mit einem „?“ pro Abschnitt erklären. Gerätenamen wie „DESKTOP-8F3K2LQ“ markieren und zum Umbenennen auffordern; optional Namensschema pro Vorlage (z. B. `KUNDE-001` fortlaufend) | 31.10. (Laien-Test) |
+| Ä-013 | ⚪ | offen | **Klare Fertig-Meldung:** grosses „✔ Fertig – HP-PC-07 ist neu aufgesetzt (18 min)“ im Tool und am Gerät, dazu eine Liste: was gemacht wurde, Key aktiviert ja/nein, wo das Backup liegt. Als PDF ausdruckbar (Übergabeprotokoll, → I-013) | 31.10. (Laien-Test) |
 
 ## 💡 Ideen
 
