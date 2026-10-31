@@ -16,11 +16,12 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 0 | 0 | 0 |
-| 🔧 Änderungen | 10 | 0 | 0 |
-| 💡 Ideen | 26 | 0 | 0 |
+| 🔧 Änderungen | 10 | 1 | 0 |
+| 💡 Ideen | 25 | 1 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
+In Arbeit: **I-007** Image prüfen (von Hand) → **Ä-027** Demo ohne NAS.
 Als Nächstes: Tests am realen System in [TESTS.md](TESTS.md) – „Fixes von heute“ und Abschnitt 7 (neue Funktionen inkl. Ä-015 bis Ä-025).
 Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laien, klein) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-009, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
@@ -44,6 +45,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laie
 | Ä-010 | 🟡 | offen | Claude | **Vorabprüfung mit Ampel statt Fehler mitten im Lauf:** Image passt auf die Disk, UEFI/BIOS-Modus passt zum Master, BitLocker auf der Zieldisk (dann ist kein Datei-Backup möglich), Agent-Stick aktuell, Windows-Edition des Masters passt zum Key (Pro/Home). Anzeige: „✔ Bereit“ bzw. „⚠ Achtung: …“ | 31.10. (Laien-Test) |
 | Ä-012 | 🟡 | offen | Claude | **Einfache Sprache im Reiter Automatisierung:** „Zieldisk“ → „Festplatte, die gelöscht wird“; Sysprep, Master und Content-Projekte mit einem „?“ pro Abschnitt erklären. Gerätenamen wie „DESKTOP-8F3K2LQ“ markieren und zum Umbenennen auffordern; optional Namensschema pro Vorlage (z. B. `KUNDE-001` fortlaufend) | 31.10. (Laien-Test) |
 | Ä-013 | ⚪ | offen | Claude | **Klare Fertig-Meldung:** grosses „✔ Fertig – HP-PC-07 ist neu aufgesetzt (18 min)“ im Tool und am Gerät, dazu eine Liste: was gemacht wurde, Key aktiviert ja/nein, wo das Backup liegt. Als PDF ausdruckbar (Übergabeprotokoll, → I-013) | 31.10. (Laien-Test) |
+| Ä-027 | 🟡 | **in Arbeit** | Dominik | **Demo vollständig ohne NAS, mit fertigen Demo-Images:** eigener lokaler Demo-Speicher (images/, backups/, verteilen/), alle Aufträge des DEMO-PC nur dort; Bereich „Demo (lokal, nicht auf dem NAS)“ im Reiter Images/Backups; fertige Images „DEMO-Master-Win11“ (★, ✔) und „DEMO-Image-beschaedigt“ (✖); alte Demo-Images auf dem NAS ausblenden; Extras → Demo-Daten zurücksetzen | 31.10. |
 
 ## 💡 Ideen
 
@@ -54,7 +56,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laie
 | I-004 | 🟡 | offen | Dominik | **Webinterface für den Fernzugriff:** Geräteübersicht und Gerätereiter im Browser (HTTPS, Anmeldung, über VPN); pro Gerät „Im Webinterface sichtbar“ (Reiter Netzwerk). Offen: nur anschauen oder auch Aktionen, Benutzer/Rechte, LAN oder VPN. Details: [WEBINTERFACE.md](WEBINTERFACE.md) |
 | I-005 | 🔴 | offen | Claude | **Aufbewahrungsregeln:** Pro Gerät die letzten N Images bzw. Backups behalten, ältere automatisch löschen; Master-Images sind geschützt. Vor jedem Auftrag den Platz prüfen (belegte Blöcke + Reserve), sonst gar nicht erst starten |
 | I-006 | 🔴 | offen | Claude | **Zweite Kopie (3-2-1-Regel):** Das NAS ist heute die einzige Kopie. Images und Backups zusätzlich auf eine USB-Disk, ein zweites NAS oder extern spiegeln (rsync bzw. Synology Hyper Backup). Dazu die Tool-Konfiguration (Geräte, Vorlagen, Einstellungen) täglich automatisch aufs NAS exportieren |
-| I-007 | 🟡 | offen | Claude | **Image prüfen (von Hand):** Rechtsklick auf ein Image bzw. einen Ordner → „Image prüfen …“. Okula-Images über SHA256 aus `okula-image.json` (`agentclient.verify_image`), Clonezilla-Images über `clonezilla.verify` (partclone.chkimg bzw. CRC). Ergebnis ✔/✖ mit Datum in der Liste. **Nicht automatisch** (Entscheid Dominik 31.10.) |
+| I-007 | 🟡 | **in Arbeit** | Claude | **Image prüfen (von Hand):** Rechtsklick auf ein Image bzw. einen Ordner → „Image prüfen …“. Okula-Images über SHA256 aus `okula-image.json` (`agentclient.verify_image`), Clonezilla-Images über `clonezilla.verify` (partclone.chkimg bzw. CRC). Ergebnis ✔/✖ mit Datum in der Liste. **Nicht automatisch** (Entscheid Dominik 31.10.) |
 | I-008 | 🟡 | offen | Claude | **Benachrichtigungen:** E-Mail (SMTP) oder Push (ntfy/Teams) bei Fehlern, beim Ende einer Automatisierung, bei knappem NAS-Speicher, bei SMART-Warnungen und bei fehlgeschlagener Image-Prüfung |
 | I-009 | 🟡 | offen | Claude | **Disk sicher löschen (Ausmusterung, Leasing-Rückgabe):** NVMe Sanitize/Format, ATA Secure Erase oder `blkdiscard`, sonst Überschreiben. Danach ein Löschprotokoll als PDF mit Seriennummer, Methode, Datum und Prüfung (Nachweis nach revDSG) |
 | I-010 | 🟡 | offen | Claude | **Zeitgesteuerte Backups:** z. B. freitags 18:00: Wake-on-LAN → einmal Netzwerkstart in den Agent → Datei-Backup → herunterfahren. Die Bausteine (WOL, Agent beim nächsten Start, Backup) gibt es schon. Läuft nur, solange das Tool geöffnet ist (Autostart nach dem Login; Systemdienst Ä-001 wurde verworfen) |
