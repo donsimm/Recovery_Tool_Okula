@@ -16,14 +16,14 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 0 | 0 | 0 |
-| 🔧 Änderungen | 9 | 0 | 0 |
+| 🔧 Änderungen | 8 | 0 | 0 |
 | 💡 Ideen | 25 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
 Erledigt 31.10. zusätzlich: I-007 ✔ (Image prüfen) → Ä-027 ✔ (Demo ohne NAS) → Ä-028 ✔ (Ein/Aus-Symbole) → Ä-029 ✔ (Legende) → Ä-030 ✔ (NAS-Leiste).
 Als Nächstes: Tests am realen System in [TESTS.md](TESTS.md) – „Fixes von heute“, Abschnitt 6 (Vorführung mit abgestecktem NAS) und 7 (inkl. I-007: Dauer für ein grosses Image).
-Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-009, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
+Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
 ## 🐞 Bugs
 
@@ -40,7 +40,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 | Ä-005 | 🟡 | offen | Claude | **Entwicklung absichern:** GitHub Actions, die alle Tests (über 320) bei jedem Push ausführen. Versionsnummer pflegen (steht noch auf `0.1.0`) und Releases taggen, damit der Server einen geprüften Stand zieht statt den Branch-Kopf. `ui.py` (2780 Zeilen) aufteilen | 31.10. (Analyse) |
 | Ä-006 | 🔴 | offen | Claude | **Assistent „Neues Gerät einrichten“:** Sobald ein unbekanntes Gerät auftaucht, fragt ein Hinweis: „Neues Gerät gefunden: HP EliteBook 840 – jetzt einrichten?“. Danach Schritt für Schritt: Name → Ordner/Kunde → Vorlage oder Master-Image → „Sind noch Daten drauf?“ (Ja = Backup) → Zusammenfassung → Start. Heute muss man selbst wissen: Gerät suchen, Doppelklick, Reiter, 5 Abschnitte, Schalter | 31.10. (Laien-Test) |
 | Ä-007 | 🔴 | offen | Claude | **Bestätigung vor dem Löschen:** Wird der Schalter eingeschaltet, während das Gerät verbunden ist, startet die Automatisierung ohne Rückfrage nach 30 s und löscht die Disk (`ui.save_automation` → `consider`). Nötig: rote Zusammenfassung „Disk Samsung 256 GB von HP-PC-07 wird gelöscht, Master ‚Win11 Büro‘, neuer Name …, Backup: nein“ mit Knopf „Löschen und neu aufsetzen“ | 31.10. (Laien-Test) |
-| Ä-009 | 🟡 | offen | Claude | **Vorauswahl:** Ist nur eine interne Disk da, ist sie automatisch die Zieldisk; gibt es nur einen Master, ist er gewählt (heute sind beide Listen leer). Dazu eine Standard-Vorlage (Menü → Einstellungen), die bei jedem neuen Gerät schon eingetragen ist | 31.10. (Laien-Test) |
 | Ä-010 | 🟡 | offen | Claude | **Vorabprüfung mit Ampel statt Fehler mitten im Lauf:** Image passt auf die Disk, UEFI/BIOS-Modus passt zum Master, BitLocker auf der Zieldisk (dann ist kein Datei-Backup möglich), Agent-Stick aktuell, Windows-Edition des Masters passt zum Key (Pro/Home). Anzeige: „✔ Bereit“ bzw. „⚠ Achtung: …“ | 31.10. (Laien-Test) |
 | Ä-012 | 🟡 | offen | Claude | **Einfache Sprache im Reiter Automatisierung:** „Zieldisk“ → „Festplatte, die gelöscht wird“; Sysprep, Master und Content-Projekte mit einem „?“ pro Abschnitt erklären. Gerätenamen wie „DESKTOP-8F3K2LQ“ markieren und zum Umbenennen auffordern; optional Namensschema pro Vorlage (z. B. `KUNDE-001` fortlaufend) | 31.10. (Laien-Test) |
 | Ä-013 | ⚪ | offen | Claude | **Klare Fertig-Meldung:** grosses „✔ Fertig – HP-PC-07 ist neu aufgesetzt (18 min)“ im Tool und am Gerät, dazu eine Liste: was gemacht wurde, Key aktiviert ja/nein, wo das Backup liegt. Als PDF ausdruckbar (Übergabeprotokoll, → I-013) | 31.10. (Laien-Test) |
