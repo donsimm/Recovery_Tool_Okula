@@ -49,7 +49,7 @@ class CopyDialog(Gtk.Dialog):
                         f"{plan.files} Dateien, {plan.bytes / 1000**3:.1f} GB → NAS: /{GLib.markup_escape_text(rel)}")
         box.pack_start(head, False, False, 0)
         self.bar = Gtk.ProgressBar(show_text=True)
-        self.bar.set_text("Starte …")
+        self.bar.set_text("Wird gestartet …")
         box.pack_start(self.bar, False, False, 0)
         self.file = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.START)
         self.file.get_style_context().add_class("status-idle")
@@ -119,4 +119,4 @@ class CopyDialog(Gtk.Dialog):
     def _abort(self) -> None:
         self.cancel.set()
         self.btn.set_sensitive(False)
-        self.bar.set_text("Breche ab … (räume auf)")
+        self.bar.set_text("Wird abgebrochen … (aufräumen)")

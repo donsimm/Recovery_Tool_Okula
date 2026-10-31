@@ -446,7 +446,7 @@ def prepare(device: str, iso: str, server_ip: str, emit: Emit, key: bytes | None
     label = RESTORE_LABEL if restore else LABEL
     title = "Okula Restore-Stick" if restore else "Okula Recovery Agent"
 
-    progress(0.01, "Prüfe Stick und ISO")
+    progress(0.01, "Stick und ISO werden geprüft")
     disk = {d.path: d for d in list_usb_disks()}.get(device)
     if disk is None:
         raise StickError(f"{device} ist kein auswählbarer USB-Stick")
@@ -461,16 +461,16 @@ def prepare(device: str, iso: str, server_ip: str, emit: Emit, key: bytes | None
         raise StickError(f"Werkzeuge fehlen: {', '.join(missing)} – install.sh erneut ausführen")
     table = "label: dos\nstart=2048, type=c, bootable\n"
     if restore:
-        progress(0.02, "Prüfe Image")
+        progress(0.02, "Image wird geprüft")
         image_path, src = check_image(image, source_disk)
         image_size = tree_size(image_path)
         _boot_mib, table = restore_layout(iso_path.stat().st_size, image_size, disk.size)
 
     for mp in sorted(disk.mountpoints, reverse=True):
-        progress(0.02, f"Hänge {mp} aus")
+        progress(0.02, f"{mp} wird ausgehängt")
         _run(["umount", mp])
 
-    progress(0.04, "Partitioniere Stick")
+    progress(0.04, "Stick wird partitioniert")
     _run(["wipefs", "-a", device])
     _run(["sfdisk", "--wipe", "always", device], input=table)
     # Kernel die neue Tabelle sicher einlesen lassen (sfdisk scheitert damit still, wenn das Gerät kurz belegt ist)
@@ -485,10 +485,10 @@ def prepare(device: str, iso: str, server_ip: str, emit: Emit, key: bytes | None
     else:
         raise StickError(f"Partition {part} erscheint nicht")
 
-    progress(0.07, "Formatiere FAT32")
+    progress(0.07, "Formatieren (FAT32)")
     _run(["mkfs.vfat", "-F", "32", "-n", label, part])
     if data_part:
-        progress(0.08, "Formatiere Datenpartition (ext4)")
+        progress(0.08, "Datenpartition wird formatiert (ext4)")
         _run(["mkfs.ext4", "-q", "-F", "-L", DATA_LABEL, "-m", "0", data_part])
     iso_share = 0.25 if restore else 0.78
 
@@ -500,22 +500,22 @@ def prepare(device: str, iso: str, server_ip: str, emit: Emit, key: bytes | None
             try:
                 kernel, initrd = find_kernel(Path(iso_mnt) / "live")
                 copy_tree(Path(iso_mnt), Path(stick_mnt),
-                          lambda d, t: progress(0.10 + iso_share * d / t, f"Kopiere Live-System ({d * 100 // t} %)"))
+                          lambda d, t: progress(0.10 + iso_share * d / t, f"Live-System wird kopiert ({d * 100 // t} %)"))
                 at = 0.10 + iso_share
-                progress(at, "Schreibe Boot-Konfiguration")
+                progress(at, "Boot-Konfiguration wird geschrieben")
                 write_boot_config(Path(stick_mnt), kernel, initrd, label, title)
-                progress(at + 0.01, "Lade partclone/zstd und baue Layer")
+                progress(at + 0.01, "partclone/zstd werden geladen, Layer wird gebaut")
                 installed = read_installed_packages(Path(iso_mnt) / "live" / "filesystem.packages")
                 install_agent(Path(stick_mnt), server_ip, key if not restore else None, installed, bundle=True,
                               emit=emit, mode="restore" if restore else "agent")
                 if BIOS_GRUB_DIR.is_dir() and shutil.which("grub-install"):
-                    progress(0.91, "Installiere BIOS-Bootloader")
+                    progress(0.91, "BIOS-Bootloader wird installiert")
                     _run(["grub-install", "--target=i386-pc", f"--boot-directory={stick_mnt}/boot", device])
                 else:
                     emit("WARN", "grub-pc-bin/grub2-common fehlt: Stick bootet nur per UEFI")
                 if restore:
                     copy_image_to_data(data_part, image_path, src, source_disk, progress)
-                progress(0.97, "Schreibe Daten auf den Stick (sync)")
+                progress(0.97, "Daten werden auf den Stick geschrieben (sync)")
                 _run(["sync"])
             finally:
                 subprocess.run(["umount", stick_mnt], capture_output=True)
@@ -535,7 +535,7 @@ def copy_image_to_data(data_part: str, image: Path, src: dict, source_disk: str 
         try:
             install_image(Path(data_mnt), image, src, source_disk,
                           lambda d, t: progress(0.40 + 0.56 * d / t,
-                                                f"Kopiere Image ({d // 1000**2} / {t // 1000**2} MB)"))
+                                                f"Image wird kopiert ({d // 1000**2} / {t // 1000**2} MB)"))
             _run(["sync"])
         finally:
             subprocess.run(["umount", data_mnt], capture_output=True)

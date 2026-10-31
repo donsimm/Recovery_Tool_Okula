@@ -141,7 +141,7 @@ def choose_disk(ui: Ui, src: dict) -> dict | None:
 
 def restore(ui: Ui, src: dict, disk: dict) -> None:
     cancel = threading.Event()
-    bar = ConsoleBar(ui.console, "Prüfe das Image auf dem Stick …")
+    bar = ConsoleBar(ui.console, "Image auf dem Stick wird geprüft …")
     src["verify"](lambda ev: ev.get("phase") == "verify" and bar(ev.get("fraction", 0), "Prüfung", 0), cancel)
     bar.finish("» Image ist in Ordnung")
     bar = ConsoleBar(ui.console, f"Image wird auf {disk['name']} zurückgespielt – Maschine nicht ausschalten")

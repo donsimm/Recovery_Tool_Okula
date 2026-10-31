@@ -118,6 +118,7 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 31.10.2026
+- **Ä-024 Hilfe (F1) überarbeitet – Prüfung H1–H22** ([HILFE-PRUEFUNG.md](HILFE-PRUEFUNG.md)): Fehler korrigiert (Knopf „Verbindung testen“, Firewall-Ports inkl. Netzwerkstart, Optionen bei Image/Restore/Datei-Backup, Menünamen), neue Kapitel „Typischer Ablauf“, „Geräte verwalten“, „Master-Image“, „Inventar, Garantie, Win 11“, „Images verwalten“, „Probleme lösen“ ergänzt, Begriffe erklärt und vereinheitlicht. **Handbuch-Stil ohne Anrede** in Hilfe und Oberfläche; rund 80 Fortschritts- und Log-Texte von Ich-Form auf Vorgang („Stick wird geprüft …“). Regel in CLAUDE.md. Nur Texte, kein neuer Agent-Stick nötig.
 - **Ä-023 Win-11-Prozessorliste abgeglichen** (Microsoft Learn, Listen Original/24H2/25H2 für Intel, AMD, Qualcomm):
   tauglich = Serie steht in einer der Listen (24H2/25H2 gelten laut Microsoft für neue OEM-Geräte und lassen ältere
   Serien weg, z. B. Ryzen 2000). Neu ✔: Celeron 3000-Serie, Pentium Gold 4415U/4417U/4425Y, Core X 7000X, Xeon Scalable

@@ -246,7 +246,7 @@ def stream_disk_image(sock, disk_path: str, log: Callable[[str], None] = print,
                 raise ImagingError(r.stderr.decode(errors="replace").strip())
             _send_file(sock, name, [r.stdout], {}, lambda n: {})
         else:
-            log(f"Sichere {step['part']} ({step['fstype'] or 'unbekannt'}) …")
+            log(f"{step['part']} wird gesichert ({step['fstype'] or 'unbekannt'}) …")
             procs = _run_pipe(step["cmds"])
             progress = _Progress(procs[0].stderr)
             out = procs[-1].stdout
@@ -488,7 +488,7 @@ def prepare_target(target: dict, source: dict, steps: list[dict], sfdisk: str, h
     check_restore(target, source, steps)
     if len(head) < MBR_BOOTCODE:
         raise ImagingError("Image ohne Kopfbereich (head.img)")
-    log(f"Schreibe Partitionstabelle auf {target['path']} …")
+    log(f"Partitionstabelle wird auf {target['path']} geschrieben …")
     write_partition_table(target, source, sfdisk, head)
     devices = {}
     for s in steps:
@@ -537,7 +537,7 @@ def restore_disk(sock, req: dict, log: Callable[[str], None] = print, report: Re
         if msg.get("type") != "file" or msg.get("file") not in by_file:
             raise ImagingError(f"Unerwartete Datei: {msg.get('file')}")
         step = by_file[msg["file"]]
-        log(f"Schreibe {step['part']} → {devices[step['part']]} …")
+        log(f"{step['part']} wird geschrieben → {devices[step['part']]} …")
         before = received
         _pipe_into(restore_command(step, devices[step["part"]]), _frames(sock, step), step,
                    (lambda n, p=step["part"], b=before: report((b + n) / total, p, b + n)) if report else None)
@@ -557,7 +557,7 @@ def restore_local(target_path: str, src: dict, log: Callable[[str], None] = prin
     total = sum(int(s.get("size") or 0) for s in files) or 1
     done = 0
     for step in files:
-        log(f"Schreibe {step['part']} → {devices[step['part']]} …")
+        log(f"{step['part']} wird geschrieben → {devices[step['part']]} …")
         before = done
         _pipe_into(restore_command(step, devices[step["part"]]), read_pieces(step["pieces"]), step,
                    (lambda n, p=step["part"], b=before: report((b + n) / total, p, b + n)) if report else None)

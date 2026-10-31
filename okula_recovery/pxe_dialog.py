@@ -204,22 +204,22 @@ class PxeDialog(Gtk.Dialog):
     def prepare(self) -> None:
         iso, server = self.iso.get_active_id(), self.server.get_active_id()
         self._run(["prepare", "--iso", iso, "--server", server], self.main.key.hex() + "\n",
-                  f"Bereite Netzwerkstart vor ({Path(iso).name}, Server {server}) – dauert einige Minuten …")
+                  f"Netzwerkstart wird vorbereitet ({Path(iso).name}, Server {server}) – dauert einige Minuten …")
 
     def switch(self, on: bool) -> None:
         if not on:
-            self._run(["stop"], "", "Schalte Netzwerkstart aus …")
+            self._run(["stop"], "", "Netzwerkstart wird ausgeschaltet …")
             return
         server = self.server.get_active_id()
         modes = devices.netboot_modes(self.main.store.devices.values())
         self._run(["allow"], "".join(f"{m} {mode}\n" for m, mode in modes.items()),
-                  f"Schalte {len(modes)} MAC-Adressen frei …",
-                  then=lambda: self._run(["start", "--server", server], "", "Starte Netzwerkstart …"))
+                  f"MAC-Adressen werden freigeschaltet ({len(modes)}) …",
+                  then=lambda: self._run(["start", "--server", server], "", "Netzwerkstart wird gestartet …"))
 
     def download(self) -> None:
         self.busy = True
         self.update()
-        self._log(f"Lade Debian-Live-ISO von {isofetch.BASE_URL}")
+        self._log(f"Debian-Live-ISO wird geladen von {isofetch.BASE_URL}")
 
         def work():
             try:

@@ -46,13 +46,13 @@ def cached_isos() -> list[Path]:
 def fetch(progress: Progress, base_url: str = BASE_URL, dest: Path | None = None) -> Path:
     dest = dest or cache_dir()
     dest.mkdir(parents=True, exist_ok=True)
-    progress(0.0, "Lade Prüfsummen")
+    progress(0.0, "Prüfsummen werden geladen")
     with urllib.request.urlopen(base_url + "SHA512SUMS", timeout=30) as r:
         name, digest = parse_sums(r.read().decode())
 
     target = dest / name
     if target.is_file():
-        progress(0.0, f"Prüfe vorhandenes {name}")
+        progress(0.0, f"Vorhandene Datei {name} wird geprüft")
         if sha512_file(target) == digest:
             progress(1.0, f"{name} ist aktuell")
             return target
@@ -65,8 +65,8 @@ def fetch(progress: Progress, base_url: str = BASE_URL, dest: Path | None = None
             f.write(chunk)
             done += len(chunk)
             if total:
-                progress(done / total * 0.95, f"Lade {name}: {done // 2**20} / {total // 2**20} MiB")
-    progress(0.96, "Prüfe SHA512")
+                progress(done / total * 0.95, f"{name} wird geladen: {done // 2**20} / {total // 2**20} MiB")
+    progress(0.96, "SHA512 wird geprüft")
     if sha512_file(part) != digest:
         part.unlink(missing_ok=True)
         raise ValueError("SHA512 stimmt nicht – Download verworfen")

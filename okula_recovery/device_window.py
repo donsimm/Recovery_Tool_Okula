@@ -162,8 +162,8 @@ class DeviceWindow(Gtk.Window):
         self.log = Gtk.TextView(editable=False, cursor_visible=False, monospace=True,
                                 wrap_mode=Gtk.WrapMode.WORD_CHAR)
         box.pack_start(scrolled(self.log), True, True, 0)
-        self.no_jobs = Gtk.Label(label="Noch keine Aufträge in dieser Sitzung. Aufträge starten Sie oben über "
-                                       "„Disk-Image erstellen“ oder „Image zurückspielen“.", xalign=0, wrap=True,
+        self.no_jobs = Gtk.Label(label="Noch keine Aufträge in dieser Sitzung. Aufträge oben über „Disk-Image erstellen“ "
+                                       "oder „Image zurückspielen“ starten.", xalign=0, wrap=True,
                                  no_show_all=True)  # Sichtbarkeit steuert refresh_jobs, nicht show_all
         self.no_jobs.get_style_context().add_class("status-idle")
         box.pack_start(self.no_jobs, False, False, 0)

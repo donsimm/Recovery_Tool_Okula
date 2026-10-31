@@ -158,7 +158,7 @@ class _UsbDialog(Gtk.Dialog):
                                                          "Der Ziel-Datenträger bleibt unvollständig und muss danach "
                                                          "neu beschrieben werden.", ok_label="Abbrechen"):
                 self.btn_cancel.set_sensitive(False)
-                self._log("Breche ab …")
+                self._log("Wird abgebrochen …")
                 self.run_handle.cancel()
         elif not self.busy:
             self.destroy()
@@ -260,7 +260,7 @@ class CloneDialog(_UsbDialog):
             return
         mode = "raw" if self.raw.get_active() else "smart"
         args = ["--source", s, "--target", d, "--mode", mode] + (["--verify"] if self.verify.get_active() else [])
-        self.run_helper("usb-clone", args, f"Klone {s} → {d} ({'1:1' if mode == 'raw' else 'nur belegte Bereiche'}) …")
+        self.run_helper("usb-clone", args, f"Klonen {s} → {d} ({'1:1' if mode == 'raw' else 'nur belegte Bereiche'}) …")
 
 
 SCHEMES = {"mbr": "MBR – passt überall (Windows, Mac, TV, ältere PCs), bis 2 TB",
@@ -400,4 +400,4 @@ class FormatDialog(_UsbDialog):
             return
         args = ["--device", dev, "--fs", spec.key, "--scheme", self.scheme.get_active_id(),
                 "--label", self.label.get_text().strip(), "--prep", self.prep.get_active_id()]
-        self.run_helper("usb-format", args, f"Formatiere {dev} als {spec.title} …")
+        self.run_helper("usb-format", args, f"{dev} wird als {spec.title} formatiert …")

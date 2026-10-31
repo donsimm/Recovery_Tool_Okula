@@ -276,7 +276,7 @@ class StickDialog(Gtk.Dialog):
 
     def on_download(self, _btn) -> None:
         self._set_busy(True)
-        self.append_log(f"Lade Debian-Live-ISO von {isofetch.BASE_URL}")
+        self.append_log(f"Debian-Live-ISO wird geladen von {isofetch.BASE_URL}")
 
         def progress(frac: float, msg: str) -> None:
             GLib.idle_add(self._on_progress, frac, msg)
@@ -335,7 +335,7 @@ class StickDialog(Gtk.Dialog):
 
         key_hex = agentclient.load_or_create_key().hex()
         self._set_busy(True)
-        self.append_log(f"Erstelle {'Restore-Stick' if self.image else 'Agent-Stick'} auf {device} …")
+        self.append_log(f"{'Restore-Stick' if self.image else 'Agent-Stick'} wird auf {device} erstellt …")
         run_helper(cmd, key_hex + "\n", self._on_progress, self.append_log, self._on_written)
 
     def _on_written(self, ok: bool, error: str) -> bool:

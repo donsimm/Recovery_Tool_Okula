@@ -99,7 +99,7 @@ class BackupDialog(Gtk.Dialog):
                         "Caches. Partitionen werden nur lesend eingehängt – am Gerät ändert sich nichts.</small>")
         hint.get_style_context().add_class("status-idle")
         box.pack_start(hint, False, False, 0)
-        self.status = Gtk.Label(label="Lese Partitionen und Benutzer vom Agent …", xalign=0, wrap=True)
+        self.status = Gtk.Label(label="Partitionen und Benutzer werden vom Agent gelesen …", xalign=0, wrap=True)
         self.status.get_style_context().add_class("status-idle")
         box.pack_start(self.status, False, False, 0)
         self.get_content_area().add(box)
@@ -293,7 +293,7 @@ class BackupDialog(Gtk.Dialog):
     def _estimate(self) -> None:
         sources, _desc = self.selection()
         self.btn_estimate.set_sensitive(False)
-        self.estimate_label.set_text("Zähle Dateien auf dem Gerät …")
+        self.estimate_label.set_text("Dateien auf dem Gerät werden gezählt …")
         _bg(lambda: backups.estimate(self.agent.ip, self.key, self.agent.control_port, sources), self._on_estimate)
 
     def _on_estimate(self, result) -> bool:
@@ -410,7 +410,7 @@ class RestoreFilesDialog(Gtk.Dialog):
         self.show_all()
         self.map_combos: list[tuple[str, Gtk.ComboBoxText, Gtk.Entry | None]] = []
         if agent is not None:
-            self.status.set_text("Lese Partitionen und Benutzer des Geräts …")
+            self.status.set_text("Partitionen und Benutzer des Geräts werden gelesen …")
             _bg(lambda: backups.get_profiles(agent.ip, self.key, agent.control_port), self._on_targets)
         self._update()
 

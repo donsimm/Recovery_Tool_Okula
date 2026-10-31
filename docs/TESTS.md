@@ -101,6 +101,8 @@ bestätigt.
 - [ ] Tool schliessen → Demo-Prozess ist beendet
 
 ### 7. Allgemein
+- [ ] **Hilfe (F1):** alle Kapitel öffnen – Text vollständig, keine Formatierungsfehler, Menü- und Knopfnamen stimmen (Ä-024)
+- [ ] Fortschrittstexte in neuer Form („Stick wird geprüft …“) bei Agent-Stick erstellen und USB formatieren
 - [ ] Ä-021: OS installieren → Windows-11-ISO auf einem nicht tauglichen Gerät (z. B. 4.–7. Gen. Intel) → Grund und Microsoft-Hinweise sichtbar, „Installieren“ erst mit Häkchen „Trotzdem installieren“; danach Gerätefenster → Übersicht → Windows 11 zeigt „⚠ Am … trotzdem installiert“, Verlauf-Eintrag, Inventar-Export Spalte Win-11 mit Vermerk; auf tauglichem Gerät erscheint nichts davon
 - [ ] Ä-021: Boot-Stick aus Windows-11-ISO → „Auch für nicht unterstützte Hardware“ ist aus; Einschalten fragt nach; Stick auf altem Gerät: ohne Häkchen meldet Setup „Dieser PC erfüllt die Anforderungen nicht“, mit Häkchen läuft es durch
 - [ ] Ä-018: Automatisierung durchlaufen lassen → Liste „wieder aktiv in 3 Tagen“, Verlauf „wird in 3 Tagen wieder eingeschaltet“

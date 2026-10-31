@@ -1031,7 +1031,7 @@ class MainWindow(Gtk.ApplicationWindow):
             dlg = CopyDialog(self, root, rel, plan, done)
             self.copies.add(dlg)
 
-        self.status("Ermittle Umfang …")
+        self.status("Umfang wird ermittelt …")
         run_async(lambda: nasfiles.plan_copy(paths), planned)
 
     # ---------- Fenster ----------
@@ -1176,7 +1176,7 @@ class MainWindow(Gtk.ApplicationWindow):
     def _confirm_delete(self, root: str, rel: str, names: list[str], parent: Gtk.Window | None = None,
                         extra: str = "") -> None:
         """Erst Umfang zählen (kann bei Images dauern), dann nachfragen, dann löschen."""
-        self.status("Ermittle Umfang …")
+        self.status("Umfang wird ermittelt …")
 
         def ask(result) -> None:
             if isinstance(result, Exception):
@@ -1189,7 +1189,7 @@ class MainWindow(Gtk.ApplicationWindow):
                            "Das NAS hat keinen Papierkorb für das Tool – gelöschte Daten sind weg."):
                 self.status("Löschen abgebrochen")
                 return
-            self.status(f"Lösche {what} …")
+            self.status(f"Wird gelöscht: {what} …")
             self._file_op(lambda: nasfiles.delete(root, rel, names), f"{what} gelöscht")
 
         run_async(lambda: nasfiles.measure(root, rel, names), ask)
@@ -2192,7 +2192,7 @@ class MainWindow(Gtk.ApplicationWindow):
         """Garantie beim Hersteller abfragen (Knopfdruck oder einmal nach dem Erfassen) – im Hintergrund."""
         if button is not None:
             button.set_sensitive(False)
-            button.set_label("Frage ab …")
+            button.set_label("Wird abgefragt …")
         inv = dict(dev.inventory)
 
         def work():

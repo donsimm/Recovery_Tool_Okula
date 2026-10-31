@@ -206,7 +206,7 @@ def install(sock, req: dict, log: Callable[[str], None] = print, report: Report 
     table = layout(int(target["size"]), int(req.get("setup_size") or 0), int(req.get("min_disk") or 0))
     report = report or (lambda f, p, n: None)
 
-    log(f"Partitioniere {disk} für die Windows-Installation …")
+    log(f"{disk} wird für die Windows-Installation partitioniert …")
     _run(["wipefs", "-a", disk])
     _run(["sfdisk", "--wipe", "always", disk], input=table)
     subprocess.run(["partx", "-u", disk], capture_output=True)
@@ -252,7 +252,7 @@ def install(sock, req: dict, log: Callable[[str], None] = print, report: Report 
         if split:
             if staged is None:
                 raise ImagingError("install.wim wurde nicht übertragen")
-            log("Teile install.wim in install.swm-Teile …")
+            log("install.wim wird in install.swm-Teile aufgeteilt …")
             swm = _safe(setup_dir, str(PurePosixPath(split["path"]).with_name("install.swm")))
             wim_size = staged.stat().st_size
 
@@ -317,7 +317,7 @@ def bootprep(sock, req: dict, log: Callable[[str], None] = print, report: Report
     boot = req.get("boot") or {}
     report = report or (lambda f, p, n: None)
 
-    log(f"Partitioniere {disk} für die Installation …")
+    log(f"{disk} wird für die Installation partitioniert …")
     _run(["wipefs", "-a", disk])
     _run(["sfdisk", "--wipe", "always", disk], input=table)
     subprocess.run(["partx", "-u", disk], capture_output=True)

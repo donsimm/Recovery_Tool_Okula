@@ -174,7 +174,7 @@ def badblocks_test(device: str, progress: Progress) -> None:
         found = BADBLOCKS_RE.findall(text)
         if found:
             progress((phase + float(found[-1]) / 100) / 2,
-                     ("Prüfe Blöcke: schreiben" if phase == 0 else "Prüfe Blöcke: lesen") + f" {found[-1]} %")
+                     ("Blocktest: schreiben" if phase == 0 else "Blocktest: lesen") + f" {found[-1]} %")
     rc = proc.wait()
     reader.join()
     proc.stdout.close()
@@ -237,7 +237,7 @@ def write_dd(iso: Path, device: str, dev_size: int, compression: str, verify: bo
                     last_sync = written
                 total = expected or max(written, 1)
                 progress(min(0.99, written / total) * (0.75 if verify else 1.0),
-                         f"Schreibe Abbild {written / 1000**2:.0f} / {total / 1000**2:.0f} MB")
+                         f"Abbild wird geschrieben: {written / 1000**2:.0f} / {total / 1000**2:.0f} MB")
         finally:
             src.close()
             if proc and proc.wait() != 0:
@@ -250,7 +250,7 @@ def write_dd(iso: Path, device: str, dev_size: int, compression: str, verify: bo
                 n = min(4 * BLOCK, written - done)
                 check.update(os.pread(fd, n, done))
                 done += n
-                progress(0.75 + 0.25 * done / written, f"Prüfe Stick {done * 100 // written} %")
+                progress(0.75 + 0.25 * done / written, f"Stick wird geprüft: {done * 100 // written} %")
             if check.digest() != h.digest():
                 raise StickError("Lesevergleich fehlgeschlagen: der Stick speichert nicht zuverlässig")
     finally:
@@ -279,7 +279,7 @@ def _wim_source(iso: Path, img: udf.UdfImage, wim: udf.Entry, workdir: Path, pro
         for chunk in img.chunks(wim):
             out.write(chunk)
             done += len(chunk)
-            progress(done / wim.size, "Lese install.wim")
+            progress(done / wim.size, "install.wim wird gelesen")
     return target, None
 
 
@@ -307,7 +307,7 @@ def copy_windows(iso: Path, dest: Path, unattend: str | None, progress: Progress
                 for chunk in img.chunks(e):
                     out.write(chunk)
                     done += len(chunk)
-                    progress(0.9 * done / total, f"Kopiere {path}")
+                    progress(0.9 * done / total, f"{path} wird kopiert")
                 if e.size > 64 * BLOCK:
                     out.flush()
                     os.fsync(out.fileno())
@@ -363,7 +363,7 @@ def copy_iso9660(iso: Path, dest: Path, progress: Progress) -> None:
     t.start()
     while proc.poll() is None:
         used = sum(f.stat().st_size for f in dest.rglob("*") if f.is_file())
-        progress(0.9 * min(1.0, used / total), "Kopiere Dateien")
+        progress(0.9 * min(1.0, used / total), "Dateien werden kopiert")
         time.sleep(1)
     t.join()
     if proc.returncode != 0:
@@ -384,7 +384,7 @@ def prepare(device: str, iso: str, mode: str, emit: Emit, scheme: str = "mbr", l
     def progress(frac: float, msg: str) -> None:
         emit("PROGRESS", f"{max(0.0, min(1.0, frac)):.3f} {msg}")
 
-    progress(0.0, "Prüfe Stick und ISO")
+    progress(0.0, "Stick und ISO werden geprüft")
     disk = {d.path: d for d in stick.list_usb_disks()}.get(device)
     if disk is None:
         raise StickError(f"{device} ist kein auswählbarer USB-Stick")
@@ -402,7 +402,7 @@ def prepare(device: str, iso: str, mode: str, emit: Emit, scheme: str = "mbr", l
         raise StickError(f"Stick zu klein: {disk.size / 1000**3:.1f} GB, nötig {need / 1000**3:.1f} GB")
 
     for mp in sorted(disk.mountpoints, reverse=True):
-        progress(0.01, f"Hänge {mp} aus")
+        progress(0.01, f"{mp} wird ausgehängt")
         _run(["umount", mp])
 
     # Anteile am Fortschritt: Prüfen vorher, dann Schreiben
@@ -423,9 +423,9 @@ def prepare(device: str, iso: str, mode: str, emit: Emit, scheme: str = "mbr", l
         bios = mode == "windows" and scheme == "mbr" and meta.get("bios")
         table = (f"label: gpt\nstart=2048, type={GPT_BASIC_DATA}\n" if scheme == "gpt"
                  else "label: dos\nstart=2048, type=c, bootable\n")
-        write(0.0, "Partitioniere Stick")
+        write(0.0, "Stick wird partitioniert")
         part = _partition(device, table)
-        write(0.01, "Formatiere FAT32")
+        write(0.01, "Formatieren (FAT32)")
         _format(part, (label or fat_label(meta))[:11])
         with tempfile.TemporaryDirectory(prefix="okula-osstick-") as mnt, \
                 tempfile.TemporaryDirectory(prefix="okula-wim-", dir="/var/tmp") as work:
@@ -437,12 +437,12 @@ def prepare(device: str, iso: str, mode: str, emit: Emit, scheme: str = "mbr", l
                 else:
                     copy_iso9660(iso_path, Path(mnt), files)
                 if bios:
-                    progress(0.95, "Installiere BIOS-Bootloader")
+                    progress(0.95, "BIOS-Bootloader wird installiert")
                     if not install_bios_loader(device, Path(mnt)):
                         emit("WARN", "grub-pc-bin fehlt: Stick startet nur per UEFI")
                 elif scheme == "mbr" and mode != "windows":
                     emit("WARN", "Dateimodus: Stick startet nur per UEFI")
-                progress(0.97, "Schreibe Daten auf den Stick (sync)")
+                progress(0.97, "Daten werden auf den Stick geschrieben (sync)")
                 _run(["sync"])
             finally:
                 subprocess.run(["umount", mnt], capture_output=True)

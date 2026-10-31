@@ -217,7 +217,7 @@ class NasDialog(Gtk.Dialog):
         cfg = self.form()
         self.btn_test.set_sensitive(False)
         self.spinner.start()
-        self._set_status("Prüfe Verbindung …", "idle")
+        self._set_status("Verbindung wird geprüft …", "idle")
         self._test_run += 1
         run = self._test_run
         run_async(lambda: nas.test_connection(cfg), lambda result: self._on_tested(result, run))
@@ -247,7 +247,7 @@ class NasDialog(Gtk.Dialog):
         password = self.password.get_text() if self._is_smb() else ""
         self._store()
         self.spinner.start()
-        self._set_status("Hänge NAS ein …", "idle")
+        self._set_status("NAS wird eingehängt …", "idle")
         run_async(lambda: nas.mount(cfg, password), self._on_mounted)
 
     def _on_mounted(self, result) -> None:

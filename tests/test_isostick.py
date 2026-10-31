@@ -75,7 +75,7 @@ class IsoStickTest(unittest.TestCase):
         self.assertEqual(self.events[-1][0], "DONE")
         prog = self.progress()
         self.assertEqual(prog, sorted(prog), "Fortschritt darf nicht zurückspringen")
-        self.assertTrue(any("Prüfe Stick" in t for _k, t in self.events), "Lesevergleich fehlt")
+        self.assertTrue(any("Stick wird geprüft" in t for _k, t in self.events), "Lesevergleich fehlt")
         self.assertTrue(any("Schnelltest" in t for _k, t in self.events))
 
     def test_dd_compressed_image(self):

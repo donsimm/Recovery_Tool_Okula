@@ -125,7 +125,7 @@ class RestoreDialog(Gtk.Dialog):
 
         row += 1
         self.progress = Gtk.ProgressBar(show_text=True)
-        self.progress.set_text("Lade Images und Disks …")
+        self.progress.set_text("Images und Disks werden geladen …")
         grid.attach(self.progress, 0, row, 2, 1)
         row += 1
         self.log = Gtk.TextView(editable=False, cursor_visible=False, monospace=True,
@@ -256,7 +256,7 @@ class RestoreDialog(Gtk.Dialog):
         intro = f"<b>Zieldisk kleiner als das Image:</b> {_gb(disk['size'])} &lt; {_gb(need)}. "
         if result is None:
             self._shrink_checked[key] = "…"
-            self.check.set_markup(intro + "Prüfe, ob sich das Image anpassen lässt …")
+            self.check.set_markup(intro + "Wird geprüft, ob sich das Image anpassen lässt …")
 
             def work():
                 from okula_recovery import shrink

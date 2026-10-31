@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from okula_recovery.ui import MainWindow
 
 HINT = ("Die Automatisierung läuft einmal und schaltet sich nach erfolgreichem Durchlauf selbst aus. Nach 3 Tagen "
-        "schaltet sie sich wieder ein (abschaltbar). Sie startet 30 Sekunden, nachdem das Gerät im LAN auftaucht "
+        "schaltet sie sich wieder ein (abschaltbar). Die Automatisierung startet 30 Sekunden, nachdem das Gerät im LAN auftaucht "
         "(Agent-Stick oder Netzwerkstart) – am Gerät bricht Esc ab.")
 
 
@@ -249,7 +249,7 @@ class AutomationTab(Gtk.Box):
                                                                     "digitale Lizenz"
         self.custom_text.set_text(
             f"Gerätename „{self.dev.name}“ → {computer_name_text(self.dev.name)} · Linux: "
-            f"{linuxsetup.hostname(self.dev.name)}\nWindows-Key: {key_text}\n"
+            f"{linuxsetup.hostname(self.dev.name)}\nWindows-Schlüssel: {key_text}\n"
             "Nur bei Master-Images (mit Sysprep). Name ändern: Gerät oben umbenennen.")
         missing = automation.problems(s, self.main._nas_root())
         self.problems.set_text(("Noch nötig: " + " · ".join(missing)) if missing else "")

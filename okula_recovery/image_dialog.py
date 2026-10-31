@@ -96,7 +96,7 @@ class ImageDialog(Gtk.Dialog):
 
         row += 1
         self.progress = Gtk.ProgressBar(show_text=True)
-        self.progress.set_text("Lese Disks vom Agent …")
+        self.progress.set_text("Disks werden vom Agent gelesen …")
         self.progress.set_tooltip_text("Der Auftrag läuft nach dem Start im Hintergrund – Fortschritt und Log "
                                        "im Gerätefenster")
         grid.attach(self.progress, 0, row, 2, 1)

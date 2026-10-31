@@ -188,7 +188,7 @@ def _usb_disk(device: str) -> stick.UsbDisk:
 
 def _unmount(disk: stick.UsbDisk, progress: Progress) -> None:
     for mp in sorted(disk.mountpoints, reverse=True):
-        progress(0.0, f"Hänge {mp} aus")
+        progress(0.0, f"{mp} wird ausgehängt")
         r = subprocess.run(["umount", mp], capture_output=True, text=True)
         if r.returncode != 0:
             raise StickError(f"{mp} lässt sich nicht aushängen (noch geöffnet?): {r.stderr.strip()}")
@@ -275,7 +275,7 @@ def compare_range(src: str, dst: str, length: int, progress: Progress) -> None:
                 _drop(fb)
             if time.monotonic() - last >= 0.5 or done == length:
                 last = time.monotonic()
-                progress(done / length, f"Vergleiche · {rate_text(done, length, started)}")
+                progress(done / length, f"Vergleich · {rate_text(done, length, started)}")
     finally:
         os.close(fa)
         os.close(fb)
@@ -297,7 +297,7 @@ def write_zeros(device: str, size: int, progress: Progress) -> None:
                 since_sync = 0
             if time.monotonic() - last >= 0.5 or done == size:
                 last = time.monotonic()
-                progress(done / size, f"Überschreibe mit Nullen · {rate_text(done, size, started)}")
+                progress(done / size, f"Überschreiben mit Nullen · {rate_text(done, size, started)}")
         os.fsync(fd)
     finally:
         os.close(fd)
@@ -419,7 +419,7 @@ def clone(source: str, target: str, mode: str, verify: bool, emit: Emit) -> None
     def sub(start: float, share: float) -> Progress:
         return lambda f, m: progress(start + share * f, m)
 
-    progress(0.0, "Prüfe Datenträger")
+    progress(0.0, "Datenträger wird geprüft")
     if source == target:
         raise StickError("Quelle und Ziel sind derselbe Datenträger")
     src, dst = _usb_disk(source), _usb_disk(target)
@@ -442,11 +442,11 @@ def clone(source: str, target: str, mode: str, verify: bool, emit: Emit) -> None
 
     if mode == "raw":
         share = 0.5 if verify else 0.98
-        copy_range(source, target, src_size, sub(0.01, share), "Kopiere 1:1")
+        copy_range(source, target, src_size, sub(0.01, share), "1:1-Kopie")
         if verify:
             compare_range(source, target, src_size, sub(0.01 + share, 0.47))
         if table and table.get("label") == "gpt" and dst_size > src_size:
-            progress(0.99, "Verschiebe Reserve-Partitionstabelle ans Ende")
+            progress(0.99, "Reserve-Partitionstabelle wird ans Ende verschoben")
             subprocess.run(["sfdisk", "--relocate", "gpt-bak-std", target], capture_output=True)
     else:
         ss = sector_size(source)
@@ -476,7 +476,7 @@ def clone(source: str, target: str, mode: str, verify: bool, emit: Emit) -> None
                 copy_range(p.node, dst_node, p.size, step,
                            f"{name} ({p.fstype or 'ohne Dateisystem'}, 1:1) {i}/{len(real)}")
             done += p.size
-        progress(0.99, "Schreibe Puffer auf das Ziel (sync)")
+        progress(0.99, "Puffer wird auf das Ziel geschrieben (sync)")
         _run(["sync"])
         if verify:
             emit("WARN", "Vergleich gibt es nur bei „Alles 1:1“ (belegte Bereiche unterscheiden sich im freien Platz)")
@@ -513,7 +513,7 @@ def format_disk(device: str, fs: str, scheme: str, label: str, prep: str, emit: 
         raise StickError(f"Unbekanntes Dateisystem: {fs}")
     if not available(spec):
         raise StickError(f"{spec.title}: Programm {spec.tool} fehlt (Paket {spec.package} installieren)")
-    progress(0.0, "Prüfe Datenträger")
+    progress(0.0, "Datenträger wird geprüft")
     disk = _usb_disk(device)
     size = device_size(device)
     if scheme == "mbr" and size > MBR_LIMIT and sector_size(device) == 512 and fs != "none":
@@ -533,7 +533,7 @@ def format_disk(device: str, fs: str, scheme: str, label: str, prep: str, emit: 
     elif prep == "full":
         isostick.badblocks_test(device, sub(0.01, pre))
 
-    progress(0.01 + pre, "Lösche alte Kennungen")
+    progress(0.01 + pre, "Alte Kennungen werden gelöscht")
     _run(["wipefs", "-a", device])  # auch die Reserve-GPT am Ende
     if fs == "none":
         progress(1.0, "Fertig")
@@ -543,21 +543,21 @@ def format_disk(device: str, fs: str, scheme: str, label: str, prep: str, emit: 
     if table is None:
         target = device
     else:
-        progress(0.02 + pre, "Lege Partition an")
+        progress(0.02 + pre, "Partition wird angelegt")
         _run(["sfdisk", "--wipe", "always", "--wipe-partitions", "always", device], input=table)
         _settle(device)
         target = stick.partition_path(device)
         _wait_for(target)
         _run(["wipefs", "-a", target])
-    progress(0.05 + pre * 0.95, f"Formatiere {spec.title}")
+    progress(0.05 + pre * 0.95, f"Formatieren ({spec.title})")
     _run(mkfs_command(spec, target, label))
     if spec.linux and owner:
-        progress(0.95, "Setze Besitzer (damit du ohne root schreiben kannst)")
+        progress(0.95, "Besitzer wird gesetzt (Schreiben ohne root möglich)")
         try:
             _set_owner(target, *owner)
         except StickError as e:
             emit("WARN", f"Besitzer nicht gesetzt ({e}) – Schreiben braucht dann root")
-    progress(0.98, "Schreibe Puffer (sync)")
+    progress(0.98, "Puffer wird geschrieben (sync)")
     _run(["sync"])
     _settle(device)
     progress(1.0, "Fertig")

@@ -186,7 +186,7 @@ def image_work(ip: str, key: bytes, port: int, disk: dict, nas_root: str, machin
                 if state["part"] and state["part"] != ev.get("part"):
                     done_parts.add(state["part"])
                 state["part"] = ev.get("part", "")
-                jm.log(job, f"Übertrage {ev.get('file')}")
+                jm.log(job, f"{ev.get('file')} wird übertragen")
             elif phase == "data":
                 part, pct = ev.get("part") or state["part"], ev.get("pct")
                 done = sum(sizes.get(p, 0) for p in done_parts)
@@ -221,13 +221,13 @@ def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source
                 f = ev.get("fraction", 0)
                 if ev.get("file") and ev["file"] != state["file"]:
                     state["file"] = ev["file"]
-                    jm.log(job, f"Prüfe {ev['file']}")
+                    jm.log(job, f"{ev['file']} wird geprüft")
                 jm.progress(job, f * 0.3, ev.get("file", ""), "Image prüfen (1/2)", f)
             elif phase == "table":
                 jm.log(job, ("Image geprüft. Schritt 2/2: " if verify else "") + "schreibe Partitionstabelle und Bootcode")
                 jm.progress(job, 0.3 if verify else 0.0, "Partitionstabelle", "Zurückspielen (2/2)" if verify else "", 0)
             elif phase == "file":
-                jm.log(job, f"Schreibe {ev.get('part')} ({ev.get('file')})")
+                jm.log(job, f"{ev.get('part')} wird geschrieben ({ev.get('file')})")
             elif phase == "data":
                 # Gesamt: Prüfung = erste 30 %, Schreiben = Rest; angezeigt wird der Schritt
                 base = 0.3 if verify else 0.0
@@ -278,7 +278,7 @@ def install_work(ip: str, key: bytes, port: int, iso: str, index: int, opts, dis
     def work(job: Job, jm: JobManager) -> str:
         state = {"files": 0}
         try:
-            jm.log(job, "Lese das Windows-Medium auf dem NAS")
+            jm.log(job, "Windows-Medium auf dem NAS wird gelesen")
             plan = winsetup.plan(iso, index, opts)
         except Exception as e:
             after(job, None, e)
@@ -294,9 +294,9 @@ def install_work(ip: str, key: bytes, port: int, iso: str, index: int, opts, dis
             elif phase == "file":
                 state["files"] += 1
                 if state["files"] == 1:
-                    jm.log(job, "Übertrage die Setup-Dateien aus der ISO")
+                    jm.log(job, "Setup-Dateien aus der ISO werden übertragen")
                 if ev.get("file", "").lower().startswith("sources/install."):
-                    jm.log(job, f"Übertrage {ev['file']}")
+                    jm.log(job, f"{ev['file']} wird übertragen")
             elif phase == "data":
                 f = ev.get("fraction", 0)
                 jm.progress(job, f * (0.8 if plan.split else 1.0),
@@ -329,7 +329,7 @@ def linux_install_work(ip: str, key: bytes, port: int, iso: str, meta: dict, dis
 
     def work(job: Job, jm: JobManager) -> str:
         try:
-            jm.log(job, "Bereite die Bootdateien vor (aus der ISO" +
+            jm.log(job, "Bootdateien werden vorbereitet (aus der ISO" +
                    (", Debian-Netzwerk-Installer von deb.debian.org)" if linuxsetup.kind(meta) == "debian" else ")"))
             plan = linuxsetup.plan(iso, meta, disk, disk_size, opts)
         except Exception as e:
@@ -348,7 +348,7 @@ def linux_install_work(ip: str, key: bytes, port: int, iso: str, meta: dict, dis
                 elif phase == "file":
                     state["files"] += 1
                     if ev.get("file", "").endswith(".iso"):
-                        jm.log(job, f"Übertrage {ev['file']}")
+                        jm.log(job, f"{ev['file']} wird übertragen")
                 elif phase == "data":
                     jm.progress(job, ev.get("fraction", 0),
                                 f"{state['files']}/{len(plan.files)} Dateien · {ev.get('speed', 0) / 1e6:.0f} MB/s")

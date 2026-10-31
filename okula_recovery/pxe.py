@@ -376,7 +376,7 @@ def prepare(iso: str, server: str, key: bytes, emit: Emit, base: Path = PXE_DIR,
     http.mkdir()
     os.chmod(http, 0o700)   # enthält den Agent-Schlüssel – nur root (HTTP-Dienst)
     try:
-        progress(0.02, "Lese Live-System aus der ISO (gut 1 GB)")
+        progress(0.02, "Live-System wird aus der ISO gelesen (gut 1 GB)")
         live = new / "live"
         _run(["xorriso", "-osirrox", "on", "-indev", str(iso_path), "-extract", "/live", str(live)])
         for p in [live, *live.rglob("*")]:
@@ -384,12 +384,12 @@ def prepare(iso: str, server: str, key: bytes, emit: Emit, base: Path = PXE_DIR,
         kernel, initrd = stick.find_kernel(live)
         if not (live / "filesystem.squashfs").is_file():
             raise PxeError("filesystem.squashfs fehlt – ist das ein Debian-Live-ISO?")
-        progress(0.45, "Baue Agent-Teil (mit Schlüssel und partclone)")
+        progress(0.45, "Agent-Teil wird gebaut (mit Schlüssel und partclone)")
         installed = stick.read_installed_packages(live / "filesystem.packages")
         stick.install_agent(new, server, key, installed, bundle=True, emit=emit)
-        progress(0.75, "Hole Bootlader")
+        progress(0.75, "Bootlader wird geholt")
         bootloaders(tftp, emit)
-        progress(0.85, "Lege Startdateien an")
+        progress(0.85, "Startdateien werden angelegt")
         shutil.move(str(live / kernel), tftp / "okula" / "vmlinuz")
         (tftp / "okula" / "initrd.img").write_bytes(combine_initrd((live / initrd).read_bytes()))
         shutil.move(str(live / "filesystem.squashfs"), http / "filesystem.squashfs")

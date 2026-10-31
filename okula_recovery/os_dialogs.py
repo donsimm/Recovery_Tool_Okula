@@ -102,7 +102,7 @@ class UploadDialog(Gtk.Window):
             if self.cancel.is_set():
                 break
             name = os.path.basename(f)
-            GLib.idle_add(self._log, f"Kopiere {name} …")
+            GLib.idle_add(self._log, f"{name} wird kopiert …")
             started, last = time.monotonic(), [0.0]
 
             def progress(done, total, i=i, name=name, started=started):
@@ -227,7 +227,7 @@ class IsoDetailsDialog(Gtk.Dialog):
 
     def _progress(self, done: int, total: int) -> bool:
         self.bar.set_fraction(done / total if total else 1)
-        self.bar.set_text(f"Lese ISO {done * 100 // max(total, 1)} %")
+        self.bar.set_text(f"ISO wird gelesen: {done * 100 // max(total, 1)} %")
         return False
 
     def _done(self, result) -> bool:
@@ -473,7 +473,7 @@ class BootStickDialog(Gtk.Dialog):
             return
         self.busy = True
         self._update()
-        self._log(f"Erstelle Boot-Stick auf {device} ({MODE_LABELS[mode]}) …")
+        self._log(f"Boot-Stick wird auf {device} erstellt ({MODE_LABELS[mode]}) …")
         if mode == "windows":
             for line in winunattend.summary(opts):
                 self._log(f"  · {line}")
@@ -675,7 +675,7 @@ class InstallDialog(Gtk.Dialog):
         self.confirm.connect("changed", lambda _e: self._update())
         grid.attach(self.confirm, 1, r, 1, 1)
         r += 1
-        self.status = Gtk.Label(label="Lese Disks vom Agent …", xalign=0, wrap=True)
+        self.status = Gtk.Label(label="Disks werden vom Agent gelesen …", xalign=0, wrap=True)
         self.status.get_style_context().add_class("status-idle")
         grid.attach(self.status, 0, r, 2, 1)
         self.get_content_area().add(scrolled(grid))
