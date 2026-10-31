@@ -14,11 +14,12 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 0 | 0 | 0 |
-| 🔧 Änderungen | 0 | 0 | 0 |
-| 💡 Ideen | 2 | 0 | 2 |
+| 🔧 Änderungen | 5 | 0 | 0 |
+| 💡 Ideen | 13 | 0 | 2 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Als Nächstes: Tests „Fixes von heute“ in [TESTS.md](TESTS.md) (Debian-Direktinstallation, doppelter HP-Eintrag).
+Vorschlag Reihenfolge (Analyse 31.10.): **Ä-001** (Dienst) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → I-008 (Meldungen) → Rest nach Bedarf.
 
 ## 🐞 Bugs
 
@@ -30,7 +31,11 @@ Als Nächstes: Tests „Fixes von heute“ in [TESTS.md](TESTS.md) (Debian-Direk
 
 | ID | Prio | Status | Beschreibung | Gemeldet |
 |---|---|---|---|---|
-| – | | | keine offenen Änderungswünsche | |
+| Ä-001 | 🔴 | offen | **Aufträge als Systemdienst statt im Fenster:** Aufträge, Automatisierung und PXE laufen heute als Threads im GTK-Prozess (`jobs.py`). Wird das Tool geschlossen, stürzt es ab oder meldet man sich ab, brechen laufende Restores ab. Lösung: Dienst `okula-recoveryd` (systemd), die Oberfläche wird zum Client (lokaler Socket). Das ist die Grundlage für I-004 (Webinterface) und I-010 (Zeitplan). | 31.10. (Analyse) |
+| Ä-002 | 🟡 | offen | **Restore auf eine kleinere Disk:** Heute bricht der Restore mit „Zieldisk zu klein“ ab. Wenn die belegten Daten passen: letzte Partition vorher mit `ntfsresize`/`resize2fs` verkleinern bzw. die Partitionstabelle anpassen. Typischer Fall: 512-GB- auf 256-GB-SSD | 31.10. (Analyse) |
+| Ä-003 | 🟡 | offen | **Images und Backups auf dem NAS verschlüsseln:** Sie enthalten Personendaten (revDSG Art. 8, Datensicherheit). Minimum: SMB3-Verschlüsselung (`mount.cifs … seal`). Besser: Verschlüsselung im Datenstrom (z. B. `age` nach `zstd`), Schlüssel root-lesbar und zusätzlich auf Papier | 31.10. (Analyse) |
+| Ä-004 | 🟡 | offen | **Zentrales Protokoll:** `/var/log/okula-recovery/` mit logrotate. Festhalten, wer wann was auf welches Gerät gespielt hat. Dazu Menü → „Diagnosepaket exportieren“ (Logs, Version, Konfiguration ohne Geheimnisse), um Fehler an Claude Code zu melden | 31.10. (Analyse) |
+| Ä-005 | 🟡 | offen | **Entwicklung absichern:** GitHub Actions, die die 240 Tests bei jedem Push ausführen. Versionsnummer pflegen (steht noch auf `0.1.0`) und Releases taggen, damit der Server einen geprüften Stand zieht statt den Branch-Kopf. `ui.py` (2780 Zeilen) aufteilen | 31.10. (Analyse) |
 
 ## 💡 Ideen
 
@@ -40,6 +45,17 @@ Als Nächstes: Tests „Fixes von heute“ in [TESTS.md](TESTS.md) (Debian-Direk
 | I-002 | ⚪ | zurückgestellt | Nobara/Zorin direkt installieren – nur möglich, falls deren Installer eine unbeaufsichtigte Installation erhält |
 | I-003 | ⚪ | zurückgestellt | Nicht generalisierte 1:1-Images anpassen (Name per Registry, Key per Skript) |
 | I-004 | 🟡 | offen | **Webinterface für den Fernzugriff:** Geräteübersicht und Gerätereiter im Browser (HTTPS, Anmeldung, über VPN); pro Gerät „Im Webinterface sichtbar“ (Reiter Netzwerk). Offen: nur anschauen oder auch Aktionen, Benutzer/Rechte, LAN oder VPN. Details: [WEBINTERFACE.md](WEBINTERFACE.md) |
+| I-005 | 🔴 | offen | **Aufbewahrungsregeln:** Pro Gerät die letzten N Images bzw. Backups behalten, ältere automatisch löschen; Master-Images sind geschützt. Vor jedem Auftrag den Platz prüfen (belegte Blöcke + Reserve), sonst gar nicht erst starten |
+| I-006 | 🔴 | offen | **Zweite Kopie (3-2-1-Regel):** Das NAS ist heute die einzige Kopie. Images und Backups zusätzlich auf eine USB-Disk, ein zweites NAS oder extern spiegeln (rsync bzw. Synology Hyper Backup). Dazu die Tool-Konfiguration (Geräte, Vorlagen, Einstellungen) täglich automatisch aufs NAS exportieren |
+| I-007 | 🟡 | offen | **Images regelmässig prüfen:** Die SHA256-Werte stehen schon in `okula-image.json`. Ein Nachtlauf prüft alle Images auf Bitfehler und zeigt den Status in der Liste (✔/✖, zuletzt geprüft). Optional ein Test-Restore in eine VM (→ I-001) |
+| I-008 | 🟡 | offen | **Benachrichtigungen:** E-Mail (SMTP) oder Push (ntfy/Teams) bei Fehlern, beim Ende einer Automatisierung, bei knappem NAS-Speicher, bei SMART-Warnungen und bei fehlgeschlagener Image-Prüfung |
+| I-009 | 🟡 | offen | **Disk sicher löschen (Ausmusterung, Leasing-Rückgabe):** NVMe Sanitize/Format, ATA Secure Erase oder `blkdiscard`, sonst Überschreiben. Danach ein Löschprotokoll als PDF mit Seriennummer, Methode, Datum und Prüfung (Nachweis nach revDSG) |
+| I-010 | 🟡 | offen | **Zeitgesteuerte Backups:** z. B. freitags 18:00: Wake-on-LAN → einmal Netzwerkstart in den Agent → Datei-Backup → herunterfahren. Die Bausteine (WOL, Agent beim nächsten Start, Backup) gibt es schon; braucht Ä-001 |
+| I-011 | ⚪ | offen | **Multicast-Restore:** ein Image gleichzeitig auf viele Geräte (Schulungsraum), mit `udp-sender`/`udp-receiver` (udpcast) wie bei Clonezilla. Heute läuft jeder Restore einzeln über dieselbe 1-Gbit-Leitung |
+| I-012 | 🟡 | offen | **BitLocker entsperren:** Den Wiederherstellungsschlüssel pro Gerät hinterlegen (nur root-lesbar) und im Agent mit `dislocker` öffnen. Dann sichert partclone nur die belegten Blöcke statt einer `dd`-Rohkopie (Images viel kleiner), und auch ein Datei-Backup wird möglich |
+| I-013 | 🟡 | offen | **Inventar-Export:** alle oder ausgewählte Geräte als CSV/PDF: Modell, Seriennummer, CPU/RAM, Disks mit SMART-Befund, OS, Windows-Key maskiert, letztes Image bzw. Backup. Für Inventarliste und Übergabe an Kunden |
+| I-014 | ⚪ | offen | **Treiber für Master-Images:** Treiberordner pro Modell auf dem NAS; nach dem Restore nach `Windows\Drivers\Okula` kopieren und in `unattend.xml` per `DriverPaths` (offlineServicing) einbinden. Damit passt ein Master auf verschiedene Hardware |
+| I-015 | ⚪ | offen | **Firmware/BIOS über den Agent:** `fwupd`/LVFS, wo der Hersteller es unterstützt (Dell, Lenovo, teilweise HP). Die BIOS-Version steht schon im Inventar; Hinweis anzeigen, wenn sie veraltet ist |
 
 Umgesetzte Ideen: Windows-Master-Image mit Sysprep ([MASTER-IMAGE.md](MASTER-IMAGE.md)), Ordner an Geräte senden
 ([ORDNER-SENDEN.md](ORDNER-SENDEN.md)), Automatisierung ([AUTOMATISIERUNG.md](AUTOMATISIERUNG.md)),
