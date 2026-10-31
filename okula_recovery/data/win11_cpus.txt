@@ -1,54 +1,75 @@
 # Windows 11: unterstützte Prozessoren – als Regeln (eine Zeile: ja|nein <regulärer Ausdruck>, erste passende gilt)
 #
-# Quelle: Microsoft, „Windows 11 supported Intel processors“ / „… AMD processors“ / „… Qualcomm processors“
+# Quelle: Microsoft Learn, abgeglichen am 31.10.2026 (Seiten Stand 27.02.2025 bzw. 25H2):
 #   https://learn.microsoft.com/windows-hardware/design/minimum/supported/windows-11-supported-intel-processors
+#   https://learn.microsoft.com/windows-hardware/design/minimum/supported/windows-11-24h2-supported-intel-processors
+#   https://learn.microsoft.com/windows-hardware/design/minimum/supported/windows-11-25h2-supported-intel-processors
 #   https://learn.microsoft.com/windows-hardware/design/minimum/supported/windows-11-supported-amd-processors
+#   https://learn.microsoft.com/windows-hardware/design/minimum/supported/windows-11-24h2-supported-amd-processors
+#   https://learn.microsoft.com/windows-hardware/design/minimum/supported/windows-11-25h2-supported-amd-processors
 #   https://learn.microsoft.com/windows-hardware/design/minimum/supported/windows-11-supported-qualcomm-processors
-# Zusammengefasst nach Generation (Stand Windows 11 24H2/25H2): Intel ab 8. Generation (Coffee Lake) bzw.
-# Gemini Lake, Xeon ab Cascade Lake; AMD ab Zen+ (Ryzen 2000 ohne Raven-Ridge-APUs, Ryzen 3000 und neuer).
-# Nicht erfasste Modelle ergeben „?“ (prüfen), nie ✖. Erstellt 31.10.2026; bei Bedarf mit der Microsoft-Liste
-# abgleichen und hier ergänzen (spezielle Modelle oben eintragen, sie haben Vorrang).
+#   https://learn.microsoft.com/windows-hardware/design/minimum/supported/windows-11-25h2-supported-qualcomm-processors
 #
-# --- Ausnahmen (vor den allgemeinen Regeln) ---
-ja   \bi7-7820HQ\b
-ja   \bPentium\b.*\b4425Y\b
-nein \bRyzen [357]( PRO)? 2[0-9]{3}(G|GE|U|H)\b
+# Grundsatz: „ja“, wenn die Serie in IRGENDEINER dieser Listen steht. Die 24H2/25H2-Listen gelten laut Microsoft für
+# neue Geräte der Hersteller („OEMs may use the following CPUs for new Windows 11 devices“) und lassen ältere Serien
+# weg (z. B. Ryzen 2000, Ryzen 3000 G/GE) – für bestehende Geräte zählt die ursprüngliche Liste weiter.
+# Nicht erfasste Modelle ergeben „?“ (prüfen), nie ✖. Spezielle Regeln stehen oben (Vorrang).
+#
+# --- AMD: Ausnahmen zuerst (Raven-Ridge-APUs der Ryzen-2000-Reihe stehen in keiner Liste) ---
+nein \bRyzen [357]( PRO)? 2[0-9]{3}(G|GE|U|H|HS)\b
 nein \bAthlon\b.*\b2[0-9]{2}GE\b
 #
-# --- Intel ---
+# --- Intel Core ---
 ja   \bCore\(TM\) Ultra\b|\bCore Ultra\b
-ja   \bi3-N[0-9]{3}\b
-ja   \b(i[3579]|m[357])-(8|9)[0-9]{3}
-ja   \b(i[3579])-1[0-9]{3,4}
+ja   \bCore\(TM\) [357] [12][0-9]{2}[A-Z]{0,2}\b|\bCore [357] [12][0-9]{2}[A-Z]{0,2}\b
+ja   \bi3-N3[0-9]{2}\b
+ja   \b(i[3579]|m3)-(8|9)[0-9]{3}
+ja   \bi[3579]-1[0-4][0-9]{2,3}
+ja   \bi[79]-7[89][0-9]{2}X[E]?\b
 nein \b(i[3579]|m[357])-[2-7][0-9]{3}
+nein \bm[357]-[5-7]Y[0-9]{2}\b
 nein \bi[3579]-[0-9]{3}[A-Z]{0,2}\b
-nein \bCore\(TM\)[2] |\bCore 2\b
-ja   \bIntel\(R\) N[0-9]{2,3}\b|\bProcessor N[0-9]{2,3}\b
-ja   \bPentium\(R\)? (Gold|Silver) [A-Z]?[5-9][0-9]{3}
-ja   \bPentium\b.*\b[GNJ]?[5-9][0-9]{3}[A-Z]*\b
+nein \bCore\(TM\)2 |\bCore 2\b|\bCore\(TM\) (m|M)\b
+#
+# --- Intel Processor / Pentium / Celeron / Atom ---
+ja   \bIntel\(R\) N(9[0-9]|[12][0-9]{2})\b|\bProcessor N(9[0-9]|[12][0-9]{2})\b
+ja   \bProcessor U300E?\b|\bIntel\(R\) U300E?\b
+ja   \bProcessor 300T?\b|\bIntel\(R\) 300T?\b
+ja   \bPentium\b.*\b(44[12][0-9][UY]|[5-8][0-9]{3}[A-Z]?)\b
+ja   \bPentium\b.*\bSilver\b.*\b(J5[0-9]{3}|N[56][0-9]{3})\b
+ja   \bPentium\b.*\b(G5[0-9]{3}|G7[0-9]{3})[A-Z]?\b
 nein \bPentium\b
-ja   \bCeleron\b.*\b[GNJ]?[4-9][0-9]{3}[A-Z]*\b
+ja   \bCeleron\b.*\b[3-7][0-9]{3}[UY]?\b(?!\w)
+ja   \bCeleron\b.*\b(G[4-6][0-9]{3}[A-Z]?|J4[0-9]{3}|N[45][0-9]{3})\b
 nein \bCeleron\b
-ja   \bAtom\b.*\bx6[0-9]{3}[A-Z]*\b
+ja   \bAtom\b.*\bx7[0-9]{3}[A-Z]*\b
 nein \bAtom\b
-ja   \bXeon\b.*\bE-2[1-3][0-9]{2}
-ja   \bXeon\b.*\bW-(1[0-3][0-9]{3}|2[2-9][0-9]{2}|3[2-9][0-9]{2})
+#
+# --- Intel Xeon ---
+ja   \bXeon\b.*\b(Bronze|Silver|Gold|Platinum) [0-9]{4}[A-Z]{0,2}\b
+ja   \bXeon\b.*\bE-2[1-4][0-9]{2}
+ja   \bXeon\b.*\bD-(17|18|27|28)[0-9]{2}
+ja   \bXeon\b.*\bW-(1[0-1][0-9]{3}M|1[23][0-9]{2}|2[1245][0-9]{2}|3[1345][0-9]{2})
 ja   \bXeon\b.*\bw[3579]-[0-9]{4}
-ja   \bXeon\b.*\b(Bronze|Silver|Gold|Platinum) [0-9][2-9][0-9]{2}
-nein \bXeon\b.*\b(Bronze|Silver|Gold|Platinum) [0-9]1[0-9]{2}
-nein \bXeon\b.*\b(E3|E5|E7|W)-[0-9]{4}
+ja   \bXeon\b.*\b6[0-9]{2}[A-Z]?\b
+nein \bXeon\b.*\b(E3|E5|E7)-[0-9]{4}
 #
 # --- AMD ---
 ja   \bRyzen AI\b
-ja   \bThreadripper\b.*\b[2-9][0-9]{3}
-nein \bThreadripper\b.*\b1[0-9]{3}
+ja   \bRyzen\b.*\bZ[12]\b
+ja   \bThreadripper\b.*\b[3579][0-9]{3}
+nein \bThreadripper\b.*\b[12][0-9]{3}
 ja   \bRyzen [3579]( PRO)? [2-9][0-9]{3}
+ja   \bRyzen [3579]( PRO)? [12][0-9]{2}\b
 nein \bRyzen [3579]( PRO)? 1[0-9]{3}
+ja   \bAMD 30[12]0e\b
 ja   \bAthlon\b.*\b(Gold|Silver)\b
-ja   \bAthlon\b.*\b(3[0-9]{3}|[37][0-9]{3}[A-Z]?|300[UG]?|PRO 300)
+ja   \bAthlon\b.*\b(3000G|300GE|300U|320GE|7[12]20[eU])\b
 nein \bAthlon\b
-ja   \bEPYC\b.*\b[0-9]{2}[0-9]?[2-9][A-Z]?\b
-nein \b(FX|A[0-9]{1,2})-[0-9]{4}
+ja   \bEPYC\b.*\b[4-9][0-9]{2}[345][A-Z]?\b
+nein \bEPYC\b.*\b[0-9]{3}1[A-Z]?\b
+nein \b(FX|A[0-9]{1,2}|E[12])-[0-9]{4}
 #
 # --- Qualcomm (ARM) ---
-ja   \bSnapdragon\b.*\b(7c|8c|8cx|X Elite|X Plus|X1)\b
+ja   \bSnapdragon\b.*\b(850|7c|8c|8cx|X Elite|X Plus|X2|X1[EP]?)\b
+ja   \bMicrosoft SQ[123]\b

@@ -30,14 +30,35 @@ class CpuListTest(unittest.TestCase):
             "AMD Ryzen 7 2700X Eight-Core Processor": True,
             "AMD Ryzen 7 PRO 4750U with Radeon Graphics": True,
             "AMD Athlon Silver 3050U with Radeon Graphics": True,
-            "Intel(R) Core(TM) i7-7820HQ CPU @ 2.90GHz": True,     # Ausnahme in Microsofts Liste
+            "Intel(R) Core(TM) i7-7820HQ CPU @ 2.90GHz": False,    # früher Ausnahme, in keiner aktuellen Liste
+            "Intel(R) Core(TM) i7-7800X CPU @ 3.50GHz": True,      # Core 7000X Series (Microsoft-Liste)
+            "Intel(R) Core(TM) i7-14700K": True,
+            "Intel(R) Core(TM) 7 150U": True,                      # Core Series 1
+            "Intel(R) Core(TM) i3-N305": True,
+            "Intel(R) Core(TM) m3-8100Y CPU @ 1.10GHz": True,
+            "Intel(R) Core(TM) m3-7Y30 CPU @ 1.00GHz": False,
+            "Intel(R) Pentium(R) CPU 4415U @ 2.30GHz": True,       # Pentium Gold 4000U Series
+            "Intel(R) Pentium(R) Gold G5400 CPU @ 3.70GHz": True,
+            "Intel(R) Celeron(R) CPU 3865U @ 1.80GHz": True,       # Celeron 3000 Series
+            "Intel(R) Celeron(R) CPU G3900 @ 2.80GHz": False,
+            "Intel(R) Xeon(R) W-2145 CPU @ 3.70GHz": True,
+            "Intel(R) Xeon(R) E-2236 CPU @ 3.40GHz": True,
+            "Intel(R) Xeon(R) CPU E5-2650 v4 @ 2.20GHz": False,
+            "Intel(R) Atom(TM) x6425E Processor @ 2.00GHz": False,
+            "AMD Ryzen 5 3400G with Radeon Vega Graphics": True,   # 21H2/24H2-Liste (25H2 nur für neue Geräte)
+            "AMD Ryzen AI 9 HX 370 w/ Radeon 890M": True,
+            "AMD Ryzen Z1 Extreme": True,
+            "AMD Ryzen 7 260 w/ Radeon 780M Graphics": True,
+            "AMD 3020e with Radeon Graphics": True,
+            "AMD EPYC 7313 16-Core Processor": True,
+            "AMD EPYC 7301 16-Core Processor": False,
             "Intel(R) Core(TM) i7-7700HQ CPU @ 2.80GHz": False,
             "Intel(R) Core(TM) i5-4590 CPU @ 3.30GHz": False,
             "Intel(R) Core(TM) i5-650 CPU @ 3.20GHz": False,
             "Intel(R) Core(TM)2 Duo CPU E8400 @ 3.00GHz": False,
             "Intel(R) Pentium(R) CPU G4560 @ 3.50GHz": False,
             "Intel(R) Celeron(R) CPU N3350 @ 1.10GHz": False,
-            "Intel(R) Xeon(R) Silver 4110 CPU @ 2.10GHz": False,
+            "Intel(R) Xeon(R) Silver 4110 CPU @ 2.10GHz": True,    # Xeon Scalable (1. Gen.) in der Liste
             "AMD Ryzen 5 2400G with Radeon Vega Graphics": False,
             "AMD Ryzen 7 1700 Eight-Core Processor": False,
             "AMD Athlon 200GE with Radeon Vega Graphics": False,
@@ -48,8 +69,10 @@ class CpuListTest(unittest.TestCase):
             self.assertIs(win11.cpu_supported(model), expected, model)
 
     def test_rules_file_has_source(self):
-        head = win11.CPU_RULES.read_text(encoding="utf-8")[:1500]
+        head = win11.CPU_RULES.read_text(encoding="utf-8")[:2500]
         self.assertIn("learn.microsoft.com", head)
+        self.assertIn("25h2-supported-intel-processors", head)
+        self.assertIn("abgeglichen am 31.10.2026", head)
 
 
 class CheckTest(unittest.TestCase):

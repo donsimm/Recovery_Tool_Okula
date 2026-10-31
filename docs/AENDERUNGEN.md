@@ -118,6 +118,11 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 31.10.2026
+- **Ä-023 Win-11-Prozessorliste abgeglichen** (Microsoft Learn, Listen Original/24H2/25H2 für Intel, AMD, Qualcomm):
+  tauglich = Serie steht in einer der Listen (24H2/25H2 gelten laut Microsoft für neue OEM-Geräte und lassen ältere
+  Serien weg, z. B. Ryzen 2000). Neu ✔: Celeron 3000-Serie, Pentium Gold 4415U/4417U/4425Y, Core X 7000X, Xeon Scalable
+  1. Gen. (z. B. Silver 4110), Xeon W-2100/3100, Core Series 1/2, Ryzen 100/200/Z, AMD 3015e/3020e. Neu ✖: i7-7820HQ
+  (in keiner Liste mehr), Atom x6000. EPYC 2. Gen. (7xx2) bleibt „?“ (nicht eindeutig gelistet).
 - **Ä-022 Texte ohne „Kunde“:** „auf Wunsch des Kunden“ aus Häkchen, Warnung, Hilfe und README entfernt;
   Beispiele für Ordner jetzt Standort/Abteilung (alle Geräte gehören Okula).
 - **Ä-018 Automatisierung: 3 Tage statt 24 h:** nach erfolgreichem Durchlauf schaltet sie sich nach 3 Tagen wieder
