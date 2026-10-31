@@ -14,7 +14,8 @@ from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
 from okula_recovery import archive, bootkeys, devices, imagecheck, jobs, nas, warranty, win11  # noqa: E402
 from okula_recovery.automation_tab import AutomationTab  # noqa: E402
-from okula_recovery.uikit import ask_text, confirm_error, numbered_section, run_async, scrolled  # noqa: E402
+from okula_recovery.uikit import (ask_text, confirm_error, numbered_section, power_buttons,  # noqa: E402
+                                  run_async, scrolled)
 
 if TYPE_CHECKING:
     from okula_recovery.ui import MainWindow
@@ -83,16 +84,17 @@ class DeviceWindow(Gtk.Window):
                 ("install", "OS installieren …", lambda: main.start_install(self.dev)),
                 ("backup", "Backup erstellen …", lambda: main.start_backup(self.dev)),
                 ("send", "Ordner senden …", lambda: main.on_send_folders(self.dev)),
-                ("inventory", "Inventar neu einlesen", lambda: main.refresh_inventory(self.dev)),
-                ("poweroff", "Herunterfahren", lambda: main.power(self.dev, "poweroff")),
-                ("reboot", "Neu starten", lambda: main.power(self.dev, "reboot"))):
+                ("inventory", "Inventar neu einlesen", lambda: main.refresh_inventory(self.dev))):
             b = Gtk.Button(label=label)
             b.connect("clicked", lambda _b, h=handler: h())
             self.buttons[key] = b
         for key in ("image", "restore", "install", "backup", "send", "inventory"):
             actions.pack_start(self.buttons[key], False, False, 0)
-        for key in ("reboot", "poweroff"):  # rechts, abgesetzt von den Aufträgen
-            actions.pack_end(self.buttons[key], False, False, 0)
+        # Neu starten / Herunterfahren als Symbole wie im Hauptfenster (rechts, abgesetzt von den Aufträgen)
+        power = power_buttons(lambda action: main.power(self.dev, action), sensitive=True)
+        self.buttons.update(power)
+        for b in reversed(power.values()):
+            actions.pack_end(b, False, False, 0)
         root.pack_start(actions, False, False, 0)
 
         self.tabs = Gtk.Notebook()

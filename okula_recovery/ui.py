@@ -39,7 +39,7 @@ from okula_recovery.os_dialogs import (BootStickDialog, InstallDialog, IsoDetail
 from okula_recovery.restore_dialog import RestoreDialog  # noqa: E402
 from okula_recovery.stick_dialog import StickDialog  # noqa: E402
 from okula_recovery.uikit import (ask_text, confirm, confirm_error, make_tree, open_url, pane_title,  # noqa: E402
-                                  rgba_hex, run_async, scrolled, svg_pixbuf)
+                                  power_buttons, rgba_hex, run_async, scrolled, svg_pixbuf)
 
 ASSETS = Path(__file__).resolve().parent / "assets"
 NAS_POLL = 30  # Sekunden zwischen den NAS-Statusabfragen
@@ -61,7 +61,7 @@ MENU_LABELS: dict[str, list[str | None]] = {
               "Einstellungen e_xportieren …", "Einstellungen _importieren …", None, "_Beenden"],
     "_Tools": ["Gerät ö_ffnen …", "_Disk-Image erstellen …", "Image _zurückspielen …", "_OS installieren …",
                "_Backup erstellen …", "Backup zur_ückspielen …", "Ordner _senden …", "_Inventar neu einlesen",
-               "Gerät _herunterfahren", None, "_Restore-Stick aus Image …", "IS_O hinzufügen …",
+               None, "_Restore-Stick aus Image …", "IS_O hinzufügen …",
                "_Boot-Stick aus ISO …", "_Netzwerkstart (PXE) …", None, "Images _aktualisieren"],
     "E_xtras": ["_USB klonen …", "USB _formatieren …", None, DEMO_LABEL, "Demo: nächster Auftrag mit _Fehler",
                 "Demo-Daten _zurücksetzen …"],
@@ -224,7 +224,6 @@ class MainWindow(Gtk.ApplicationWindow):
             "Backup zur_ückspielen …": (lambda: self._with_device(lambda d: self.start_file_restore(None, d)), None),
             "Ordner _senden …": (lambda: self._with_device(self.on_send_folders), None),
             "_Inventar neu einlesen": (lambda: self._with_device(self.refresh_inventory), None),
-            "Gerät _herunterfahren": (lambda: self._with_device(lambda d: self.power(d, "poweroff")), None),
             "_Restore-Stick aus Image …": (lambda: self.on_restore_stick(None), None),
             "IS_O hinzufügen …": (self.on_add_iso, None),
             "_Boot-Stick aus ISO …": (self.on_boot_stick, None),
@@ -1896,10 +1895,10 @@ class MainWindow(Gtk.ApplicationWindow):
         self.btn_restore.connect("clicked", lambda _b: self._with_device(self.start_restore))
         for b in (self.btn_open, self.btn_image, self.btn_restore):
             actions.pack_start(b, False, False, 0)
-        self.btn_power = Gtk.Button(label="Herunterfahren", sensitive=False)
-        self.btn_power.set_tooltip_text("Gewähltes Gerät herunterfahren (Agent-Stick)")
-        self.btn_power.connect("clicked", lambda _b: self._with_device(lambda d: self.power(d, "poweroff")))
-        actions.pack_end(self.btn_power, False, False, 0)
+        # Herunterfahren / Neu starten als Symbole wie die übrigen Symbolknöpfe (rechts, abgesetzt)
+        self.power_buttons = power_buttons(lambda action: self._with_device(lambda d: self.power(d, action)))
+        for b in reversed(self.power_buttons.values()):
+            actions.pack_end(b, False, False, 0)
         box.pack_start(actions, False, False, 0)
 
         hint = Gtk.Label(xalign=0, wrap=True)
@@ -2066,13 +2065,13 @@ class MainWindow(Gtk.ApplicationWindow):
         agent = self.online_agent(dev) if dev else None
         ready = agent is not None and agent.control_port > 0
         self.btn_open.set_sensitive(dev is not None)
-        for b in (self.btn_image, self.btn_restore, self.btn_power):
+        for b in (self.btn_image, self.btn_restore, *self.power_buttons.values()):
             b.set_sensitive(ready)
         self.dev_buttons["rename"].set_sensitive(kind in ("folder", "device"))
         self.dev_buttons["delete"].set_sensitive(kind == "folder" or (dev is not None and agent is None))
         for label in ("Gerät öffnen …", "Disk-Image erstellen …", "Image zurückspielen …", "OS installieren …",
                       "Backup erstellen …", "Backup zurückspielen …",
-                      "Inventar neu einlesen", "Gerät herunterfahren"):
+                      "Inventar neu einlesen"):
             if label in getattr(self, "menu_items", {}):
                 self.menu_items[label].set_sensitive(dev is not None if label == "Gerät öffnen …" else ready)
 

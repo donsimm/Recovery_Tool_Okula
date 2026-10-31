@@ -108,6 +108,7 @@ bestätigt.
 - [ ] Ä-027: Extras → Demo-Daten zurücksetzen … → Rückfrage, danach nur noch die zwei fertigen Images; alte Demo-Images auf dem NAS (vor Ä-027) sind ausgeblendet, Rechtsklick auf den Hinweis → „Alte Demo-Images vom NAS löschen …“
 
 ### 7. Allgemein
+- [ ] Ä-028: Symbole Neu starten / Herunterfahren unter der Geräteliste und im Gerätefenster – Tooltip, Rückfrage, nur aktiv bei verbundenem Gerät; Menü Tools ohne „Gerät herunterfahren“; Symbole auch im dunklen Design sichtbar
 - [ ] I-007: Rechtsklick auf ein **grosses Image** (z. B. 200 GB) → „Image prüfen …“ – **Dauer notieren** (Lesen vom NAS), Fortschritt/Restzeit plausibel, Tool bleibt bedienbar; Abbrechen beendet sofort, nichts gespeichert
 - [ ] I-007: Ordner prüfen (mehrere Images, ein Clonezilla-Image) → Zusammenfassung; Spalte „Geprüft“ ✔/✖ bleibt nach Neustart des Tools; während der Prüfung lässt sich das Image nicht löschen; Verlauf des Geräts zeigt die Prüfung
 - [ ] Ä-025: F1 → Kapitelliste in der Reihenfolge des Ablaufs, „Demo-Gerät“ zuletzt; Suchfeld (Ctrl+F): „garantie“ zeigt nur passende Kapitel, Treffer gelb, Esc leert; Hilfe im dunklen Design: Farbfelder grün/gelb/rot lesbar

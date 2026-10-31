@@ -215,7 +215,8 @@ Einsortieren und umbenennen: Kapitel <i>Geräte verwalten</i>.
 <b>Gerätefenster</b>
 Doppelklick auf ein Gerät öffnet sein Fenster:
 •  Oben die Knöpfe: Disk-Image erstellen, Image zurückspielen, OS installieren, Backup erstellen,
-    Ordner senden, Inventar neu einlesen, Herunterfahren, Neu starten.
+    Ordner senden, Inventar neu einlesen; rechts die Symbole <i>Neu starten</i> (Pfeil im Ein/Aus-Zeichen)
+    und <i>Herunterfahren</i> (Ein/Aus-Zeichen).
 •  <i>Aufträge</i>: was gerade läuft, mit Fortschritt und Log.
 •  <i>Übersicht</i>: Hersteller, Modell, Seriennummer, Starttasten, Windows 11, Garantie bis, Windows-Schlüssel.
 •  <i>Disks</i>: die Disks und ihr Zustand (SMART).
@@ -275,8 +276,8 @@ Die Aufträge für das gewählte Gerät stehen zusätzlich im Menü <i>Tools</i>
 •  <i>Aus der Liste löschen …</i>: nur möglich, wenn das Gerät nicht verbunden ist.
     Images und Backups auf dem NAS bleiben.
 •  <i>Inventar neu einlesen</i>: Angaben zum Gerät neu holen (zum Beispiel nach einem Disk-Tausch).
-•  <i>Herunterfahren</i> und <i>Neu starten</i>: nur wenn das Gerät verbunden ist
-    (auch <i>Tools → Gerät herunterfahren</i>).
+•  <i>Neu starten</i> und <i>Herunterfahren</i>: Symbole rechts unter der Geräteliste und im Gerätefenster
+    (Name als Tooltip), mit Rückfrage; nur wenn das Gerät verbunden ist und kein Auftrag läuft.
 •  <i>Inventar exportieren …</i>: Liste zu diesem Gerät (Kapitel <i>Inventar, Garantie, Windows 11</i>).
 
 <b>Ordner</b>

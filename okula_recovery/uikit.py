@@ -151,3 +151,19 @@ def open_url(parent: Gtk.Window, url: str) -> None:
         Gtk.show_uri_on_window(parent, url, Gdk.CURRENT_TIME)
     except GLib.Error:
         subprocess.Popen(["xdg-open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+POWER_ACTIONS = (("reboot", "system-reboot-symbolic", "Neu starten"),
+                 ("poweroff", "system-shutdown-symbolic", "Herunterfahren"))
+
+
+def power_buttons(handler, sensitive: bool = False) -> dict[str, Gtk.Button]:
+    """Symbolknöpfe „Neu starten“ und „Herunterfahren“ (Hauptfenster und Gerätefenster); handler(action)."""
+    out = {}
+    for action, icon, tip in POWER_ACTIONS:
+        b = Gtk.Button.new_from_icon_name(icon, Gtk.IconSize.BUTTON)
+        b.set_tooltip_text(f"{tip} (Gerät mit Agent, mit Rückfrage)")
+        b.set_sensitive(sensitive)
+        b.connect("clicked", lambda _b, a=action: handler(a))
+        out[action] = b
+    return out
