@@ -17,7 +17,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 |---|---|---|---|
 | 🐞 Bugs | 0 | 0 | 0 |
 | 🔧 Änderungen | 7 | 0 | 0 |
-| 💡 Ideen | 22 | 0 | 0 |
+| 💡 Ideen | 21 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
