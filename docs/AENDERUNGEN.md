@@ -16,7 +16,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 0 | 0 | 0 |
-| 🔧 Änderungen | 13 | 0 | 0 |
+| 🔧 Änderungen | 14 | 0 | 0 |
 | 💡 Ideen | 29 | 0 | 2 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
@@ -46,6 +46,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laie
 | Ä-011 | 🟡 | offen | Claude | **Boot-Menü-Taste je Hersteller:** im Stick-Dialog, in der Hilfe und bei bekannten Geräten aus den Inventardaten (DMI), z. B. HP F9, Dell F12, Lenovo F12, Asus F8/Esc, Acer F12, MSI F11. Der Hinweis „meist F12, F11, F8 oder Esc“ reicht einem Laien nicht | 31.10. (Laien-Test) |
 | Ä-012 | 🟡 | offen | Claude | **Einfache Sprache im Reiter Automatisierung:** „Zieldisk“ → „Festplatte, die gelöscht wird“; Sysprep, Master und Content-Projekte mit einem „?“ pro Abschnitt erklären. Gerätenamen wie „DESKTOP-8F3K2LQ“ markieren und zum Umbenennen auffordern; optional Namensschema pro Vorlage (z. B. `KUNDE-001` fortlaufend) | 31.10. (Laien-Test) |
 | Ä-013 | ⚪ | offen | Claude | **Klare Fertig-Meldung:** grosses „✔ Fertig – HP-PC-07 ist neu aufgesetzt (18 min)“ im Tool und am Gerät, dazu eine Liste: was gemacht wurde, Key aktiviert ja/nein, wo das Backup liegt. Als PDF ausdruckbar (Übergabeprotokoll, → I-013) | 31.10. (Laien-Test) |
+| Ä-014 | ⚪ | offen | Dominik | **NAS-Webseite öffnen:** Im Fenster NAS-Verbindung ein Knopf „NAS-Webseite öffnen“, der den Browser mit `https://<Host>:5001` öffnet (Synology DSM; Port einstellbar, Standard 5001, Alternative http 5000; Aufruf über `xdg-open`). Daneben auch ein kleines Symbol in der NAS-Statuszeile | 31.10. |
 
 ## 💡 Ideen
 
