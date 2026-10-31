@@ -269,7 +269,7 @@ Alle Aktionen über Rechtsklick auf ein Gerät oder einen Ordner in der Gerätel
     Images und Backups auf dem NAS bleiben.
 •  <i>Inventar neu einlesen</i>: Angaben zum Gerät neu holen (zum Beispiel nach einem Disk-Tausch).
 •  <i>Herunterfahren</i> und <i>Neu starten</i>: nur wenn das Gerät verbunden ist.
-•  <i>Inventar exportieren …</i>: Liste zu diesem Gerät (Kapitel <i>Inventar, Garantie, Win 11</i>).
+•  <i>Inventar exportieren …</i>: Liste zu diesem Gerät (Kapitel <i>Inventar, Garantie, Windows 11</i>).
 
 <b>Ordner</b>
 •  <i>Neuer Ordner …</i>, <i>Ordner umbenennen …</i>, <i>Ordner löschen (nur leer)</i>.
@@ -327,6 +327,36 @@ Nicht möglich bei verschlüsselten Disks (BitLocker) – dort fehlt die Option.
 •  Auch Images von Clonezilla funktionieren.
 •  Nach einem Abbruch ist die Zieldisk unvollständig.
 •  Bei einem Master-Image passt das Tool Windows danach an: Kapitel <i>Master-Image</i>."""),
+
+    ("Datei-Backup", """<big><b>Nur Dateien sichern (Datei-Backup)</b></big>
+
+Ein Datei-Backup sichert nur das Ausgewählte. Es ist kleiner und schneller als ein Image.
+Ideal vor einer Neuinstallation: Dateien sichern, neu installieren, Dateien zurückspielen.
+
+<b>Backup erstellen:</b>
+1.  Gerät mit dem Agent starten.
+2.  Auf <i>Backup erstellen …</i> klicken.
+3.  Wählen, was gesichert wird:
+    •  <i>Benutzerdaten</i>: Desktop, Dokumente, Bilder, Lesezeichen … pro Benutzer.
+    •  <i>Ganze Partitionen</i>: alles auf einem Laufwerk.
+    •  <i>Eigene Ordner</i>: Ordner selbst auswählen.
+4.  <i>Ablage</i> wählen: <i>Normale Dateien</i> (im Reiter „Dateien“ durchsuchbar)
+    oder <i>Archiv tar.zst</i> (kompakt, schneller).
+5.  Auf Wunsch eine Notiz eingeben (zum Beispiel „vor Neuinstallation“).
+6.  Auf <i>Backup erstellen</i> klicken.
+
+<b>Zurückspielen oder herunterladen:</b>
+1.  Rechts im Reiter <i>Backups</i> (oder im Gerätefenster) das Backup doppelklicken
+    oder Rechtsklick → <i>Zurückspielen / herunterladen …</i>.
+2.  Ziel wählen:
+    •  <i>Ins installierte System</i>: Dateien zurück auf das Gerät. Alte Benutzer lassen sich neuen zuordnen.
+    •  <i>Herunterladen in einen Ordner</i>: Dateien auf den Server oder einen USB-Stick kopieren.
+3.  <i>Vorhandene Dateien überschreiben</i>: Ist das Häkchen aus (Standard), bleibt die vorhandene Datei.
+    Die gesicherte Datei heisst dann „Name (wiederhergestellt)“.
+
+Windows vor dem Zurückspielen <b>ganz</b> herunterfahren (Shift-Taste gedrückt halten + „Herunterfahren“).
+
+Mit <i>Notiz …</i> lässt sich die Notiz ändern. <i>Löschen …</i> entfernt ein Backup vom NAS."""),
 
     ("Master-Image", """<big><b>Master-Image: ein Windows für viele Geräte</b></big>
 
@@ -414,37 +444,7 @@ Die Inhalte lassen sich rechts im Reiter <i>Dateien</i> ändern.
 •  Bricht etwas ab, bleibt der alte Ordner.
 •  Windows muss ganz heruntergefahren sein (Shift-Taste gedrückt halten + „Herunterfahren“)."""),
 
-    ("Datei-Backup", """<big><b>Nur Dateien sichern (Datei-Backup)</b></big>
-
-Ein Datei-Backup sichert nur das Ausgewählte. Es ist kleiner und schneller als ein Image.
-Ideal vor einer Neuinstallation: Dateien sichern, neu installieren, Dateien zurückspielen.
-
-<b>Backup erstellen:</b>
-1.  Gerät mit dem Agent starten.
-2.  Auf <i>Backup erstellen …</i> klicken.
-3.  Wählen, was gesichert wird:
-    •  <i>Benutzerdaten</i>: Desktop, Dokumente, Bilder, Lesezeichen … pro Benutzer.
-    •  <i>Ganze Partitionen</i>: alles auf einem Laufwerk.
-    •  <i>Eigene Ordner</i>: Ordner selbst auswählen.
-4.  <i>Ablage</i> wählen: <i>Normale Dateien</i> (im Reiter „Dateien“ durchsuchbar)
-    oder <i>Archiv tar.zst</i> (kompakt, schneller).
-5.  Auf Wunsch eine Notiz eingeben (zum Beispiel „vor Neuinstallation“).
-6.  Auf <i>Backup erstellen</i> klicken.
-
-<b>Zurückspielen oder herunterladen:</b>
-1.  Rechts im Reiter <i>Backups</i> (oder im Gerätefenster) das Backup doppelklicken
-    oder Rechtsklick → <i>Zurückspielen / herunterladen …</i>.
-2.  Ziel wählen:
-    •  <i>Ins installierte System</i>: Dateien zurück auf das Gerät. Alte Benutzer lassen sich neuen zuordnen.
-    •  <i>Herunterladen in einen Ordner</i>: Dateien auf den Server oder einen USB-Stick kopieren.
-3.  <i>Vorhandene Dateien überschreiben</i>: Ist das Häkchen aus (Standard), bleibt die vorhandene Datei.
-    Die gesicherte Datei heisst dann „Name (wiederhergestellt)“.
-
-Windows vor dem Zurückspielen <b>ganz</b> herunterfahren (Shift-Taste gedrückt halten + „Herunterfahren“).
-
-Mit <i>Notiz …</i> lässt sich die Notiz ändern. <i>Löschen …</i> entfernt ein Backup vom NAS."""),
-
-    ("Inventar, Garantie, Win 11", """<big><b>Inventar, Garantie und Windows 11</b></big>
+    ("Inventar, Garantie, Windows 11", """<big><b>Inventar, Garantie und Windows 11</b></big>
 
 Das Tool liest bei jedem Verbinden die Angaben des Geräts (Inventar).
 Die Angaben stehen im Gerätefenster unter <i>Übersicht</i> und <i>Disks</i>.
@@ -602,25 +602,6 @@ Alle Aktionen über Rechtsklick.
 <i>Tools → Images aktualisieren</i> (F5) liest die Liste neu vom NAS,
 zum Beispiel nachdem Dateien direkt auf das NAS kopiert wurden."""),
 
-    ("Demo-Gerät", """<big><b>Das Tool vorführen (Demo-Gerät)</b></big>
-
-Zum Vorführen gibt es ein Gerät, das es gar nicht gibt: den <b>DEMO-PC</b>.
-
-<b>Ablauf:</b>
-1.  <i>Extras → Demo-Gerät (Vorführung)</i> anhaken.
-2.  Nach ein paar Sekunden steht links <i>DEMO-PC</i> mit grünem Punkt.
-3.  Jetzt lässt sich alles zeigen: Image erstellen, zurückspielen, Backup, Ordner senden, Automatisierung …
-    Ein Auftrag dauert knapp eine Minute.
-
-<b>Einen Fehler zeigen:</b>
-<i>Extras → Demo: nächster Auftrag mit Fehler</i>. Der nächste Auftrag bricht ab, der Balken wird rot.
-
-<b>Gut zu wissen:</b>
-•  Der DEMO-PC fasst nichts an. Es gibt keine echte Disk dahinter.
-•  Andere Geräte im Netzwerk merken nichts davon.
-•  Ein Image vom DEMO-PC lässt sich nur auf den DEMO-PC zurückspielen.
-•  Zum Beenden das Häkchen wieder entfernen."""),
-
     ("Anzeigen im Fenster", """<big><b>Was die Anzeigen bedeuten</b></big>
 
 <b>Oben rechts: Serverlast</b>
@@ -660,7 +641,7 @@ In der Geräteliste steht bei jedem Gerät ein Balken mit Prozent und Restzeit.
 Das Image ist als Master-Image markiert.
 
 <b>Windows 11 und Garantie</b>
-Kapitel <i>Inventar, Garantie, Win 11</i>."""),
+Kapitel <i>Inventar, Garantie, Windows 11</i>."""),
 
     ("Neuer Rechner", """<big><b>Das Tool auf einen neuen Rechner umziehen</b></big>
 
@@ -765,6 +746,25 @@ Damit kommen nur die NAS-Einstellungen mit (ohne Passwort)."""),
 <tt>Backspace </tt>  Eine Ebene zurück
 <tt>F2        </tt>  Umbenennen
 <tt>Entf      </tt>  Löschen"""),
+
+    ("Demo-Gerät", """<big><b>Das Tool vorführen (Demo-Gerät)</b></big>
+
+Zum Vorführen gibt es ein Gerät, das es gar nicht gibt: den <b>DEMO-PC</b>.
+
+<b>Ablauf:</b>
+1.  <i>Extras → Demo-Gerät (Vorführung)</i> anhaken.
+2.  Nach ein paar Sekunden steht links <i>DEMO-PC</i> mit grünem Punkt.
+3.  Jetzt lässt sich alles zeigen: Image erstellen, zurückspielen, Backup, Ordner senden, Automatisierung …
+    Ein Auftrag dauert knapp eine Minute.
+
+<b>Einen Fehler zeigen:</b>
+<i>Extras → Demo: nächster Auftrag mit Fehler</i>. Der nächste Auftrag bricht ab, der Balken wird rot.
+
+<b>Gut zu wissen:</b>
+•  Der DEMO-PC fasst nichts an. Es gibt keine echte Disk dahinter.
+•  Andere Geräte im Netzwerk merken nichts davon.
+•  Ein Image vom DEMO-PC lässt sich nur auf den DEMO-PC zurückspielen.
+•  Zum Beenden das Häkchen wieder entfernen."""),
 ]
 
 
