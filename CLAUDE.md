@@ -26,6 +26,8 @@ Arbeitsbranch: `claude/blissful-goldberg-mo3xda` (einziger Branch). Sprache in D
 3. **Kurzübersicht** (Zähler + „Als Nächstes“) in `AENDERUNGEN.md` bei jeder Änderung aktualisieren.
 4. **Erledigt:** Eintrag aus der Tabelle entfernen und mit Datum und ID ins „✅ Erledigt – Änderungsprotokoll“ übernehmen; Prüfung in `TESTS.md` ergänzen.
 5. Entscheidungen (bewusst so gelöst / bewusst nicht gemacht) unter „📌 Entscheidungen“ festhalten.
+6. **Gestrichen:** Zeile aus der Tabelle in `docs/PAPIERKORB.md` verschieben (Datum, Grund). Punkte im Papierkorb
+   nicht wieder vorschlagen; neue Vorschläge vorher gegen Papierkorb und Tabellen auf Doppel prüfen.
 
 ## Tests
 

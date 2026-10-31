@@ -3,7 +3,7 @@
 Zentrale Übersicht zum Okula Recovery Tool. Details zu jeder Funktion stehen in [TECHNIK.md](TECHNIK.md),
 der genaue Verlauf in `git log`, Prüfungen in [TESTS.md](TESTS.md).
 
-**Ablauf:** Spontane Notizen kommen nach [EINGANG.md](EINGANG.md). Claude sortiert sie hier in die passende
+**Ablauf:** Spontane Notizen kommen nach [EINGANG.md](EINGANG.md). Gestrichene Punkte liegen im [PAPIERKORB.md](PAPIERKORB.md). Claude sortiert sie hier in die passende
 Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 
 **Von:** Dominik = eigene Idee/Meldung · Claude = Vorschlag aus Analyse · früher = aus früheren Sitzungen.
@@ -16,13 +16,13 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 0 | 0 | 0 |
-| 🔧 Änderungen | 11 | 0 | 0 |
+| 🔧 Änderungen | 10 | 0 | 0 |
 | 💡 Ideen | 27 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
 Als Nächstes: Tests am realen System in [TESTS.md](TESTS.md) – „Fixes von heute“ und Abschnitt 7 (neue Funktionen inkl. Ä-015 bis Ä-025).
-Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laien, klein) → **Ä-001** (Dienst) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-009, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
+Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laien, klein) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-009, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
 ## 🐞 Bugs
 
@@ -34,7 +34,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laie
 
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
-| Ä-001 | 🔴 | offen | Claude | **Aufträge als Systemdienst statt im Fenster:** Aufträge, Automatisierung und PXE laufen heute als Threads im GTK-Prozess (`jobs.py`). Wird das Tool geschlossen, stürzt es ab oder meldet man sich ab, brechen laufende Restores ab. Lösung: Dienst `okula-recoveryd` (systemd), die Oberfläche wird zum Client (lokaler Socket). Das ist die Grundlage für I-004 (Webinterface) und I-010 (Zeitplan). | 31.10. (Analyse) |
 | Ä-003 | 🟡 | offen | Claude | **Images und Backups auf dem NAS verschlüsseln:** Sie enthalten Personendaten (revDSG Art. 8, Datensicherheit). Minimum: SMB3-Verschlüsselung (`mount.cifs … seal`). Besser: Verschlüsselung im Datenstrom (z. B. `age` nach `zstd`), Schlüssel root-lesbar und zusätzlich auf Papier | 31.10. (Analyse) |
 | Ä-004 | 🟡 | offen | Claude | **Zentrales Protokoll:** `/var/log/okula-recovery/` mit logrotate. Festhalten, wer wann was auf welches Gerät gespielt hat. Dazu Menü → „Diagnosepaket exportieren“ (Logs, Version, Konfiguration ohne Geheimnisse), um Fehler an Claude Code zu melden | 31.10. (Analyse) |
 | Ä-005 | 🟡 | offen | Claude | **Entwicklung absichern:** GitHub Actions, die die 240 Tests bei jedem Push ausführen. Versionsnummer pflegen (steht noch auf `0.1.0`) und Releases taggen, damit der Server einen geprüften Stand zieht statt den Branch-Kopf. `ui.py` (2780 Zeilen) aufteilen | 31.10. (Analyse) |
@@ -58,7 +57,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laie
 | I-007 | 🟡 | offen | Claude | **Images regelmässig prüfen:** Die SHA256-Werte stehen schon in `okula-image.json`. Ein Nachtlauf prüft alle Images auf Bitfehler und zeigt den Status in der Liste (✔/✖, zuletzt geprüft). Optional ein Test-Restore in eine VM (→ I-001) |
 | I-008 | 🟡 | offen | Claude | **Benachrichtigungen:** E-Mail (SMTP) oder Push (ntfy/Teams) bei Fehlern, beim Ende einer Automatisierung, bei knappem NAS-Speicher, bei SMART-Warnungen und bei fehlgeschlagener Image-Prüfung |
 | I-009 | 🟡 | offen | Claude | **Disk sicher löschen (Ausmusterung, Leasing-Rückgabe):** NVMe Sanitize/Format, ATA Secure Erase oder `blkdiscard`, sonst Überschreiben. Danach ein Löschprotokoll als PDF mit Seriennummer, Methode, Datum und Prüfung (Nachweis nach revDSG) |
-| I-010 | 🟡 | offen | Claude | **Zeitgesteuerte Backups:** z. B. freitags 18:00: Wake-on-LAN → einmal Netzwerkstart in den Agent → Datei-Backup → herunterfahren. Die Bausteine (WOL, Agent beim nächsten Start, Backup) gibt es schon; braucht Ä-001 |
+| I-010 | 🟡 | offen | Claude | **Zeitgesteuerte Backups:** z. B. freitags 18:00: Wake-on-LAN → einmal Netzwerkstart in den Agent → Datei-Backup → herunterfahren. Die Bausteine (WOL, Agent beim nächsten Start, Backup) gibt es schon. Läuft nur, solange das Tool geöffnet ist (Autostart nach dem Login; Systemdienst Ä-001 wurde verworfen) |
 | I-011 | ⚪ | offen | Claude | **Multicast-Restore:** ein Image gleichzeitig auf viele Geräte (Schulungsraum), mit `udp-sender`/`udp-receiver` (udpcast) wie bei Clonezilla. Heute läuft jeder Restore einzeln über dieselbe 1-Gbit-Leitung |
 | I-012 | 🟡 | offen | Claude | **BitLocker entsperren:** Den Wiederherstellungsschlüssel pro Gerät hinterlegen (nur root-lesbar) und im Agent mit `dislocker` öffnen. Dann sichert partclone nur die belegten Blöcke statt einer `dd`-Rohkopie (Images viel kleiner), und auch ein Datei-Backup wird möglich |
 | I-014 | ⚪ | offen | Claude | **Treiber für Master-Images:** Treiberordner pro Modell auf dem NAS; nach dem Restore nach `Windows\Drivers\Okula` kopieren und in `unattend.xml` per `DriverPaths` (offlineServicing) einbinden. Damit passt ein Master auf verschiedene Hardware |
@@ -90,7 +89,7 @@ Gerätename = Name im Tool.
 - **NAS-Passwort nie im Repo oder Export:** liegt nur root-lesbar in `/etc/okula-recovery/nas.cred`.
   Exporte mit Agent-Schlüssel haben Rechte 0600.
 - **Nur Boot-Stick (keine Direktinstallation):** Nobara (Calamares), Zorin OS (ohne Autoinstall), Windows 32-Bit.
-  Bewusst so belassen; Idee I-002 (Nobara/Zorin direkt installieren) am 31.10.2026 gestrichen.
+  Bewusst so belassen; Idee I-002 (Nobara/Zorin direkt installieren) am 31.10.2026 gestrichen ([PAPIERKORB.md](PAPIERKORB.md)).
 - **Auf Zielgeräten wird nichts installiert:** Agent läuft im RAM (Stick oder Netzwerkstart).
 - **Automatisches Zusammenführen nur bei sicherer Identität** (gleiche Board-UUID/Seriennummer); eine gleiche MAC
   allein reicht nie (geteilter USB-Netzwerkadapter).
