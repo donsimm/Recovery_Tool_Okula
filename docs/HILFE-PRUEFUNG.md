@@ -38,7 +38,7 @@ Entscheid pro Nummer: **ja / nein / anders**. Umsetzung erst nach Freigabe.
 | H19 | Dieselbe Sache, verschiedene Wörter: Festplatte / Disk / Ziel-Festplatte / **Zieldisk** / Datenträger; Windows-Schlüssel / Windows-Key / Produktschlüssel; Agent / Agent-Stick | Wie in der Oberfläche: „Disk“ (einmal erklärt als Festplatte/SSD), „Zieldisk“, „Windows-Schlüssel“; Datenträger nur für USB |
 | H20 | Fachwörter nicht erklärt: Sysprep, BIOS/UEFI, Wake-on-LAN, TPM, Secure Boot, PXE, SMART, Firewall/Port, CSV, Einhängen, Inventar | In „Wichtige Begriffe“ je 1–2 Sätze |
 | H21 | Uneinheitliche Form: Einrückungen 3 bzw. 5 Leerzeichen, „Shift + Herunterfahren“ / „Shift-Taste halten …“, Nummern und Punkte gemischt | Einheitlich: Schritte nummeriert, Hinweise mit •, eine Schreibweise für Tasten |
-| H22 | Oberfläche (nicht Hilfe): Gerätefenster „Aufträge starten **Sie** oben über …“ – sonst überall „du“ | Auf „du“ ändern |
+| H22 | **Handbuch-Stil ohne Anrede (Wunsch Dominik, 31.10.)** – weder „du“ noch „Sie“, überall: Hilfe (55 Zeilen mit „du“, 16 Befehle wie „Klicke“), Oberfläche (Gerätefenster „…starten Sie…“, `usbtools.py` „damit du …“), Fortschrittstexte in Ich-Form („Prüfe Stick …“, „Starte …“, ~20 Stellen) | Schritte im Infinitiv („Gerät mit dem Agent-Stick starten.“), Beschreibungen sachlich („Links stehen alle Geräte.“, „Das Gerät lässt sich … verschieben.“), Fortschritt als Vorgang („Stick wird geprüft …“). Regel in CLAUDE.md aufnehmen |
 
 ## D – Aufbau
 
