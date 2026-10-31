@@ -16,3 +16,4 @@ vorgeschlagen. Zurückholen: Zeile nach [AENDERUNGEN.md](AENDERUNGEN.md) zurück
 | I-031 | 31.10.2026 | Claude | **Geräte-Etikett mit QR-Code** (Name, Seriennummer, Kunde drucken; Scan öffnet das Gerät). | Nicht gewünscht (Entscheid Dominik). |
 | I-010 | 31.10.2026 | Claude | **Backups nach Zeitplan** (Wake-on-LAN → Agent → Datei-Backup → herunterfahren). | Nicht gewünscht (Entscheid Dominik). |
 | Ä-013 | 31.10.2026 | Claude | **Klare Fertig-Meldung und Übergabeprotokoll** nach der Automatisierung. | Nicht gewünscht (Entscheid Dominik). |
+| I-028 | 31.10.2026 | Claude | **Windows reparieren** (Boot, ntfsfix, lokales Passwort). | Nicht gestrichen, sondern **zusammengeführt mit I-017** (Extras → Rescue). |
