@@ -16,11 +16,11 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 0 | 0 | 0 |
-| 🔧 Änderungen | 11 | 2 | 0 |
+| 🔧 Änderungen | 11 | 1 | 0 |
 | 💡 Ideen | 26 | 3 | 2 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
-In Arbeit (Reihenfolge): ~~Ä-014~~ ✔ → **Ä-011** Boot-Menü-Taste → **I-024** Windows-11-Tauglichkeit → **Ä-002** kleinere Disk → **I-025** Garantie → **I-013** Inventar-Export (ein neuer Agent-Stick für I-024 und Ä-002).
+In Arbeit (Reihenfolge): ~~Ä-014~~ ✔ → ~~Ä-011~~ ✔ → **I-024** Windows-11-Tauglichkeit → **Ä-002** kleinere Disk → **I-025** Garantie → **I-013** Inventar-Export (ein neuer Agent-Stick für I-024 und Ä-002).
 Als Nächstes danach: Tests „Fixes von heute“ in [TESTS.md](TESTS.md) (Debian-Direktinstallation, doppelter HP-Eintrag).
 Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laien, klein) → **Ä-001** (Dienst) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-009, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
@@ -44,7 +44,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laie
 | Ä-008 | 🔴 | offen | Claude | **Nach dem Restore Windows starten, auch wenn der Stick noch steckt:** BootNext auf den Windows Boot Manager setzen (`efibootmgr --bootnext`, wie in `wininstall.set_bootnext`). Heute heisst es nur „Agent-Stick abziehen“; wer das verpasst, landet wieder im Agent. Und nach 24 h wird das Gerät erneut neu aufgesetzt, weil „Nach 24 h wieder einschalten“ standardmässig an ist → Standard **aus**, oder nur bei Netzwerkstart | 31.10. (Laien-Test) |
 | Ä-009 | 🟡 | offen | Claude | **Vorauswahl:** Ist nur eine interne Disk da, ist sie automatisch die Zieldisk; gibt es nur einen Master, ist er gewählt (heute sind beide Listen leer). Dazu eine Standard-Vorlage (Menü → Einstellungen), die bei jedem neuen Gerät schon eingetragen ist | 31.10. (Laien-Test) |
 | Ä-010 | 🟡 | offen | Claude | **Vorabprüfung mit Ampel statt Fehler mitten im Lauf:** Image passt auf die Disk, UEFI/BIOS-Modus passt zum Master, BitLocker auf der Zieldisk (dann ist kein Datei-Backup möglich), Agent-Stick aktuell, Windows-Edition des Masters passt zum Key (Pro/Home). Anzeige: „✔ Bereit“ bzw. „⚠ Achtung: …“ | 31.10. (Laien-Test) |
-| Ä-011 | 🟡 | **in Arbeit** | Claude | **Boot-Menü-Taste je Hersteller:** im Stick-Dialog, in der Hilfe und bei bekannten Geräten aus den Inventardaten (DMI), z. B. HP F9, Dell F12, Lenovo F12, Asus F8/Esc, Acer F12, MSI F11. Der Hinweis „meist F12, F11, F8 oder Esc“ reicht einem Laien nicht | 31.10. (Laien-Test) |
 | Ä-012 | 🟡 | offen | Claude | **Einfache Sprache im Reiter Automatisierung:** „Zieldisk“ → „Festplatte, die gelöscht wird“; Sysprep, Master und Content-Projekte mit einem „?“ pro Abschnitt erklären. Gerätenamen wie „DESKTOP-8F3K2LQ“ markieren und zum Umbenennen auffordern; optional Namensschema pro Vorlage (z. B. `KUNDE-001` fortlaufend) | 31.10. (Laien-Test) |
 | Ä-013 | ⚪ | offen | Claude | **Klare Fertig-Meldung:** grosses „✔ Fertig – HP-PC-07 ist neu aufgesetzt (18 min)“ im Tool und am Gerät, dazu eine Liste: was gemacht wurde, Key aktiviert ja/nein, wo das Backup liegt. Als PDF ausdruckbar (Übergabeprotokoll, → I-013) | 31.10. (Laien-Test) |
 
@@ -110,6 +109,10 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 31.10.2026
+- **Ä-011 Boot-Menü-Taste je Hersteller:** Modul `bootkeys.py` (HP, Dell, Lenovo ThinkPad/IdeaPad, Asus Notebook/
+  Desktop, Acer, MSI, Gigabyte, Fujitsu, Medion, Toshiba/Dynabook, Surface, Apple Intel; Quellen im Code). Tabelle im
+  Stick-Dialog, in Hilfe und README; im Gerätefenster „Starttasten“ aus DMI (sys_vendor, Modell, Gehäuse, bei
+  Eigenbau Mainboard-Hersteller); Netzwerkstart-Hinweis nennt die Taste des Geräts.
 - **Ä-014 NAS-Webseite öffnen:** Knopf im Fenster NAS-Verbindung (neben „Verbindung testen“) und Symbol in der
   NAS-Statuszeile; Adresse aus dem gespeicherten Host, Protokoll/Port einstellbar (https 5001, http 5000), Export/Import
   inklusive. Öffnet den Browser als normaler Benutzer; ohne Host ausgegraut.

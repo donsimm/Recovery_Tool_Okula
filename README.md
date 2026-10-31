@@ -93,6 +93,27 @@ Der Export enthält auch die Vorlagen der Automatisierung und die Einstellung �
 
 Menü → **Agent-USB-Stick erstellen …**:
 
+**Boot-Menü-Taste je Hersteller** (Tabelle auch im Stick-Dialog und in der Hilfe; Quellen in `okula_recovery/bootkeys.py`):
+
+| Hersteller | Boot-Menü | BIOS | Hinweis |
+|---|---|---|---|
+| HP | F9 (oder Esc → F9) | F10 | teils mit Fn |
+| Dell | F12 | F2 | |
+| Lenovo ThinkPad/ThinkCentre | F12 (oder Enter → F12) | F1 | |
+| Lenovo IdeaPad/Yoga/Legion | F12 bzw. Fn+F12 | F2 | sonst Novo-Knopf |
+| Asus Notebook / Desktop | Esc / F8 | F2 / Entf | |
+| Acer | F12 | F2 | F12-Menü erst im BIOS einschalten |
+| MSI | F11 | Entf | |
+| Gigabyte | F12 | Entf | |
+| Fujitsu | F12 | F2 | |
+| Medion | F10 (teils F8/F11) | F2 | |
+| Toshiba/Dynabook | F12 | F2 | |
+| Microsoft Surface | Lautstärke leiser + Ein | Lautstärke lauter + Ein | |
+| Apple Mac (Intel) | Option/Alt halten | – | T2: Start von externen Medien erlauben |
+
+Bei erfassten Geräten zeigt das Gerätefenster (Übersicht → **Starttasten**) die passende Taste aus den Inventardaten (DMI-Hersteller und -Modell).
+
+
 1. Stick einstecken und auswählen. Angeboten werden nur USB- und Wechseldatenträger, nie die Systemdisk.
 2. Debian-Live-ISO wählen oder **Herunterladen** klicken. Das Tool lädt das aktuelle `debian-live-…-amd64-standard.iso` von cdimage.debian.org und prüft es gegen `SHA512SUMS`. Die Datei liegt danach unter `~/.cache/okula-recovery/iso`. Einen anderen Mirror setzt du über die Umgebungsvariable `OKULA_DEBIAN_LIVE_URL`.
 3. **Stick vorbereiten**. Der Stick wird gelöscht und so aufgebaut:

@@ -11,7 +11,7 @@ from pathlib import Path
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gtk  # noqa: E402
+from gi.repository import GLib, Gtk, Pango  # noqa: E402
 
 from okula_recovery import agentclient, isofetch, network, stick  # noqa: E402
 
@@ -116,13 +116,36 @@ def run_helper(cmd: list[str], stdin_text: str, on_progress, on_line, on_done,
     return handle
 
 
+
+def boot_keys_table() -> Gtk.Widget:
+    """Tabelle „Boot-Menü-Taste je Hersteller“ (zum Starten vom Stick)."""
+    from okula_recovery import bootkeys
+    store = Gtk.ListStore(str, str, str, str)
+    for k in bootkeys.TABLE.values():
+        store.append([k.vendor, k.boot, k.bios, k.hint])
+    view = Gtk.TreeView(model=store)
+    for i, title in enumerate(("Hersteller", "Boot-Menü", "BIOS", "Hinweis")):
+        cell = Gtk.CellRendererText(wrap_mode=Pango.WrapMode.WORD_CHAR, wrap_width=(150, 150, 120, 250)[i])
+        col = Gtk.TreeViewColumn(title, cell, text=i)
+        col.set_resizable(True)
+        view.append_column(col)
+    view.get_selection().set_mode(Gtk.SelectionMode.NONE)
+    sw = Gtk.ScrolledWindow(hexpand=True)
+    sw.set_shadow_type(Gtk.ShadowType.IN)
+    sw.set_min_content_height(170)
+    sw.add(view)
+    expander = Gtk.Expander(label="Boot-Menü-Taste je Hersteller – Gerät einschalten und Taste antippen, "
+                                  "dann den USB-Stick wählen", expanded=True)
+    expander.add(sw)
+    return expander
+
 class StickDialog(Gtk.Dialog):
     """Agent-Stick (image=None) oder Restore-Stick mit genau einem Image."""
 
     def __init__(self, parent: Gtk.Window, image: str | None = None, source_disks: list[str] | None = None):
         title = "Restore-Stick erstellen" if image else "Agent-USB-Stick erstellen"
         super().__init__(title=title, transient_for=parent, modal=True)
-        self.set_default_size(620, 460)
+        self.set_default_size(780, 640)
         self.busy = False
         self.image = image
         self.image_size = stick.tree_size(Path(image)) if image else 0
@@ -201,6 +224,7 @@ class StickDialog(Gtk.Dialog):
         sw.add(self.log)
         grid.attach(sw, 0, 5, 3, 1)
 
+        grid.attach(boot_keys_table(), 0, 7, 3, 1)
         self.get_content_area().add(grid)
         self.refresh_disks()
         self.show_all()

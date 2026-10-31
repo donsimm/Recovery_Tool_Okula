@@ -11,7 +11,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
-from okula_recovery import archive, devices, jobs, nas  # noqa: E402
+from okula_recovery import archive, bootkeys, devices, jobs, nas  # noqa: E402
 from okula_recovery.automation_tab import AutomationTab  # noqa: E402
 from okula_recovery.uikit import ask_text, confirm_error, numbered_section, run_async, scrolled  # noqa: E402
 
@@ -270,6 +270,8 @@ class DeviceWindow(Gtk.Window):
                     p for p in (d.get("product_name"), d.get("product_version")) if p)),
                 ("Seriennummer", d.get("product_serial", "")), ("System-UUID", d.get("product_uuid", "")),
                 ("Gehäuse", d.get("chassis", "")),
+                ("Starttasten", bootkeys.short(bootkeys.lookup(d)) or "Hersteller unbekannt – meist F12, F11, F8 "
+                                                                       "oder Esc"),
                 ("Mainboard", " ".join(p for p in (d.get("board_vendor"), d.get("board_name")) if p)),
                 ("BIOS", " ".join(p for p in (d.get("bios_vendor"), d.get("bios_version"), d.get("bios_date")) if p)),
                 ("Prozessor", f"{cpu.get('model', '')}  ({cpu.get('cores', '?')} Kerne / {cpu.get('threads', '?')} "
@@ -400,7 +402,8 @@ class DeviceWindow(Gtk.Window):
         if reason:
             text = reason.split(" – ")[0]
         elif self.dev.netboot:
-            text = "Ein – Gerät startet den Agent ohne Stick: F12 (Boot-Menü) → Netzwerk"
+            keys = bootkeys.lookup(self.dev.inventory.get("dmi"))
+            text = f"Ein – Gerät startet den Agent ohne Stick: {keys.boot if keys else 'Boot-Menü'} → Netzwerk"
         else:
             text = "Aus"
         self.netboot_text.set_text(text)

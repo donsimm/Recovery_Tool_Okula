@@ -32,7 +32,7 @@ class PxeDialog(Gtk.Dialog):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=14)
         intro = Gtk.Label(xalign=0, wrap=True)
         intro.set_markup(
-            "Freigeschaltete Geräte starten den Agent <b>ohne Stick</b>: am Gerät F12 (Boot-Menü) → Netzwerk / PXE. "
+            "Freigeschaltete Geräte starten den Agent <b>ohne Stick</b>: am Gerät Boot-Menü (z. B. HP F9, Dell/Lenovo F12) → Netzwerk / PXE. "
             "Nur Geräte, die schon einmal mit dem Agent-Stick liefen <b>und</b> unten freigeschaltet sind, bekommen "
             "eine Antwort. Andere Rechner im Netz merken nichts; IP-Adressen vergibt weiterhin euer DHCP-Server.")
         box.pack_start(intro, False, False, 0)

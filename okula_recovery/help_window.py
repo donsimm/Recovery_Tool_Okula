@@ -109,8 +109,15 @@ Sonst findet das Tool die Geräte nicht."""),
 
 <b>So gehts:</b>
 1.  Stecke den Agent-Stick in das Gerät.
-2.  Starte das Gerät und öffne das Boot-Menü.
-     Die Taste ist meist F12, F11, F8 oder Esc (steht kurz beim Start auf dem Bildschirm).
+2.  Starte das Gerät und öffne das Boot-Menü: gleich nach dem Einschalten die Taste mehrmals antippen.
+     <b>Boot-Menü-Taste je Hersteller</b> (BIOS-Taste in Klammern):
+     HP <b>F9</b> (F10) · Dell <b>F12</b> (F2) · Lenovo ThinkPad <b>F12</b> (F1) · Lenovo IdeaPad <b>F12</b> (F2)
+     Asus Notebook <b>Esc</b> (F2) · Asus Desktop <b>F8</b> (Entf) · Acer <b>F12</b> (F2) · MSI <b>F11</b> (Entf)
+     Gigabyte <b>F12</b> (Entf) · Fujitsu <b>F12</b> (F2) · Medion <b>F10</b> (F2) · Toshiba/Dynabook <b>F12</b> (F2)
+     Surface: <b>Lautstärke leiser</b> halten + Ein-Knopf · Mac (Intel): <b>Option/Alt</b> halten
+     •  Acer: Das F12-Menü muss zuerst im BIOS eingeschaltet werden.
+     •  Lenovo IdeaPad: Klappt keine Taste, hilft der kleine Novo-Knopf (Büroklammer).
+     •  Ist das Gerät schon im Tool, steht seine Taste im Gerätefenster unter <i>Übersicht → Starttasten</i>.
 3.  Wähle den USB-Stick.
 4.  Nach etwa einer Minute erscheint das Gerät links im Tool, mit grünem Punkt.
 
