@@ -17,7 +17,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 |---|---|---|---|
 | 🐞 Bugs | 0 | 0 | 0 |
 | 🔧 Änderungen | 10 | 0 | 0 |
-| 💡 Ideen | 27 | 0 | 0 |
+| 💡 Ideen | 26 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
@@ -65,7 +65,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laie
 | I-016 | 🔴 | offen | Claude | **Schutz vor Ransomware und Fehllöschung:** Das Tool-Konto hat heute volles Schreib- und Löschrecht auf dem NAS; wer den Server übernimmt, kann alle Backups löschen. Lösung: unveränderliche NAS-Snapshots (Synology Snapshot Replication mit Immutable), auf die das Tool-Konto keinen Zugriff hat, und ein Papierkorb im Tool (heute: „keinen Papierkorb – gelöschte Daten sind weg“). Das NCSC/BACS empfiehlt Offline- oder WORM-Medien und mindestens zwei Generationen |
 | I-017 | 🟡 | offen | Claude | **Defekte Disk retten:** partclone bricht bei Lesefehlern ab. Ein Rettungsmodus mit `ddrescue` (Fehlerkarte, mehrere Durchgänge) bzw. `partclone -R` sichert, was noch lesbar ist. Dazu TestDisk und PhotoRec im Agent, um gelöschte Partitionen und Dateien wiederherzustellen (wie Rescuezilla und FOG) |
 | I-018 | 🟡 | offen | Claude | **Einzelne Dateien aus einem Disk-Image holen:** Disk-Image auf dem Server einhängen (partclone → Loop, ntfs-3g read-only), darin suchen und einzelne Dateien oder Ordner aufs NAS oder ans Gerät senden. Heute gibt es Einzeldateien nur aus Datei-Backups (Rescuezilla: Image Explorer, Macrium: Durchsuchen) |
-| I-019 | 🟡 | offen | Claude | **Disk direkt klonen:** alte HDD → neue SSD im selben Gerät (beide angeschlossen) oder Gerät → Gerät, ohne Umweg über das NAS. Mit Anpassen der Partitionsgrösse (vgl. Ä-002) |
 | I-020 | 🟡 | offen | Claude | **Software nach dem Aufsetzen installieren:** pro Vorlage eine winget-Liste (z. B. 7-Zip, Adobe Reader, Teams), installiert per `FirstLogonCommands`/`SetupComplete.cmd` – der Mechanismus ist schon da (`winunattend.py`). So bleibt der Master klein, und die Software ist immer aktuell (FOG: Snapins, SmartDeploy: Application Packs) |
 | I-021 | 🟡 | offen | Claude | **Firmen-Anmeldung:** Domänenbeitritt (`UnattendedJoin` in unattend.xml) bzw. Entra ID. Dazu den Autopilot-Hardware-Hash erfassen (beim ersten Start per `Get-WindowsAutopilotInfo`) und als CSV aufs NAS legen, für den Import in Intune |
 | I-022 | 🟡 | offen | Claude | **Geräte vorab erfassen (CSV-Import):** Liste mit Seriennummer oder MAC, Name, Ordner/Kunde und Vorlage, z. B. vom Lieferschein. Startet das Gerät zum ersten Mal mit dem Agent, ist alles schon zugeordnet und die Automatisierung läuft (Acronis Snap Deploy: Einstellungen pro MAC). Passt zu Ä-006 |
