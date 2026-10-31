@@ -17,10 +17,10 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 |---|---|---|---|
 | 🐞 Bugs | 0 | 0 | 0 |
 | 🔧 Änderungen | 11 | 0 | 0 |
-| 💡 Ideen | 26 | 2 | 2 |
+| 💡 Ideen | 26 | 1 | 2 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
-In Arbeit (Reihenfolge): ~~Ä-014~~ ✔ → ~~Ä-011~~ ✔ → ~~I-024~~ ✔ → ~~Ä-002~~ ✔ → **I-025** Garantie → **I-013** Inventar-Export (ein neuer Agent-Stick für I-024 und Ä-002).
+In Arbeit (Reihenfolge): ~~Ä-014~~ ✔ → ~~Ä-011~~ ✔ → ~~I-024~~ ✔ → ~~Ä-002~~ ✔ → ~~I-025~~ ✔ → **I-013** Inventar-Export (ein neuer Agent-Stick für I-024 und Ä-002).
 Als Nächstes danach: Tests „Fixes von heute“ in [TESTS.md](TESTS.md) (Debian-Direktinstallation, doppelter HP-Eintrag).
 Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laien, klein) → **Ä-001** (Dienst) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-009, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
@@ -73,7 +73,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laie
 | I-021 | 🟡 | offen | Claude | **Firmen-Anmeldung:** Domänenbeitritt (`UnattendedJoin` in unattend.xml) bzw. Entra ID. Dazu den Autopilot-Hardware-Hash erfassen (beim ersten Start per `Get-WindowsAutopilotInfo`) und als CSV aufs NAS legen, für den Import in Intune |
 | I-022 | 🟡 | offen | Claude | **Geräte vorab erfassen (CSV-Import):** Liste mit Seriennummer oder MAC, Name, Ordner/Kunde und Vorlage, z. B. vom Lieferschein. Startet das Gerät zum ersten Mal mit dem Agent, ist alles schon zugeordnet und die Automatisierung läuft (Acronis Snap Deploy: Einstellungen pro MAC). Passt zu Ä-006 |
 | I-023 | 🟡 | offen | Claude | **Hardware-Diagnose am Gerät:** SMART-Selbsttest (kurz/lang), Oberflächentest der Disk, RAM-Test (memtest86+ im PXE- bzw. Stick-Menü). Ergebnis im Verlauf und im Inventar. Heute wird SMART nur gelesen |
-| I-025 | ⚪ | **in Arbeit** | Claude | **Garantie-Abfrage:** Garantieende per Seriennummer bei Dell, Lenovo und HP (Hersteller-APIs) abfragen, im Inventar anzeigen und vor dem Ablauf warnen (Lansweeper, PDQ) |
 | I-026 | ⚪ | offen | Claude | **Hardware-Änderungen erkennen:** RAM, Disk oder Seriennummer anders als beim letzten Mal → Hinweis im Verlauf (Diebstahl, Tausch, Defekt) |
 | I-027 | ⚪ | offen | Claude | **Neu aufsetzen direkt am Gerät:** Auf dem Agent-Bildschirm ein Menü „Mit Master neu aufsetzen“, geschützt mit PIN, damit Techniker vor Ort das Tool nicht brauchen (Acronis: user-initiated deployment) |
 | I-028 | ⚪ | offen | Claude | **Windows reparieren:** UEFI-Booteinträge und BCD neu schreiben, `ntfsfix`, Passwort eines lokalen Kontos zurücksetzen (wird protokolliert). Typische Recovery-Fälle ohne Neuinstallation |
@@ -102,6 +101,9 @@ Gerätename = Name im Tool.
 - **Passwörter werden nicht gespeichert:** lokales Konto ohne Passwort, Windows verlangt es beim ersten Anmelden.
 - **Kleinere Disk (Ä-002):** Anpassen auf dem Server als neues Image (Original bleibt); Zwischenspeicher zuerst
   Server-SSD, sonst NAS (Entscheid Dominik 31.10.). Nicht bei BitLocker/Rohkopie, Btrfs/XFS, LVM, logischen Partitionen.
+- **Garantie (I-025):** Felder für Dell/HP vorbereitet (Entscheid Dominik 31.10.), Abfrage aktiv, sobald ein Schlüssel
+  eingetragen ist; Lenovo öffentlich (inoffiziell, kann sich ändern), sonst „Garantie bis“ von Hand. Schlüssel nur beim
+  Root-Helfer, der auch abfragt – das Tool sieht sie nie. Kein Dauer-Polling: Knopfdruck + einmal nach dem Erfassen.
 - **Umsetzungsreihenfolge:** zuerst Agent (Fundament, ein neuer Stick reicht), dann Tool-Logik, zuletzt Oberfläche.
 
 ## ✅ Erledigt – Änderungsprotokoll
@@ -109,6 +111,14 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 31.10.2026
+- **I-025 Garantie-Abfrage:** `warranty.py` – Dell (TechDirect Warranty API v5) und HP (HP Warranty API) über den
+  neuen Root-Helfer `/usr/local/sbin/okula-warranty` (Schlüssel nur in `/etc/okula-recovery/warranty.cred`, root,
+  0600; Eingabe unter Menü → Einstellungen → Garantie-Abfrage, nie in Konfiguration/Export, nie angezeigt), Lenovo über
+  die öffentliche Support-Seite. Gerätefenster → Übersicht „Garantie bis“: grün / gelb (≤ 90 Tage) / rot (abgelaufen),
+  „Beim Hersteller abfragen“ und „Von Hand …“. Abfrage nur auf Knopfdruck und einmal nach dem Erfassen; Ergebnis am
+  Gerät (30 Tage aktuell), bei Fehler bleibt das alte Datum. Tests mit gemockten Antworten (`tests/test_warranty.py`).
+  Hinweis: Die Hersteller-Server waren in der Entwicklungsumgebung gesperrt – Endpunkte am realen System prüfen
+  (TESTS.md). `install.sh` erneut ausführen (neuer Root-Helfer, sudo-Regel).
 - **Ä-002 Restore auf eine kleinere Disk:** `shrink.py` leitet auf dem Server ein neues Image ab (grösste Partition
   NTFS/ext2/3/4 in Sparse-Datei → `ntfsresize`+`ntfsfix -d` bzw. `e2fsck`+`resize2fs` → neu sichern; Partitionen
   dahinter ans neue Ende; neue sfdisk-Tabelle). Prüfung sofort aus dem partclone-Kopf (belegt + Reserve 10 %, min.

@@ -1,0 +1,5 @@
+#!/bin/sh
+# Root-Helfer des Recovery-Tools für die Garantie-Abfrage (Dell/HP): Schlüssel liegen nur root-lesbar in
+# /etc/okula-recovery/warranty.cred (per sudo aufgerufen).
+cd /opt/okula-recovery || exit 1
+exec /usr/bin/python3 -m okula_recovery.warranty "$@"

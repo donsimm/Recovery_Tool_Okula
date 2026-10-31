@@ -11,7 +11,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
-from okula_recovery import archive, bootkeys, devices, jobs, nas, win11  # noqa: E402
+from okula_recovery import archive, bootkeys, devices, jobs, nas, warranty, win11  # noqa: E402
 from okula_recovery.automation_tab import AutomationTab  # noqa: E402
 from okula_recovery.uikit import ask_text, confirm_error, numbered_section, run_async, scrolled  # noqa: E402
 
@@ -305,6 +305,7 @@ class DeviceWindow(Gtk.Window):
             self.info_grid.attach(key, 0, i, 1, 1)
             self.info_grid.attach(val, 1, i, 1, 1)
         self._key_row(len(rows))
+        self._warranty_row(len(rows) + 1)
         self.info_grid.show_all()
 
     def _build_netboot(self) -> Gtk.Widget:
@@ -496,6 +497,64 @@ class DeviceWindow(Gtk.Window):
         change.connect("clicked", lambda _b: self._edit_key())
         box.pack_start(change, False, False, 0)
         self.info_grid.attach(box, 1, row, 1, 1)
+
+    def _warranty_row(self, row: int) -> None:
+        """Garantie: Datum (gelb ≤ 90 Tage, rot abgelaufen), Abfragen beim Hersteller, „Garantie bis“ von Hand."""
+        w = self.dev.warranty
+        label = Gtk.Label(label="Garantie bis", xalign=0, yalign=0)
+        label.get_style_context().add_class("status-idle")
+        self.info_grid.attach(label, 0, row, 1, 1)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        level, text = warranty.status(w)
+        line = Gtk.Box(spacing=8)
+        state = Gtk.Label(label=text, xalign=0, selectable=True)
+        if level != "unknown":
+            state.get_style_context().add_class(f"warranty-{level}")
+        line.pack_start(state, False, False, 0)
+        details = warranty.describe(w)
+        details = details[len(text):].strip(" ") if details.startswith(text) else ""
+        if details:
+            extra = Gtk.Label(label=details, xalign=0, selectable=True, wrap=True)
+            extra.get_style_context().add_class("status-idle")
+            line.pack_start(extra, False, False, 0)
+        box.pack_start(line, False, False, 0)
+        buttons = Gtk.Box(spacing=6)
+        inv = self.dev.inventory
+        ask = Gtk.Button(label="Beim Hersteller abfragen")
+        vendor = warranty.vendor_of(inv)
+        if warranty.supported(inv):
+            ask.set_tooltip_text(f"{warranty.NAMES[vendor]}: Garantie per Seriennummer abfragen"
+                                 + (" (Schlüssel in Menü → Einstellungen)" if vendor in warranty.KEY_VENDORS else
+                                    " (öffentliche Abfrage, ohne Schlüssel)"))
+        else:
+            ask.set_sensitive(False)
+            ask.set_tooltip_text("Nur für Dell, HP und Lenovo mit gültiger Seriennummer – „Garantie bis“ von Hand "
+                                 "eintragen")
+        ask.connect("clicked", lambda b: self.main.query_warranty(self.dev, b))
+        buttons.pack_start(ask, False, False, 0)
+        hand = Gtk.Button(label="Von Hand …")
+        hand.set_tooltip_text("„Garantie bis“ selbst eintragen (z. B. ohne Schlüssel oder ohne Internet)")
+        hand.connect("clicked", lambda _b: self._edit_warranty())
+        buttons.pack_start(hand, False, False, 0)
+        box.pack_start(buttons, False, False, 0)
+        self.info_grid.attach(box, 1, row, 1, 1)
+
+    def _edit_warranty(self) -> None:
+        w = self.dev.warranty
+        current = warranty.parse_date(w.get("until")) if w else None
+        new = ask_text(self, "Garantie bis", "Garantie bis (TT.MM.JJJJ), leer = löschen:",
+                       current.strftime("%d.%m.%Y") if current else "")
+        if new is None:
+            return
+        try:
+            self.dev.warranty = warranty.manual(new)
+        except warranty.WarrantyError as e:
+            confirm_error(self, str(e))
+            return
+        self.main.store.save(self.dev)
+        self.main.store.add_history(self.dev, "notiz", "Garantie bis " + (
+            warranty.status(self.dev.warranty)[1] + " von Hand eingetragen" if self.dev.warranty else "gelöscht"))
+        self.refresh()
 
     def _edit_key(self) -> None:
         new = ask_text(self, "Windows-Produktschlüssel", "Schlüssel (XXXXX-XXXXX-XXXXX-XXXXX-XXXXX), leer = löschen:",

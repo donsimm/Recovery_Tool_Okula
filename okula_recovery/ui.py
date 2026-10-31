@@ -17,7 +17,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 
 from okula_recovery import (__version__, agentclient, archive, automation, backups, clonezilla, config,  # noqa: E402
-                            devices, discovery, distribute, jobs, nas, nasfiles, oslib, pxe, win11, wol)
+                            devices, discovery, distribute, jobs, nas, nasfiles, oslib, pxe, warranty, win11, wol)
 from okula_recovery.automation_tab import SendFoldersDialog, SettingsDialog  # noqa: E402
 from okula_recovery.backup_dialogs import (BackupDetailsDialog, BackupDialog, RestoreFilesDialog,  # noqa: E402
                                            edit_note)
@@ -54,6 +54,9 @@ CSS = b"""
 .status-ok { color: #2e7d32; font-weight: bold; }
 .status-fail { color: #c62828; font-weight: bold; }
 .status-idle { color: #757575; }
+.warranty-ok { color: #2e7d32; }
+.warranty-warn { background-color: #fff3b0; color: #6d5200; font-weight: bold; padding: 1px 4px; }
+.warranty-expired { background-color: #c62828; color: #ffffff; font-weight: bold; padding: 1px 4px; }
 .nas-bar { padding: 4px 8px; border-radius: 4px; background-color: alpha(currentColor, 0.06); }
 .device-name { font-weight: bold; font-size: 120%; }
 .load-name { color: #757575; font-size: 90%; }
@@ -2157,7 +2160,50 @@ class MainWindow(Gtk.ApplicationWindow):
             self.set_automation_paused(paused)
             self.status(f"Einstellungen gespeichert – höchstens {limit} Automatisierung"
                         f"{'en' if limit != 1 else ''} gleichzeitig")
+            changes = dlg.key_changes()
+            if changes:
+                def work():
+                    return [warranty.save_key(*c) for c in changes]
+
+                def done(results) -> None:
+                    if isinstance(results, Exception):
+                        confirm_error(self, f"Garantie-Schlüssel nicht gespeichert: {results}")
+                        return
+                    failed = [msg for ok, msg in results if not ok]
+                    if failed:
+                        confirm_error(self, "Garantie-Schlüssel nicht gespeichert: " + "; ".join(failed))
+                    else:
+                        self.status(" · ".join(msg for _ok, msg in results))
+                run_async(work, done)
         dlg.destroy()
+
+    def query_warranty(self, dev: devices.Device, button: Gtk.Button | None = None, auto: bool = False) -> None:
+        """Garantie beim Hersteller abfragen (Knopfdruck oder einmal nach dem Erfassen) – im Hintergrund."""
+        if button is not None:
+            button.set_sensitive(False)
+            button.set_label("Frage ab …")
+        inv = dict(dev.inventory)
+
+        def work():
+            try:
+                return warranty.lookup(inv), ""
+            except warranty.WarrantyError as e:
+                return None, str(e)
+
+        def done(res) -> None:
+            new, error = (None, str(res)) if isinstance(res, Exception) else res
+            dev.warranty = warranty.merge(dev.warranty, new, error)
+            self.store.save(dev)
+            if error:
+                self.status(f"Garantie {dev.name}: {error}")
+            else:
+                text = warranty.status(dev.warranty)[1]
+                self.store.add_history(dev, "garantie", f"Garantie bis {text} ({warranty.NAMES[new['source']]})")
+                self.status(f"Garantie {dev.name}: bis {text}")
+            win = self.device_windows.get(dev.id)
+            if win is not None:
+                win.refresh()
+        run_async(work, done)
 
     def set_master_image(self, path: str, on: bool) -> None:
         try:
@@ -2318,6 +2364,8 @@ class MainWindow(Gtk.ApplicationWindow):
             if new:
                 self._dev_expand_after = ""
                 self.status(f"Neues Gerät erfasst: {dev.name} ({current.ip}) – unter „Neu / nicht einsortiert“")
+                if warranty.supported(dev.inventory) and not dev.warranty:
+                    self.query_warranty(dev, auto=True)   # einmal nach dem Erfassen, danach nur auf Knopfdruck
             elif refresh:
                 self.status(f"Inventar von {dev.name} neu eingelesen")
             self.refresh_devices()

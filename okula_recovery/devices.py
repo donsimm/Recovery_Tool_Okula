@@ -59,6 +59,7 @@ class Device:
     boot_saved: list[str] = field(default_factory=list)   # Startreihenfolge vor „Netzwerk zuerst“ (zum Zurückstellen)
     boot_status: dict = field(default_factory=dict)       # zuletzt vom Agent gemeldet (netfirst, network, labels, …)
     automation: dict = field(default_factory=dict)        # Einstellungen der Automatisierung (automation.Settings)
+    warranty: dict = field(default_factory=dict)          # Garantie (warranty.result/manual): until, source, checked …
     history: list[dict] = field(default_factory=list)
     folder: str = ""                   # nicht gespeichert: ergibt sich aus dem Ablageort
 
@@ -260,6 +261,7 @@ class DeviceStore:
             if other.notes.strip() and other.notes.strip() not in keep.notes:
                 keep.notes = f"{keep.notes.rstrip()}\n\n{other.notes.strip()}".strip()
             keep.product_key = keep.product_key or other.product_key
+            keep.warranty = keep.warranty or other.warranty
             keep.netboot = keep.netboot or other.netboot
             keep.boot_request = keep.boot_request or other.boot_request
             if other.netfirst and not keep.netfirst:

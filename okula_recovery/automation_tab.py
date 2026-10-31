@@ -9,8 +9,8 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
-from okula_recovery import automation, config, devices, distribute, linuxsetup, winunattend  # noqa: E402
-from okula_recovery.uikit import ask_text, confirm, confirm_error, numbered_section, scrolled  # noqa: E402
+from okula_recovery import automation, config, devices, distribute, linuxsetup, warranty, winunattend  # noqa: E402
+from okula_recovery.uikit import ask_text, confirm, confirm_error, numbered_section, run_async, scrolled  # noqa: E402
 
 if TYPE_CHECKING:
     from okula_recovery.ui import MainWindow
@@ -23,6 +23,12 @@ HINT = ("Die Automatisierung läuft einmal und schaltet sich nach erfolgreichem 
 def _hint(text: str) -> Gtk.Label:
     lbl = Gtk.Label(label=text, xalign=0, wrap=True)
     lbl.get_style_context().add_class("status-idle")
+    return lbl
+
+
+def _hint_wrapped(text: str, width: int = 95) -> Gtk.Label:
+    lbl = _hint(text)
+    lbl.set_max_width_chars(width)
     return lbl
 
 
@@ -375,7 +381,7 @@ class SendFoldersDialog(Gtk.Dialog):
 
 
 class SettingsDialog(Gtk.Dialog):
-    """Menü → Einstellungen: Automatisierung (gleichzeitig, Hauptschalter)."""
+    """Menü → Einstellungen: Automatisierung (gleichzeitig, Hauptschalter), Garantie-Abfrage (Schlüssel)."""
 
     def __init__(self, parent: Gtk.Window, cfg: config.Config):
         super().__init__(title="Einstellungen", transient_for=parent, modal=True)
@@ -396,8 +402,74 @@ class SettingsDialog(Gtk.Dialog):
         inner.pack_start(self.paused, False, False, 0)
         frame.add(inner)
         box.pack_start(frame, False, False, 0)
+        box.pack_start(self._build_warranty(), False, False, 0)
         self.get_content_area().add(box)
         self.show_all()
+        run_async(warranty.configured, self._show_keys)
+
+    def _build_warranty(self) -> Gtk.Widget:
+        """Schlüssel für Dell/HP: werden nur an den Root-Helfer gegeben (root-lesbar), nie angezeigt."""
+        frame = Gtk.Frame(label="Garantie-Abfrage")
+        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=10)
+        inner.pack_start(_hint_wrapped("Fragt die Garantie per Seriennummer beim Hersteller ab (Gerätefenster → Übersicht). "
+                               "Schlüssel liegen nur für root lesbar in /etc/okula-recovery/warranty.cred – nie in "
+                               "der Konfiguration oder im Export. Gespeicherte Schlüssel werden nicht angezeigt; "
+                               "leer lassen = unverändert."), False, False, 0)
+        grid = Gtk.Grid(column_spacing=8, row_spacing=6)
+        self.key_entries: dict[str, tuple[Gtk.Entry, Gtk.Entry]] = {}
+        self.key_state: dict[str, Gtk.Label] = {}
+        self.key_delete: dict[str, Gtk.CheckButton] = {}
+        labels = {"dell": ("Dell TechDirect", "Client-ID", "Client-Secret"),
+                  "hp": ("HP Warranty API", "API-Key", "API-Secret")}
+        for row, vendor in enumerate(warranty.KEY_VENDORS):
+            title, id_label, secret_label = labels[vendor]
+            grid.attach(Gtk.Label(label=title, xalign=0), 0, row, 1, 1)
+            key_id = Gtk.Entry(placeholder_text=id_label, width_chars=22)
+            secret = Gtk.Entry(placeholder_text=secret_label, width_chars=22, visibility=False)
+            secret.set_input_purpose(Gtk.InputPurpose.PASSWORD)
+            grid.attach(key_id, 1, row, 1, 1)
+            grid.attach(secret, 2, row, 1, 1)
+            state = Gtk.Label(label="prüfe …", xalign=0)
+            state.get_style_context().add_class("status-idle")
+            grid.attach(state, 3, row, 1, 1)
+            delete = Gtk.CheckButton(label="löschen", no_show_all=True)
+            grid.attach(delete, 4, row, 1, 1)
+            self.key_entries[vendor], self.key_state[vendor], self.key_delete[vendor] = (key_id, secret), state, delete
+        row = len(warranty.KEY_VENDORS)
+        grid.attach(Gtk.Label(label="Lenovo", xalign=0), 0, row, 1, 1)
+        grid.attach(_hint("öffentliche Abfrage, kein Schlüssel nötig"), 1, row, 3, 1)
+        inner.pack_start(grid, False, False, 0)
+        inner.pack_start(_hint_wrapped("Ohne Schlüssel oder ohne Internet: „Garantie bis“ im Gerätefenster von Hand "
+                               "eintragen. Zugang: Dell über TechDirect (APIs → Warranty), HP über "
+                               "developers.hp.com (HP Warranty API)."), False, False, 0)
+        frame.add(inner)
+        return frame
+
+    def _show_keys(self, res) -> None:
+        if isinstance(res, Exception):
+            res = (set(), str(res))
+        have, error = res
+        for vendor, label in self.key_state.items():
+            if error:
+                label.set_text("unbekannt")
+                label.set_tooltip_text(error)
+            elif vendor in have:
+                label.set_text("✔ gespeichert")
+                self.key_delete[vendor].show()
+            else:
+                label.set_text("kein Schlüssel")
+        return False
+
+    def key_changes(self) -> list[tuple[str, str, str]]:
+        """(Hersteller, ID, Secret) zum Speichern; ("…", "", "") = löschen. Unvollständige Eingaben zählen nicht."""
+        changes = []
+        for vendor, (key_id, secret) in self.key_entries.items():
+            kid, sec = key_id.get_text().strip(), secret.get_text().strip()
+            if kid and sec:
+                changes.append((vendor, kid, sec))
+            elif self.key_delete[vendor].get_active():
+                changes.append((vendor, "", ""))
+        return changes
 
     def values(self) -> tuple[int, bool]:
         return int(self.max.get_value()), self.paused.get_active()

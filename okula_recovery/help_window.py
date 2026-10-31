@@ -456,7 +456,16 @@ In der Geräteliste siehst du bei jedem Gerät einen Balken mit Prozent und Rest
 •  ? Noch unbekannt: Agent-Stick neu erstellen und das Inventar neu einlesen.
 
 <b>Stern ★ bei Images</b>
-Das Image ist als Master-Image markiert."""),
+Das Image ist als Master-Image markiert.
+
+<b>Garantie</b>
+Im Gerätefenster unter <i>Übersicht → Garantie bis</i>:
+•  <span foreground="#2e7d32">grün</span>: Die Garantie läuft noch.
+•  <span background="#fff3b0">gelb</span>: Sie läuft in den nächsten 90 Tagen ab.
+•  <span background="#c62828" foreground="#ffffff">rot</span>: Sie ist abgelaufen.
+<i>Beim Hersteller abfragen</i> holt das Datum über die Seriennummer. Das geht bei Dell, HP und Lenovo.
+Für Dell und HP braucht es einen Schlüssel vom Hersteller: <i>Menü → Einstellungen → Garantie-Abfrage</i>.
+Kein Schlüssel, kein Internet oder ein anderer Hersteller? Dann <i>Von Hand …</i> das Datum eintragen."""),
 
     ("Neuer Rechner", """<big><b>Das Tool auf einen neuen Rechner umziehen</b></big>
 
