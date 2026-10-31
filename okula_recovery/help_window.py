@@ -5,8 +5,10 @@ from __future__ import annotations
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk  # noqa: E402
+gi.require_version("Gdk", "3.0")
+from gi.repository import Gdk, Gtk  # noqa: E402
 
+from okula_recovery import helpsearch  # noqa: E402
 from okula_recovery.uikit import scrolled  # noqa: E402
 
 # (Kapitel, Text in Pango-Markup). Handbuch-Stil: keine Anrede (weder „du“ noch „Sie“), Schritte im Infinitiv,
@@ -39,7 +41,10 @@ Alles läuft über das Netzwerk. Die Sicherungen liegen auf dem <b>NAS</b>.
 •  <b>Oben</b> ist die Menüleiste: <i>Menü</i>, <i>Tools</i>, <i>Extras</i> und <i>Hilfe</i>.
 
 Wichtig: Auf den Geräten wird <b>nichts installiert</b>.
-Die Geräte starten nur kurz vom <b>Agent-Stick</b> oder über das Netzwerk (Netzwerkstart)."""),
+Die Geräte starten nur kurz vom <b>Agent-Stick</b> oder über das Netzwerk (Netzwerkstart).
+
+<b>In dieser Anleitung suchen:</b> Wort oben links ins Suchfeld eingeben (oder <b>Ctrl+F</b>).
+Die Liste zeigt dann nur Kapitel mit diesem Wort, die Treffer sind gelb markiert."""),
 
     ("Wichtige Begriffe", """<big><b>Wichtige Begriffe einfach erklärt</b></big>
 
@@ -734,7 +739,8 @@ Damit kommen nur die NAS-Einstellungen mit (ohne Passwort)."""),
     ("Tastenkürzel", """<big><b>Tastenkürzel</b></big>
 
 <tt>F1        </tt>  Diese Anleitung
-<tt>Esc       </tt>  Anleitung bzw. Dialog schliessen
+<tt>Ctrl+F    </tt>  In der Anleitung suchen
+<tt>Esc       </tt>  Suche leeren, sonst Anleitung bzw. Dialog schliessen
 <tt>Ctrl+N    </tt>  NAS-Verbindung
 <tt>Ctrl+O    </tt>  Gewähltes Gerät öffnen
 <tt>F5        </tt>  Images aktualisieren
@@ -769,21 +775,36 @@ Zum Vorführen gibt es ein Gerät, das es gar nicht gibt: den <b>DEMO-PC</b>.
 
 
 class HelpWindow(Gtk.Window):
+    """Kapitel links (mit Suchfeld darüber), Text rechts. HelpWindow(parent, chapter="…") öffnet ein Kapitel."""
+
     def __init__(self, parent: Gtk.Window, chapter: str | None = None):
         super().__init__(title="So funktioniert das Tool")
         self.set_transient_for(parent)
         self.set_default_size(980, 720)
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
+        self.labels: dict[str, Gtk.Label] = {}
+        self.pages: dict[str, Gtk.Widget] = {}
         for title, text in CHAPTERS:
             label = Gtk.Label(xalign=0, yalign=0, wrap=True, selectable=True, max_width_chars=90,
                               margin=24, margin_top=18)
             label.set_markup(text)
             label.set_line_wrap(True)
-            self.stack.add_titled(scrolled(label), title, title)
-        sidebar = Gtk.StackSidebar(stack=self.stack)
-        sidebar.set_size_request(220, -1)
+            page = scrolled(label)
+            self.stack.add_titled(page, title, title)
+            self.labels[title], self.pages[title] = label, page
+        none = Gtk.Label(label="Keine Treffer. Ein anderes Wort versuchen.", margin=24, xalign=0, yalign=0)
+        none.get_style_context().add_class("status-idle")
+        self.stack.add_named(none, "__keine_treffer__")
+        self.search = Gtk.SearchEntry(placeholder_text="Suchen (Ctrl+F)", margin=6)
+        self.search.connect("search-changed", lambda _e: self.apply_search())
+        self.search.connect("activate", lambda _e: self._show_first())
+        sidebar = Gtk.StackSidebar(stack=self.stack, vexpand=True)
+        side = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        side.set_size_request(240, -1)
+        side.pack_start(self.search, False, False, 0)
+        side.pack_start(sidebar, True, True, 0)
         box = Gtk.Box()
-        box.pack_start(sidebar, False, False, 0)
+        box.pack_start(side, False, False, 0)
         box.pack_start(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL), False, False, 0)
         box.pack_start(self.stack, True, True, 0)
         self.add(box)
@@ -792,9 +813,36 @@ class HelpWindow(Gtk.Window):
         if chapter:
             self.stack.set_visible_child_name(chapter)
 
+    def apply_search(self) -> list[str]:
+        """Kapitelliste filtern, Treffer hervorheben, erstes Treffer-Kapitel zeigen. Gibt die Treffer zurück."""
+        query = self.search.get_text()
+        found = helpsearch.find(query, CHAPTERS)
+        for title, text in CHAPTERS:
+            self.pages[title].set_visible(title in found)
+            self.labels[title].set_markup(helpsearch.highlight(text, query) if title in found else text)
+        if not query.strip():
+            if self.stack.get_visible_child_name() == "__keine_treffer__":
+                self.stack.set_visible_child_name(CHAPTERS[0][0])
+            return found
+        self._show_first(found)
+        return found
+
+    def _show_first(self, found: list[str] | None = None) -> None:
+        found = helpsearch.find(self.search.get_text(), CHAPTERS) if found is None else found
+        if found:
+            self.stack.set_visible_child_name(found[0])    # erstes Treffer-Kapitel
+        else:
+            self.stack.set_visible_child_name("__keine_treffer__")
+
     def _on_key(self, _w, event) -> bool:
-        from gi.repository import Gdk
+        ctrl = event.state & Gdk.ModifierType.CONTROL_MASK
+        if ctrl and event.keyval in (Gdk.KEY_f, Gdk.KEY_F):
+            self.search.grab_focus()
+            return True
         if event.keyval == Gdk.KEY_Escape:
+            if self.search.get_text():
+                self.search.set_text("")
+                return True
             self.destroy()
             return True
         return False
