@@ -16,8 +16,8 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 0 | 0 | 0 |
-| 🔧 Änderungen | 8 | 0 | 0 |
-| 💡 Ideen | 24 | 0 | 0 |
+| 🔧 Änderungen | 7 | 0 | 0 |
+| 💡 Ideen | 23 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
@@ -42,7 +42,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 | Ä-007 | 🔴 | offen | Claude | **Bestätigung vor dem Löschen:** Wird der Schalter eingeschaltet, während das Gerät verbunden ist, startet die Automatisierung ohne Rückfrage nach 30 s und löscht die Disk (`ui.save_automation` → `consider`). Nötig: rote Zusammenfassung „Disk Samsung 256 GB von HP-PC-07 wird gelöscht, Master ‚Win11 Büro‘, neuer Name …, Backup: nein“ mit Knopf „Löschen und neu aufsetzen“ | 31.10. (Laien-Test) |
 | Ä-010 | 🟡 | offen | Claude | **Vorabprüfung mit Ampel statt Fehler mitten im Lauf:** Image passt auf die Disk, UEFI/BIOS-Modus passt zum Master, BitLocker auf der Zieldisk (dann ist kein Datei-Backup möglich), Agent-Stick aktuell, Windows-Edition des Masters passt zum Key (Pro/Home). Anzeige: „✔ Bereit“ bzw. „⚠ Achtung: …“ | 31.10. (Laien-Test) |
 | Ä-012 | 🟡 | offen | Claude | **Einfache Sprache im Reiter Automatisierung:** „Zieldisk“ → „Festplatte, die gelöscht wird“; Sysprep, Master und Content-Projekte mit einem „?“ pro Abschnitt erklären. Gerätenamen wie „DESKTOP-8F3K2LQ“ markieren und zum Umbenennen auffordern; optional Namensschema pro Vorlage (z. B. `KUNDE-001` fortlaufend) | 31.10. (Laien-Test) |
-| Ä-013 | ⚪ | offen | Claude | **Klare Fertig-Meldung:** grosses „✔ Fertig – HP-PC-07 ist neu aufgesetzt (18 min)“ im Tool und am Gerät, dazu eine Liste: was gemacht wurde, Key aktiviert ja/nein, wo das Backup liegt. Als PDF ausdruckbar (Übergabeprotokoll, → I-013) | 31.10. (Laien-Test) |
 
 ## 💡 Ideen
 
@@ -55,7 +54,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 | I-006 | 🔴 | offen | Claude | **Zweite Kopie (3-2-1-Regel):** Das NAS ist heute die einzige Kopie. Images und Backups zusätzlich auf eine USB-Disk, ein zweites NAS oder extern spiegeln (rsync bzw. Synology Hyper Backup). Dazu die Tool-Konfiguration (Geräte, Vorlagen, Einstellungen) täglich automatisch aufs NAS exportieren |
 | I-008 | 🟡 | offen | Claude | **Benachrichtigungen:** E-Mail (SMTP) oder Push (ntfy/Teams) bei Fehlern, beim Ende einer Automatisierung, bei knappem NAS-Speicher, bei SMART-Warnungen und bei fehlgeschlagener Image-Prüfung |
 | I-009 | 🟡 | offen | Claude | **Disk sicher löschen (Ausmusterung, Leasing-Rückgabe):** NVMe Sanitize/Format, ATA Secure Erase oder `blkdiscard`, sonst Überschreiben. Danach ein Löschprotokoll als PDF mit Seriennummer, Methode, Datum und Prüfung (Nachweis nach revDSG) |
-| I-010 | 🟡 | offen | Claude | **Zeitgesteuerte Backups:** z. B. freitags 18:00: Wake-on-LAN → einmal Netzwerkstart in den Agent → Datei-Backup → herunterfahren. Die Bausteine (WOL, Agent beim nächsten Start, Backup) gibt es schon. Läuft nur, solange das Tool geöffnet ist (Autostart nach dem Login; Systemdienst Ä-001 wurde verworfen) |
 | I-011 | 🟡 | offen | Claude/Dominik | **Multicast – ein Image gleichzeitig auf viele Geräte (von Hand, Variante B):** eigener Menüpunkt **Extras → Multicast …** mit eigenem Fenster, ähnlich wie Netzwerkstart (PXE): Image wählen (Master zuerst), Geräteliste mit Haken (Status verbunden/nicht verbunden, Zieldisk je Gerät), Knopf zum Einschalten und Agent starten, „Starten“ wartet, bis alle gewählten Geräte bereit sind, dann ein Datenstrom für alle (udpcast `udp-sender`/`udp-receiver`). Fortschritt je Gerät; fällt eines aus, laufen die anderen weiter. Danach je Gerät Anpassen (Name, Windows-Schlüssel) bei Master-Images. Nicht in die Automatisierung eingebaut (Entscheid Dominik 31.10.). Voraussetzungen: gleiches Netz/VLAN, Kabel, Firewall-Ports für udpcast; neuer Agent-Stick nötig. Heute läuft jeder Restore einzeln |
 | I-012 | 🟡 | offen | Claude | **BitLocker entsperren:** Den Wiederherstellungsschlüssel pro Gerät hinterlegen (nur root-lesbar) und im Agent mit `dislocker` öffnen. Dann sichert partclone nur die belegten Blöcke statt einer `dd`-Rohkopie (Images viel kleiner), und auch ein Datei-Backup wird möglich |
 | I-014 | ⚪ | offen | Claude | **Treiber für Master-Images:** Treiberordner pro Modell auf dem NAS; nach dem Restore nach `Windows\Drivers\Okula` kopieren und in `unattend.xml` per `DriverPaths` (offlineServicing) einbinden. Damit passt ein Master auf verschiedene Hardware |
