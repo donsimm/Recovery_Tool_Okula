@@ -1,4 +1,4 @@
-"""Inventar-Export (I-013): Auswahl, Spalten, Windows-Key, CSV (BOM, Semikolon), PDF je Kunde."""
+"""Inventar-Export (I-013): Auswahl, Spalten, Windows-Schlüssel, CSV (BOM, Semikolon), PDF je Ordner."""
 
 import csv
 import json

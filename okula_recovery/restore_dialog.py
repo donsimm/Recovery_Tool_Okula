@@ -91,13 +91,13 @@ class RestoreDialog(Gtk.Dialog):
         self.shutdown = Gtk.CheckButton(label="Maschine danach herunterfahren (Stick dann abziehen und einschalten)")
         grid.attach(self.shutdown, 0, row, 2, 1)
         row += 1
-        # Master-Image: danach Gerätename, Windows-Key (und Region/Konto) setzen
+        # Master-Image: danach Gerätename, Windows-Schlüssel (und Region/Konto) setzen
         self.device = device
         name = device.name if device else device_name
         key = device.windows_key[0] if device else ""
         self.custom = Gtk.CheckButton(label=f"Danach anpassen: Gerätename „{name}“ "
                                             f"(Windows: {winunattend.computer_name(name) or '–'})"
-                                            + (", Windows-Key" if key else "") + " – nur Master-Image mit Sysprep")
+                                            + (", Windows-Schlüssel" if key else "") + " – nur Master-Image mit Sysprep")
         self.custom.connect("toggled", lambda _c: self._update())
         grid.attach(self.custom, 0, row, 2, 1)
         row += 1

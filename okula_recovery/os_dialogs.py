@@ -574,8 +574,8 @@ class InstallDialog(Gtk.Dialog):
         self.win = Gtk.Expander(label="Windows-Anpassung", expanded=True)
         wbox = Gtk.Grid(column_spacing=8, row_spacing=4, margin_start=12, margin_top=4)
         self.w_key = Gtk.CheckButton(active=bool(self.key))
-        self.w_key.set_label(f"Produktschlüssel verwenden: {self._masked()}  ({self.key_source})" if self.key
-                             else "Kein Produktschlüssel bekannt (im Gerätefenster hinterlegen)")
+        self.w_key.set_label(f"Windows-Schlüssel verwenden: {self._masked()}  ({self.key_source})" if self.key
+                             else "Kein Windows-Schlüssel bekannt (im Gerätefenster hinterlegen)")
         self.w_key.set_sensitive(bool(self.key))
         self.w_key.connect("toggled", lambda _c: self._update())
         self.w_account = Gtk.CheckButton(label="Lokales Konto statt Microsoft-Konto", active=True)

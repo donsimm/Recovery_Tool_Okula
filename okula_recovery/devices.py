@@ -391,7 +391,7 @@ def normalize_key(key: str) -> str:
     if not raw:
         return ""
     if len(raw) != 25:
-        raise DeviceError("Produktschlüssel hat 25 Zeichen (5 × 5, mit Bindestrichen)")
+        raise DeviceError("Windows-Schlüssel hat 25 Zeichen (5 × 5, mit Bindestrichen)")
     return "-".join(raw[i:i + 5] for i in range(0, 25, 5))
 
 

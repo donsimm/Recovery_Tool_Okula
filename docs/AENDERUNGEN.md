@@ -21,7 +21,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
-In Arbeit: **Ä-025** Hilfe abschliessen (H23 → H24 → H25 → README → Sichtprüfung).
+In Arbeit: **Ä-025** Hilfe abschliessen (H23 ✔ → H24 ✔ → H25 ✔ → README ✔ → Sichtprüfung).
 Als Nächstes: Tests am realen System in [TESTS.md](TESTS.md) – „Fixes von heute“ und Abschnitt 7 (neue Funktionen inkl. Ä-015 bis Ä-021).
 Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laien, klein) → **Ä-001** (Dienst) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-009, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 

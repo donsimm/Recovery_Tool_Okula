@@ -182,7 +182,7 @@ class LoopTest(unittest.TestCase):
         dst = self.loop("ziel.img", 64)
         usbtools.clone(src, dst, "raw", True, self.emit)
         self.check_clone(src, dst, raw)
-        self.assertIn("Vergleiche", " ".join(t for k, t in self.events if k == "PROGRESS"))
+        self.assertIn("Vergleich ·", " ".join(t for k, t in self.events if k == "PROGRESS"))
 
     def test_same_disk_refused(self):
         src, _raw = self.make_source("gpt")

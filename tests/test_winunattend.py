@@ -91,7 +91,7 @@ class ProductKeyUnattendTest(unittest.TestCase):
         root = ET.fromstring(wu.build(opts, pe=False))
         spec = component(root, "specialize", "Microsoft-Windows-Shell-Setup")
         self.assertEqual(spec.find("u:ProductKey", N).text, "VK7JG-NPHTM-C97JM-9MPGT-3V66T")
-        self.assertIn("Produktschlüssel …3V66T", " ".join(wu.summary(opts)))
+        self.assertIn("Windows-Schlüssel …3V66T", " ".join(wu.summary(opts)))
 
 
 if __name__ == "__main__":

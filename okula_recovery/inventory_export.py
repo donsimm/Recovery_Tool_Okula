@@ -4,7 +4,7 @@
 - CSV: UTF-8 mit BOM, Semikolon – öffnet sich in Excel (de-CH) direkt richtig.
 - PDF: eine Datei je Ordner (Name wie in der Geräteliste) oder alle gewählten Geräte in einer Datei; Kopf mit
   Ordnername und Datum, Tabelle (reportlab, Debian-Paket python3-reportlab, in install.sh).
-- Windows-Key: standardmässig gar nicht, sonst nur maskiert (XXXXX-…-ABCDE). Passwörter und Schlüssel des Tools
+- Windows-Schlüssel: standardmässig gar nicht, sonst nur maskiert (XXXXX-…-ABCDE). Passwörter und Schlüssel des Tools
   (NAS, Garantie, Agent) kommen nie in den Export.
 """
 
@@ -21,7 +21,7 @@ from okula_recovery import devices, textnorm, warranty, win11
 
 COLUMNS = ("Name", "Ordner", "Hersteller", "Modell", "Seriennummer", "CPU", "RAM", "Disks", "OS",
            "Win-11-tauglich", "Garantie bis", "Zuletzt verbunden", "Letztes Image", "Letztes Backup")
-KEY_COLUMN = "Windows-Key (maskiert)"
+KEY_COLUMN = "Windows-Schlüssel (maskiert)"
 UNSORTED = "Neu / nicht einsortiert"
 WIN11_TEXT = {"ok": "ja", "no": "nein", "unknown": "unbekannt"}
 
@@ -272,7 +272,7 @@ def write_pdf(path: Path, title: str, rows: list[dict], with_key: bool = False, 
              Paragraph(escape(" · ".join(p for p in (
                  f"Stand: {day.strftime('%d.%m.%Y')}", f"{len(rows)} Gerät{'e' if len(rows) != 1 else ''}",
                  f"Ordner: {place}" if place and place != title else "",
-                 "Windows-Key maskiert" if with_key else "") if p)), meta),
+                 "Windows-Schlüssel maskiert" if with_key else "") if p)), meta),
              Spacer(1, 4 * mm), table]
     doc.build(story, onFirstPage=footer, onLaterPages=footer)
     return path

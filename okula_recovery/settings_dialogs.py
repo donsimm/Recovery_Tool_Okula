@@ -73,7 +73,7 @@ class ExportDialog(Gtk.Dialog):
         note.get_style_context().add_class("status-idle")
         box.pack_start(note, False, False, 0)
         warn = _info("<b>Wie ein Passwort aufbewahren:</b> Die Datei enthält den Agent-Schlüssel und "
-                     "Windows-Produktschlüssel.")
+                     "Windows-Schlüssel.")
         warn.get_style_context().add_class("status-fail")
         box.pack_start(warn, False, False, 0)
         self.get_content_area().add(box)

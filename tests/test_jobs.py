@@ -92,7 +92,7 @@ class ParallelJobsTest(unittest.TestCase):
             self.assertIsNone(error)
             meta = json.loads((Path(path) / "okula-image.json").read_text())
             self.assertEqual(meta["source"]["device_id"], "dev1")
-            self.assertTrue(any("Übertrage" in line for line in job.log))
+            self.assertTrue(any("wird übertragen" in line for line in job.log))
         self.assertGreater(j2.started, 0)
         self.assertLess(abs(j1.started - j2.started), 1.0)
 

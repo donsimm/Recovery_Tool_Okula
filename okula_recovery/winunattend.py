@@ -211,7 +211,7 @@ def summary(opts: WinOptions) -> list[str]:
     if computer_name(opts.computer_name):
         lines.append(f"Computername {computer_name(opts.computer_name)}")
     if opts.product_key:
-        lines.append(f"Produktschlüssel …{opts.product_key[-5:]} (Aktivierung, sobald Internet da ist)")
+        lines.append(f"Windows-Schlüssel …{opts.product_key[-5:]} (Aktivierung, sobald Internet da ist)")
     return lines
 
 

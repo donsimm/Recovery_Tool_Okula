@@ -576,7 +576,7 @@ class DeviceWindow(Gtk.Window):
         self.refresh()
 
     def _edit_key(self) -> None:
-        new = ask_text(self, "Windows-Produktschlüssel", "Schlüssel (XXXXX-XXXXX-XXXXX-XXXXX-XXXXX), leer = löschen:",
+        new = ask_text(self, "Windows-Schlüssel", "Schlüssel (XXXXX-XXXXX-XXXXX-XXXXX-XXXXX), leer = löschen:",
                        self.dev.product_key)
         if new is None:
             return

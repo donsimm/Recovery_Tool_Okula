@@ -547,7 +547,7 @@ def automation_work(ip: str, key: bytes, port: int, dev, s: Settings, nas_root: 
                                       source_disk)
 
             # 3 Anpassen (immer)
-            begin(2, f"Name „{dev.name}“" + (", Windows-Key" if dev.windows_key[0] else ""))
+            begin(2, f"Name „{dev.name}“" + (", Windows-Schlüssel" if dev.windows_key[0] else ""))
             xml = winunattend.master_unattend(dev.name, dev.windows_key[0], s.swiss, s.account)
             for r in agentclient.customize(ip, key, target, xml, linuxsetup.hostname(dev.name), port):
                 what = {"unattend": f"Windows (Master): Name {winunattend.computer_name(dev.name)}"

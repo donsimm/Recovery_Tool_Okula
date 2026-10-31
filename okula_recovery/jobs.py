@@ -254,7 +254,7 @@ def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source
             agentclient.restore_image(ip, key, current["path"], target, progress, job.cancel, port, verify,
                                       current["disk"])
             if customize:
-                jm.log(job, "Anpassen: Gerätename und Windows-Key (Master-Image)")
+                jm.log(job, "Anpassen: Gerätename und Windows-Schlüssel (Master-Image)")
                 for r in agentclient.customize(ip, key, target, customize["unattend"], customize["hostname"], port):
                     jm.log(job, f"  {r['part']}: " + {
                         "unattend": "Windows (Master) – Name/Key gesetzt, richtet sich beim ersten Start ein",

@@ -29,7 +29,7 @@ def default_dir() -> str:
 
 
 class InventoryExportDialog(Gtk.Dialog):
-    """Umfang (alle / Ordner / markierte Geräte), Format (CSV, PDF je Ordner oder alle in einem), Windows-Key, Ziel."""
+    """Umfang (alle / Ordner / markierte Geräte), Format (CSV, PDF je Ordner oder alle in einem), Windows-Schlüssel, Ziel."""
 
     def __init__(self, main: "MainWindow", folder: str | None = None, marked: set[str] | None = None):
         super().__init__(title="Inventar exportieren", transient_for=main, modal=True)
@@ -91,7 +91,7 @@ class InventoryExportDialog(Gtk.Dialog):
         for w in (self.pdf, self.pdf_folders, self.pdf_single):
             pdf_row.pack_start(w, False, False, 0)
         box.pack_start(pdf_row, False, False, 0)
-        self.no_key = Gtk.CheckButton(label="Windows-Key nicht exportieren", active=True)
+        self.no_key = Gtk.CheckButton(label="Windows-Schlüssel nicht exportieren", active=True)
         self.no_key.set_tooltip_text("Ausgeschaltet: nur maskiert (XXXXX-XXXXX-XXXXX-XXXXX-ABCDE), nie vollständig")
         box.pack_start(self.no_key, False, False, 0)
 
