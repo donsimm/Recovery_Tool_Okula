@@ -54,7 +54,7 @@ def sha(path, length=None):
 def loop_disks(*devices):
     out = subprocess.run(["lsblk", "-J", "-b", "-o", imaging.LSBLK_COLUMNS, *devices],
                          capture_output=True, text=True).stdout
-    return imaging.parse_disks(out, types=("loop",), skip=())
+    return imaging.fill_fstypes(imaging.parse_disks(out, types=("loop",), skip=()))
 
 
 @unittest.skipUnless(can_run(), "braucht root und Loop-Devices")

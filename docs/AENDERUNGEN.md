@@ -16,11 +16,11 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 0 | 0 | 0 |
-| 🔧 Änderungen | 11 | 1 | 0 |
+| 🔧 Änderungen | 11 | 0 | 0 |
 | 💡 Ideen | 26 | 2 | 2 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
-In Arbeit (Reihenfolge): ~~Ä-014~~ ✔ → ~~Ä-011~~ ✔ → ~~I-024~~ ✔ → **Ä-002** kleinere Disk → **I-025** Garantie → **I-013** Inventar-Export (ein neuer Agent-Stick für I-024 und Ä-002).
+In Arbeit (Reihenfolge): ~~Ä-014~~ ✔ → ~~Ä-011~~ ✔ → ~~I-024~~ ✔ → ~~Ä-002~~ ✔ → **I-025** Garantie → **I-013** Inventar-Export (ein neuer Agent-Stick für I-024 und Ä-002).
 Als Nächstes danach: Tests „Fixes von heute“ in [TESTS.md](TESTS.md) (Debian-Direktinstallation, doppelter HP-Eintrag).
 Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laien, klein) → **Ä-001** (Dienst) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-009, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
@@ -35,7 +35,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laie
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
 | Ä-001 | 🔴 | offen | Claude | **Aufträge als Systemdienst statt im Fenster:** Aufträge, Automatisierung und PXE laufen heute als Threads im GTK-Prozess (`jobs.py`). Wird das Tool geschlossen, stürzt es ab oder meldet man sich ab, brechen laufende Restores ab. Lösung: Dienst `okula-recoveryd` (systemd), die Oberfläche wird zum Client (lokaler Socket). Das ist die Grundlage für I-004 (Webinterface) und I-010 (Zeitplan). | 31.10. (Analyse) |
-| Ä-002 | 🟡 | **in Arbeit** | Claude | **Restore auf eine kleinere Disk:** Heute bricht der Restore mit „Zieldisk zu klein“ ab. Wenn die belegten Daten passen: letzte Partition vorher mit `ntfsresize`/`resize2fs` verkleinern bzw. die Partitionstabelle anpassen. Typischer Fall: 512-GB- auf 256-GB-SSD | 31.10. (Analyse) |
 | Ä-003 | 🟡 | offen | Claude | **Images und Backups auf dem NAS verschlüsseln:** Sie enthalten Personendaten (revDSG Art. 8, Datensicherheit). Minimum: SMB3-Verschlüsselung (`mount.cifs … seal`). Besser: Verschlüsselung im Datenstrom (z. B. `age` nach `zstd`), Schlüssel root-lesbar und zusätzlich auf Papier | 31.10. (Analyse) |
 | Ä-004 | 🟡 | offen | Claude | **Zentrales Protokoll:** `/var/log/okula-recovery/` mit logrotate. Festhalten, wer wann was auf welches Gerät gespielt hat. Dazu Menü → „Diagnosepaket exportieren“ (Logs, Version, Konfiguration ohne Geheimnisse), um Fehler an Claude Code zu melden | 31.10. (Analyse) |
 | Ä-005 | 🟡 | offen | Claude | **Entwicklung absichern:** GitHub Actions, die die 240 Tests bei jedem Push ausführen. Versionsnummer pflegen (steht noch auf `0.1.0`) und Releases taggen, damit der Server einen geprüften Stand zieht statt den Branch-Kopf. `ui.py` (2780 Zeilen) aufteilen | 31.10. (Analyse) |
@@ -101,6 +100,8 @@ Gerätename = Name im Tool.
 - **Gerätename im Tool = Computername** bei Neuinstallation, Anpassen und Automatisierung; ändern = Gerät umbenennen.
 - **Windows anpassen nur bei Master-Images (Sysprep)**; ein nicht generalisiertes Windows wird nicht verändert.
 - **Passwörter werden nicht gespeichert:** lokales Konto ohne Passwort, Windows verlangt es beim ersten Anmelden.
+- **Kleinere Disk (Ä-002):** Anpassen auf dem Server als neues Image (Original bleibt); Zwischenspeicher zuerst
+  Server-SSD, sonst NAS (Entscheid Dominik 31.10.). Nicht bei BitLocker/Rohkopie, Btrfs/XFS, LVM, logischen Partitionen.
 - **Umsetzungsreihenfolge:** zuerst Agent (Fundament, ein neuer Stick reicht), dann Tool-Logik, zuletzt Oberfläche.
 
 ## ✅ Erledigt – Änderungsprotokoll
@@ -108,6 +109,12 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 31.10.2026
+- **Ä-002 Restore auf eine kleinere Disk:** `shrink.py` leitet auf dem Server ein neues Image ab (grösste Partition
+  NTFS/ext2/3/4 in Sparse-Datei → `ntfsresize`+`ntfsfix -d` bzw. `e2fsck`+`resize2fs` → neu sichern; Partitionen
+  dahinter ans neue Ende; neue sfdisk-Tabelle). Prüfung sofort aus dem partclone-Kopf (belegt + Reserve 10 %, min.
+  1 GB), Meldung mit Zahlen. Zwischenspeicher Server-SSD, sonst NAS. Dialog „Für diese Disk anpassen“, Automatisierung
+  Option „Image dafür anpassen“. Agent: fehlendes Dateisystem bei lsblk per `blkid` ermitteln (sonst Rohkopie).
+  Plan: [KLEINERE-DISK.md](KLEINERE-DISK.md).
 - **I-024 Windows-11-Tauglichkeit:** Agent erfasst TPM-Version, UEFI/BIOS und Secure Boot (`inventory.platform`);
   Bewertung auf dem Server (`win11.py`: TPM 2.0, UEFI, RAM ≥ 4 GB, Disk ≥ 64 GB, Prozessor nach
   `data/win11_cpus.txt` mit Quelle Microsoft). Spalte „Win 11“ ✔/✖/? in der Geräteliste, Grund im Gerätefenster.

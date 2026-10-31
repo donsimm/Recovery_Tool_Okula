@@ -99,6 +99,10 @@ class AutomationTab(Gtk.Box):
         self.image = Gtk.ComboBoxText()
         self.image.connect("changed", lambda _c: self._changed())
         s2.pack_start(self.image, False, False, 0)
+        self.adapt = Gtk.CheckButton(label="Ist die Zieldisk kleiner als das Image: Image dafür anpassen "
+                                           "(neues Image, Original bleibt – dauert länger)")
+        self.adapt.connect("toggled", lambda _c: self._changed())
+        s2.pack_start(self.adapt, False, False, 0)
         r = Gtk.Box(spacing=8)
         r.pack_start(Gtk.Label(label="Zieldisk", xalign=0), False, False, 0)
         self.disk = Gtk.ComboBoxText(hexpand=True)
@@ -185,6 +189,7 @@ class AutomationTab(Gtk.Box):
             (self.backup_image if s.backup_mode == "image" else self.backup_files).set_active(True)
             (self.mode_master if s.image_mode == "master" else self.mode_own).set_active(True)
             self._fill_images(s)
+            self.adapt.set_active(s.adapt_smaller)
             self.disk.remove_all()
             for d in self.dev.inventory.get("disks") or []:
                 self.disk.append(automation.disk_key(d), automation.disk_label(d))
@@ -265,6 +270,7 @@ class AutomationTab(Gtk.Box):
         s.backup_mode = "image" if self.backup_image.get_active() else "files"
         s.image_mode = "master" if self.mode_master.get_active() else "own"
         s.image = self.image.get_active_id() or ""
+        s.adapt_smaller = self.adapt.get_active()
         key = self.disk.get_active_id() or ""
         if key != s.disk_key:
             disk = automation.find_disk(self.dev.inventory.get("disks") or [], key)

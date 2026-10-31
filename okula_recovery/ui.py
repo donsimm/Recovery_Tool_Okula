@@ -2441,7 +2441,7 @@ class MainWindow(Gtk.ApplicationWindow):
             if it is not None and model[it][self.C_KIND] == "image":
                 preselect = model[it][self.C_PATH]
 
-        def start(image, source_disk, target, verify, shutdown, label, custom=None) -> None:
+        def start(image, source_disk, target, verify, shutdown, label, custom=None, adapt=None) -> None:
             def after(job, path, error) -> None:
                 GLib.idle_add(self._after_job, dev.id, job, f"Zurückspielen {label} → {target}", path, error,
                               shutdown)
@@ -2453,7 +2453,8 @@ class MainWindow(Gtk.ApplicationWindow):
                                                                      custom["account"]),
                              "hostname": linuxsetup.hostname(dev.name)}
             work = jobs.restore_work(agent.ip, self.key, agent.control_port, image, target, source_disk, verify,
-                                     after, customize)
+                                     after, customize,
+                                     {"target_size": adapt, "nas_root": root} if adapt else None)
             self.jobs.start(dev.id, "restore", target, f"Zurückspielen {label} → {target}", work)
             self.open_device(dev).show_jobs()
 

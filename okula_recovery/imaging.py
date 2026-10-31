@@ -89,10 +89,30 @@ def parse_disks(output: str, types: tuple[str, ...] = ("disk",),
 LSBLK_COLUMNS = "NAME,PATH,SIZE,TYPE,FSTYPE,LABEL,UUID,PARTTYPE,MODEL,SERIAL,TRAN,PTTYPE,MOUNTPOINTS"
 
 
+def fill_fstypes(disks: list[dict]) -> list[dict]:
+    """Fehlt lsblk das Dateisystem (udev hat die Partition noch nicht gesehen), direkt per blkid nachfragen –
+    sonst würde eine NTFS-/ext4-Partition als Rohkopie gesichert und liesse sich nicht verkleinern."""
+    for d in disks:
+        for part in d["partitions"]:
+            if part["fstype"]:
+                continue
+            try:
+                r = subprocess.run(["blkid", "-p", "-o", "export", part["path"]], capture_output=True, text=True,
+                                   timeout=10)
+            except (OSError, subprocess.TimeoutExpired):
+                continue
+            found = dict(line.split("=", 1) for line in r.stdout.splitlines() if "=" in line) if r.returncode == 0 \
+                else {}
+            part["fstype"] = found.get("TYPE", "")
+            part["uuid"] = part.get("uuid") or found.get("UUID", "")      # Swap: gleiche UUID wieder anlegen
+            part["label"] = part.get("label") or found.get("LABEL", "")
+    return disks
+
+
 def list_disks() -> list[dict]:
     out = subprocess.run(["lsblk", "-J", "-b", "-o", LSBLK_COLUMNS],
                          capture_output=True, text=True, timeout=15).stdout
-    return parse_disks(out)
+    return fill_fstypes(parse_disks(out))
 
 
 def tool_status() -> dict:

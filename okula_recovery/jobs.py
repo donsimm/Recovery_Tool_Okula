@@ -201,8 +201,10 @@ def image_work(ip: str, key: bytes, port: int, disk: dict, nas_root: str, machin
 
 
 def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source_disk: str | None, verify: bool,
-                 after: Callable[[Job, str | None, Exception | None], None], customize: dict | None = None):
-    """customize: {"unattend", "hostname"} – danach Master-Image anpassen (Name, Key …)."""
+                 after: Callable[[Job, str | None, Exception | None], None], customize: dict | None = None,
+                 adapt: dict | None = None):
+    """customize: {"unattend", "hostname"} – danach Master-Image anpassen (Name, Key …).
+    adapt: {"target_size", "nas_root"} – Image zuerst für die kleinere Zieldisk anpassen (neues Image)."""
     def work(job: Job, jm: JobManager) -> str:
         def progress(ev: dict) -> None:
             phase = ev.get("phase")
@@ -230,8 +232,20 @@ def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source
         if verify:
             jm.log(job, "Schritt 1/2: Image auf dem NAS prüfen (Prüfsummen) – danach wird zurückgespielt")
 
+        current = {"path": image, "disk": source_disk}
         try:
-            agentclient.restore_image(ip, key, image, target, progress, job.cancel, port, verify, source_disk)
+            if adapt:
+                from okula_recovery import shrink
+                jm.log(job, "Zieldisk ist kleiner als das Image – passe das Image an (neues Image, Original bleibt)")
+                for line in shrink.plan(image, adapt["target_size"], source_disk).lines():
+                    jm.log(job, "  · " + line)
+                derived = shrink.ensure(image, adapt["target_size"], adapt.get("nas_root"), source_disk,
+                                        lambda ev: jm.progress(job, 0.0, ev.get("detail", ""), "Image anpassen",
+                                                               ev.get("fraction", 0)), job.cancel)
+                jm.log(job, f"Angepasstes Image: {derived}")
+                current.update(path=str(derived), disk=None)
+            agentclient.restore_image(ip, key, current["path"], target, progress, job.cancel, port, verify,
+                                      current["disk"])
             if customize:
                 jm.log(job, "Anpassen: Gerätename und Windows-Key (Master-Image)")
                 for r in agentclient.customize(ip, key, target, customize["unattend"], customize["hostname"], port):

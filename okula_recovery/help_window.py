@@ -212,7 +212,9 @@ Das Tool prüft zuerst, ob das Image in Ordnung ist. Erst dann wird geschrieben.
 Am Ende den Stick abziehen und das Gerät neu starten.
 
 <b>Gut zu wissen:</b>
-•  Die Ziel-Festplatte muss mindestens so gross sein wie die alte.
+•  Ist die Ziel-Festplatte kleiner (zum Beispiel 256 statt 512 GB), prüft das Tool, ob die Daten passen.
+   Dann setzt du das Häkchen <i>Für diese Disk anpassen</i>: Das Tool macht daraus ein neues, kleineres Image.
+   Das alte Image bleibt, wie es ist. Das dauert etwas länger.
 •  Auch Images von Clonezilla funktionieren.
 •  Wenn du abbrichst, ist die Festplatte danach unvollständig.
 

@@ -44,6 +44,7 @@ class Settings:
     backup_mode: str = "files"       #    files (Benutzerdaten) | image (ganze Disk als Disk-Image)
     image_mode: str = "master"       # 2: master | own
     image: str = ""                  #    Image-Pfad relativ zum NAS
+    adapt_smaller: bool = True       #    Zieldisk kleiner: Image dafür anpassen (Ä-002)
     source_disk: str = ""            #    Clonezilla: welche Disk aus dem Image (leer = erste)
     disk_key: str = ""               #    Zieldisk (Seriennummer, sonst Modell|Grösse)
     disk_label: str = ""             #    Anzeige, z. B. „Samsung SSD 256 GB (S6ABC123)“
@@ -79,7 +80,7 @@ class Settings:
 
 
 # Was eine Vorlage enthält (ohne gerätebezogene Werte wie Zieldisk und Zustand)
-TEMPLATE_FIELDS = ("rearm", "backup", "backup_mode", "image_mode", "image", "source_disk", "swiss", "account", "software",
+TEMPLATE_FIELDS = ("rearm", "backup", "backup_mode", "image_mode", "image", "adapt_smaller", "source_disk", "swiss", "account", "software",
                    "testfiles", "projects", "finish")
 
 
@@ -510,9 +511,25 @@ def automation_work(ip: str, key: bytes, port: int, dev, s: Settings, nas_root: 
             begin(1, f"{s.image} → {target}")
             src = agentclient.image_source(image, s.source_disk or None)
             need = int((src.get("source") or {}).get("size") or 0)
+            source_disk = s.source_disk or None
             if need and int(disk.get("size") or 0) and need > int(disk["size"]):
-                raise AutomationError(f"Image ({need / 1000**3:.0f} GB) passt nicht auf die Zieldisk "
-                                      f"({int(disk['size']) / 1000**3:.0f} GB) – nichts gelöscht")
+                if not s.adapt_smaller:
+                    raise AutomationError(f"Image ({need / 1000**3:.0f} GB) passt nicht auf die Zieldisk "
+                                          f"({int(disk['size']) / 1000**3:.0f} GB) – nichts gelöscht")
+                from okula_recovery import shrink
+                try:
+                    shrink_plan = shrink.plan(image, int(disk["size"]), source_disk)
+                except shrink.ShrinkError as e:
+                    raise AutomationError(f"Image passt nicht auf die Zieldisk und lässt sich nicht anpassen: {e} "
+                                          "– nichts gelöscht") from None
+                jm.log(job, "  Zieldisk ist kleiner – Image wird angepasst (neues Image, Original bleibt):")
+                for line in shrink_plan.lines():
+                    jm.log(job, "    · " + line)
+                image = shrink.create(shrink_plan, nas_root,
+                                      lambda ev: step(1, 0.15 * ev.get("fraction", 0), "Image anpassen"),
+                                      job.cancel)
+                source_disk = None
+                jm.log(job, f"  Angepasstes Image: {image.name}")
 
             def restore_progress(ev: dict) -> None:
                 if ev.get("phase") == "verify":
@@ -522,7 +539,7 @@ def automation_work(ip: str, key: bytes, port: int, dev, s: Settings, nas_root: 
                          f"{ev.get('speed', 0) / 1e6:.0f} MB/s")
 
             agentclient.restore_image(ip, key, image, target, restore_progress, job.cancel, port, True,
-                                      s.source_disk or None)
+                                      source_disk)
 
             # 3 Anpassen (immer)
             begin(2, f"Name „{dev.name}“" + (", Windows-Key" if dev.windows_key[0] else ""))

@@ -110,6 +110,13 @@ class RestoreDialog(Gtk.Dialog):
         self.custom_box = custom_box
         grid.attach(custom_box, 0, row, 2, 1)
         row += 1
+        # Ä-002: Zieldisk kleiner → Image dafür anpassen (neues Image, Original bleibt)
+        self.adapt = Gtk.CheckButton(label="Für diese Disk anpassen (neues Image wird erstellt, Original bleibt)",
+                                     no_show_all=True)
+        self.adapt.connect("toggled", lambda _c: self._update())
+        grid.attach(self.adapt, 0, row, 2, 1)
+        self._shrink_checked: dict = {}   # (Image, Disk-Grösse) → Plan-Zeilen oder Fehlertext
+        row += 1
         self.confirm_label = Gtk.Label(xalign=0)
         grid.attach(self.confirm_label, 0, row, 1, 1)
         self.confirm = Gtk.Entry(placeholder_text="Disk-Namen eintippen")
@@ -228,11 +235,11 @@ class RestoreDialog(Gtk.Dialog):
                                           p.get("label", "")])
             self.confirm_label.set_markup(f"Bestätigung: <b>{GLib.markup_escape_text(disk['name'])}</b> eintippen")
         ok = False
+        self.adapt.set_visible(False)
         if meta and disk:
             need = int(meta["disk_info"].get("size") or 0)
             if disk["size"] < need:
-                self.check.set_markup(f"<b>Zieldisk zu klein:</b> {_gb(disk['size'])} &lt; {_gb(need)} "
-                                      "(Image braucht mindestens die Grösse der Quelldisk)")
+                ok = self._smaller_disk(meta, disk, need)
             elif any(p["mounted"] for p in disk["partitions"]):
                 self.check.set_markup("<b>Eine Partition der Zieldisk ist eingehängt.</b>")
             else:
@@ -241,6 +248,42 @@ class RestoreDialog(Gtk.Dialog):
                 ok = True
         typed = disk is not None and self.confirm.get_text().strip() == disk["name"]
         self.btn_start.set_sensitive(ok and typed)
+
+    def _smaller_disk(self, meta: dict, disk: dict, need: int) -> bool:
+        """Zieldisk kleiner: prüfen (im Hintergrund), ob sich das Image anpassen lässt, und das anbieten."""
+        key = (meta["path"], meta.get("disk"), disk["size"])
+        result = self._shrink_checked.get(key)
+        intro = f"<b>Zieldisk kleiner als das Image:</b> {_gb(disk['size'])} &lt; {_gb(need)}. "
+        if result is None:
+            self._shrink_checked[key] = "…"
+            self.check.set_markup(intro + "Prüfe, ob sich das Image anpassen lässt …")
+
+            def work():
+                from okula_recovery import shrink
+                try:
+                    res = shrink.plan(meta["path"], disk["size"], meta.get("disk")).lines()
+                except shrink.ShrinkError as e:
+                    res = str(e)
+                except Exception as e:  # z. B. NAS nicht erreichbar
+                    res = f"Prüfung fehlgeschlagen: {e}"
+                GLib.idle_add(self._shrink_result, key, res)
+
+            threading.Thread(target=work, daemon=True).start()
+            return False
+        if result == "…":
+            return False
+        if isinstance(result, str):
+            self.check.set_markup(intro + "Anpassen geht nicht: " + GLib.markup_escape_text(result))
+            return False
+        self.check.set_markup(intro + "Das Image lässt sich anpassen:\n" +
+                              "\n".join("• " + GLib.markup_escape_text(x) for x in result))
+        self.adapt.set_visible(True)
+        return self.adapt.get_active()
+
+    def _shrink_result(self, key, result) -> bool:
+        self._shrink_checked[key] = result
+        self._update()
+        return False
 
     # ---------- Zurückspielen ----------
 
@@ -257,8 +300,9 @@ class RestoreDialog(Gtk.Dialog):
         try:
             custom = {"swiss": self.custom_swiss.get_active(), "account": self.custom_account.get_text().strip()} \
                 if self.custom.get_active() else None
+            adapt = self.disks[target]["size"] if self.adapt.get_visible() and self.adapt.get_active() else None
             self.start_job(chosen["path"], chosen["disk"], target, self.verify.get_active(),
-                           self.shutdown.get_active(), label, custom)
+                           self.shutdown.get_active(), label, custom, adapt)
         except Exception as e:
             self.append_log(f"Nicht gestartet: {e}")
             return
