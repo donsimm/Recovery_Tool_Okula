@@ -30,7 +30,7 @@ LABCONFIG = ("BypassTPMCheck", "BypassSecureBootCheck", "BypassRAMCheck", "Bypas
 # Schäden nicht von der Herstellergarantie gedeckt (support.microsoft.com, Artikel 0b2dc4a2…, Stand 12.12.2024)
 UNSUPPORTED_WARNING = ("Microsoft rät davon ab: kein Support, Updates (auch Sicherheitsupdates) nicht garantiert, "
                        "Schäden durch Inkompatibilität nicht von der Herstellergarantie gedeckt, Wasserzeichen auf "
-                       "dem Desktop. Nur auf Wunsch des Kunden und mit seinem Einverständnis.")
+                       "dem Desktop.")
 
 
 @dataclass

@@ -107,7 +107,9 @@ Gerätename = Name im Tool.
 - **Win 11 nicht in der Geräteliste (Ä-017):** nur im Gerätefenster (Übersicht) und im Inventar-Export.
 - **Windows 11 auf nicht unterstützter Hardware (Ä-021):** technisch möglich, Microsoft rät ab (kein Support,
   keine Update-Garantie, keine Herstellergarantie bei Schäden). Daher nur von Hand mit Warnung und Vermerk, nicht
-  in der Automatisierung. Empfehlung an Kunden: Gerät ersetzen, Windows 10 mit ESU oder Linux.
+  in der Automatisierung. Empfehlung: Gerät ersetzen, Windows 10 mit ESU oder Linux.
+- **Keine Kunden (Entscheid Dominik 31.10.):** alle Geräte gehören Okula – Texte und Beispiele ohne „Kunde“
+  (Ordner z. B. nach Standort/Abteilung).
 - **Automatisierung wieder einschalten nach 3 Tagen** (Entscheid Dominik 31.10., vorher 24 h).
 - **Umsetzungsreihenfolge:** zuerst Agent (Fundament, ein neuer Stick reicht), dann Tool-Logik, zuletzt Oberfläche.
 
@@ -116,6 +118,8 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 31.10.2026
+- **Ä-022 Texte ohne „Kunde“:** „auf Wunsch des Kunden“ aus Häkchen, Warnung, Hilfe und README entfernt;
+  Beispiele für Ordner jetzt Standort/Abteilung (alle Geräte gehören Okula).
 - **Ä-018 Automatisierung: 3 Tage statt 24 h:** nach erfolgreichem Durchlauf schaltet sie sich nach 3 Tagen wieder
   ein (`automation.REARM_HOURS = 72`), Anzeige „wieder aktiv in 2 Tagen 5 h“; Texte, Hilfe, README angepasst.
 - **Ä-019 Laufzeit monoton gemessen:** Laufzeit/Restzeit der Aufträge (`jobs.Job.t0`, `duration`) und das

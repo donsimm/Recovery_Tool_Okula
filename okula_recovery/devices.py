@@ -2,7 +2,7 @@
 
 Ablage lokal auf dem Server (XDG_DATA_HOME, Standard ~/.local/share/okula-recovery/geraete):
     geraete/<Geräte-ID>.json                       → „Neu / nicht einsortiert“
-    geraete/Kunde A/Standort Zürich/<ID>.json      → einsortiert (max. 3 Ordnerebenen)
+    geraete/Zürich/Buchhaltung/<ID>.json           → einsortiert (max. 3 Ordnerebenen)
 Die Datei heisst nach der ID, damit Umbenennen nur den Anzeigenamen ändert.
 """
 

@@ -122,7 +122,7 @@ Sonst findet das Tool die Geräte nicht."""),
 4.  Nach etwa einer Minute erscheint das Gerät links im Tool, mit grünem Punkt.
 
 Neue Geräte stehen zuerst unter <i>„Neu / nicht einsortiert“</i>.
-Du kannst sie mit der Maus in eigene Ordner ziehen, zum Beispiel nach Kunde.
+Du kannst sie mit der Maus in eigene Ordner ziehen, zum Beispiel nach Standort oder Abteilung.
 Steht ein Gerät doppelt in der Liste: Rechtsklick auf den doppelten Eintrag → <i>„Zusammenführen mit …“</i>.
 
 <b>Die Punkte bedeuten:</b>
@@ -329,7 +329,7 @@ Bei anderen Systemen zeigt das Tool den Grund. Dann hilft ein Boot-Stick (nächs
 •  Mit dem Stick kannst du Windows oder Linux an jedem Computer installieren.
 •  Bei Windows kannst du Dinge einstellen: ohne Microsoft-Konto, Region Schweiz.
 •  Altes Gerät, das Windows 11 nicht kann? Microsoft rät ab (keine Updates garantiert).
-   Nur auf Wunsch des Kunden: Häkchen <i>Trotzdem installieren</i> bzw. beim Stick
+   Wenn du es trotzdem willst: Häkchen <i>Trotzdem installieren</i> bzw. beim Stick
    <i>Auch für nicht unterstützte Hardware</i>. Das Gerät bekommt dann einen Vermerk.
 •  Das Tool kann den Stick vorher testen. So erkennst du gefälschte Sticks.
 

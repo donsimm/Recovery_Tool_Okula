@@ -1,6 +1,6 @@
 """Ordnerstruktur für Images auf dem NAS („Archiv“, selbst angelegt, max. 3 Ebenen).
 
-    <NAS>/Archiv/Kunde A/Standort Zürich/PC-Buchhaltung/<Image>
+    <NAS>/Archiv/Zürich/Buchhaltung/PC-Buchhaltung/<Image>
     <NAS>/images/…  und alles andere ausserhalb von Archiv = „Nicht einsortiert“
 
 Verschieben ist ein Umbenennen auf derselben Freigabe – auch grosse Images sofort.
@@ -28,7 +28,7 @@ class ArchiveError(Exception):
 @dataclass
 class Folder:
     name: str
-    rel: str                       # relativ zu Archiv, z. B. „Kunde A/Standort Zürich“
+    rel: str                       # relativ zu Archiv, z. B. „Zürich/Buchhaltung“
     folders: list["Folder"] = field(default_factory=list)
     images: list[nas.ImageInfo] = field(default_factory=list)
 

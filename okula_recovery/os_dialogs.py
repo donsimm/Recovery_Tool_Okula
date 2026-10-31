@@ -662,7 +662,7 @@ class InstallDialog(Gtk.Dialog):
         self.unsupported = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, no_show_all=True)
         self.unsupported_text = Gtk.Label(xalign=0, wrap=True)
         self.unsupported_text.get_style_context().add_class("status-fail")
-        self.w_unsupported = Gtk.CheckButton(label="Trotzdem installieren – nicht unterstützt, auf Wunsch des Kunden")
+        self.w_unsupported = Gtk.CheckButton(label="Trotzdem installieren – nicht unterstützt")
         self.w_unsupported.connect("toggled", lambda _c: self._update())
         for w in (self.unsupported_text, self.w_unsupported):
             self.unsupported.pack_start(w, False, False, 0)

@@ -310,7 +310,7 @@ def describe(meta: dict) -> str:
 @dataclass
 class IsoInfo:
     path: Path
-    rel: str                         # Ordner relativ zu OS/, z. B. „Windows/Kunde A“
+    rel: str                         # Ordner relativ zu OS/, z. B. „Windows/Schulung“
     size: int
     mtime: datetime
     meta: dict = field(default_factory=dict)

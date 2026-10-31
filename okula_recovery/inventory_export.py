@@ -54,7 +54,7 @@ def folder_title(rel: str) -> str:
 
 
 def folder_path(rel: str) -> str:
-    """„Kunde A › Zürich“ – voller Ort für Kopfzeile."""
+    """„Zürich › Buchhaltung“ – voller Ort für Kopfzeile."""
     return " › ".join(PurePosixPath(rel).parts) if rel else UNSORTED
 
 
@@ -291,7 +291,7 @@ def export(target_dir: Path, devs: list[devices.Device], rows: list[dict], label
         written.append(write_pdf(target_dir / f"{file_stem(label, day)}.pdf", label, rows, with_key, day))
     elif fmt_pdf:
         for rel, group in group_by_folder(devs, rows).items():
-            # Dateiname mit vollem Pfad, damit zwei „Zürich“ in verschiedenen Kunden sich nicht überschreiben
+            # Dateiname mit vollem Pfad, damit zwei „Buchhaltung“ in verschiedenen Ordnern sich nicht überschreiben
             written.append(write_pdf(target_dir / f"{file_stem(rel or UNSORTED, day)}.pdf", folder_title(rel),
                                      group, with_key, day, folder_path(rel)))
     return written
