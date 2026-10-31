@@ -224,7 +224,7 @@ def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source
                     jm.log(job, f"{ev['file']} wird geprüft")
                 jm.progress(job, f * 0.3, ev.get("file", ""), "Image prüfen (1/2)", f)
             elif phase == "table":
-                jm.log(job, ("Image geprüft. Schritt 2/2: " if verify else "") + "schreibe Partitionstabelle und Bootcode")
+                jm.log(job, ("Image geprüft. Schritt 2/2: " if verify else "") + "Partitionstabelle und Bootcode werden geschrieben")
                 jm.progress(job, 0.3 if verify else 0.0, "Partitionstabelle", "Zurückspielen (2/2)" if verify else "", 0)
             elif phase == "file":
                 jm.log(job, f"{ev.get('part')} wird geschrieben ({ev.get('file')})")
@@ -243,7 +243,7 @@ def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source
         try:
             if adapt:
                 from okula_recovery import shrink
-                jm.log(job, "Zieldisk ist kleiner als das Image – passe das Image an (neues Image, Original bleibt)")
+                jm.log(job, "Zieldisk ist kleiner als das Image – Image wird angepasst (neues Image, Original bleibt)")
                 for line in shrink.plan(image, adapt["target_size"], source_disk).lines():
                     jm.log(job, "  · " + line)
                 derived = shrink.ensure(image, adapt["target_size"], adapt.get("nas_root"), source_disk,

@@ -132,13 +132,13 @@ def capacity_test(device: str, size: int, progress: Progress) -> None:
     try:
         for i, off in enumerate(offsets):
             os.pwrite(fd, pattern(off), off)
-            progress(0.5 * (i + 1) / len(offsets), "Schnelltest: schreibe Prüfmuster")
+            progress(0.5 * (i + 1) / len(offsets), "Schnelltest: Prüfmuster wird geschrieben")
         _drop_cache(fd)
         bad = []
         for i, off in enumerate(offsets):
             if os.pread(fd, BLOCK, off) != pattern(off):
                 bad.append(off)
-            progress(0.5 + 0.5 * (i + 1) / len(offsets), "Schnelltest: lese Prüfmuster")
+            progress(0.5 + 0.5 * (i + 1) / len(offsets), "Schnelltest: Prüfmuster wird gelesen")
     finally:
         os.close(fd)
     if bad:
@@ -328,7 +328,7 @@ def copy_windows(iso: Path, dest: Path, unattend: str | None, progress: Progress
                 while proc.poll() is None:
                     written = sum(p.stat().st_size for p in swm.parent.glob("install*.swm"))
                     progress(0.9 * (base + 0.3 * wim.size + 0.7 * min(written, wim.size)) / total,
-                             f"Splitte install.wim in install.swm-Teile ({written / 1000**3:.1f} / "
+                             f"install.wim wird in install.swm-Teile geteilt ({written / 1000**3:.1f} / "
                              f"{wim.size / 1000**3:.1f} GB)")
                     time.sleep(0.5)
                 tail.join()

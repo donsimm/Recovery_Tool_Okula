@@ -161,7 +161,7 @@ def stream_disk_image(sock, disk_path: str, log=print, report=None) -> None:
     done = 0
     for step in plan[3:]:
         part, want = step["part"], sizes[step["part"]]
-        log(f"Demo: sichere {part} …")
+        log(f"Demo: {part} wird gesichert …")
 
         def chunks(part=part, want=want, before=done):
             sent = 0

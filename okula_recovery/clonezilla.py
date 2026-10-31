@@ -179,7 +179,7 @@ def verify(source: dict, progress: Progress, cancel: threading.Event) -> None:
     done = 0
     chkimg = find_tool("partclone.chkimg")
     if not chkimg and any(s["kind"] == "pcl" for s in steps):
-        progress({"phase": "note", "message": "partclone.chkimg nicht gefunden – prüfe nur die Kompression (CRC)"})
+        progress({"phase": "note", "message": "partclone.chkimg nicht gefunden – nur die Kompression (CRC) wird geprüft"})
     for s in steps:
         comp = s["compression"]
         cmds = [list(DECOMPRESS[comp])] if comp else []

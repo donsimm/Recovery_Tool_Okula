@@ -86,7 +86,7 @@ def ensure_network(server: str | None) -> None:
             continue  # kein Kabel
         for cmd in DHCP_CLIENTS:
             if shutil.which(cmd[0]):
-                log(f"Keine IP – frage DHCP mit {cmd[0]} auf {name} an …")
+                log(f"Keine IP – DHCP-Anfrage mit {cmd[0]} auf {name} …")
                 _try([*cmd, name])
                 break
         if primary_ip(server):
@@ -543,7 +543,7 @@ def main(argv: list[str] | None = None) -> int:
     no_ip_since = time.monotonic()
     network_fixed = False
     waiting_shown = False
-    log(f"Okula Recovery Agent {__version__} – suche Recovery-Tool im LAN …")
+    log(f"Okula Recovery Agent {__version__} – Recovery-Tool wird im LAN gesucht …")
     while True:
         ip = primary_ip(args.server)
         if not ip:

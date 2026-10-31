@@ -14,6 +14,7 @@ from okula_recovery.uikit import scrolled  # noqa: E402
 # (Kapitel, Text in Pango-Markup). Handbuch-Stil: keine Anrede (weder „du“ noch „Sie“), Schritte im Infinitiv,
 # kurze Sätze, Fachwörter in „Wichtige Begriffe“ erklärt. Begriffe wie in der Oberfläche: Disk, Zieldisk,
 # Datenträger (USB), Windows-Schlüssel, Agent-Stick. Schritte nummeriert, Hinweise mit •, Folgezeilen 4 Leerzeichen.
+# Farbwörter als Farbfeld mit fester Schriftfarbe (lesbar im hellen und im dunklen Design).
 CHAPTERS: list[tuple[str, str]] = [
     ("Überblick", """<big><b>Was macht das Tool?</b></big>
 
@@ -354,7 +355,7 @@ Ideal vor einer Neuinstallation: Dateien sichern, neu installieren, Dateien zur�
 
 <b>Zurückspielen oder herunterladen:</b>
 1.  Rechts im Reiter <i>Backups</i> (oder im Gerätefenster) das Backup doppelklicken
-    oder Rechtsklick → <i>Zurückspielen / herunterladen …</i>.
+    oder Rechtsklick → <i>Zurückspielen / herunterladen …</i>
     Für das gewählte Gerät auch: <i>Tools → Backup zurückspielen …</i>
 2.  Ziel wählen:
     •  <i>Ins installierte System</i>: Dateien zurück auf das Gerät. Alte Benutzer lassen sich neuen zuordnen.
@@ -464,9 +465,9 @@ Die Angaben stehen im Gerätefenster unter <i>Übersicht</i> und <i>Disks</i>.
 •  ? Noch unbekannt: Agent-Stick neu erstellen und <i>Inventar neu einlesen</i>.
 
 <b>Garantie</b> (<i>Übersicht → Garantie bis</i>)
-•  <span foreground="#2e7d32">grün</span>: Die Garantie läuft noch.
-•  <span background="#fff3b0">gelb</span>: Die Garantie läuft in den nächsten 90 Tagen ab.
-•  <span background="#c62828" foreground="#ffffff">rot</span>: Die Garantie ist abgelaufen.
+•  <span background="#2e7d32" foreground="#ffffff"> grün </span>: Die Garantie läuft noch.
+•  <span background="#fff3b0" foreground="#6d5200"> gelb </span>: Die Garantie läuft in den nächsten 90 Tagen ab.
+•  <span background="#c62828" foreground="#ffffff"> rot </span>: Die Garantie ist abgelaufen.
 <i>Beim Hersteller abfragen</i> holt das Datum über die Seriennummer. Das geht bei Dell, HP und Lenovo.
 Für Dell und HP braucht es einen Schlüssel vom Hersteller: <i>Menü → Einstellungen … → Garantie-Abfrage</i>.
 Ohne Schlüssel, ohne Internet oder bei einem anderen Hersteller: mit <i>Von Hand …</i> das Datum eintragen.
@@ -599,11 +600,11 @@ Alle Aktionen über Rechtsklick.
 <b>Disk-Image</b>
 •  <i>Als Master-Image markieren</i> bzw. <i>Master-Markierung entfernen</i> (Stern ★).
 •  <i>Restore-Stick aus Image …</i>: Kapitel <i>Sticks erstellen</i>.
-•  <i>Umbenennen …</i> und <i>Löschen …</i>. Gelöschte Images sind endgültig weg (kein Papierkorb).
+•  <i>Umbenennen …</i> und <i>Löschen …</i> Gelöschte Images sind endgültig weg (kein Papierkorb).
 
 <b>ISO</b>
 •  <i>Details und Prüfsummen …</i>: Version, Edition und Prüfsummen der ISO.
-•  <i>Boot-Stick erstellen …</i> und <i>Auf Gerät installieren …</i>.
+•  <i>Boot-Stick erstellen …</i> und <i>Auf Gerät installieren …</i>
 •  <i>ISO hinzufügen …</i>: neue ISO aufnehmen.
 
 <b>Aktualisieren</b>
@@ -632,8 +633,8 @@ zum Beispiel nachdem Dateien direkt auf das NAS kopiert wurden."""),
 
 <b>Fortschritt</b>
 In der Geräteliste steht bei jedem Gerät ein Balken mit Prozent und Restzeit.
-•  <span foreground="#2e7d32">grün</span>: Der Auftrag läuft.
-•  <span foreground="#c62828">rot</span>: Der Auftrag ist fehlgeschlagen. Daneben steht, bei wie viel Prozent.
+•  <span background="#2e7d32" foreground="#ffffff"> grün </span>: Der Auftrag läuft.
+•  <span background="#c62828" foreground="#ffffff"> rot </span>: Der Auftrag ist fehlgeschlagen. Daneben steht, bei wie viel Prozent.
     Den Grund zeigt das Gerätefenster unter <i>Aufträge</i>. Der rote Balken bleibt, bis der nächste Auftrag startet.
 
 <b>Spalte „Auto“ und Status der Automatisierung</b>
@@ -643,7 +644,7 @@ In der Geräteliste steht bei jedem Gerät ein Balken mit Prozent und Restzeit.
 •  <i>wartet (Platz 2)</i>: Es laufen schon so viele Geräte wie erlaubt. Das Gerät kommt gleich dran.
 •  <i>Schritt 2/5: Image zurückspielen</i>: Die Automatisierung arbeitet.
 •  <i>wieder aktiv in 2 Tagen 5 h</i>: Die Automatisierung ist fertig und schaltet sich nach 3 Tagen wieder ein.
-•  <span foreground="#c62828">rot</span>: Es gab einen Fehler. Details im Gerätefenster.
+•  <span background="#c62828" foreground="#ffffff"> rot </span>: Es gab einen Fehler. Details im Gerätefenster.
 
 <b>Stern ★ bei Images</b>
 Das Image ist als Master-Image markiert.
@@ -679,7 +680,7 @@ So muss auf einem neuen Rechner nichts von vorne eingerichtet werden.
 •  Vorhandene Daten auf dem neuen Rechner werden vor dem Import gesichert.
 
 <b>Nur die NAS-Verbindung</b>
-Im NAS-Fenster gibt es <i>Exportieren …</i> und <i>Importieren …</i>.
+Im NAS-Fenster gibt es <i>Exportieren …</i> und <i>Importieren …</i>
 Damit kommen nur die NAS-Einstellungen mit (ohne Passwort)."""),
 
     ("Probleme lösen", """<big><b>Wenn etwas nicht klappt</b></big>

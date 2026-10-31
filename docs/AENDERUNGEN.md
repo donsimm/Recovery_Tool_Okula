@@ -16,13 +16,12 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 0 | 0 | 0 |
-| 🔧 Änderungen | 11 | 1 | 0 |
+| 🔧 Änderungen | 11 | 0 | 0 |
 | 💡 Ideen | 27 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
-In Arbeit: **Ä-025** Hilfe abschliessen (H23 ✔ → H24 ✔ → H25 ✔ → README ✔ → Sichtprüfung).
-Als Nächstes: Tests am realen System in [TESTS.md](TESTS.md) – „Fixes von heute“ und Abschnitt 7 (neue Funktionen inkl. Ä-015 bis Ä-021).
+Als Nächstes: Tests am realen System in [TESTS.md](TESTS.md) – „Fixes von heute“ und Abschnitt 7 (neue Funktionen inkl. Ä-015 bis Ä-025).
 Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laien, klein) → **Ä-001** (Dienst) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-009, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
 ## 🐞 Bugs
@@ -46,7 +45,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laie
 | Ä-010 | 🟡 | offen | Claude | **Vorabprüfung mit Ampel statt Fehler mitten im Lauf:** Image passt auf die Disk, UEFI/BIOS-Modus passt zum Master, BitLocker auf der Zieldisk (dann ist kein Datei-Backup möglich), Agent-Stick aktuell, Windows-Edition des Masters passt zum Key (Pro/Home). Anzeige: „✔ Bereit“ bzw. „⚠ Achtung: …“ | 31.10. (Laien-Test) |
 | Ä-012 | 🟡 | offen | Claude | **Einfache Sprache im Reiter Automatisierung:** „Zieldisk“ → „Festplatte, die gelöscht wird“; Sysprep, Master und Content-Projekte mit einem „?“ pro Abschnitt erklären. Gerätenamen wie „DESKTOP-8F3K2LQ“ markieren und zum Umbenennen auffordern; optional Namensschema pro Vorlage (z. B. `KUNDE-001` fortlaufend) | 31.10. (Laien-Test) |
 | Ä-013 | ⚪ | offen | Claude | **Klare Fertig-Meldung:** grosses „✔ Fertig – HP-PC-07 ist neu aufgesetzt (18 min)“ im Tool und am Gerät, dazu eine Liste: was gemacht wurde, Key aktiviert ja/nein, wo das Backup liegt. Als PDF ausdruckbar (Übergabeprotokoll, → I-013) | 31.10. (Laien-Test) |
-| Ä-025 | 🟡 | **in Arbeit** | Dominik | **Hilfe abschliessen (H23–H25) und README im Handbuch-Stil:** Kapitelreihenfolge nach Arbeitsablauf (Demo ans Ende), Querverweise exakt; Suchfeld in der Hilfe (Ctrl+F, Treffer hervorgehoben); Test `tests/test_help.py` (Markup, Menüeinträge, Querverweise, keine Anrede; `MENU_LABELS` in ui.py); README ohne Anrede und an die Hilfe angeglichen; Sichtprüfung aller Kapitel und der Fortschrittstexte. Plan: [HILFE-PRUEFUNG.md](HILFE-PRUEFUNG.md) | 31.10. |
 
 ## 💡 Ideen
 
@@ -120,6 +118,20 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 31.10.2026
+- **Ä-025 Hilfe abgeschlossen (H23–H25), README im Handbuch-Stil** (Von: Dominik):
+  - H23: Kapitel nach Arbeitsablauf (Datei-Backup nach Image zurückspielen, Demo-Gerät ans Ende), Kapitel
+    „Inventar, Garantie, Windows 11“; alle Querverweise „Kapitel <i>…</i>“ zeigen auf bestehende Kapitel.
+  - H24: Suchfeld über der Kapitelliste (Ctrl+F): filtert nach Titel und Text (alle Wörter, Gross/Klein egal,
+    NFC), Treffer gelb, erstes Treffer-Kapitel, „Keine Treffer“; Esc leert zuerst die Suche. Logik ohne GTK in
+    `helpsearch.py`.
+  - H25: `tests/test_help.py` (Markup, alle Einträge aus `MENU_LABELS` in der Hilfe, Querverweise, keine Anrede,
+    keine Ich-Form in Fortschritt/Log); Menüleiste aus `MENU_LABELS` (ui.py).
+  - README ohne Anrede, neue Abschnitte Firewall (alle Ports), Typischer Ablauf, Inventar/Garantie/Windows 11,
+    Master-Image, Hilfe/Tastenkürzel. Begriff „Windows-Schlüssel“ statt „Windows-Key/Produktschlüssel“ in der Oberfläche.
+  - Sichtprüfung: alle 24 Kapitel hell/dunkel; Farbwörter als Farbfeld (gelb war im dunklen Design unlesbar),
+    doppelte Punkte nach „…“ entfernt; letzte Ich-Formen umgestellt („Partitionstabelle wird übernommen“,
+    „install.wim wird … geteilt“, „Prüfmuster wird geschrieben“, PXE-Boot „Agent-Teil wird geladen“).
+  - Nebenbei: zwei veraltete Testtexte aus Ä-024 nachgeführt.
 - **Ä-024 Hilfe (F1) überarbeitet – Prüfung H1–H22** ([HILFE-PRUEFUNG.md](HILFE-PRUEFUNG.md)): Fehler korrigiert (Knopf „Verbindung testen“, Firewall-Ports inkl. Netzwerkstart, Optionen bei Image/Restore/Datei-Backup, Menünamen), neue Kapitel „Typischer Ablauf“, „Geräte verwalten“, „Master-Image“, „Inventar, Garantie, Win 11“, „Images verwalten“, „Probleme lösen“ ergänzt, Begriffe erklärt und vereinheitlicht. **Handbuch-Stil ohne Anrede** in Hilfe und Oberfläche; rund 80 Fortschritts- und Log-Texte von Ich-Form auf Vorgang („Stick wird geprüft …“). Regel in CLAUDE.md. Nur Texte, kein neuer Agent-Stick nötig.
 - **Ä-023 Win-11-Prozessorliste abgeglichen** (Microsoft Learn, Listen Original/24H2/25H2 für Intel, AMD, Qualcomm):
   tauglich = Serie steht in einer der Listen (24H2/25H2 gelten laut Microsoft für neue OEM-Geräte und lassen ältere

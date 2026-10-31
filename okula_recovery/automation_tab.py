@@ -429,7 +429,7 @@ class SettingsDialog(Gtk.Dialog):
             secret.set_input_purpose(Gtk.InputPurpose.PASSWORD)
             grid.attach(key_id, 1, row, 1, 1)
             grid.attach(secret, 2, row, 1, 1)
-            state = Gtk.Label(label="prüfe …", xalign=0)
+            state = Gtk.Label(label="wird geprüft …", xalign=0)
             state.get_style_context().add_class("status-idle")
             grid.attach(state, 3, row, 1, 1)
             delete = Gtk.CheckButton(label="löschen", no_show_all=True)

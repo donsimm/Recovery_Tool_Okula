@@ -114,6 +114,12 @@ def clean_label(label: str) -> str:
 # Anrede: „du“-Formen immer, „Sie/Ihr/Ihnen“ gross geschrieben (auch am Satzanfang umformulieren)
 DU = re.compile(r"\b(du|dein|deine|deinen|deinem|deiner|deines|dich|dir|euch|euer|eure)\b", re.IGNORECASE)
 SIE = re.compile(r"\b(Sie|Ihr|Ihre|Ihren|Ihrem|Ihrer|Ihres|Ihnen)\b")
+# Ich-Form am Anfang eines Satzteils, z. B. „Prüfe …“, „– kopiere alles 1:1“
+FIRST_PERSON = re.compile(
+    r"(?:^|[:–·(] |\n)(prüfe|lade|schreibe|kopiere|erstelle|formatiere|lösche|entpacke|hänge|teste|berechne|suche|"
+    r"warte|starte|lese|übertrage|vergleiche|setze|baue|packe|bereite|hole|sende|teile|spiele|installiere|richte|"
+    r"fahre|verkleinere|sichere|passe|übernehme|splitte|lege|aktiviere|überspringe|ersetze|verschiebe|überschreibe|"
+    r"erzeuge|frage|öffne|trenne|verbinde)\b", re.IGNORECASE)
 
 
 def ui_strings() -> list[tuple[str, int, str]]:
@@ -164,6 +170,12 @@ class HelpUpToDateTest(unittest.TestCase):
         for name, line, text in ui_strings():
             for rx in (DU, SIE):
                 problems += [f"{name}:{line}: {m.group(0)} in „{text[:60]}“" for m in rx.finditer(text)]
+        self.assertEqual(problems, [])
+
+    def test_e_progress_not_first_person(self):
+        """Fortschritt und Log als Vorgang („Stick wird geprüft …“), nicht in Ich-Form („Prüfe Stick …“)."""
+        problems = [f"{name}:{line}: „{m.group(0).strip()}“ in „{text[:70]}“"
+                    for name, line, text in ui_strings() for m in FIRST_PERSON.finditer(text)]
         self.assertEqual(problems, [])
 
 

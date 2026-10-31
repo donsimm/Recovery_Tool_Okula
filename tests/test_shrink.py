@@ -242,7 +242,7 @@ class ShrinkE2ETest(unittest.TestCase):
                     break
                 threading.Event().wait(0.1)
             self.assertEqual(job.state, jobs.DONE, "\n".join(job.log))
-            self.assertIn("passe das Image an", "".join(job.log))
+            self.assertIn("Image wird angepasst", "".join(job.log))
             self.assertTrue(shrink.find_derived(image, size))
             self.assertEqual(subprocess.run(["e2fsck", "-f", "-n", f"{dst}p1"], capture_output=True).returncode, 0)
             # Automatisierung: Option aus → klare Meldung, nichts gelöscht

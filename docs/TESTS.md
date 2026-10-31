@@ -43,6 +43,7 @@ bestätigt.
 | Demo-Gerät: alle Aufträge, Fehler, Neustart, nur 127.0.0.1, Demo-Image gesperrt | A, V | echter Prozess |
 | Inventar-Export: CSV (BOM, Semikolon), PDF je Ordner oder alle in einem (A4 quer, mehrseitig), Auswahl, Key maskiert/aus | A, V | |
 | Unicode-Namen (NFC/NFD, Steuerzeichen, Umschrift), monotone Laufzeit, Win-11-Option nur von Hand | A, V | |
+| Hilfe: Reihenfolge, Suche, Test auf Menüeinträge/Querverweise/Anrede/Ich-Form, Sichtprüfung hell/dunkel | A, V | 24 Kapitel als Screenshot |
 | Gerätefenster passt sich der Übersicht an (1920×1080 ganz sichtbar, 1366×768 begrenzt) | A, V | |
 | Garantie-Abfrage: Dell/HP/Lenovo-Antworten, Farben grün/gelb/rot, Schlüssel 0600 nur beim Root-Helfer | A, V | gemockte Antworten – Hersteller-Server waren gesperrt |
 
@@ -101,6 +102,8 @@ bestätigt.
 - [ ] Tool schliessen → Demo-Prozess ist beendet
 
 ### 7. Allgemein
+- [ ] Ä-025: F1 → Kapitelliste in der Reihenfolge des Ablaufs, „Demo-Gerät“ zuletzt; Suchfeld (Ctrl+F): „garantie“ zeigt nur passende Kapitel, Treffer gelb, Esc leert; Hilfe im dunklen Design: Farbfelder grün/gelb/rot lesbar
+- [ ] Ä-025: Menüleiste unverändert (alle Einträge, Demo-Häkchen unter Extras), Hilfe → Tastenkürzel zeigt Ctrl+F
 - [ ] **Hilfe (F1):** alle Kapitel öffnen – Text vollständig, keine Formatierungsfehler, Menü- und Knopfnamen stimmen (Ä-024)
 - [ ] Fortschrittstexte in neuer Form („Stick wird geprüft …“) bei Agent-Stick erstellen und USB formatieren
 - [ ] Ä-021: OS installieren → Windows-11-ISO auf einem nicht tauglichen Gerät (z. B. 4.–7. Gen. Intel) → Grund und Microsoft-Hinweise sichtbar, „Installieren“ erst mit Häkchen „Trotzdem installieren“; danach Gerätefenster → Übersicht → Windows 11 zeigt „⚠ Am … trotzdem installiert“, Verlauf-Eintrag, Inventar-Export Spalte Win-11 mit Vermerk; auf tauglichem Gerät erscheint nichts davon

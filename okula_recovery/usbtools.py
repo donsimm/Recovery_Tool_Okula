@@ -433,7 +433,7 @@ def clone(source: str, target: str, mode: str, verify: bool, emit: Emit) -> None
     if mode == "smart":
         ok, why = smart_plan(table, parts)
         if not ok:
-            emit("WARN", f"Nur belegte Bereiche geht hier nicht ({why}) – kopiere alles 1:1")
+            emit("WARN", f"Nur belegte Bereiche geht hier nicht ({why}) – alles wird 1:1 kopiert")
             mode = "raw"
     need = needed_size(table, parts, src_size, mode)
     if need > dst_size:
@@ -451,7 +451,7 @@ def clone(source: str, target: str, mode: str, verify: bool, emit: Emit) -> None
     else:
         ss = sector_size(source)
         real = sorted((p for p in parts if p.type not in EXTENDED_TYPES), key=lambda p: p.start)
-        progress(0.01, "Übernehme Partitionstabelle")
+        progress(0.01, "Partitionstabelle wird übernommen")
         _run(["wipefs", "-a", target])
         _copy_table(source, target, real[0].start, ss)
         _settle(target)
@@ -471,7 +471,7 @@ def clone(source: str, target: str, mode: str, verify: bool, emit: Emit) -> None
                 if rc == 0:
                     copied = True
                 else:
-                    emit("WARN", f"{name}: partclone meldet „{child.error()}“ – kopiere diese Partition 1:1")
+                    emit("WARN", f"{name}: partclone meldet „{child.error()}“ – Partition wird 1:1 kopiert")
             if not copied:
                 copy_range(p.node, dst_node, p.size, step,
                            f"{name} ({p.fstype or 'ohne Dateisystem'}, 1:1) {i}/{len(real)}")

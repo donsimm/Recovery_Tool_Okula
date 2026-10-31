@@ -70,7 +70,7 @@ do_httpmount ()
 	mkdir -p "${dest}"
 	rc=0
 	for _okula_url in ${FETCH} ${OKULA_LAYER}; do
-		log_begin_msg "Okula: lade ${_okula_url}"
+		log_begin_msg "Okula: Agent-Teil wird geladen (${_okula_url})"
 		wget "${_okula_url}" -O "${dest}/$(basename "${_okula_url}")" || rc=1
 		log_end_msg
 	done
