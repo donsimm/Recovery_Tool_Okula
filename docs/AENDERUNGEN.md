@@ -16,11 +16,12 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 0 | 0 | 0 |
-| 🔧 Änderungen | 14 | 0 | 0 |
-| 💡 Ideen | 29 | 0 | 2 |
+| 🔧 Änderungen | 11 | 3 | 0 |
+| 💡 Ideen | 26 | 3 | 2 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
-Als Nächstes: Tests „Fixes von heute“ in [TESTS.md](TESTS.md) (Debian-Direktinstallation, doppelter HP-Eintrag).
+In Arbeit (Reihenfolge): **Ä-014** NAS-Webseite → **Ä-011** Boot-Menü-Taste → **I-024** Windows-11-Tauglichkeit → **Ä-002** kleinere Disk → **I-025** Garantie → **I-013** Inventar-Export (ein neuer Agent-Stick für I-024 und Ä-002).
+Als Nächstes danach: Tests „Fixes von heute“ in [TESTS.md](TESTS.md) (Debian-Direktinstallation, doppelter HP-Eintrag).
 Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laien, klein) → **Ä-001** (Dienst) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-009, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
 ## 🐞 Bugs
@@ -34,7 +35,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laie
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
 | Ä-001 | 🔴 | offen | Claude | **Aufträge als Systemdienst statt im Fenster:** Aufträge, Automatisierung und PXE laufen heute als Threads im GTK-Prozess (`jobs.py`). Wird das Tool geschlossen, stürzt es ab oder meldet man sich ab, brechen laufende Restores ab. Lösung: Dienst `okula-recoveryd` (systemd), die Oberfläche wird zum Client (lokaler Socket). Das ist die Grundlage für I-004 (Webinterface) und I-010 (Zeitplan). | 31.10. (Analyse) |
-| Ä-002 | 🟡 | offen | Claude | **Restore auf eine kleinere Disk:** Heute bricht der Restore mit „Zieldisk zu klein“ ab. Wenn die belegten Daten passen: letzte Partition vorher mit `ntfsresize`/`resize2fs` verkleinern bzw. die Partitionstabelle anpassen. Typischer Fall: 512-GB- auf 256-GB-SSD | 31.10. (Analyse) |
+| Ä-002 | 🟡 | **in Arbeit** | Claude | **Restore auf eine kleinere Disk:** Heute bricht der Restore mit „Zieldisk zu klein“ ab. Wenn die belegten Daten passen: letzte Partition vorher mit `ntfsresize`/`resize2fs` verkleinern bzw. die Partitionstabelle anpassen. Typischer Fall: 512-GB- auf 256-GB-SSD | 31.10. (Analyse) |
 | Ä-003 | 🟡 | offen | Claude | **Images und Backups auf dem NAS verschlüsseln:** Sie enthalten Personendaten (revDSG Art. 8, Datensicherheit). Minimum: SMB3-Verschlüsselung (`mount.cifs … seal`). Besser: Verschlüsselung im Datenstrom (z. B. `age` nach `zstd`), Schlüssel root-lesbar und zusätzlich auf Papier | 31.10. (Analyse) |
 | Ä-004 | 🟡 | offen | Claude | **Zentrales Protokoll:** `/var/log/okula-recovery/` mit logrotate. Festhalten, wer wann was auf welches Gerät gespielt hat. Dazu Menü → „Diagnosepaket exportieren“ (Logs, Version, Konfiguration ohne Geheimnisse), um Fehler an Claude Code zu melden | 31.10. (Analyse) |
 | Ä-005 | 🟡 | offen | Claude | **Entwicklung absichern:** GitHub Actions, die die 240 Tests bei jedem Push ausführen. Versionsnummer pflegen (steht noch auf `0.1.0`) und Releases taggen, damit der Server einen geprüften Stand zieht statt den Branch-Kopf. `ui.py` (2780 Zeilen) aufteilen | 31.10. (Analyse) |
@@ -43,10 +44,10 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laie
 | Ä-008 | 🔴 | offen | Claude | **Nach dem Restore Windows starten, auch wenn der Stick noch steckt:** BootNext auf den Windows Boot Manager setzen (`efibootmgr --bootnext`, wie in `wininstall.set_bootnext`). Heute heisst es nur „Agent-Stick abziehen“; wer das verpasst, landet wieder im Agent. Und nach 24 h wird das Gerät erneut neu aufgesetzt, weil „Nach 24 h wieder einschalten“ standardmässig an ist → Standard **aus**, oder nur bei Netzwerkstart | 31.10. (Laien-Test) |
 | Ä-009 | 🟡 | offen | Claude | **Vorauswahl:** Ist nur eine interne Disk da, ist sie automatisch die Zieldisk; gibt es nur einen Master, ist er gewählt (heute sind beide Listen leer). Dazu eine Standard-Vorlage (Menü → Einstellungen), die bei jedem neuen Gerät schon eingetragen ist | 31.10. (Laien-Test) |
 | Ä-010 | 🟡 | offen | Claude | **Vorabprüfung mit Ampel statt Fehler mitten im Lauf:** Image passt auf die Disk, UEFI/BIOS-Modus passt zum Master, BitLocker auf der Zieldisk (dann ist kein Datei-Backup möglich), Agent-Stick aktuell, Windows-Edition des Masters passt zum Key (Pro/Home). Anzeige: „✔ Bereit“ bzw. „⚠ Achtung: …“ | 31.10. (Laien-Test) |
-| Ä-011 | 🟡 | offen | Claude | **Boot-Menü-Taste je Hersteller:** im Stick-Dialog, in der Hilfe und bei bekannten Geräten aus den Inventardaten (DMI), z. B. HP F9, Dell F12, Lenovo F12, Asus F8/Esc, Acer F12, MSI F11. Der Hinweis „meist F12, F11, F8 oder Esc“ reicht einem Laien nicht | 31.10. (Laien-Test) |
+| Ä-011 | 🟡 | **in Arbeit** | Claude | **Boot-Menü-Taste je Hersteller:** im Stick-Dialog, in der Hilfe und bei bekannten Geräten aus den Inventardaten (DMI), z. B. HP F9, Dell F12, Lenovo F12, Asus F8/Esc, Acer F12, MSI F11. Der Hinweis „meist F12, F11, F8 oder Esc“ reicht einem Laien nicht | 31.10. (Laien-Test) |
 | Ä-012 | 🟡 | offen | Claude | **Einfache Sprache im Reiter Automatisierung:** „Zieldisk“ → „Festplatte, die gelöscht wird“; Sysprep, Master und Content-Projekte mit einem „?“ pro Abschnitt erklären. Gerätenamen wie „DESKTOP-8F3K2LQ“ markieren und zum Umbenennen auffordern; optional Namensschema pro Vorlage (z. B. `KUNDE-001` fortlaufend) | 31.10. (Laien-Test) |
 | Ä-013 | ⚪ | offen | Claude | **Klare Fertig-Meldung:** grosses „✔ Fertig – HP-PC-07 ist neu aufgesetzt (18 min)“ im Tool und am Gerät, dazu eine Liste: was gemacht wurde, Key aktiviert ja/nein, wo das Backup liegt. Als PDF ausdruckbar (Übergabeprotokoll, → I-013) | 31.10. (Laien-Test) |
-| Ä-014 | ⚪ | offen | Dominik | **NAS-Webseite öffnen:** Im Fenster NAS-Verbindung ein Knopf „NAS-Webseite öffnen“, der den Browser mit `https://<Host>:5001` öffnet (Synology DSM; Port einstellbar, Standard 5001, Alternative http 5000; Aufruf über `xdg-open`). Daneben auch ein kleines Symbol in der NAS-Statuszeile | 31.10. |
+| Ä-014 | ⚪ | **in Arbeit** | Dominik | **NAS-Webseite öffnen:** Im Fenster NAS-Verbindung ein Knopf „NAS-Webseite öffnen“, der den Browser mit `https://<Host>:5001` öffnet (Synology DSM; Port einstellbar, Standard 5001, Alternative http 5000; Aufruf über `xdg-open`). Daneben auch ein kleines Symbol in der NAS-Statuszeile | 31.10. |
 
 ## 💡 Ideen
 
@@ -64,7 +65,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laie
 | I-010 | 🟡 | offen | Claude | **Zeitgesteuerte Backups:** z. B. freitags 18:00: Wake-on-LAN → einmal Netzwerkstart in den Agent → Datei-Backup → herunterfahren. Die Bausteine (WOL, Agent beim nächsten Start, Backup) gibt es schon; braucht Ä-001 |
 | I-011 | ⚪ | offen | Claude | **Multicast-Restore:** ein Image gleichzeitig auf viele Geräte (Schulungsraum), mit `udp-sender`/`udp-receiver` (udpcast) wie bei Clonezilla. Heute läuft jeder Restore einzeln über dieselbe 1-Gbit-Leitung |
 | I-012 | 🟡 | offen | Claude | **BitLocker entsperren:** Den Wiederherstellungsschlüssel pro Gerät hinterlegen (nur root-lesbar) und im Agent mit `dislocker` öffnen. Dann sichert partclone nur die belegten Blöcke statt einer `dd`-Rohkopie (Images viel kleiner), und auch ein Datei-Backup wird möglich |
-| I-013 | 🟡 | offen | Claude | **Inventar-Export:** alle oder ausgewählte Geräte als CSV/PDF: Modell, Seriennummer, CPU/RAM, Disks mit SMART-Befund, OS, Windows-Key maskiert, letztes Image bzw. Backup. Für Inventarliste und Übergabe an Kunden |
+| I-013 | 🟡 | **in Arbeit** | Claude | **Inventar-Export:** alle oder ausgewählte Geräte als CSV/PDF: Modell, Seriennummer, CPU/RAM, Disks mit SMART-Befund, OS, Windows-Key maskiert, letztes Image bzw. Backup. Für Inventarliste und Übergabe an Kunden |
 | I-014 | ⚪ | offen | Claude | **Treiber für Master-Images:** Treiberordner pro Modell auf dem NAS; nach dem Restore nach `Windows\Drivers\Okula` kopieren und in `unattend.xml` per `DriverPaths` (offlineServicing) einbinden. Damit passt ein Master auf verschiedene Hardware |
 | I-015 | ⚪ | offen | Claude | **Firmware/BIOS über den Agent:** `fwupd`/LVFS, wo der Hersteller es unterstützt (Dell, Lenovo, teilweise HP). Die BIOS-Version steht schon im Inventar; Hinweis anzeigen, wenn sie veraltet ist |
 | I-016 | 🔴 | offen | Claude | **Schutz vor Ransomware und Fehllöschung:** Das Tool-Konto hat heute volles Schreib- und Löschrecht auf dem NAS; wer den Server übernimmt, kann alle Backups löschen. Lösung: unveränderliche NAS-Snapshots (Synology Snapshot Replication mit Immutable), auf die das Tool-Konto keinen Zugriff hat, und ein Papierkorb im Tool (heute: „keinen Papierkorb – gelöschte Daten sind weg“). Das NCSC/BACS empfiehlt Offline- oder WORM-Medien und mindestens zwei Generationen |
@@ -75,8 +76,8 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laie
 | I-021 | 🟡 | offen | Claude | **Firmen-Anmeldung:** Domänenbeitritt (`UnattendedJoin` in unattend.xml) bzw. Entra ID. Dazu den Autopilot-Hardware-Hash erfassen (beim ersten Start per `Get-WindowsAutopilotInfo`) und als CSV aufs NAS legen, für den Import in Intune |
 | I-022 | 🟡 | offen | Claude | **Geräte vorab erfassen (CSV-Import):** Liste mit Seriennummer oder MAC, Name, Ordner/Kunde und Vorlage, z. B. vom Lieferschein. Startet das Gerät zum ersten Mal mit dem Agent, ist alles schon zugeordnet und die Automatisierung läuft (Acronis Snap Deploy: Einstellungen pro MAC). Passt zu Ä-006 |
 | I-023 | 🟡 | offen | Claude | **Hardware-Diagnose am Gerät:** SMART-Selbsttest (kurz/lang), Oberflächentest der Disk, RAM-Test (memtest86+ im PXE- bzw. Stick-Menü). Ergebnis im Verlauf und im Inventar. Heute wird SMART nur gelesen |
-| I-024 | 🟡 | offen | Claude | **Windows-11-Tauglichkeit im Inventar:** TPM 2.0, Secure Boot, CPU-Generation, RAM, UEFI. Als Spalte bzw. Filter „Win 11 ✔/✖“ (Windows 10 erhält seit Oktober 2025 keine regulären Updates mehr). Heute wird TPM nur bei der Installation umgangen, aber nicht erfasst |
-| I-025 | ⚪ | offen | Claude | **Garantie-Abfrage:** Garantieende per Seriennummer bei Dell, Lenovo und HP (Hersteller-APIs) abfragen, im Inventar anzeigen und vor dem Ablauf warnen (Lansweeper, PDQ) |
+| I-024 | 🟡 | **in Arbeit** | Claude | **Windows-11-Tauglichkeit im Inventar:** TPM 2.0, Secure Boot, CPU-Generation, RAM, UEFI. Als Spalte bzw. Filter „Win 11 ✔/✖“ (Windows 10 erhält seit Oktober 2025 keine regulären Updates mehr). Heute wird TPM nur bei der Installation umgangen, aber nicht erfasst |
+| I-025 | ⚪ | **in Arbeit** | Claude | **Garantie-Abfrage:** Garantieende per Seriennummer bei Dell, Lenovo und HP (Hersteller-APIs) abfragen, im Inventar anzeigen und vor dem Ablauf warnen (Lansweeper, PDQ) |
 | I-026 | ⚪ | offen | Claude | **Hardware-Änderungen erkennen:** RAM, Disk oder Seriennummer anders als beim letzten Mal → Hinweis im Verlauf (Diebstahl, Tausch, Defekt) |
 | I-027 | ⚪ | offen | Claude | **Neu aufsetzen direkt am Gerät:** Auf dem Agent-Bildschirm ein Menü „Mit Master neu aufsetzen“, geschützt mit PIN, damit Techniker vor Ort das Tool nicht brauchen (Acronis: user-initiated deployment) |
 | I-028 | ⚪ | offen | Claude | **Windows reparieren:** UEFI-Booteinträge und BCD neu schreiben, `ntfsfix`, Passwort eines lokalen Kontos zurücksetzen (wird protokolliert). Typische Recovery-Fälle ohne Neuinstallation |
