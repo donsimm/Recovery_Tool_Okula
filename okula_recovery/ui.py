@@ -17,8 +17,9 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 
-from okula_recovery import (__version__, agentclient, archive, automation, backups, clonezilla, config,  # noqa: E402
-                            demostore, devices, discovery, distribute, imagecheck, jobs, nas, nasfiles, oslib, pxe, warranty, wol)
+from okula_recovery import (__version__, agentclient, archive, automation, backups, bandwidth,  # noqa: E402
+                            clonezilla, config, demostore, devices, discovery, distribute, imagecheck, jobs, nas,
+                            nasfiles, oslib, pxe, warranty, wire, wol)
 from okula_recovery.automation_tab import SendFoldersDialog, SettingsDialog  # noqa: E402
 from okula_recovery.inventory_dialog import InventoryExportDialog  # noqa: E402
 from okula_recovery.imagecheck_dialog import CheckWindow  # noqa: E402
@@ -117,6 +118,10 @@ class MainWindow(Gtk.ApplicationWindow):
         self.key = agentclient.load_or_create_key()
         self.store = devices.DeviceStore()          # erfasste Geräte, lokal auf dem Server
         self.jobs = jobs.JobManager(on_change=lambda job: GLib.idle_add(self._on_job_change, job))
+        # Bandbreite (I-030): ein Limiter für alle Datenströme zu den Agents; Grenze wird bei jeder Portion
+        # aus self.cfg gelesen – Änderungen und Zeitfenster wirken sofort, auch auf laufende Aufträge
+        self.jobs.start_note = lambda: bandwidth.describe(self.cfg.bandwidth)
+        wire.set_limiter(bandwidth.Limiter(self.bandwidth_rate, lambda _rate: self.jobs.rebase()))
         self.automation = automation.Engine(self.store, self.jobs, self.key, self._nas_root, lambda: self.cfg,
                                             lambda dev_id: GLib.idle_add(self._on_automation_change, dev_id),
                                             root_for=self.root_for)
@@ -459,7 +464,7 @@ class MainWindow(Gtk.ApplicationWindow):
     def _build_storage_pane(self) -> Gtk.Widget:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=12)
         # Auslastung des Servers statt Titel
-        self.loadbar = LoadBar()
+        self.loadbar = LoadBar(limit_text=self.bandwidth_text)
         box.pack_start(self.loadbar, False, False, 0)
 
         # Nur Status und freier Speicher; die Einrichtung steht unter Menü → NAS-Verbindung …
@@ -2415,16 +2420,29 @@ class MainWindow(Gtk.ApplicationWindow):
         if button.get_active() != paused:
             button.set_active(paused)
 
+    def bandwidth_rate(self) -> float | None:
+        """Geltende Grenze in Bit/s (None = unbegrenzt)."""
+        mbit = bandwidth.active_mbit(self.cfg.bandwidth)
+        return mbit * 1_000_000 if mbit else None
+
+    def bandwidth_text(self) -> str:
+        """Für die Serverlast: „begrenzt: 300 Mbit/s“ bzw. leer."""
+        mbit = bandwidth.active_mbit(self.cfg.bandwidth)
+        return f"begrenzt: {bandwidth.fmt_mbit(mbit)}" if mbit else ""
+
     def open_settings(self) -> None:
         dlg = SettingsDialog(self, self.cfg)
         if dlg.run() == Gtk.ResponseType.OK:
             limit, paused = dlg.values()
             cfg = config.load()
             cfg.automation_max = self.cfg.automation_max = limit
+            cfg.bandwidth = self.cfg.bandwidth = dlg.bandwidth_settings()
             config.save(cfg)
             self.set_automation_paused(paused)
+            bw = bandwidth.describe(cfg.bandwidth).split(" – ")[0] or "Bandbreite unbegrenzt"
             self.status(f"Einstellungen gespeichert – höchstens {limit} Automatisierung"
-                        f"{'en' if limit != 1 else ''} gleichzeitig")
+                        f"{'en' if limit != 1 else ''} gleichzeitig · {bw}")
+            self.loadbar.tick()
             changes = dlg.key_changes()
             if changes:
                 def work():

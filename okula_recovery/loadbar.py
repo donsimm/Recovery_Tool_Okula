@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from collections import deque
+from typing import Callable
 
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gtk, Pango  # noqa: E402
+from gi.repository import GLib, Gtk, Pango, PangoCairo  # noqa: E402
 
 from okula_recovery import sysload  # noqa: E402
 
@@ -25,6 +26,7 @@ class Sparkline(Gtk.DrawingArea):
         super().__init__()
         self.rgb = rgb
         self.values: deque[float] = deque([0.0] * HISTORY, maxlen=HISTORY)
+        self.note = ""          # kleiner Text in der Kurve, z. B. „begrenzt: 300 Mbit/s“ (Bandbreite)
         self.set_size_request(60, 20)
         self.connect("draw", self._draw)
 
@@ -53,6 +55,15 @@ class Sparkline(Gtk.DrawingArea):
         cr.set_source_rgba(r, g, b, 1.0)
         cr.set_line_width(1.5)
         cr.stroke()
+        if self.note:
+            layout = self.create_pango_layout(self.note)
+            font = self.get_pango_context().get_font_description().copy()
+            font.set_size(int(font.get_size() * 0.8))
+            layout.set_font_description(font)
+            tw, th = layout.get_pixel_size()
+            cr.move_to(max(2, w - tw - 3), (h - th) / 2)
+            cr.set_source_rgba(r * 0.7, g * 0.7, b * 0.7, 1.0)
+            PangoCairo.show_layout(cr, layout)
         return False
 
 
@@ -81,9 +92,10 @@ class Meter(Gtk.Box):
 class LoadBar(Gtk.Box):
     """CPU · RAM · LAN nebeneinander; misst selbst jede Sekunde, solange die Leiste sichtbar ist."""
 
-    def __init__(self, sampler: sysload.Sampler | None = None):
+    def __init__(self, sampler: sysload.Sampler | None = None, limit_text: Callable[[], str] | None = None):
         super().__init__(spacing=16, homogeneous=True)
         self.sampler = sampler or sysload.Sampler()
+        self.limit_text = limit_text or (lambda: "")   # „begrenzt: 300 Mbit/s“ (Bandbreite, I-030)
         self.cpu = Meter("CPU", (0.21, 0.52, 0.89))
         self.ram = Meter("RAM", (0.57, 0.25, 0.67))
         self.lan = Meter("LAN", (0.18, 0.62, 0.40))
@@ -113,7 +125,10 @@ class LoadBar(Gtk.Box):
             self._peak = max(self._peak * 0.98, load.rx, load.tx, 1e6)
             fraction = max(load.rx, load.tx) / self._peak
         speed = f"{load.link / 1000:g} Gbit/s" if load.link >= 1000 else (f"{load.link} Mbit/s" if load.link else "unbekannt")
+        limit = self.limit_text()
+        self.lan.spark.note = limit      # „begrenzt: 300 Mbit/s“ klein in der LAN-Kurve
         self.lan.update(fraction, sysload.rates(load.rx, load.tx),
                         f"Netzwerk {load.iface or '–'} · Verbindung {speed}\n"
                         f"Empfangen: {sysload.mbit(load.rx)}\nGesendet: {sysload.mbit(load.tx)}"
-                        + (f"\nAuslastung: {load.lan * 100:.0f} %" if load.link else ""))
+                        + (f"\nAuslastung: {load.lan * 100:.0f} %" if load.link else "")
+                        + (f"\nAufträge zu den Geräten {limit} (Menü → Einstellungen …)" if limit else ""))

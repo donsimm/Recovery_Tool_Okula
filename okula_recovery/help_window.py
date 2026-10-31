@@ -159,7 +159,19 @@ Das steht dann in den Hinweisen zum Update.
 Nur nötig, wenn auf dem Server eine Firewall läuft. Prüfen mit <tt>sudo nft list ruleset</tt>:
 leer bedeutet, dass nichts zu tun ist. Sonst diese Ports für eingehende Verbindungen freigeben:
 •  <b>Immer:</b> UDP 47811 – sonst findet das Tool die Geräte nicht.
-•  <b>Nur für den Netzwerkstart:</b> UDP 67, UDP 69, UDP 4011 und TCP 47813."""),
+•  <b>Nur für den Netzwerkstart:</b> UDP 67, UDP 69, UDP 4011 und TCP 47813.
+
+<b>4. Bandbreite begrenzen (bei Bedarf)</b>
+Aufträge nutzen sonst das Netzwerk voll aus. Damit das Netz tagsüber nicht ausgelastet ist:
+1.  <i>Menü → Einstellungen …</i> öffnen. Ganz oben steht der Rahmen <i>Bandbreite</i>.
+2.  <i>Bandbreite begrenzen</i> anhaken und den Höchstwert in Mbit/s wählen (daneben umgerechnet in MB/s).
+3.  Auf Wunsch <i>Nur in diesem Zeitfenster</i> anhaken, von/bis und die Tage wählen (Standard Mo–Fr
+    07:00–18:00). Ausserhalb gilt keine Grenze, ohne Zeitfenster gilt sie immer.
+4.  <i>Speichern</i>. Die Grenze wirkt sofort, auch auf laufende Aufträge.
+•  Die Grenze gilt für alle Aufträge zusammen und wird gerecht verteilt: Disk-Image, Zurückspielen,
+    Datei-Backup, Ordner senden, OS installieren, Image anpassen auf dem Gerät – auch für das Demo-Gerät.
+•  Zugriffe des Servers auf das NAS (Reiter <i>Dateien</i>, <i>Image prüfen …</i>) bleiben unbegrenzt.
+•  Im Log jedes Auftrags steht zu Beginn „Bandbreite begrenzt auf … Mbit/s“."""),
 
     ("Typischer Ablauf", """<big><b>Typischer Ablauf von A bis Z</b></big>
 
@@ -625,6 +637,8 @@ zum Beispiel nachdem Dateien direkt auf das NAS kopiert wurden."""),
 •  <b>CPU</b>: wie stark der Prozessor arbeitet.
 •  <b>RAM</b>: wie viel Arbeitsspeicher belegt ist.
 •  <b>LAN</b>: wie viel über das Netzwerk geht. ↓ empfangen, ↑ gesendet.
+    Steht in der LAN-Kurve „begrenzt: 300 Mbit/s“, ist die Bandbreite gerade begrenzt
+    (Kapitel <i>Erste Schritte</i>, Abschnitt 4). Die Restzeit der Aufträge richtet sich danach.
 •  Die Kurve zeigt die letzte Minute. Über 90 % wird die Zahl rot.
 •  Mit der Maus darüberfahren zeigt mehr Details.
 
@@ -706,6 +720,11 @@ Damit kommen nur die NAS-Einstellungen mit (ohne Passwort)."""),
 •  Sind Gerät und Server im selben Netzwerk?
 •  Firewall auf dem Server: Ports freigeben (Kapitel <i>Erste Schritte</i>).
 •  Startet das Gerät wirklich vom Stick? Im Boot-Menü den USB-Stick wählen.
+
+<b>Aufträge sind langsam</b>
+•  Bandbreite in <i>Menü → Einstellungen …</i> prüfen: Ist <i>Bandbreite begrenzen</i> angehakt, teilen sich
+    alle laufenden Aufträge diesen Wert. Zeigt die LAN-Kurve „begrenzt: …“, gilt die Grenze gerade.
+•  Mehrere Aufträge gleichzeitig teilen sich auch ohne Grenze das Netzwerk und das NAS.
 
 <b>Das NAS ist rot</b>
 •  Ist das NAS eingeschaltet?

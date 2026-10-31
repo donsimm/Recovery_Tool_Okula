@@ -46,7 +46,7 @@ PACKAGE_DIR = Path(__file__).resolve().parent
 SERVICE_FILE = PACKAGE_DIR.parent / "packaging" / "okula-agent.service"
 GRUB_THEME_DIR = PACKAGE_DIR / "assets" / "grub"
 BIOS_GRUB_DIR = Path("/usr/lib/grub/i386-pc")
-RESTORE_MODULES = AGENT_MODULES + ("agentclient.py", "clonezilla.py", "config.py", "standalone.py")
+RESTORE_MODULES = AGENT_MODULES + ("agentclient.py", "bandwidth.py", "clonezilla.py", "config.py", "standalone.py")
 RESTORE_SERVICE_FILE = PACKAGE_DIR.parent / "packaging" / "okula-restore.service"
 
 Emit = Callable[[str, str], None]

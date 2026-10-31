@@ -23,6 +23,19 @@ CHUNK = 1024 * 1024
 
 _HEADER = struct.Struct(">cI")
 
+# Bandbreite (I-030): nur das Tool setzt einen Limiter (bandwidth.Limiter); Agent und Tests: keiner.
+_limiter = None
+
+
+def set_limiter(limiter) -> None:
+    """Limiter für alle Daten-Frames dieses Prozesses (None = unbegrenzt)."""
+    global _limiter
+    _limiter = limiter
+
+
+def get_limiter():
+    return _limiter
+
 
 class ProtocolError(Exception):
     pass
@@ -64,6 +77,8 @@ def send_json(sock: socket.socket, obj: dict) -> None:
 
 
 def send_data(sock: socket.socket, data: bytes) -> None:
+    if _limiter is not None:
+        _limiter.take(len(data))
     sock.sendall(_HEADER.pack(FRAME_DATA, len(data)) + data)
 
 
@@ -81,6 +96,8 @@ def recv_frame(sock: socket.socket) -> tuple[bytes, dict | bytes]:
     kind, length = _HEADER.unpack(_recv_exact(sock, _HEADER.size))
     if length > MAX_FRAME:
         raise ProtocolError(f"Frame zu gross ({length} Bytes)")
+    if kind == FRAME_DATA and _limiter is not None:
+        _limiter.take(length)   # später lesen bremst den Absender über TCP
     payload = _recv_exact(sock, length)
     if kind == FRAME_JSON:
         try:

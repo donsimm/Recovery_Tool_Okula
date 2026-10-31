@@ -10,7 +10,8 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
-from okula_recovery import automation, config, devices, distribute, imagecheck, linuxsetup, warranty, winunattend  # noqa: E402
+from okula_recovery import (automation, bandwidth, config, devices, distribute, imagecheck, linuxsetup,  # noqa: E402
+                            warranty, winunattend)
 from okula_recovery.uikit import ask_text, confirm, confirm_error, numbered_section, run_async, scrolled  # noqa: E402
 
 if TYPE_CHECKING:
@@ -392,13 +393,14 @@ class SendFoldersDialog(Gtk.Dialog):
 
 
 class SettingsDialog(Gtk.Dialog):
-    """Menü → Einstellungen: Automatisierung (gleichzeitig, Hauptschalter), Garantie-Abfrage (Schlüssel)."""
+    """Menü → Einstellungen: Bandbreite, Automatisierung (gleichzeitig, Hauptschalter), Garantie-Abfrage."""
 
     def __init__(self, parent: Gtk.Window, cfg: config.Config):
         super().__init__(title="Einstellungen", transient_for=parent, modal=True)
         self.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
         self.add_button("Speichern", Gtk.ResponseType.OK).get_style_context().add_class("suggested-action")
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin=14)
+        box.pack_start(self._build_bandwidth(cfg.bandwidth), False, False, 0)
         frame = Gtk.Frame(label="Automatisierung")
         inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=10)
         row = Gtk.Box(spacing=8)
@@ -417,6 +419,74 @@ class SettingsDialog(Gtk.Dialog):
         self.get_content_area().add(box)
         self.show_all()
         run_async(warranty.configured, self._show_keys)
+
+    def _build_bandwidth(self, bw: bandwidth.Settings) -> Gtk.Widget:
+        """Bandbreite (I-030): Grenze für alle Aufträge zusammen, optional nur im Zeitfenster."""
+        frame = Gtk.Frame(label="Bandbreite")
+        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=10)
+        self.bw_on = Gtk.CheckButton(label="Bandbreite begrenzen", active=bw.enabled)
+        inner.pack_start(self.bw_on, False, False, 0)
+        self.bw_rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_start=24)
+        row = Gtk.Box(spacing=8)
+        row.pack_start(Gtk.Label(label="Höchstens", xalign=0), False, False, 0)
+        self.bw_mbit = Gtk.SpinButton.new_with_range(bandwidth.MIN_MBIT, bandwidth.MAX_MBIT, 10)
+        self.bw_mbit.set_value(bw.mbit)
+        row.pack_start(self.bw_mbit, False, False, 0)
+        row.pack_start(Gtk.Label(label="Mbit/s"), False, False, 0)
+        self.bw_mbyte = _hint("")
+        row.pack_start(self.bw_mbyte, False, False, 0)
+        self.bw_rows.pack_start(row, False, False, 0)
+        self.bw_window = Gtk.CheckButton(label="Nur in diesem Zeitfenster (ausserhalb unbegrenzt)", active=bw.window)
+        self.bw_rows.pack_start(self.bw_window, False, False, 0)
+        self.bw_times = Gtk.Box(spacing=8, margin_start=24)
+        times = [f"{h:02d}:{m:02d}" for h in range(24) for m in (0, 30)]
+        self.bw_from, self.bw_to = Gtk.ComboBoxText(), Gtk.ComboBoxText()
+        for combo, value in ((self.bw_from, bw.start), (self.bw_to, bw.end)):
+            for t in sorted(set(times) | {value}):
+                combo.append(t, t)
+            combo.set_active_id(value)
+        self.bw_times.pack_start(Gtk.Label(label="von"), False, False, 0)
+        self.bw_times.pack_start(self.bw_from, False, False, 0)
+        self.bw_times.pack_start(Gtk.Label(label="bis"), False, False, 0)
+        self.bw_times.pack_start(self.bw_to, False, False, 0)
+        days = Gtk.Box(margin_start=12)
+        days.get_style_context().add_class("linked")
+        self.bw_days = []
+        for i, name in enumerate(bandwidth.DAY_NAMES):
+            b = Gtk.ToggleButton(label=name, active=i in bw.days)
+            days.pack_start(b, False, False, 0)
+            self.bw_days.append(b)
+        self.bw_times.pack_start(days, False, False, 0)
+        self.bw_rows.pack_start(self.bw_times, False, False, 0)
+        self.bw_rows.pack_start(_hint_wrapped(
+            "Ohne Zeitfenster gilt die Grenze immer. Bis = von heisst ganzer Tag; über Mitternacht "
+            "(z. B. 22:00–06:00) zählt der Morgen zum Vortag."), False, False, 0)
+        inner.pack_start(self.bw_rows, False, False, 0)
+        inner.pack_start(_hint_wrapped(
+            "Gilt für alle Aufträge zusammen (gerecht verteilt): Disk-Image, Zurückspielen, Datei-Backup, "
+            "Ordner senden, OS installieren, Image anpassen auf dem Gerät – auch für das Demo-Gerät. "
+            "Zugriffe des Servers auf das NAS (Reiter Dateien, Image prüfen) bleiben unbegrenzt. "
+            "Änderungen wirken sofort, auch auf laufende Aufträge."), False, False, 0)
+        frame.add(inner)
+        self.bw_on.connect("toggled", lambda _b: self._bw_sensitive())
+        self.bw_window.connect("toggled", lambda _b: self._bw_sensitive())
+        self.bw_mbit.connect("value-changed", lambda _b: self._bw_mbyte())
+        self._bw_sensitive()
+        self._bw_mbyte()
+        return frame
+
+    def _bw_sensitive(self) -> None:
+        self.bw_rows.set_sensitive(self.bw_on.get_active())
+        self.bw_times.set_sensitive(self.bw_window.get_active())
+
+    def _bw_mbyte(self) -> None:
+        self.bw_mbyte.set_text("= " + bandwidth.fmt_mbyte(int(self.bw_mbit.get_value())))
+
+    def bandwidth_settings(self) -> bandwidth.Settings:
+        return bandwidth.clean({
+            "enabled": self.bw_on.get_active(), "mbit": int(self.bw_mbit.get_value()),
+            "window": self.bw_window.get_active(), "start": self.bw_from.get_active_id(),
+            "end": self.bw_to.get_active_id(), "days": [i for i, b in enumerate(self.bw_days) if b.get_active()]})
 
     def _build_warranty(self) -> Gtk.Widget:
         """Schlüssel für Dell/HP: werden nur an den Root-Helfer gegeben (root-lesbar), nie angezeigt."""

@@ -40,6 +40,7 @@ class Job:
     phase_fraction: float = 0.0    # Fortschritt innerhalb des Schritts
     phase_started: float = 0.0     # time.monotonic() beim Start des Schritts
     source: str = ""               # gelesener Backup-Ordner (darf währenddessen nicht gelöscht werden)
+    rebased: tuple[float, float] | None = None  # (Zeit, Fortschritt) bei geänderter Bandbreite: Restzeit ab da
 
     @property
     def running(self) -> bool:
@@ -68,10 +69,17 @@ class Job:
         fraction = self.shown_fraction
         if not self.running or fraction < 0.02:
             return None
-        elapsed = time.monotonic() - (self.phase_started if self.phase else self.t0)
-        if elapsed < 10:
+        start, base = (self.phase_started if self.phase else self.t0), 0.0
+        if self.rebased is not None and self.rebased[0] >= start:
+            start, base = self.rebased      # Grenze geändert: nur der Fortschritt seither zählt
+        elapsed = time.monotonic() - start
+        if elapsed < 10 or fraction <= base:
             return None
-        return elapsed * (1 - fraction) / fraction
+        return elapsed * (1 - fraction) / (fraction - base)
+
+
+# Aufträge mit Datenstrom Tool ↔ Agent (Bandbreite gilt); „download“ liest nur vom NAS
+NETWORK_KINDS = {"image", "restore", "install", "linux", "backup", "filerestore", "auto", "deliver"}
 
 
 def eta_text(seconds: float | None) -> str:
@@ -87,6 +95,7 @@ def eta_text(seconds: float | None) -> str:
 class JobManager:
     def __init__(self, on_change: Callable[[Job], None] = lambda job: None):
         self.on_change = on_change
+        self.start_note: Callable[[], str] | None = None   # z. B. „Bandbreite begrenzt auf …“ (I-030)
         self.jobs: list[Job] = []
         self.lock = threading.Lock()
         self._ids = itertools.count(1)
@@ -138,6 +147,10 @@ class JobManager:
             job = Job(next(self._ids), device_id, kind, disk, title)
             self.jobs.append(job)
         self.log(job, f"{title} gestartet")
+        if kind in NETWORK_KINDS and self.start_note:
+            note = self.start_note()
+            if note:
+                self.log(job, note)
 
         def run() -> None:
             try:
@@ -153,6 +166,12 @@ class JobManager:
 
         threading.Thread(target=run, daemon=True, name=f"job-{job.id}").start()
         return job
+
+    def rebase(self) -> None:
+        """Bandbreite geändert (Einstellung oder Zeitfenster): Restzeiten ab jetzt neu schätzen."""
+        now = time.monotonic()
+        for job in self.running():
+            job.rebased = (now, job.shown_fraction)
 
     def log(self, job: Job, line: str) -> None:
         job.log.append(time.strftime("%H:%M:%S ") + line)

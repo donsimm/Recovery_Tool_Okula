@@ -7,6 +7,8 @@ import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from okula_recovery import bandwidth
+
 
 def config_path() -> Path:
     base = os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config"
@@ -32,6 +34,7 @@ class Config:
     scan_network: str = ""  # leer = automatisch aus eigener Schnittstelle
     automation_max: int = 2         # höchstens so viele Automatisierungen gleichzeitig
     automation_paused: bool = False  # Hauptschalter: alle Automatisierungen angehalten
+    bandwidth: bandwidth.Settings = field(default_factory=bandwidth.Settings)  # I-030, Standard unbegrenzt
 
 
 def load(path: Path | None = None) -> Config:
@@ -47,6 +50,7 @@ def load(path: Path | None = None) -> Config:
         scan_network=data.get("scan_network", ""),
         automation_max=max(1, min(10, int(data.get("automation_max") or 2))),
         automation_paused=bool(data.get("automation_paused", False)),
+        bandwidth=bandwidth.clean(data.get("bandwidth")),
     )
 
 

@@ -3,7 +3,7 @@
 NAS-Export (NAS-Fenster): kleine JSON-Datei mit Protokoll, Host, Freigabe, Benutzer, Einhängepunkt.
 Gesamt-Export (Menü): ZIP-Datei mit
     manifest.json        Art, Datum, Quellrechner, Inhalt
-    config.json          Einstellungen (NAS, Maschinen, Netz, Automatisierung)
+    config.json          Einstellungen (NAS, Maschinen, Netz, Automatisierung, Bandbreite)
     automatisierung-vorlagen.json   Vorlagen der Automatisierung
     agent.key            Schlüssel der Agent-/Restore-Sticks (optional; ohne ihn alle Sticks neu erstellen)
     geraete/…            Geräteverzeichnis mit Ordnern, Verlauf, Notizen, Windows-Schlüsseln
@@ -24,7 +24,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 
-from okula_recovery import __version__, agentclient, config, devices, wire
+from okula_recovery import __version__, agentclient, bandwidth, config, devices, wire
 
 NAS_FORMAT = "okula-nas"
 EXPORT_FORMAT = "okula-export"
@@ -331,6 +331,8 @@ def import_all(export: ExportFile, use_config: bool = True, use_key: bool = True
             old.automation_max = max(1, min(10, int(new.get("automation_max") or old.automation_max)))
         except (TypeError, ValueError):
             pass
+        if "bandwidth" in new:
+            old.bandwidth = bandwidth.clean(new.get("bandwidth"))
         config.save(old)
         result.config = True
         if export.templates:

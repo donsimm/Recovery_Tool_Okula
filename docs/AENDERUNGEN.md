@@ -21,7 +21,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
-Erledigt 31.10. zusätzlich: I-007 ✔ (Image prüfen) → Ä-027 ✔ (Demo ohne NAS) → Ä-028 ✔ (Ein/Aus-Symbole) → Ä-029 ✔ (Legende) → Ä-030 ✔ (NAS-Leiste).
+Erledigt 31.10. zusätzlich: I-007 ✔ (Image prüfen) → Ä-027 ✔ (Demo ohne NAS) → Ä-028 ✔ (Ein/Aus-Symbole) → Ä-029 ✔ (Legende) → Ä-030 ✔ (NAS-Leiste) → I-030 ✔ (Bandbreite).
 Als Nächstes: Tests am realen System in [TESTS.md](TESTS.md) – „Fixes von heute“, Abschnitt 6 (Vorführung mit abgestecktem NAS) und 7 (inkl. I-007: Dauer für ein grosses Image).
 Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
@@ -68,7 +68,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 | I-026 | ⚪ | offen | Claude | **Hardware-Änderungen erkennen:** RAM, Disk oder Seriennummer anders als beim letzten Mal → Hinweis im Verlauf (Diebstahl, Tausch, Defekt) |
 | I-027 | ⚪ | offen | Claude | **Neu aufsetzen direkt am Gerät:** Auf dem Agent-Bildschirm ein Menü „Mit Master neu aufsetzen“, geschützt mit PIN, damit Techniker vor Ort das Tool nicht brauchen (Acronis: user-initiated deployment) |
 | I-029 | ⚪ | offen | Claude | **Intel vPro/AMT:** Gerät ein- und ausschalten, ins BIOS starten und den Bildschirm sehen, auch ohne Agent und bei abgestürztem OS (MeshCentral) |
-| I-030 | ⚪ | offen | Claude | **Bandbreite begrenzen** je Auftrag oder Zeitfenster, damit das Kundennetz tagsüber nicht ausgelastet ist |
 
 Umgesetzte Ideen: Windows-Master-Image mit Sysprep ([MASTER-IMAGE.md](MASTER-IMAGE.md)), Ordner an Geräte senden
 ([ORDNER-SENDEN.md](ORDNER-SENDEN.md)), Automatisierung ([AUTOMATISIERUNG.md](AUTOMATISIERUNG.md)),
@@ -108,6 +107,8 @@ Gerätename = Name im Tool.
   Demo-Speicher (`~/.config/okula-recovery/demo/`), auch wenn das NAS verbunden ist. Demo-Images nie auf echte
   Geräte, echte Images und Backups nie auf den DEMO-PC. Alte Demo-Images auf dem NAS werden nur ausgeblendet
   und zum Löschen angeboten, nicht automatisch gelöscht.
+- **Bandbreite nur im Tool begrenzt (I-030):** Der Agent bleibt unverändert (kein neuer Stick); eine Grenze für
+  alle Aufträge zusammen statt je Auftrag. NAS-Zugriffe des Servers werden nicht begrenzt.
 - **Umsetzungsreihenfolge:** zuerst Agent (Fundament, ein neuer Stick reicht), dann Tool-Logik, zuletzt Oberfläche.
 
 ## ✅ Erledigt – Änderungsprotokoll
@@ -115,6 +116,15 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 31.10.2026
+- **I-030 Bandbreite begrenzen** (Von: Claude/Dominik, Prio 🟡): Menü → Einstellungen … → Rahmen „Bandbreite“ als
+  erster Abschnitt – Schalter (Standard aus), Höchstwert 10–10'000 Mbit/s (Standard 300, mit MB/s), optional nur im
+  Zeitfenster von/bis mit Tagen (Standard Mo–Fr 07:00–18:00, über Mitternacht möglich). Ein gemeinsamer Token-Bucket
+  (`bandwidth.py`) für alle Aufträge, nur im Tool an `wire.send_data`/`recv_frame` – Agent unverändert, kein neuer
+  Stick. Wirkt sofort auch auf laufende Aufträge, gilt fürs Demo-Gerät, NAS-Zugriffe des Servers bleiben unbegrenzt.
+  Anzeige „begrenzt: … Mbit/s“ in der LAN-Kurve, Log-Zeile zu Beginn jedes Auftrags, Restzeit nach Änderung neu.
+  `config.json` + Export/Import (Restore-Stick kopiert `bandwidth.py` mit). Hilfe: „Erste Schritte“ (4.),
+  „Anzeigen im Fenster“, „Probleme lösen“.
+  Tests `tests/test_bandwidth.py` (±10 %, parallel, Zeitfenster, Ändern im Lauf, Ende-zu-Ende über den Demo-Agent).
 - **Ä-030 NAS-Leiste:** Symbole „NAS im Browser öffnen“ und „NAS-Verbindung einrichten“ direkt nebeneinander (eigene Box ohne Abstand), 16 px Abstand nur noch zum Text (Von: Dominik).
 - **Ä-029 Legende Images:** „Image-Datei“ heisst neu „Sonstiges Image“ (passend zu „Sonstige ISO“) (Von: Dominik).
 - **Ä-028 Herunterfahren / Neu starten als Symbole** (Von: Dominik, Variante 1 von 3): Systemsymbole
