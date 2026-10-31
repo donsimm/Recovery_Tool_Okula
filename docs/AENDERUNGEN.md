@@ -103,8 +103,9 @@ Gerätename = Name im Tool.
 - **Garantie (I-025):** Felder für Dell/HP vorbereitet (Entscheid Dominik 31.10.), Abfrage aktiv, sobald ein Schlüssel
   eingetragen ist; Lenovo öffentlich (inoffiziell, kann sich ändern), sonst „Garantie bis“ von Hand. Schlüssel nur beim
   Root-Helfer, der auch abfragt – das Tool sieht sie nie. Kein Dauer-Polling: Knopfdruck + einmal nach dem Erfassen.
-- **Inventar-Export (I-013):** PDF je Kunde = oberste Ordnerebene (Unterordner wie „Standort“ landen im selben PDF,
-  Spalte „Ordner“ zeigt den genauen Ort); CSV immer eine Datei. Windows-Key nie vollständig.
+- **Inventar-Export (I-013, angepasst Ä-016):** keine „Kunden“ – PDF je Ordner (Name wie in der Geräteliste, jeder
+  Unterordner eigene Datei) oder auf Wunsch alle Geräte in einem PDF; CSV immer eine Datei. Windows-Key nie vollständig.
+- **Win 11 nicht in der Geräteliste (Ä-017):** nur im Gerätefenster (Übersicht) und im Inventar-Export.
 - **Umsetzungsreihenfolge:** zuerst Agent (Fundament, ein neuer Stick reicht), dann Tool-Logik, zuletzt Oberfläche.
 
 ## ✅ Erledigt – Änderungsprotokoll
@@ -112,6 +113,11 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 31.10.2026
+- **Ä-015 Gerätefenster zeigt die ganze Übersicht:** Fenster öffnet so hoch, dass alle Zeilen der Übersicht ohne
+  Scrollen sichtbar sind (höchstens Bildschirmhöhe; auf kleinen Bildschirmen weiter mit Scrollbalken).
+- **Ä-016 Inventar-Export je Ordner:** statt „je Kunde“ eine PDF-Datei je Ordner (Ordnername wie in der Liste,
+  Unterordner eigene Datei, voller Ort im Kopf); neue Option „alle Geräte in einer Datei“.
+- **Ä-017 Spalte „Win 11“ aus der Geräteliste entfernt:** Tauglichkeit bleibt im Gerätefenster und im Export.
 - **I-013 Inventar-Export:** `inventory_export.py` + Dialog (`inventory_dialog.py`): Menü → „Inventar exportieren
   (CSV/PDF) …“ und Rechtsklick auf Ordner/Gerät. Umfang alle / Ordner (mit Unterordnern) / markierte Geräte. CSV UTF-8
   mit BOM, Semikolon; PDF je Kunde (oberste Ordnerebene), A4 quer, Kopf Kunde + Datum, Seitenzahl (reportlab,

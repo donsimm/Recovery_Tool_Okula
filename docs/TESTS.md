@@ -41,7 +41,8 @@ bestätigt.
 | Computername = Gerätename (OS installieren, Anpassen) | A, V | |
 | Grüne/rote Fortschrittsbalken | A, V | |
 | Demo-Gerät: alle Aufträge, Fehler, Neustart, nur 127.0.0.1, Demo-Image gesperrt | A, V | echter Prozess |
-| Inventar-Export: CSV (BOM, Semikolon), PDF je Kunde (A4 quer, mehrseitig), Auswahl, Key maskiert/aus | A, V | |
+| Inventar-Export: CSV (BOM, Semikolon), PDF je Ordner oder alle in einem (A4 quer, mehrseitig), Auswahl, Key maskiert/aus | A, V | |
+| Gerätefenster passt sich der Übersicht an (1920×1080 ganz sichtbar, 1366×768 begrenzt) | A, V | |
 | Garantie-Abfrage: Dell/HP/Lenovo-Antworten, Farben grün/gelb/rot, Schlüssel 0600 nur beim Root-Helfer | A, V | gemockte Antworten – Hersteller-Server waren gesperrt |
 
 ## Offen – am realen System testen
@@ -99,8 +100,11 @@ bestätigt.
 - [ ] Tool schliessen → Demo-Prozess ist beendet
 
 ### 7. Allgemein
-- [ ] I-013: `sudo ./install.sh` (installiert python3-reportlab); Menü → Inventar exportieren → alle Geräte, CSV + PDF → CSV in Excel öffnen: Umlaute richtig, Spalten getrennt; je Kunde ein PDF mit Kopf (Kunde, Datum), Tabelle lesbar, Seitenzahl
-- [ ] I-013: Rechtsklick auf einen Kunden-Ordner → nur dessen Geräte (inkl. Unterordner); „Markierte Geräte“ mit 2 Häkchen → nur diese
+- [ ] I-013: `sudo ./install.sh` (installiert python3-reportlab); Menü → Inventar exportieren → alle Geräte, CSV + PDF → CSV in Excel öffnen: Umlaute richtig, Spalten getrennt; PDF mit Kopf (Ordnername, Datum), Tabelle lesbar, Seitenzahl
+- [ ] I-013: Rechtsklick auf einen Ordner → nur dessen Geräte (inkl. Unterordner); „Markierte Geräte“ mit 2 Häkchen → nur diese
+- [ ] Ä-016: PDF „je Ordner eine Datei“ → pro Ordner (auch Unterordner) ein PDF mit dem Ordnernamen als Titel; „alle Geräte in einer Datei“ → ein PDF mit allen gewählten Geräten
+- [ ] Ä-015: Gerät öffnen (Doppelklick) → Übersicht komplett sichtbar bis „Garantie bis“, ohne Scrollen (Full-HD-Bildschirm)
+- [ ] Ä-017: Geräteliste ohne Spalte „Win 11“; Gerätefenster → Übersicht zeigt „Windows 11“ weiterhin
 - [ ] I-013: „Windows-Key nicht exportieren“ an → kein Key in CSV/PDF; aus → nur `XXXXX-…-ABCDE`; letztes Image/Backup stimmt mit Gerätefenster überein (NAS verbunden)
 - [ ] I-025: `sudo ./install.sh` erneut (neuer Root-Helfer `okula-warranty`, sudo-Regel); `ls -l /etc/okula-recovery/warranty.cred` nach dem Speichern eines Schlüssels → `-rw------- root root`; Schlüssel stehen **nicht** in `~/.config/okula-recovery/config.json` und nicht in einem Export (`grep` im Export)
 - [ ] I-025 Lenovo (ohne Schlüssel): Gerätefenster → Übersicht → „Beim Hersteller abfragen“ → Datum stimmt mit pcsupport.lenovo.com überein; neues Lenovo-Gerät wird nach dem Erfassen einmal automatisch abgefragt
@@ -109,7 +113,7 @@ bestätigt.
 - [ ] I-025: Farben – Datum > 90 Tage grün, ≤ 90 Tage gelb, abgelaufen rot (von Hand testen: „Von Hand …“ mit Datum in 30 Tagen bzw. gestern); ohne Internet → Meldung „keine Verbindung“, altes Datum bleibt
 - [ ] Ä-002: Image einer grösseren Disk (z. B. 512 GB, Windows mit Recovery) auf eine kleinere SSD (256 GB): Dialog zeigt „lässt sich anpassen“ mit Zahlen → Häkchen → neues Image `…_für_256GB` im Reiter Images, Original unverändert → Windows startet (evtl. kurze Laufwerksprüfung), C: hat die neue Grösse, Recovery am Ende vorhanden
 - [ ] Ä-002: zu viele Daten für die kleine Disk → klare Meldung mit Zahlen, nichts gelöscht; Automatisierung mit kleinerer Disk (Option an) läuft durch
-- [ ] I-024: Agent-Stick neu erstellen, Gerät starten, Inventar neu einlesen → Spalte „Win 11“ zeigt ✔/✖; Gerätefenster → Übersicht: „Windows 11“ mit Grund und „TPM / Start“ stimmen (mit BIOS-Angaben vergleichen: TPM/PTT, Secure Boot); je ein altes (z. B. 7. Gen. Intel) und ein neues Gerät
+- [ ] I-024: Agent-Stick neu erstellen, Gerät starten, Inventar neu einlesen → Gerätefenster → Übersicht: „Windows 11“ mit Grund und „TPM / Start“ stimmen (mit BIOS-Angaben vergleichen: TPM/PTT, Secure Boot); je ein altes (z. B. 7. Gen. Intel) und ein neues Gerät
 - [ ] Ä-011: Gerätefenster → Übersicht → „Starttasten“ stimmt für eure Geräte (HP, Dell, Lenovo …); Tabelle im Stick-Dialog sichtbar
 - [ ] Ä-014: NAS-Fenster → „NAS-Webseite öffnen“ und Symbol in der NAS-Statuszeile → DSM öffnet sich im Browser (https 5001); auf http 5000 umstellen → richtige Adresse
 - [ ] Gerätename mit Umlaut/Unterstrich (z. B. „Büro_PC_01“) bei OS installieren → Hinweis zeigt Name auf dem Gerät

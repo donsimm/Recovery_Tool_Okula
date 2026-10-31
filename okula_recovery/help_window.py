@@ -449,10 +449,9 @@ In der Geräteliste siehst du bei jedem Gerät einen Balken mit Prozent und Rest
 •  <i>wieder aktiv in 5 h</i>: Sie ist fertig und schaltet sich nach 24 Stunden wieder ein.
 •  <span foreground="#c62828">rot</span>: Es gab einen Fehler. Details im Gerätefenster.
 
-<b>Spalte „Win 11“</b>
+<b>Windows 11</b> (Gerätefenster → <i>Übersicht → Windows 11</i>)
 •  ✔ Das Gerät kann Windows 11.
-•  ✖ Es kann Windows 11 nicht, zum Beispiel wegen altem TPM oder Prozessor. Den Grund siehst du im
-   Gerätefenster unter <i>Übersicht → Windows 11</i>.
+•  ✖ Es kann Windows 11 nicht, zum Beispiel wegen altem TPM oder Prozessor. Der Grund steht daneben.
 •  ? Noch unbekannt: Agent-Stick neu erstellen und das Inventar neu einlesen.
 
 <b>Stern ★ bei Images</b>
@@ -467,10 +466,11 @@ Im Gerätefenster unter <i>Übersicht → Garantie bis</i>:
 Für Dell und HP braucht es einen Schlüssel vom Hersteller: <i>Menü → Einstellungen → Garantie-Abfrage</i>.
 Kein Schlüssel, kein Internet oder ein anderer Hersteller? Dann <i>Von Hand …</i> das Datum eintragen.
 
-<b>Inventarliste für Kunden</b>
+<b>Inventarliste exportieren</b>
 <i>Menü → Inventar exportieren …</i> oder Rechtsklick auf einen Ordner → <i>Inventar exportieren …</i>
 1.  Wählen: alle Geräte, einen Ordner oder einzelne Geräte (Häkchen setzen).
-2.  Format wählen: CSV (für Excel) und/oder PDF (pro Kunde eine Datei).
+2.  Format wählen: CSV (für Excel) und/oder PDF.
+     Beim PDF: <i>je Ordner eine Datei</i> oder <i>alle Geräte in einer Datei</i>.
 3.  Ordner zum Speichern wählen und <i>Exportieren</i> klicken.
 Der Windows-Key kommt standardmässig nicht mit. Wenn du ihn willst, nur versteckt (XXXXX-…-ABCDE)."""),
 

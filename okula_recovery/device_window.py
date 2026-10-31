@@ -120,6 +120,7 @@ class DeviceWindow(Gtk.Window):
         self.load_images()
         self.set_focus(self.tabs)  # Name nicht gleich markiert – Bearbeiten erst per Klick
         self.show_all()
+        self.fit_overview()
 
     # ---------- Aufbau ----------
 
@@ -170,7 +171,25 @@ class DeviceWindow(Gtk.Window):
 
     def _build_overview(self) -> Gtk.Widget:
         self.info_grid = Gtk.Grid(column_spacing=16, row_spacing=4, margin=12)
-        return scrolled(self.info_grid)
+        sw = scrolled(self.info_grid)
+        # Fenstergrösse richtet sich nach der Übersicht (fit_overview); Scrollen nur auf kleinen Bildschirmen
+        sw.set_propagate_natural_height(True)
+        return sw
+
+    def fit_overview(self) -> None:
+        """Fenster so hoch öffnen, dass die ganze Übersicht ohne Scrollen sichtbar ist (höchstens Bildschirmhöhe)."""
+        width, height = self.get_size()
+        display = Gdk.Display.get_default()
+        monitor = display.get_monitor_at_window(self.get_window()) if self.get_window() else \
+            display.get_primary_monitor() or display.get_monitor(0)
+        area = monitor.get_workarea() if monitor else None
+        max_h = area.height - 60 if area else 1000     # Platz für Titelleiste/Panel
+        max_w = area.width - 40 if area else 1400
+        # Breite: Standard 1000, breiter nur wenn die Übersicht es braucht; Höhe passend zu dieser Breite
+        grid_w = self.info_grid.get_preferred_width()[1] + 60
+        target_w = min(max(width, grid_w), max_w)
+        natural_h = self.get_preferred_height_for_width(target_w)[1]
+        self.resize(target_w, min(max(height, natural_h), max_h))
 
     def _build_images(self) -> Gtk.Widget:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=6)

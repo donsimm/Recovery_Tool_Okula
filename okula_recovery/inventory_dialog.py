@@ -29,7 +29,7 @@ def default_dir() -> str:
 
 
 class InventoryExportDialog(Gtk.Dialog):
-    """Umfang (alle / Ordner / markierte Geräte), Format (CSV, PDF je Kunde), Windows-Key, Zielordner."""
+    """Umfang (alle / Ordner / markierte Geräte), Format (CSV, PDF je Ordner oder alle in einem), Windows-Key, Ziel."""
 
     def __init__(self, main: "MainWindow", folder: str | None = None, marked: set[str] | None = None):
         super().__init__(title="Inventar exportieren", transient_for=main, modal=True)
@@ -48,7 +48,7 @@ class InventoryExportDialog(Gtk.Dialog):
         self.r_folder = Gtk.RadioButton.new_with_label_from_widget(self.r_all, "Ordner (mit Unterordnern):")
         row.pack_start(self.r_folder, False, False, 0)
         self.folder = Gtk.ComboBoxText()
-        self.folder.append(ie.UNSORTED, "Neu / nicht einsortiert")
+        self.folder.append(ie.UNSORTED, ie.UNSORTED)
         for f in main.store.folders:
             self.folder.append(f, f.replace("/", " › "))
         self.folder.set_active_id(folder if folder in main.store.folders else
@@ -77,13 +77,20 @@ class InventoryExportDialog(Gtk.Dialog):
         box.pack_start(self._title("Format"), False, False, 0)
         fmt = Gtk.Box(spacing=16)
         self.csv = Gtk.CheckButton(label="CSV (Excel, alle gewählten Geräte in einer Datei)", active=True)
-        self.pdf = Gtk.CheckButton(label="PDF (je Kunde eine Datei)", active=ie.pdf_available())
+        self.pdf = Gtk.CheckButton(label="PDF:", active=ie.pdf_available())
+        self.pdf_folders = Gtk.RadioButton.new_with_label(None, "je Ordner eine Datei")
+        self.pdf_single = Gtk.RadioButton.new_with_label_from_widget(self.pdf_folders, "alle Geräte in einer Datei")
         if not ie.pdf_available():
-            self.pdf.set_sensitive(False)
+            for w in (self.pdf, self.pdf_folders, self.pdf_single):
+                w.set_sensitive(False)
+            self.pdf.set_active(False)
             self.pdf.set_tooltip_text("PDF-Bibliothek fehlt – install.sh ausführen (python3-reportlab)")
         fmt.pack_start(self.csv, False, False, 0)
-        fmt.pack_start(self.pdf, False, False, 0)
         box.pack_start(fmt, False, False, 0)
+        pdf_row = Gtk.Box(spacing=12)
+        for w in (self.pdf, self.pdf_folders, self.pdf_single):
+            pdf_row.pack_start(w, False, False, 0)
+        box.pack_start(pdf_row, False, False, 0)
         self.no_key = Gtk.CheckButton(label="Windows-Key nicht exportieren", active=True)
         self.no_key.set_tooltip_text("Ausgeschaltet: nur maskiert (XXXXX-XXXXX-XXXXX-XXXXX-ABCDE), nie vollständig")
         box.pack_start(self.no_key, False, False, 0)
@@ -133,12 +140,15 @@ class InventoryExportDialog(Gtk.Dialog):
         return ie.select(self.main.store.devices.values(), kind, folder, ids)
 
     def label(self) -> str:
+        """Titel für CSV und Einzel-PDF: Ordnername wie in der Liste, „Auswahl“ oder „Alle Geräte“."""
         kind, folder, _ids = self.scope()
         if kind == "folder":
-            return folder.replace("/", "_") if folder else ie.UNSORTED
-        return "Auswahl" if kind == "marked" else "alle_Geraete"
+            return ie.folder_title(folder)
+        return "Auswahl" if kind == "marked" else "Alle Geräte"
 
     def _update(self) -> None:
+        for w in (self.pdf_folders, self.pdf_single):
+            w.set_sensitive(self.pdf.get_active())
         n = len(self.chosen())
         self.ok.set_sensitive(n > 0 and (self.csv.get_active() or self.pdf.get_active()))
         self.ok.set_label(f"Exportieren ({n} Gerät{'e' if n != 1 else ''})")
@@ -150,6 +160,7 @@ class InventoryExportDialog(Gtk.Dialog):
         devs, label = self.chosen(), self.label()
         target = Path(self.target.get_filename() or default_dir())
         fmt_csv, fmt_pdf, with_key = self.csv.get_active(), self.pdf.get_active(), not self.no_key.get_active()
+        single = self.pdf_single.get_active()
         self.destroy()
         main = self.main
         root = main._nas_root()
@@ -162,7 +173,7 @@ class InventoryExportDialog(Gtk.Dialog):
             except OSError:
                 images = {}
             rows = ie.build(devs, images, ie.latest_backups(saved, devs), with_key)
-            return ie.export(target, devs, rows, label, fmt_csv, fmt_pdf, with_key)
+            return ie.export(target, devs, rows, label, fmt_csv, fmt_pdf, with_key, pdf_single=single)
 
         def done(result) -> None:
             if isinstance(result, Exception):

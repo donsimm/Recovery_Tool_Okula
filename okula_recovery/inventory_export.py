@@ -1,9 +1,9 @@
-"""Inventar-Export (I-013): Geräte als CSV (Excel) und PDF je Kunde/Ordner.
+"""Inventar-Export (I-013): Geräte als CSV (Excel) und PDF je Ordner oder alle in einem PDF.
 
 - Umfang: alle Geräte, ein Ordner (mit Unterordnern) oder markierte Geräte.
 - CSV: UTF-8 mit BOM, Semikolon – öffnet sich in Excel (de-CH) direkt richtig.
-- PDF: eine Datei je Kunde (oberste Ordnerebene), Kopf mit Kunde und Datum, Tabelle (reportlab, Debian-Paket
-  python3-reportlab, in install.sh).
+- PDF: eine Datei je Ordner (Name wie in der Geräteliste) oder alle gewählten Geräte in einer Datei; Kopf mit
+  Ordnername und Datum, Tabelle (reportlab, Debian-Paket python3-reportlab, in install.sh).
 - Windows-Key: standardmässig gar nicht, sonst nur maskiert (XXXXX-…-ABCDE). Passwörter und Schlüssel des Tools
   (NAS, Garantie, Agent) kommen nie in den Export.
 """
@@ -22,7 +22,7 @@ from okula_recovery import devices, warranty, win11
 COLUMNS = ("Name", "Ordner", "Hersteller", "Modell", "Seriennummer", "CPU", "RAM", "Disks", "OS",
            "Win-11-tauglich", "Garantie bis", "Zuletzt verbunden", "Letztes Image", "Letztes Backup")
 KEY_COLUMN = "Windows-Key (maskiert)"
-UNSORTED = "Nicht einsortiert"
+UNSORTED = "Neu / nicht einsortiert"
 WIN11_TEXT = {"ok": "ja", "no": "nein", "unknown": "unbekannt"}
 
 
@@ -48,9 +48,14 @@ def select(store_devices, scope: str = "all", folder: str = "", ids: set[str] | 
     return sorted(devs, key=lambda d: (d.folder.lower(), d.name.lower()))
 
 
-def customer(dev: devices.Device) -> str:
-    """Kunde = oberste Ordnerebene."""
-    return PurePosixPath(dev.folder).parts[0] if dev.folder else UNSORTED
+def folder_title(rel: str) -> str:
+    """Ordnername wie in der Geräteliste (letzte Ebene), „Neu / nicht einsortiert“ ohne Ordner."""
+    return PurePosixPath(rel).name if rel else UNSORTED
+
+
+def folder_path(rel: str) -> str:
+    """„Kunde A › Zürich“ – voller Ort für Kopfzeile."""
+    return " › ".join(PurePosixPath(rel).parts) if rel else UNSORTED
 
 
 # ---------- Zeilen ----------
@@ -162,7 +167,7 @@ def build(devs: list[devices.Device], images: dict[str, Latest], backups: dict[s
 
 def safe_name(text: str) -> str:
     text = re.sub(r"[^\w.\- ]+", "_", text, flags=re.UNICODE).strip(" ._")
-    return re.sub(r"\s+", "_", text)[:60] or "Inventar"
+    return re.sub(r"[\s_]+", "_", text)[:60].strip("_") or "Inventar"
 
 
 def file_stem(label: str, day: date | None = None) -> str:
@@ -192,15 +197,17 @@ def pdf_available() -> bool:
     return True
 
 
-def group_by_customer(devs: list[devices.Device], rows: list[dict]) -> dict[str, list[dict]]:
+def group_by_folder(devs: list[devices.Device], rows: list[dict]) -> dict[str, list[dict]]:
+    """{Ordner-rel: Zeilen} – jeder Ordner für sich (Unterordner eigene Gruppe), „nicht einsortiert“ zuletzt."""
     groups: dict[str, list[dict]] = {}
     for dev, r in zip(devs, rows):
-        groups.setdefault(customer(dev), []).append(r)
-    return dict(sorted(groups.items(), key=lambda kv: (kv[0] == UNSORTED, kv[0].lower())))
+        groups.setdefault(dev.folder, []).append(r)
+    return dict(sorted(groups.items(), key=lambda kv: (kv[0] == "", kv[0].lower())))
 
 
-def write_pdf(path: Path, title: str, rows: list[dict], with_key: bool = False, day: date | None = None) -> Path:
-    """A4 quer: Kopf (Kunde, Datum, Anzahl), Tabelle mit allen Spalten, Seitenzahl unten."""
+def write_pdf(path: Path, title: str, rows: list[dict], with_key: bool = False, day: date | None = None,
+              place: str = "") -> Path:
+    """A4 quer: Kopf (Ordnername, Datum, Anzahl, ggf. voller Ort), Tabelle mit allen Spalten, Seitenzahl unten."""
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.styles import ParagraphStyle
@@ -257,21 +264,29 @@ def write_pdf(path: Path, title: str, rows: list[dict], with_key: bool = False, 
                             topMargin=10 * mm, bottomMargin=13 * mm, title=f"Inventar {title}",
                             author="Okula Recovery Tool")
     story = [Paragraph(escape(f"Inventar – {title}"), h1),
-             Paragraph(escape(f"Stand: {day.strftime('%d.%m.%Y')} · {len(rows)} Gerät{'e' if len(rows) != 1 else ''}"
-                              + (" · Windows-Key maskiert" if with_key else "")), meta),
+             Paragraph(escape(" · ".join(p for p in (
+                 f"Stand: {day.strftime('%d.%m.%Y')}", f"{len(rows)} Gerät{'e' if len(rows) != 1 else ''}",
+                 f"Ordner: {place}" if place and place != title else "",
+                 "Windows-Key maskiert" if with_key else "") if p)), meta),
              Spacer(1, 4 * mm), table]
     doc.build(story, onFirstPage=footer, onLaterPages=footer)
     return path
 
 
 def export(target_dir: Path, devs: list[devices.Device], rows: list[dict], label: str, fmt_csv: bool = True,
-           fmt_pdf: bool = True, with_key: bool = False, day: date | None = None) -> list[Path]:
-    """Schreibt CSV (alle gewählten Geräte) und je Kunde ein PDF. Gibt die Dateien zurück."""
+           fmt_pdf: bool = True, with_key: bool = False, day: date | None = None,
+           pdf_single: bool = False) -> list[Path]:
+    """Schreibt CSV (alle gewählten Geräte) und PDF – je Ordner eine Datei oder (pdf_single) alle in einer.
+    label: Titel für CSV und Einzel-PDF, z. B. „Alle Geräte“ oder der Ordnername. Gibt die Dateien zurück."""
     target_dir.mkdir(parents=True, exist_ok=True)
     written = []
     if fmt_csv:
         written.append(write_csv(target_dir / f"{file_stem(label, day)}.csv", rows, with_key))
-    if fmt_pdf:
-        for name, group in group_by_customer(devs, rows).items():
-            written.append(write_pdf(target_dir / f"{file_stem(name, day)}.pdf", name, group, with_key, day))
+    if fmt_pdf and pdf_single:
+        written.append(write_pdf(target_dir / f"{file_stem(label, day)}.pdf", label, rows, with_key, day))
+    elif fmt_pdf:
+        for rel, group in group_by_folder(devs, rows).items():
+            # Dateiname mit vollem Pfad, damit zwei „Zürich“ in verschiedenen Kunden sich nicht überschreiben
+            written.append(write_pdf(target_dir / f"{file_stem(rel or UNSORTED, day)}.pdf", folder_title(rel),
+                                     group, with_key, day, folder_path(rel)))
     return written

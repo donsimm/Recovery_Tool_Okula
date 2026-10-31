@@ -63,8 +63,9 @@ class ExportTest(unittest.TestCase):
         self.assertEqual([d.name for d in ie.select(devs, "folder", "")], ["Neu-PC"])
         self.assertEqual([d.name for d in ie.select(devs, "marked", ids={self.c.id})], ['Büro; "Chef"'])
         self.assertEqual(ie.select(devs, "folder", "Kunde"), [])            # kein Präfix-Treffer
-        self.assertEqual(ie.customer(self.a), "Kunde A")
-        self.assertEqual(ie.customer(self.d), ie.UNSORTED)
+        self.assertEqual(ie.folder_title(self.a.folder), "Zürich")             # Name wie in der Geräteliste
+        self.assertEqual(ie.folder_path(self.a.folder), "Kunde A › Zürich")
+        self.assertEqual(ie.folder_title(""), "Neu / nicht einsortiert")
 
     def test_row(self):
         img = ie.Latest("PC-01_2026-10-30", datetime(2026, 10, 30, 14, 0))
@@ -111,23 +112,42 @@ class ExportTest(unittest.TestCase):
         self.assertIn("abgelaufen", chef[10])
 
     @unittest.skipUnless(ie.pdf_available() and shutil.which("pdftotext"), "reportlab/pdftotext fehlt")
-    def test_pdf_per_customer(self):
+    def test_pdf_per_folder(self):
+        """Je Ordner eine Datei (Unterordner eigene Datei), Titel = Ordnername wie in der Liste."""
         devs = ie.select(self.store.devices.values())
-        files = ie.export(self.base / "out", devs, ie.build(devs, {}, {}), "alle_Geraete", day=DAY)
+        files = ie.export(self.base / "out", devs, ie.build(devs, {}, {}), "Alle Geräte", day=DAY)
         names = [f.name for f in files]
-        self.assertEqual(names, ["Inventar_alle_Geraete_2026-10-31.csv", "Inventar_Kunde_A_2026-10-31.pdf",
-                                 "Inventar_Kunde_B_2026-10-31.pdf", "Inventar_Nicht_einsortiert_2026-10-31.pdf"])
+        self.assertEqual(names, ["Inventar_Alle_Geräte_2026-10-31.csv", "Inventar_Kunde_A_2026-10-31.pdf",
+                                 "Inventar_Kunde_A_Zürich_2026-10-31.pdf", "Inventar_Kunde_B_2026-10-31.pdf",
+                                 "Inventar_Neu_nicht_einsortiert_2026-10-31.pdf"])
         text = _pdf_text(files[1])
         self.assertIn("Inventar – Kunde A", text)
-        self.assertIn("Stand: 31.10.2026 · 2 Geräte", text)
-        self.assertIn("PC-01", text)
+        self.assertIn("Stand: 31.10.2026 · 1 Gerät", text)
         self.assertIn("PC-02", text)
-        self.assertNotIn("Neu-PC", text)
+        self.assertNotIn("PC-01", text)                                      # liegt im Unterordner
         self.assertIn("Seite 1", text)
         self.assertIn("Seriennummer", text)
-        self.assertIn("Büro", _pdf_text(files[2]))
+        sub = _pdf_text(files[2])
+        self.assertIn("Inventar – Zürich", sub)
+        self.assertIn("Ordner: Kunde A › Zürich", sub)
+        self.assertIn("PC-01", sub)
+        self.assertIn("Büro", _pdf_text(files[3]))
+        self.assertIn("Inventar – Neu / nicht einsortiert", _pdf_text(files[4]))
         info = subprocess.run(["pdfinfo", str(files[1])], capture_output=True, text=True).stdout
         self.assertRegex(info, r"Page size: +841\.89 x 595\.2\d* pts \(A4\)")   # A4 quer
+
+    @unittest.skipUnless(ie.pdf_available() and shutil.which("pdftotext"), "reportlab/pdftotext fehlt")
+    def test_pdf_single(self):
+        """Option: alle gewählten Geräte in einem PDF."""
+        devs = ie.select(self.store.devices.values())
+        files = ie.export(self.base / "one", devs, ie.build(devs, {}, {}), "Alle Geräte", fmt_csv=False, day=DAY,
+                          pdf_single=True)
+        self.assertEqual([f.name for f in files], ["Inventar_Alle_Geräte_2026-10-31.pdf"])
+        text = _pdf_text(files[0])
+        self.assertIn("Inventar – Alle Geräte", text)
+        self.assertIn("4 Geräte", text)
+        for name in ("PC-01", "PC-02", "Büro", "Neu-PC"):
+            self.assertIn(name, text)
 
     @unittest.skipUnless(ie.pdf_available(), "reportlab fehlt")
     def test_pdf_many_rows(self):
@@ -168,6 +188,7 @@ class ExportTest(unittest.TestCase):
         self.assertEqual(ie.file_stem("Kunde A/Zürich", DAY), "Inventar_Kunde_A_Zürich_2026-10-31")
         self.assertEqual(ie.safe_name("../../etc"), "etc")
         self.assertEqual(ie.safe_name("///"), "Inventar")
+        self.assertEqual(ie.safe_name("Neu / nicht einsortiert"), "Neu_nicht_einsortiert")
 
 
 def _pdf_text(path: Path) -> str:
