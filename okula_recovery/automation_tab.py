@@ -454,6 +454,8 @@ class SettingsDialog(Gtk.Dialog):
         self.bw_days = []
         for i, name in enumerate(bandwidth.DAY_NAMES):
             b = Gtk.ToggleButton(label=name, active=i in bw.days)
+            b.get_style_context().add_class("bw-day")      # hell = begrenzt, dunkel = unbegrenzt (CSS in ui.py)
+            b.set_tooltip_text("Hell: an diesem Tag begrenzt · dunkel: unbegrenzt")
             days.pack_start(b, False, False, 0)
             self.bw_days.append(b)
         self.bw_times.pack_start(days, False, False, 0)

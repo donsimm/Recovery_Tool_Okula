@@ -166,7 +166,8 @@ Aufträge nutzen sonst das Netzwerk voll aus. Damit das Netz tagsüber nicht aus
 1.  <i>Menü → Einstellungen …</i> öffnen. Ganz oben steht der Rahmen <i>Bandbreite</i>.
 2.  <i>Bandbreite begrenzen</i> anhaken und den Höchstwert in Mbit/s wählen (daneben umgerechnet in MB/s).
 3.  Auf Wunsch <i>Nur in diesem Zeitfenster</i> anhaken, von/bis und die Tage wählen (Standard Mo–Fr
-    07:00–18:00). Ausserhalb gilt keine Grenze, ohne Zeitfenster gilt sie immer.
+    07:00–18:00). Helle Tage sind begrenzt, dunkle unbegrenzt. Ausserhalb gilt keine Grenze,
+    ohne Zeitfenster gilt sie immer.
 4.  <i>Speichern</i>. Die Grenze wirkt sofort, auch auf laufende Aufträge.
 •  Die Grenze gilt für alle Aufträge zusammen und wird gerecht verteilt: Disk-Image, Zurückspielen,
     Datei-Backup, Ordner senden, OS installieren, Image anpassen auf dem Gerät – auch für das Demo-Gerät.

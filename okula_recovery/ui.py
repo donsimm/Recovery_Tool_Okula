@@ -99,6 +99,12 @@ progressbar.error progress { background-color: #c62828; border-color: #8e0000; }
 /* Schritt-Nummer im Kreis (Reiter Automatisierung) */
 .step-number { background-color: #455a64; color: #ffffff; font-weight: bold; border-radius: 12px;
     min-width: 24px; min-height: 24px; padding: 0 2px; }
+/* Bandbreite: Tage im Zeitfenster hell (begrenzt), uebrige dunkel (unbegrenzt) */
+.bw-day { background-image: none; background-color: #9e9e9e; color: #3a3a3a; box-shadow: none; }
+.bw-day:hover { background-color: #b0b0b0; }
+.bw-day:checked { background-color: #fafafa; color: #1a1a1a; font-weight: bold; }
+.bw-day:checked:hover { background-color: #ffffff; }
+.bw-day:disabled { opacity: 0.45; }
 /* Automatisierung pausiert: Haekchen in der Geraeteliste ausgegraut */
 treeview.view check:disabled, treeview.view check:checked:disabled, treeview.view check:disabled:selected {
     background-image: none; background-color: #d6d6d6; border-color: #b0b0b0; color: #8a8a8a; box-shadow: none; }

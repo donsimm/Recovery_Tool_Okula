@@ -8,6 +8,7 @@ from typing import Callable
 import gi
 
 gi.require_version("Gtk", "3.0")
+gi.require_version("PangoCairo", "1.0")
 from gi.repository import GLib, Gtk, Pango, PangoCairo  # noqa: E402
 
 from okula_recovery import sysload  # noqa: E402
