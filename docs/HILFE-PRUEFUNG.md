@@ -1,7 +1,7 @@
 # Prüfung der Hilfe (F1, „So funktioniert das Tool“)
 
 Stand: 31.10.2026, geprüft gegen Code und README (Commit 9d60ee7). Datei: `okula_recovery/help_window.py`.
-**Status:** H1–H22 umgesetzt am 31.10.2026 (Ä-024). H23 und H24 erledigt (Ä-025). Offen: H25 und Sichtprüfung.
+**Status:** H1–H22 umgesetzt am 31.10.2026 (Ä-024). H23–H25 erledigt (Ä-025). Offen: Sichtprüfung.
 
 ## A – Falsch oder veraltet
 

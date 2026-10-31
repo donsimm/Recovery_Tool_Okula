@@ -51,6 +51,21 @@ OS_ICONS = {"windows": "okula-os-windows", "linux": "okula-os-linux", "other": "
 # Gerät gilt als getrennt, wenn so lange kein Beacon seines Agents kam
 AGENT_TIMEOUT = 15
 
+# Menüleiste: Titel → Einträge (None = Trennlinie). „_“ markiert die Alt-Taste. Die Hilfe (F1) muss jeden Eintrag
+# von Menü, Tools und Extras nennen – geprüft in tests/test_help.py.
+DEMO_LABEL = "_Demo-Gerät (Vorführung)"
+MENU_LABELS: dict[str, list[str | None]] = {
+    "_Menü": ["_NAS-Verbindung …", "_Einstellungen …", "_Agent-USB-Stick erstellen …", None,
+              "Inven_tar exportieren (CSV/PDF) …", None,
+              "Einstellungen e_xportieren …", "Einstellungen _importieren …", None, "_Beenden"],
+    "_Tools": ["Gerät ö_ffnen …", "_Disk-Image erstellen …", "Image _zurückspielen …", "_OS installieren …",
+               "_Backup erstellen …", "Backup zur_ückspielen …", "Ordner _senden …", "_Inventar neu einlesen",
+               "Gerät _herunterfahren", None, "_Restore-Stick aus Image …", "IS_O hinzufügen …",
+               "_Boot-Stick aus ISO …", "_Netzwerkstart (PXE) …", None, "Images _aktualisieren"],
+    "E_xtras": ["_USB klonen …", "USB _formatieren …", None, DEMO_LABEL, "Demo: nächster Auftrag mit _Fehler"],
+    "_Hilfe": ["_So funktioniert das Tool", "_Tastenkürzel", "Ü_ber Okula Recovery Tool"],
+}
+
 CSS = b"""
 .pane-title { font-weight: bold; font-size: 115%; }
 .status-ok { color: #2e7d32; font-weight: bold; }
@@ -188,53 +203,46 @@ class MainWindow(Gtk.ApplicationWindow):
             return top
 
         bar = Gtk.MenuBar()
-        bar.append(menu("_Menü", [
-            ("_NAS-Verbindung …", self.open_nas_dialog, "<Control>n"),
-            ("_Einstellungen …", self.open_settings, None),
-            ("_Agent-USB-Stick erstellen …", lambda: StickDialog(self), None),
-            None,
-            ("Inven_tar exportieren (CSV/PDF) …", lambda: self.export_inventory(), None),
-            None,
-            ("Einstellungen e_xportieren …", lambda: ExportDialog(self).run_export(), None),
-            ("Einstellungen _importieren …", self.on_import_settings, None),
-            None,
-            ("_Beenden", self.close, "<Control>q"),
-        ]))
-        bar.append(menu("_Tools", [
-            ("Gerät ö_ffnen …", self.on_open_device, "<Control>o"),
-            ("_Disk-Image erstellen …", lambda: self._with_device(self.start_image), None),
-            ("Image _zurückspielen …", lambda: self._with_device(self.start_restore), None),
-            ("_OS installieren …", lambda: self._with_device(self.start_install), None),
-            ("_Backup erstellen …", lambda: self._with_device(self.start_backup), None),
-            ("Backup zur_ückspielen …", lambda: self._with_device(lambda d: self.start_file_restore(None, d)), None),
-            ("Ordner _senden …", lambda: self._with_device(self.on_send_folders), None),
-            ("_Inventar neu einlesen", lambda: self._with_device(self.refresh_inventory), None),
-            ("Gerät _herunterfahren", lambda: self._with_device(lambda d: self.power(d, "poweroff")), None),
-            None,
-            ("_Restore-Stick aus Image …", lambda: self.on_restore_stick(None), None),
-            ("IS_O hinzufügen …", self.on_add_iso, None),
-            ("_Boot-Stick aus ISO …", self.on_boot_stick, None),
-            ("_Netzwerkstart (PXE) …", self.open_pxe_dialog, None),
-            None,
-            ("Images _aktualisieren", self.refresh_images, "F5"),
-        ]))
-        bar.append(menu("E_xtras", [
-            ("_USB klonen …", lambda: CloneDialog(self), None),
-            ("USB _formatieren …", lambda: FormatDialog(self), None),
-            None,
-            ("Demo: nächster Auftrag mit _Fehler", self.demo_fail_next, None),
-        ]))
-        extras = bar.get_children()[-1].get_submenu()
-        self.demo_item = Gtk.CheckMenuItem.new_with_mnemonic("_Demo-Gerät (Vorführung)")
+        # Beschriftungen und Reihenfolge stehen in MENU_LABELS (auch für tests/test_help.py), hier nur die Aktionen
+        actions = {
+            "_NAS-Verbindung …": (self.open_nas_dialog, "<Control>n"),
+            "_Einstellungen …": (self.open_settings, None),
+            "_Agent-USB-Stick erstellen …": (lambda: StickDialog(self), None),
+            "Inven_tar exportieren (CSV/PDF) …": (lambda: self.export_inventory(), None),
+            "Einstellungen e_xportieren …": (lambda: ExportDialog(self).run_export(), None),
+            "Einstellungen _importieren …": (self.on_import_settings, None),
+            "_Beenden": (self.close, "<Control>q"),
+            "Gerät ö_ffnen …": (self.on_open_device, "<Control>o"),
+            "_Disk-Image erstellen …": (lambda: self._with_device(self.start_image), None),
+            "Image _zurückspielen …": (lambda: self._with_device(self.start_restore), None),
+            "_OS installieren …": (lambda: self._with_device(self.start_install), None),
+            "_Backup erstellen …": (lambda: self._with_device(self.start_backup), None),
+            "Backup zur_ückspielen …": (lambda: self._with_device(lambda d: self.start_file_restore(None, d)), None),
+            "Ordner _senden …": (lambda: self._with_device(self.on_send_folders), None),
+            "_Inventar neu einlesen": (lambda: self._with_device(self.refresh_inventory), None),
+            "Gerät _herunterfahren": (lambda: self._with_device(lambda d: self.power(d, "poweroff")), None),
+            "_Restore-Stick aus Image …": (lambda: self.on_restore_stick(None), None),
+            "IS_O hinzufügen …": (self.on_add_iso, None),
+            "_Boot-Stick aus ISO …": (self.on_boot_stick, None),
+            "_Netzwerkstart (PXE) …": (self.open_pxe_dialog, None),
+            "Images _aktualisieren": (self.refresh_images, "F5"),
+            "_USB klonen …": (lambda: CloneDialog(self), None),
+            "USB _formatieren …": (lambda: FormatDialog(self), None),
+            "Demo: nächster Auftrag mit _Fehler": (self.demo_fail_next, None),
+            "_So funktioniert das Tool": (self.show_help, "F1"),
+            "_Tastenkürzel": (self.show_shortcuts, None),
+            "Ü_ber Okula Recovery Tool": (self.show_about, None),
+        }
+        for title, labels in MENU_LABELS.items():
+            entries = [None if label is None else (label, *actions[label]) for label in labels
+                       if label != DEMO_LABEL]
+            bar.append(menu(title, entries))
+        extras = bar.get_children()[2].get_submenu()
+        self.demo_item = Gtk.CheckMenuItem.new_with_mnemonic(DEMO_LABEL)
         self.demo_item.set_tooltip_text("Simuliertes Gerät „DEMO-PC“ zum Vorführen – fasst keine echte Disk an")
         self.demo_item.connect("toggled", lambda i: self.set_demo(i.get_active()))
-        extras.insert(self.demo_item, 3)
+        extras.insert(self.demo_item, MENU_LABELS["E_xtras"].index(DEMO_LABEL))
         self.menu_items["Demo: nächster Auftrag mit Fehler"].set_sensitive(False)
-        bar.append(menu("_Hilfe", [
-            ("_So funktioniert das Tool", self.show_help, "F1"),
-            ("_Tastenkürzel", self.show_shortcuts, None),
-            ("Ü_ber Okula Recovery Tool", self.show_about, None),
-        ]))
         return bar
 
     def show_about(self) -> None:
@@ -417,6 +425,8 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def show_shortcuts(self) -> None:
         text = ("F1\tSo funktioniert das Tool\n"
+                "Ctrl+F\tIn der Anleitung suchen\n"
+                "Esc\tSuche leeren bzw. Anleitung oder Dialog schliessen\n"
                 "Ctrl+N\tNAS-Verbindung\n"
                 "Ctrl+O\tGewähltes Gerät öffnen\n"
                 "F5\tImages aktualisieren\n"

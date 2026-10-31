@@ -11,6 +11,8 @@ Arbeitsbranch: `claude/blissful-goldberg-mo3xda` (einziger Branch). Sprache in D
   Windows-Schlüssel, Agent-Stick.
 - **Hilfe mitführen:** Jede neue oder geänderte Funktion → passendes Kapitel in `okula_recovery/help_window.py`
   im selben Commit anpassen (Menü- und Knopfnamen exakt wie in der Oberfläche).
+  `tests/test_help.py` prüft das: Markup gültig, jeder Eintrag aus `MENU_LABELS` (ui.py) in der Hilfe,
+  Querverweise „Kapitel <i>…</i>“ gültig, keine Anrede in Hilfe und Oberflächentexten.
 
 ## Notizen, Bugs, Ideen – Ablauf
 

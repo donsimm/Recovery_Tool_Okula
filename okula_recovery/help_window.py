@@ -124,7 +124,7 @@ Der Selbsttest einer Disk. Er zeigt, ob die Disk gesund ist.
 Alle Angaben zu einem Gerät: Hersteller, Modell, Seriennummer, Prozessor, Arbeitsspeicher, Disks.
 
 <b>CSV</b>
-Eine einfache Tabellendatei. Sie lässt sich mit Excel öffnen.
+Eine einfache Tabellendatei, lässt sich mit Excel öffnen.
 
 <b>Formatieren</b>
 Einen Datenträger leer machen und für ein bestimmtes System vorbereiten. Dabei gehen alle Daten verloren.
@@ -264,6 +264,7 @@ Läuft auf dem Server eine Firewall: Ports im Kapitel <i>Erste Schritte</i> frei
     ("Geräte verwalten", """<big><b>Geräte verwalten</b></big>
 
 Alle Aktionen über Rechtsklick auf ein Gerät oder einen Ordner in der Geräteliste.
+Die Aufträge für das gewählte Gerät stehen zusätzlich im Menü <i>Tools</i>.
 
 <b>Gerät</b>
 •  <i>Umbenennen …</i>: Der Gerätename wird bei Neuinstallation, Master-Image und Automatisierung
@@ -273,7 +274,8 @@ Alle Aktionen über Rechtsklick auf ein Gerät oder einen Ordner in der Gerätel
 •  <i>Aus der Liste löschen …</i>: nur möglich, wenn das Gerät nicht verbunden ist.
     Images und Backups auf dem NAS bleiben.
 •  <i>Inventar neu einlesen</i>: Angaben zum Gerät neu holen (zum Beispiel nach einem Disk-Tausch).
-•  <i>Herunterfahren</i> und <i>Neu starten</i>: nur wenn das Gerät verbunden ist.
+•  <i>Herunterfahren</i> und <i>Neu starten</i>: nur wenn das Gerät verbunden ist
+    (auch <i>Tools → Gerät herunterfahren</i>).
 •  <i>Inventar exportieren …</i>: Liste zu diesem Gerät (Kapitel <i>Inventar, Garantie, Windows 11</i>).
 
 <b>Ordner</b>
@@ -353,6 +355,7 @@ Ideal vor einer Neuinstallation: Dateien sichern, neu installieren, Dateien zur�
 <b>Zurückspielen oder herunterladen:</b>
 1.  Rechts im Reiter <i>Backups</i> (oder im Gerätefenster) das Backup doppelklicken
     oder Rechtsklick → <i>Zurückspielen / herunterladen …</i>.
+    Für das gewählte Gerät auch: <i>Tools → Backup zurückspielen …</i>
 2.  Ziel wählen:
     •  <i>Ins installierte System</i>: Dateien zurück auf das Gerät. Alte Benutzer lassen sich neuen zuordnen.
     •  <i>Herunterladen in einen Ordner</i>: Dateien auf den Server oder einen USB-Stick kopieren.

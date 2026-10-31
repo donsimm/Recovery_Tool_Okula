@@ -1,6 +1,7 @@
 """Hilfe (F1): Suche (H24) und Aktualität (H25) – läuft ohne Display und ohne GTK."""
 
 import ast
+import re
 import unicodedata
 import unittest
 from pathlib import Path
@@ -86,6 +87,84 @@ def check_markup(case: unittest.TestCase, markup: str, where: str) -> None:
     allowed = {"markup", "b", "i", "u", "s", "tt", "big", "small", "sub", "sup", "span"}
     bad = {el.tag for el in root.iter()} - allowed
     case.assertFalse(bad, f"{where}: unbekannte Tags {bad}")
+
+
+
+# ---------- H25: Hilfe bleibt aktuell ----------
+
+UI_FILE = ROOT / "okula_recovery" / "ui.py"
+PACKAGE = ROOT / "okula_recovery"
+
+
+def load_menu_labels() -> dict[str, list]:
+    for node in ast.walk(ast.parse(UI_FILE.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.AnnAssign) and getattr(node.target, "id", "") == "MENU_LABELS":
+            demo = next(n.value.value for n in ast.walk(ast.parse(UI_FILE.read_text(encoding="utf-8")))
+                        if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "DEMO_LABEL")
+            src = ast.unparse(node.value).replace("DEMO_LABEL", repr(demo))
+            return ast.literal_eval(src)
+    raise AssertionError("MENU_LABELS nicht gefunden")
+
+
+def clean_label(label: str) -> str:
+    """„Inven_tar exportieren (CSV/PDF) …“ → „Inventar exportieren (CSV/PDF)“."""
+    return label.replace("_", "").removesuffix(" …").strip()
+
+
+# Anrede: „du“-Formen immer, „Sie/Ihr/Ihnen“ gross geschrieben (auch am Satzanfang umformulieren)
+DU = re.compile(r"\b(du|dein|deine|deinen|deinem|deiner|deines|dich|dir|euch|euer|eure)\b", re.IGNORECASE)
+SIE = re.compile(r"\b(Sie|Ihr|Ihre|Ihren|Ihrem|Ihrer|Ihres|Ihnen)\b")
+
+
+def ui_strings() -> list[tuple[str, int, str]]:
+    """Alle Zeichenketten im Programm (ohne Docstrings) – Oberfläche, Meldungen, Agent-Bildschirm."""
+    found = []
+    for path in sorted(PACKAGE.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        docstrings = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and node.body:
+                first = node.body[0]
+                if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant):
+                    docstrings.add(id(first.value))
+        for node in ast.walk(tree):
+            # nur Text mit Leerzeichen (Sätze) – keine Schlüssel wie "dir" im Protokoll
+            if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docstrings \
+                    and " " in node.value.strip():
+                found.append((path.name, node.lineno, node.value))
+    return found
+
+
+class HelpUpToDateTest(unittest.TestCase):
+    def test_a_markup_valid(self):
+        for title, text in CHAPTERS:
+            check_markup(self, text, title)
+
+    def test_b_every_menu_entry_in_help(self):
+        menus = load_menu_labels()
+        self.assertEqual(list(menus), ["_Menü", "_Tools", "E_xtras", "_Hilfe"])
+        help_text = " ".join(helpsearch.plain(t) for _, t in CHAPTERS)
+        missing = [f"{clean_label(m)} → {clean_label(label)}"
+                   for m in ("_Menü", "_Tools", "E_xtras") for label in menus[m]
+                   if label and clean_label(label) not in help_text]
+        self.assertEqual(missing, [], "Menüeinträge fehlen in der Hilfe (help_window.py)")
+
+    def test_c_cross_references(self):
+        for title, text in CHAPTERS:
+            for ref in re.findall(r"Kapitel\s+<i>(.*?)</i>", text):
+                self.assertIn(ref, TITLES, f"{title}: Kapitel „{ref}“ gibt es nicht")
+        self.assertEqual(TITLES[-2:], ["Tastenkürzel", "Demo-Gerät"])
+
+    def test_d_no_direct_address(self):
+        problems = []
+        for title, text in CHAPTERS:
+            plain = helpsearch.plain(text)
+            for rx in (DU, SIE):
+                problems += [f"Hilfe „{title}“: {m.group(0)}" for m in rx.finditer(plain)]
+        for name, line, text in ui_strings():
+            for rx in (DU, SIE):
+                problems += [f"{name}:{line}: {m.group(0)} in „{text[:60]}“" for m in rx.finditer(text)]
+        self.assertEqual(problems, [])
 
 
 if __name__ == "__main__":
