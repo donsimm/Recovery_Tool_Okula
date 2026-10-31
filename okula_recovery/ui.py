@@ -576,7 +576,7 @@ class MainWindow(Gtk.ApplicationWindow):
         # Unter dem Baum: Legende der Icons, dann Sticks (Restore-Stick aus Image, Boot-Stick aus ISO)
         legend = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, column_spacing=12, max_children_per_line=6)
         for icon, label in (("okula-image", "Okula-Image"), ("okula-image-clonezilla", "Clonezilla"),
-                            (FILE_IMAGE_ICON, "Image-Datei"), ("okula-os-windows", "Windows-ISO"),
+                            (FILE_IMAGE_ICON, "Sonstiges Image"), ("okula-os-windows", "Windows-ISO"),
                             ("okula-os-linux", "Linux-ISO"), ("okula-os-other", "Sonstige ISO")):
             item = Gtk.Box(spacing=4)
             item.pack_start(Gtk.Image.new_from_icon_name(icon, Gtk.IconSize.MENU), False, False, 0)
