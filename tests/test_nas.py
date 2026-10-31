@@ -142,3 +142,24 @@ class FormatSizeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WebUrlTest(unittest.TestCase):
+    def test_web_url(self):
+        from okula_recovery.config import NasConfig
+        self.assertEqual(nas.web_url(NasConfig(host="")), "")
+        self.assertEqual(nas.web_url(NasConfig(host="192.168.110.154")), "https://192.168.110.154:5001/")
+        self.assertEqual(nas.web_url(NasConfig(host="nas.local", web_scheme="http", web_port=5000)),
+                         "http://nas.local:5000/")
+        self.assertEqual(nas.web_url(NasConfig(host="fe80::1", web_port="8443")), "https://[fe80::1]:8443/")
+        self.assertEqual(nas.web_url(NasConfig(host="nas", web_scheme="ftp", web_port="x")), "https://nas:5001/")
+
+    def test_web_settings_survive_export(self):
+        import tempfile
+        from pathlib import Path
+        from okula_recovery import config, transfer
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "nas.json"
+            transfer.export_nas(config.NasConfig(host="nas", web_scheme="http", web_port=5000), path)
+            got = transfer.read_nas(path)
+        self.assertEqual((got.web_scheme, got.web_port), ("http", 5000))

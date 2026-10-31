@@ -10,7 +10,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk  # noqa: E402
 
 from okula_recovery import config, nas, transfer  # noqa: E402
-from okula_recovery.uikit import make_tree, run_async, scrolled  # noqa: E402
+from okula_recovery.uikit import make_tree, open_url, run_async, scrolled  # noqa: E402
 
 
 class NasDialog(Gtk.Dialog):
@@ -49,10 +49,26 @@ class NasDialog(Gtk.Dialog):
         self.user = Gtk.Entry(text=cfg.nas.username, placeholder_text="NAS-Benutzer")
         self.password = Gtk.Entry(visibility=False, input_purpose=Gtk.InputPurpose.PASSWORD)
         self.mount_point = Gtk.Entry(text=cfg.nas.mount_point)
+        # Weboberfläche des NAS (Synology DSM: https 5001, http 5000)
+        web_box = Gtk.Box(spacing=6)
+        self.web_scheme = Gtk.ComboBoxText()
+        for key in ("https", "http"):
+            self.web_scheme.append(key, key)
+        self.web_scheme.set_active_id(cfg.nas.web_scheme if cfg.nas.web_scheme in nas.WEB_PORTS else "https")
+        self.web_port = Gtk.SpinButton.new_with_range(1, 65535, 1)
+        self.web_port.set_value(int(cfg.nas.web_port or nas.WEB_PORTS["https"]))
+        self.web_scheme.connect("changed", self._on_scheme_changed)
+        web_box.pack_start(self.web_scheme, False, False, 0)
+        web_box.pack_start(Gtk.Label(label="Port"), False, False, 0)
+        web_box.pack_start(self.web_port, False, False, 0)
+        hint = Gtk.Label(label="Synology DSM: https 5001, http 5000", xalign=0)
+        hint.get_style_context().add_class("status-idle")
+        web_box.pack_start(hint, False, False, 0)
         self.rows = {}
         for row, (label, widget) in enumerate([("Protokoll", self.protocol), ("Host", self.host),
                                                ("Freigabe", share_box), ("Benutzer", self.user),
-                                               ("Passwort", self.password), ("Einhängepunkt", self.mount_point)]):
+                                               ("Passwort", self.password), ("Einhängepunkt", self.mount_point),
+                                               ("NAS-Webseite", web_box)]):
             lbl = Gtk.Label(label=label, xalign=0)
             grid.attach(lbl, 0, row, 1, 1)
             grid.attach(widget, 1, row, 1, 1)
@@ -68,7 +84,10 @@ class NasDialog(Gtk.Dialog):
         btn_umount.connect("clicked", self.on_umount)
         btn_save = Gtk.Button(label="Speichern")
         btn_save.connect("clicked", self.on_save)
-        for b in (self.btn_test, btn_mount, btn_umount, btn_save):
+        self.btn_web = Gtk.Button(label="NAS-Webseite öffnen")
+        self.btn_web.connect("clicked", lambda _b: open_url(self, nas.web_url(self.form())))
+        self.host.connect("changed", lambda _e: self._update_web())
+        for b in (self.btn_test, self.btn_web, btn_mount, btn_umount, btn_save):
             buttons.pack_start(b, False, False, 0)
         self.spinner = Gtk.Spinner()
         buttons.pack_start(self.spinner, False, False, 0)
@@ -99,6 +118,7 @@ class NasDialog(Gtk.Dialog):
         self.get_content_area().add(box)
         self.show_all()
         self._update_form()  # nach show_all, sonst wären die SMB-Felder bei NFS sichtbar
+        self._update_web()
         self.on_test(None)
 
     # ---------- Formular ----------
@@ -110,7 +130,21 @@ class NasDialog(Gtk.Dialog):
                                 host=self.host.get_text().strip(),
                                 share=share.strip("/") if smb else share,
                                 mount_point=self.mount_point.get_text().strip() or "/mnt/okula-nas",
-                                username=self.user.get_text().strip())
+                                username=self.user.get_text().strip(),
+                                web_scheme=self.web_scheme.get_active_id() or "https",
+                                web_port=int(self.web_port.get_value()))
+
+    def _on_scheme_changed(self, _combo) -> None:
+        """Standard-Port mitwechseln, solange der Port noch ein Standard-Port ist."""
+        scheme = self.web_scheme.get_active_id() or "https"
+        if int(self.web_port.get_value()) in nas.WEB_PORTS.values():
+            self.web_port.set_value(nas.WEB_PORTS[scheme])
+
+    def _update_web(self) -> None:
+        url = nas.web_url(self.form())
+        self.btn_web.set_sensitive(bool(url))
+        self.btn_web.set_tooltip_text(f"Weboberfläche des NAS im Browser öffnen: {url}" if url
+                                      else "Zuerst den Host des NAS eintragen")
 
     def _is_smb(self) -> bool:
         return (self.protocol.get_active_id() or "smb") == "smb"

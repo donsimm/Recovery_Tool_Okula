@@ -16,11 +16,11 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 0 | 0 | 0 |
-| 🔧 Änderungen | 11 | 3 | 0 |
+| 🔧 Änderungen | 11 | 2 | 0 |
 | 💡 Ideen | 26 | 3 | 2 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
-In Arbeit (Reihenfolge): **Ä-014** NAS-Webseite → **Ä-011** Boot-Menü-Taste → **I-024** Windows-11-Tauglichkeit → **Ä-002** kleinere Disk → **I-025** Garantie → **I-013** Inventar-Export (ein neuer Agent-Stick für I-024 und Ä-002).
+In Arbeit (Reihenfolge): ~~Ä-014~~ ✔ → **Ä-011** Boot-Menü-Taste → **I-024** Windows-11-Tauglichkeit → **Ä-002** kleinere Disk → **I-025** Garantie → **I-013** Inventar-Export (ein neuer Agent-Stick für I-024 und Ä-002).
 Als Nächstes danach: Tests „Fixes von heute“ in [TESTS.md](TESTS.md) (Debian-Direktinstallation, doppelter HP-Eintrag).
 Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laien, klein) → **Ä-001** (Dienst) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-009, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
@@ -47,7 +47,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007, Ä-008** (Sicherheit für Laie
 | Ä-011 | 🟡 | **in Arbeit** | Claude | **Boot-Menü-Taste je Hersteller:** im Stick-Dialog, in der Hilfe und bei bekannten Geräten aus den Inventardaten (DMI), z. B. HP F9, Dell F12, Lenovo F12, Asus F8/Esc, Acer F12, MSI F11. Der Hinweis „meist F12, F11, F8 oder Esc“ reicht einem Laien nicht | 31.10. (Laien-Test) |
 | Ä-012 | 🟡 | offen | Claude | **Einfache Sprache im Reiter Automatisierung:** „Zieldisk“ → „Festplatte, die gelöscht wird“; Sysprep, Master und Content-Projekte mit einem „?“ pro Abschnitt erklären. Gerätenamen wie „DESKTOP-8F3K2LQ“ markieren und zum Umbenennen auffordern; optional Namensschema pro Vorlage (z. B. `KUNDE-001` fortlaufend) | 31.10. (Laien-Test) |
 | Ä-013 | ⚪ | offen | Claude | **Klare Fertig-Meldung:** grosses „✔ Fertig – HP-PC-07 ist neu aufgesetzt (18 min)“ im Tool und am Gerät, dazu eine Liste: was gemacht wurde, Key aktiviert ja/nein, wo das Backup liegt. Als PDF ausdruckbar (Übergabeprotokoll, → I-013) | 31.10. (Laien-Test) |
-| Ä-014 | ⚪ | **in Arbeit** | Dominik | **NAS-Webseite öffnen:** Im Fenster NAS-Verbindung ein Knopf „NAS-Webseite öffnen“, der den Browser mit `https://<Host>:5001` öffnet (Synology DSM; Port einstellbar, Standard 5001, Alternative http 5000; Aufruf über `xdg-open`). Daneben auch ein kleines Symbol in der NAS-Statuszeile | 31.10. |
 
 ## 💡 Ideen
 
@@ -109,6 +108,11 @@ Gerätename = Name im Tool.
 ## ✅ Erledigt – Änderungsprotokoll
 
 Neueste zuoberst.
+
+### 31.10.2026
+- **Ä-014 NAS-Webseite öffnen:** Knopf im Fenster NAS-Verbindung (neben „Verbindung testen“) und Symbol in der
+  NAS-Statuszeile; Adresse aus dem gespeicherten Host, Protokoll/Port einstellbar (https 5001, http 5000), Export/Import
+  inklusive. Öffnet den Browser als normaler Benutzer; ohne Host ausgegraut.
 
 ### 30.10.2026
 - **Demo-Gerät (Vorführung):** Extras → Demo-Gerät startet einen simulierten Agent auf dem Server („DEMO-PC“).

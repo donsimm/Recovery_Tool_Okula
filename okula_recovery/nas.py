@@ -163,6 +163,24 @@ def mount_error_hint(message: str) -> str:
     return ""
 
 
+WEB_PORTS = {"https": 5001, "http": 5000}   # Standard der Synology-Weboberfläche (DSM)
+
+
+def web_url(cfg: NasConfig) -> str:
+    """Adresse der NAS-Weboberfläche aus dem gespeicherten Host; leer, wenn kein Host eingetragen ist."""
+    host = (cfg.host or "").strip().strip("/")
+    if not host:
+        return ""
+    scheme = cfg.web_scheme if cfg.web_scheme in WEB_PORTS else "https"
+    try:
+        port = int(cfg.web_port or WEB_PORTS[scheme])
+    except (TypeError, ValueError):
+        port = WEB_PORTS[scheme]
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"   # IPv6
+    return f"{scheme}://{host}:{port}/"
+
+
 def has_credentials() -> bool:
     return CRED_FILE.exists()
 

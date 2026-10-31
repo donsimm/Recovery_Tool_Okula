@@ -94,5 +94,6 @@ bestätigt.
 - [ ] Tool schliessen → Demo-Prozess ist beendet
 
 ### 7. Allgemein
+- [ ] Ä-014: NAS-Fenster → „NAS-Webseite öffnen“ und Symbol in der NAS-Statuszeile → DSM öffnet sich im Browser (https 5001); auf http 5000 umstellen → richtige Adresse
 - [ ] Gerätename mit Umlaut/Unterstrich (z. B. „Büro_PC_01“) bei OS installieren → Hinweis zeigt Name auf dem Gerät
 - [ ] Export auf altem/neuem Server: Vorlagen und „höchstens gleichzeitig“ kommen mit

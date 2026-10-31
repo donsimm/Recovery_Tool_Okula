@@ -20,6 +20,8 @@ class NasConfig:
     share: str = ""
     mount_point: str = "/mnt/okula-nas"
     username: str = ""  # Passwort nur in /etc/okula-recovery/nas.cred (root)
+    web_scheme: str = "https"  # Weboberfläche des NAS (z. B. Synology DSM)
+    web_port: int = 5001       # DSM: https 5001, http 5000
 
 
 @dataclass

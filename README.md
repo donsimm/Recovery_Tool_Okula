@@ -48,6 +48,8 @@ Das Passwort speichert nur der Root-Helfer, in `/etc/okula-recovery/nas.cred` (r
 
 Für NFS gibst du als Freigabe den Exportpfad an (z. B. `/volume1/recovery`) und erlaubst im NAS die IP des Servers.
 
+**NAS-Webseite öffnen:** Knopf im Fenster NAS-Verbindung (neben „Verbindung testen“) und kleines Symbol in der NAS-Statuszeile. Öffnet die Weboberfläche des NAS im Browser, z. B. Synology DSM unter `https://<Host>:5001`. Protokoll und Port stellst du im NAS-Fenster ein (Zeile „NAS-Webseite“: https 5001 oder http 5000). Ohne Host ist der Knopf ausgegraut. Der Browser startet immer als normaler Benutzer.
+
 ### Images in Ordner einsortieren
 
 Der Reiter *Images* zeigt einen aufklappbaren Baum:

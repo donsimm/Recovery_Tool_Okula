@@ -70,6 +70,10 @@ def _nas_from(data: dict) -> config.NasConfig:
     if not isinstance(raw, dict):
         raise TransferError("Keine NAS-Einstellungen in der Datei")
     fields = {k: str(v) for k, v in raw.items() if k in config.NasConfig.__dataclass_fields__ and v is not None}
+    try:
+        fields["web_port"] = int(fields.get("web_port") or 0) or config.NasConfig.web_port
+    except ValueError:
+        fields.pop("web_port")
     nas = config.NasConfig(**fields)
     if nas.protocol not in ("smb", "nfs"):
         raise TransferError(f"Unbekanntes Protokoll: {nas.protocol}")

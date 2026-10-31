@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 import threading
 from pathlib import Path
 
@@ -136,3 +138,16 @@ def numbered_section(container: Gtk.Box, number: str, title: str, note: str = ""
     inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_start=36 if number else 12, margin_top=4)
     container.pack_start(inner, False, False, 0)
     return inner
+
+
+def open_url(parent: Gtk.Window, url: str) -> None:
+    """Adresse im Browser öffnen – immer als normaler Benutzer (läuft das Tool unter sudo: als SUDO_USER)."""
+    user = os.environ.get("SUDO_USER")
+    if os.geteuid() == 0 and user:
+        subprocess.Popen(["sudo", "-u", user, "xdg-open", url], stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL)
+        return
+    try:
+        Gtk.show_uri_on_window(parent, url, Gdk.CURRENT_TIME)
+    except GLib.Error:
+        subprocess.Popen(["xdg-open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

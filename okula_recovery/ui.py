@@ -35,8 +35,8 @@ from okula_recovery.os_dialogs import (BootStickDialog, InstallDialog, IsoDetail
                                        choose_isos)
 from okula_recovery.restore_dialog import RestoreDialog  # noqa: E402
 from okula_recovery.stick_dialog import StickDialog  # noqa: E402
-from okula_recovery.uikit import (ask_text, confirm, confirm_error, make_tree, pane_title, rgba_hex,  # noqa: E402
-                                  run_async, scrolled, svg_pixbuf)
+from okula_recovery.uikit import (ask_text, confirm, confirm_error, make_tree, open_url, pane_title,  # noqa: E402
+                                  rgba_hex, run_async, scrolled, svg_pixbuf)
 
 ASSETS = Path(__file__).resolve().parent / "assets"
 NAS_POLL = 30  # Sekunden zwischen den NAS-Statusabfragen
@@ -454,6 +454,11 @@ class MainWindow(Gtk.ApplicationWindow):
         btn_settings.set_tooltip_text("NAS-Verbindung einrichten (Menü → NAS-Verbindung …)")
         btn_settings.connect("clicked", lambda _b: self.open_nas_dialog())
         bar.pack_end(btn_settings, False, False, 0)
+        self.btn_nas_web = Gtk.Button.new_from_icon_name("web-browser-symbolic", Gtk.IconSize.BUTTON)
+        self.btn_nas_web.set_relief(Gtk.ReliefStyle.NONE)
+        self.btn_nas_web.connect("clicked", lambda _b: open_url(self, nas.web_url(self.cfg.nas)))
+        bar.pack_end(self.btn_nas_web, False, False, 0)
+        self._update_nas_web()
         box.pack_start(bar, False, False, 0)
 
         # Reiter: Images (Übersicht) und Dateien (Dateiverwaltung des NAS)
@@ -1192,7 +1197,14 @@ class MainWindow(Gtk.ApplicationWindow):
         self.nas_dialog.connect("destroy", lambda _d: setattr(self, "nas_dialog", None))
 
     def _on_nas_changed(self, _cfg: config.NasConfig) -> None:
+        self._update_nas_web()
         self.refresh_nas_status()
+
+    def _update_nas_web(self) -> None:
+        url = nas.web_url(self.cfg.nas)
+        self.btn_nas_web.set_sensitive(bool(url))
+        self.btn_nas_web.set_tooltip_text(f"NAS-Webseite öffnen ({url})" if url
+                                          else "NAS-Webseite: zuerst unter Menü → NAS-Verbindung den Host eintragen")
 
     def refresh_nas_status(self, auto_mount: bool = False) -> bool:
         """Kurzstatus abfragen (Timer: True = weiterlaufen). Läuft schon eine Abfrage, nicht doppelt."""

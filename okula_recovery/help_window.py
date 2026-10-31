@@ -89,6 +89,8 @@ Der Name im Tool. Er wird auch der Computername bei einer Neuinstallation."""),
 •  Klicke auf <i>Freigaben suchen</i> und wähle die Freigabe.
 •  Klicke auf <i>Einhängen</i>.
 •  Rechts steht dann „● NAS verbunden“ in Grün.
+•  Mit <i>NAS-Webseite öffnen</i> (oder dem kleinen Symbol neben dem Zahnrad) öffnest du die Seite des NAS
+   im Browser, zum Beispiel um dort Speicher oder Benutzer zu prüfen.
 
 <b>2. Agent-Stick erstellen</b>
 •  Stecke einen leeren USB-Stick ein (mindestens 4 GB).
