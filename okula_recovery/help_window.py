@@ -286,6 +286,9 @@ Die Aufträge für das gewählte Gerät stehen zusätzlich im Menü <i>Tools</i>
     der Computername. Windows erlaubt höchstens 15 Zeichen ohne Sonderzeichen.
 •  <i>Nach „Neu / nicht einsortiert“</i>: Gerät aus seinem Ordner zurücknehmen.
 •  <i>Zusammenführen mit …</i>: Steht ein Gerät doppelt in der Liste, die zwei Einträge vereinen.
+•  Baugleiche Geräte (gleiche Kennung ab Werk, z. B. leere oder gleiche Board-UUID) bleiben getrennt:
+    Sind zwei gleichzeitig verbunden, führt das Tool sie als zwei Geräte, das zweite mit „(2)“ im Namen.
+    Wurden sie früher vereint, trennt das Tool sie, sobald beide zugleich verbunden sind.
 •  <i>Aus der Liste löschen …</i>: nur möglich, wenn das Gerät nicht verbunden ist.
     Images und Backups auf dem NAS bleiben.
 •  <i>Inventar neu einlesen</i>: Angaben zum Gerät neu holen (zum Beispiel nach einem Disk-Tausch).

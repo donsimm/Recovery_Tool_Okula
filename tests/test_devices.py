@@ -177,5 +177,97 @@ class ProductKeyTest(unittest.TestCase):
             devices.normalize_key("ABC-123")
 
 
+def compact(mac, disk="AA00000000000000123", hostname="CompactPlayer 1"):
+    """Baugleicher Mini-PC: keine UUID, keine Seriennummer, eMMC mit gleicher Seriennummer (B-001)."""
+    return inv(uuid="", serial="", mac=mac, disk_serial=disk, hostname=hostname)
+
+
+class LookalikeDevicesTest(unittest.TestCase):
+    """B-001: baugleiche Geräte mit gleichen Kennungen ab Werk dürfen nie ein Eintrag werden."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self.tmp.name) / "geraete"
+        self.store = devices.DeviceStore(self.base)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_placeholders(self):
+        for u in ("03000200-0400-0500-0006-000700080009", "00000000-0000-0000-0000-000000000000",
+                  "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF", ""):
+            self.assertTrue(devices.placeholder_uuid(u), u)
+        self.assertFalse(devices.placeholder_uuid("a8c28570-13cd-0000-0000-000000000000"))   # IOVERSAL
+        for sn in ("Default string", "To be filled by O.E.M.", "System Serial Number", "0", "00000000", "123456789"):
+            self.assertTrue(devices.placeholder_serial(sn), sn)
+        self.assertFalse(devices.placeholder_serial("CNU4279G6N"))
+        self.assertTrue(devices.real_mac("24:1c:04:a0:a1:df"))
+        self.assertFalse(devices.real_mac("26:4c:e9:6c:c9:8e"))                             # zufällige MAC
+        self.assertEqual(devices.identity(inv(uuid="03000200-0400-0500-0006-000700080009", serial="Default string",
+                                              mac="24:1c:04:a0:a1:df")), "mac:24:1c:04:a0:a1:df")
+
+    def test_two_connected_at_once_become_two_devices(self):
+        a, _ = self.store.register("24:1c:04:a0:a1:df", "10.0.0.5", "24:1c:04:a0:a1:df", compact("24:1c:04:a0:a1:df"))
+        online = {a.id: "24:1c:04:a0:a1:df"}
+        b, new = self.store.register("00:e0:6f:2c:73:2b", "10.0.0.6", "00:e0:6f:2c:73:2b",
+                                     compact("00:e0:6f:2c:73:2b"), online=online)
+        self.assertTrue(new)
+        self.assertNotEqual(a.id, b.id)
+        self.assertEqual(b.name, "CompactPlayer 1 (2)")
+        self.assertIn("disk:AA00000000000000123", self.store.ambiguous)
+        # später allein verbunden: jedes Gerät bleibt bei sich, auch nach einem Neustart des Tools
+        store = devices.DeviceStore(self.base)
+        again, new = store.register("00:e0:6f:2c:73:2b", "10.0.0.6", "00:e0:6f:2c:73:2b", compact("00:e0:6f:2c:73:2b"))
+        self.assertEqual((again.id, new), (b.id, False))
+        again, new = store.register("24:1c:04:a0:a1:df", "10.0.0.5", "24:1c:04:a0:a1:df", compact("24:1c:04:a0:a1:df"))
+        self.assertEqual((again.id, new), (a.id, False))
+        self.assertEqual(store.duplicates(), [])
+
+    def test_placeholder_disk_serial_never_merges(self):
+        a, _ = self.store.register("m1", "10.0.0.5", "24:1c:04:a0:a1:df", compact("24:1c:04:a0:a1:df", disk="0000000000"))
+        b, new = self.store.register("m2", "10.0.0.6", "00:e0:6f:2c:73:2b", compact("00:e0:6f:2c:73:2b", disk="0000000000"))
+        self.assertTrue(new)
+
+    def test_dummy_uuid_sequentially(self):
+        dummy = "03000200-0400-0500-0006-000700080009"
+        a, _ = self.store.register(dummy, "10.0.0.5", "24:1c:04:a0:a1:df",
+                                   inv(uuid=dummy, serial="Default string", mac="24:1c:04:a0:a1:df", disk_serial="X1"))
+        b, new = self.store.register(dummy + "@00:e0:6f:2c:73:2b", "10.0.0.6", "00:e0:6f:2c:73:2b",
+                                     inv(uuid=dummy, serial="Default string", mac="00:e0:6f:2c:73:2b", disk_serial="X2"))
+        self.assertTrue(new)
+        self.assertEqual(self.store.duplicates(), [])
+
+    def test_unknown_shared_uuid_and_split_of_old_merge(self):
+        shared = "5a5b5c5d-1111-2222-3333-444455556666"          # gleiche UUID ab Werk, nicht in der Liste
+        ia = inv(uuid=shared, serial="", mac="24:1c:04:a0:a1:df", disk_serial="DA")
+        ib = inv(uuid=shared, serial="", mac="00:e0:6f:2c:73:2b", disk_serial="DB", hostname="CompactPlayer 2")
+        # alter Zustand: beide schon zu einem Eintrag vereint (beide MACs, Inventar von B)
+        merged, _ = self.store.register(shared, "10.0.0.5", "24:1c:04:a0:a1:df", ia)
+        self.store.register(shared, "10.0.0.6", "00:e0:6f:2c:73:2b", ib)
+        self.assertEqual(len(self.store.devices), 1)
+        # jetzt beide gleichzeitig verbunden: A über die UUID, B (im Tool „UUID@MAC“) wird abgetrennt
+        b, new = self.store.register(shared + "@00:e0:6f:2c:73:2b", "10.0.0.6", "00:e0:6f:2c:73:2b", ib,
+                                     online={merged.id: shared})
+        self.assertTrue(new)
+        self.assertIn("uuid:" + shared, self.store.ambiguous)
+        self.assertNotIn("00:e0:6f:2c:73:2b", merged.macs)
+        self.assertNotIn("DB", merged.disk_serials)
+        self.assertEqual(self.store.splits, [merged.id])
+        self.assertEqual(b.key, "mac:00:e0:6f:2c:73:2b")
+        self.assertNotEqual(merged.key, b.key)
+        self.assertIn("getrennt", [h["kind"] for h in merged.history])
+        # Inventar von A neu: bleibt A, Schlüssel jetzt über die MAC
+        again, new = self.store.register(shared, "10.0.0.5", "24:1c:04:a0:a1:df", ia, online={b.id: b.agent_ids[0]})
+        self.assertEqual((again.id, new), (merged.id, False))
+        self.assertEqual(again.key, "mac:24:1c:04:a0:a1:df")
+        self.assertEqual(self.store.duplicates(), [])
+
+    def test_same_device_reconnects_normally(self):
+        a, _ = self.store.register("24:1c:04:a0:a1:df", "10.0.0.5", "24:1c:04:a0:a1:df", compact("24:1c:04:a0:a1:df"))
+        again, new = self.store.register("24:1c:04:a0:a1:df", "10.0.0.9", "24:1c:04:a0:a1:df",
+                                         compact("24:1c:04:a0:a1:df"), online={a.id: "24:1c:04:a0:a1:df"})
+        self.assertEqual((again.id, new), (a.id, False))
+
+
 if __name__ == "__main__":
     unittest.main()

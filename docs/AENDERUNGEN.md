@@ -15,7 +15,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
-| 🐞 Bugs | 1 | 0 | 0 |
+| 🐞 Bugs | 0 | 0 | 0 |
 | 🔧 Änderungen | 7 | 0 | 0 |
 | 💡 Ideen | 21 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
@@ -29,7 +29,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
-| B-001 | 🔴 | offen | Dominik | **Baugleiche Geräte werden zu einem zusammengeführt:** zwei Geräte gleichzeitig mit Agent-Stick → nur ein Eintrag. Vermutete Ursache: gleiche (Dummy-)Board-UUID bzw. Seriennummer ab Werk (z. B. `03000200-0400-0500-0006-000700080009`, „Default string“, „To be filled by O.E.M.“). Die UUID ist zugleich Agent-ID (`discovery.machine_id`) und Identität (`devices.identity`) → Beacons überschreiben sich, `match`/`merge_duplicates` vereinen. Lösung (Vorschlag, nur im Tool): bekannte Platzhalter nie als Identität; gleiche UUID gleichzeitig von zwei MACs → als nicht eindeutig merken, Gerät dann über MAC/Disk-Seriennummer; Agents im Tool je Agent-ID **und** MAC führen; zusammengeführten Eintrag trennen. Prüfung offen: UUID/Seriennummer der zwei Geräte | 05.11. |
+| – | | | | keine offenen Bugs | |
 
 ## 🔧 Änderungen / Verbesserungen
 
@@ -114,6 +114,14 @@ Gerätename = Name im Tool.
 ## ✅ Erledigt – Änderungsprotokoll
 
 Neueste zuoberst.
+
+### 05.11.2026
+- **B-001 Baugleiche Geräte wurden zu einem zusammengeführt** (Von: Dominik, gemeldet 05.11.): zwei „CompactPlayer“
+  ohne UUID und Seriennummer – vereint sehr wahrscheinlich über die gleiche Disk-Seriennummer („Board getauscht, Disk geblieben“).
+  Fix nur im Tool: Platzhalter-UUIDs/-Seriennummern (auch Disk) nie als Identität, zufällige MACs nicht beim
+  Wiedererkennen; ist ein passender Eintrag gerade über einen anderen Agent verbunden → eigenes Gerät („Name (2)“),
+  gemeinsame Kennungen in `geraete/mehrdeutig.ids`; alter vereinter Eintrag wird getrennt; gleiche Agent-ID mit
+  anderer Beacon-MAC → „ID@MAC“. Kein neuer Agent-Stick. Hilfe „Geräte verwalten“. Tests `test_devices.LookalikeDevicesTest`.
 
 ### 31.10.2026
 - **Ä-031 Bandbreite – Tage:** Tage im Zeitfenster hell (begrenzt), übrige dunkel (unbegrenzt), in hellem und dunklem Design; Tooltip und Hilfe ergänzt (Von: Dominik).

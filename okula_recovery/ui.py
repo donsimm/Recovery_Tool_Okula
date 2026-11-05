@@ -2610,13 +2610,27 @@ class MainWindow(Gtk.ApplicationWindow):
         if dev is None:
             # Ohne Inventar nur über die Agent-ID (Board-UUID) – eine MAC kann von einem geteilten
             # USB-Netzwerkadapter stammen. Alte Sticks liefern kein Inventar: dort auch über die MAC.
-            dev = self.store.match(agent_id=info.agent_id, mac="" if info.control_port else info.mac)
+            dev = self.store.match(agent_id=info.agent_id, mac="" if info.control_port else info.mac,
+                                   online=self.online)
             if dev is not None:
                 self.device_of_agent[info.agent_id] = dev.id
         return dev
 
+    def _agent_key(self, info: discovery.AgentInfo) -> str:
+        """Agent-ID im Tool. Melden sich zwei Geräte mit derselben ID (gleiche Board-UUID ab Werk), aber
+        verschiedener MAC, bekommt das zweite „ID@MAC“ – ein Gerät sendet immer dieselbe MAC (B-001)."""
+        aid, mac = info.agent_id, (info.mac or "").lower()
+        alias = f"{aid}@{mac}"
+        if alias in self.agents or alias in self.device_of_agent or \
+                any(alias in d.agent_ids for d in self.store.devices.values()):
+            return alias
+        known = self.agents.get(aid)
+        if known is not None and mac and (known.mac or "").lower() not in ("", mac):
+            return alias
+        return aid
+
     def _on_agent(self, info: discovery.AgentInfo) -> bool:
-        aid = info.agent_id
+        info.agent_id = aid = self._agent_key(info)
         self.agents[aid] = info
         dev = self._device_for_agent(info)
         if dev is not None and self.online.get(dev.id) != aid:
@@ -2625,7 +2639,9 @@ class MainWindow(Gtk.ApplicationWindow):
             self.fetch_inventory(info)
         elif not info.control_port and dev is None:
             # alter Stick ohne Steuerdienst: mit dem erfassen, was der Beacon meldet
-            dev, _new = self.store.register(aid, info.ip, info.mac, beacon_inventory(info), info.hardware or info.ip)
+            dev, _new = self.store.register(aid, info.ip, info.mac, beacon_inventory(info), info.hardware or info.ip,
+                                            online=self.online)
+            self._after_split()
             self.device_of_agent[aid] = dev.id
             self._set_online(dev, aid)
             self.refresh_devices()
@@ -2649,7 +2665,9 @@ class MainWindow(Gtk.ApplicationWindow):
                 inv = beacon_inventory(current)
             else:
                 inv = result
-            dev, new = self.store.register(aid, current.ip, current.mac, inv, current.hardware or current.ip)
+            dev, new = self.store.register(aid, current.ip, current.mac, inv, current.hardware or current.ip,
+                                           online=self.online)
+            self._after_split()
             for dev_id, a in list(self.online.items()):
                 if a == aid and dev_id != dev.id:  # vorläufige Zuordnung war falsch
                     del self.online[dev_id]
@@ -2669,6 +2687,18 @@ class MainWindow(Gtk.ApplicationWindow):
                 win.refresh()
 
         run_async(lambda: agentclient.get_inventory(info.ip, key, info.control_port, refresh), done)
+
+    def _after_split(self) -> None:
+        """Wurde ein zweites Gerät von einem Eintrag abgetrennt, dessen Inventar neu holen (B-001)."""
+        while self.store.splits:
+            dev_id = self.store.splits.pop()
+            aid = self.online.get(dev_id)
+            if aid:
+                self.inv_seen.pop(aid, None)     # nächster Beacon holt das Inventar des ersten Geräts neu
+            dev = self.store.devices.get(dev_id)
+            if dev is not None:
+                self.status(f"Baugleiche Geräte erkannt: „{dev.name}“ ist jetzt getrennt von einem zweiten Gerät "
+                            "(gleiche Kennung ab Werk)")
 
     def _set_online(self, dev: devices.Device, aid: str) -> None:
         self.online[dev.id] = aid

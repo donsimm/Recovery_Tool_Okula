@@ -19,7 +19,7 @@ DAY = date(2026, 10, 31)
 def make_device(store, n, name, folder="", vendor="Dell Inc.", serial="ABC1234", cpu="Intel(R) Core(TM) i5-8250U CPU",
                 key="", smart=True):
     inv = {"dmi": {"sys_vendor": vendor, "product_name": "Latitude 7490", "product_serial": serial,
-                   "product_uuid": f"00000000-0000-0000-0000-00000000000{n}"},
+                   "product_uuid": f"4c4c4544-0035-3010-8052-b3c04f4a313{n}"},
            "cpu": {"model": cpu}, "memory": 16 * GB,
            "disks": [{"name": "nvme0n1", "model": "Samsung SSD 980", "size": 512_110_190_592,
                       "smart": {"passed": smart}},

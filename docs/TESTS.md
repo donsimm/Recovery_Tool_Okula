@@ -55,7 +55,7 @@ bestätigt.
 ### 1. Fixes von heute
 - [ ] **Debian-Direktinstallation** mit der echten Debian-13.7.0-Netinst-ISO (bei Fehler: neue, genauere Meldung schicken)
 - [ ] **Doppelter HP-Eintrag** nach dem Update: verschwindet beim Start, sonst Rechtsklick → „Zusammenführen mit …“
-      ⚠ 05.11.: zwei baugleiche Geräte erscheinen als **eines** → B-001 (UUID/Seriennummer prüfen)
+- [ ] **B-001:** nach dem Update beide CompactPlayer gleichzeitig mit Agent-Stick starten → zwei Einträge („CompactPlayer 1“ und „… (2)“), Statuszeile „Baugleiche Geräte erkannt“; danach je einzeln starten → jedes landet bei sich; Tool neu starten → bleibt getrennt
 
 ### 2. Netzwerk (Reiter „Netzwerk“ im Gerätefenster)
 - [ ] Wake-on-LAN: Gerät ausgeschaltet, „Einschalten“ → startet Windows

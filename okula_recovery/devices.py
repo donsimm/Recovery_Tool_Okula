@@ -26,6 +26,35 @@ STRONG = ("uuid:", "sn:")  # eindeutige Schlüssel; MAC/Disk sind nur Hinweise
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 
 
+# Kennungen, die ab Werk auf vielen Geräten gleich sind (B-001) – nie als Identität verwenden
+PLACEHOLDER_UUIDS = {"03000200-0400-0500-0006-000700080009", "12345678-1234-5678-90ab-cddeefaabbcc",
+                     "4c4c4544-0000-2010-8020-80c04f202020"}
+PLACEHOLDER_SERIALS = {"default string", "to be filled by o.e.m.", "to be filled by oem", "system serial number",
+                       "not specified", "not applicable", "none", "null", "n/a", "na", "oem", "o.e.m.", "invalid",
+                       "chassis serial number", "base board serial number", "serial", "serial number", "unknown",
+                       "123456789", "0123456789", "1234567890", "default", "empty", "type1productconfigid"}
+AMBIGUOUS_FILE = "mehrdeutig.ids"   # Kennungen, die an zwei Geräten gleichzeitig gesehen wurden (JSON-Liste)
+
+
+def placeholder_uuid(value: str) -> bool:
+    v = (value or "").strip().lower()
+    return not v or v in PLACEHOLDER_UUIDS or len(set(v.replace("-", ""))) <= 2
+
+
+def placeholder_serial(value: str) -> bool:
+    v = (value or "").strip().lower()
+    return len(v) < 4 or v in PLACEHOLDER_SERIALS or len(set(v)) <= 1 or bool(re.fullmatch(r"(0x)?0+", v))
+
+
+def real_mac(mac: str) -> bool:
+    """Feste Hardware-MAC: nicht leer, nicht 00…, nicht lokal vergeben (zufällige MACs, USB-Tethering, VMs)."""
+    m = (mac or "").lower()
+    try:
+        return bool(m) and m != "00:00:00:00:00:00" and not int(m.split(":")[0], 16) & 0x02
+    except ValueError:
+        return False
+
+
 class DeviceError(Exception):
     pass
 
@@ -89,16 +118,20 @@ class Device:
         return " ".join(p for p in (d.get("sys_vendor"), d.get("product_name")) if p)
 
 
-def identity(inv: dict, agent_id: str = "", mac: str = "") -> str:
-    """Eindeutiger Schlüssel: System-UUID, sonst Hersteller+Seriennummer, sonst MAC."""
+def identity(inv: dict, agent_id: str = "", mac: str = "", ambiguous: set[str] | frozenset = frozenset()) -> str:
+    """Eindeutiger Schlüssel: System-UUID, sonst Hersteller+Seriennummer, sonst MAC.
+    Platzhalter ab Werk und Kennungen, die schon an zwei Geräten gleichzeitig auftauchten, zählen nicht (B-001)."""
     d = (inv or {}).get("dmi") or {}
-    if d.get("product_uuid"):
-        return "uuid:" + d["product_uuid"].lower()
-    if d.get("product_serial"):
-        return f"sn:{d.get('sys_vendor', '').lower()}:{d['product_serial'].lower()}"
+    uuid = "uuid:" + (d.get("product_uuid") or "").lower()
+    if not placeholder_uuid(d.get("product_uuid") or "") and uuid not in ambiguous:
+        return uuid
+    sn = f"sn:{(d.get('sys_vendor') or '').lower()}:{(d.get('product_serial') or '').lower()}"
+    if not placeholder_serial(d.get("product_serial") or "") and sn not in ambiguous:
+        return sn
     macs = sorted(n["mac"].lower() for n in (inv or {}).get("network", []) if n.get("mac"))
-    if macs:
-        return "mac:" + macs[0]
+    real = [m for m in macs if real_mac(m)]
+    if real or macs:
+        return "mac:" + (real or macs)[0]
     if mac:
         return "mac:" + mac.lower()
     return "agent:" + agent_id.lower() if agent_id else ""
@@ -120,7 +153,25 @@ class DeviceStore:
         self.lock = threading.RLock()
         self.devices: dict[str, Device] = {}
         self.folders: list[str] = []
+        self.ambiguous: set[str] = self._load_ambiguous()
+        self.splits: list[str] = []        # Geräte, von denen ein zweites abgetrennt wurde (Inventar neu holen)
         self.load()
+
+    def _load_ambiguous(self) -> set[str]:
+        try:
+            return {str(x) for x in json.loads((self.base / AMBIGUOUS_FILE).read_text())}
+        except (OSError, ValueError, TypeError):
+            return set()
+
+    def _mark_ambiguous(self, ids: set[str]) -> None:
+        new = {i for i in ids if i} - self.ambiguous
+        if new:
+            self.ambiguous |= new
+            (self.base / AMBIGUOUS_FILE).write_text(json.dumps(sorted(self.ambiguous), indent=1))
+
+    def _unique_disks(self, inv: dict | None) -> set[str]:
+        return {d["serial"] for d in (inv or {}).get("disks", []) if d.get("serial")
+                and not placeholder_serial(d["serial"]) and "disk:" + d["serial"] not in self.ambiguous}
 
     # ---------- Laden/Speichern ----------
 
@@ -163,38 +214,67 @@ class DeviceStore:
 
     # ---------- Erkennen/Erfassen ----------
 
-    def match(self, agent_id: str = "", mac: str = "", inv: dict | None = None) -> Device | None:
+    def match(self, agent_id: str = "", mac: str = "", inv: dict | None = None,
+              online: dict[str, str] | None = None, conflicts: list | None = None) -> Device | None:
+        """Bekanntes Gerät zu einem Agent finden. online = {Geräte-ID: Agent-ID} der gerade verbundenen Geräte:
+        Ein Gerät, das gerade über einen anderen Agent verbunden ist, ist sicher ein anderes (B-001) – es landet
+        in conflicts, und die gemeinsamen Kennungen gelten fortan als mehrdeutig."""
         with self.lock:
-            key = identity(inv, agent_id, mac) if inv else ""
-            serials = {d.get("serial") for d in (inv or {}).get("disks", []) if d.get("serial")}
-            macs = {n["mac"].lower() for n in (inv or {}).get("network", []) if n.get("mac")}
-            if mac:
+            key = identity(inv, agent_id, mac, self.ambiguous) if inv else ""
+            serials = self._unique_disks(inv)
+            macs = {n["mac"].lower() for n in (inv or {}).get("network", []) if real_mac(n.get("mac", ""))}
+            if real_mac(mac):
                 macs.add(mac.lower())
             strong = key.startswith(STRONG)
+            online = online or {}
 
             def same(d: Device) -> bool:
                 # nicht, wenn beide eine eigene UUID/Seriennummer haben – z. B. derselbe USB-Netzwerkadapter
-                # oder eine Dummy-UUID an zwei Geräten
                 return not (strong and d.key.startswith(STRONG) and d.key != key)
 
-            for test in (lambda d: key and d.key == key,
+            def busy(d: Device) -> bool:
+                other = online.get(d.id)
+                return bool(other) and other != agent_id
+
+            for test in (lambda d: key and d.key == key and d.key not in self.ambiguous,
                          lambda d: agent_id and agent_id in d.agent_ids and same(d),
                          lambda d: macs & set(d.macs) and same(d),
                          lambda d: serials & set(d.disk_serials)):  # Board getauscht, Disk geblieben
                 for dev in self.devices.values():
-                    if test(dev):
-                        return dev
+                    if not test(dev):
+                        continue
+                    if busy(dev):
+                        if conflicts is not None and dev not in conflicts:
+                            conflicts.append(dev)
+                        shared = {"disk:" + s for s in serials & set(dev.disk_serials)}
+                        if key and key == dev.key:
+                            shared.add(key)
+                        self._mark_ambiguous(shared)
+                        continue
+                    return dev
             return None
 
-    def register(self, agent_id: str, ip: str, mac: str, inv: dict, fallback_name: str = "") -> tuple[Device, bool]:
-        """Gerät anlegen oder mit neuem Inventar aktualisieren. Gibt (Gerät, neu?) zurück."""
+    def register(self, agent_id: str, ip: str, mac: str, inv: dict, fallback_name: str = "",
+                 online: dict[str, str] | None = None) -> tuple[Device, bool]:
+        """Gerät anlegen oder mit neuem Inventar aktualisieren. Gibt (Gerät, neu?) zurück.
+        online wie bei match: verhindert, dass zwei gleichzeitig verbundene Geräte ein Eintrag werden."""
         with self.lock:
-            dev = self.match(agent_id, mac, inv)
+            conflicts: list[Device] = []
+            dev = self.match(agent_id, mac, inv, online, conflicts)
             new = dev is None
             if new:
-                dev = Device(id=secrets.token_hex(6), first_seen=now(), name=default_name(inv, fallback_name))
+                name = default_name(inv, fallback_name)
+                taken = {d.name for d in self.devices.values()}
+                if name in taken:                       # baugleiche Geräte: „CompactPlayer 1 (2)“
+                    n = 2
+                    while f"{name} ({n})" in taken:
+                        n += 1
+                    name = f"{name} ({n})"
+                dev = Device(id=secrets.token_hex(6), first_seen=now(), name=name)
                 self.devices[dev.id] = dev
-            dev.key = identity(inv, agent_id, mac) or dev.key
+                for other in conflicts:
+                    self._split(other, dev, agent_id, mac, inv)
+            dev.key = identity(inv, agent_id, mac, self.ambiguous) or dev.key
             changed = bool(inv) and _content(inv) != _content(dev.inventory)
             dev.inventory = inv or dev.inventory
             dev.last_seen, dev.last_ip = now(), ip
@@ -213,6 +293,28 @@ class DeviceStore:
                                  + (f" – {dev.os_name}" if dev.os_name else ""), save=False)
             self.save(dev)
             return dev, new
+
+    def _split(self, other: Device, new: Device, agent_id: str, mac: str, inv: dict) -> None:
+        """Früher fälschlich vereinten Eintrag bereinigen: Kennungen des neuen Geräts dort entfernen (B-001)."""
+        mine_macs = {n["mac"].lower() for n in (inv or {}).get("network", []) if n.get("mac")}
+        if mac:
+            mine_macs.add(mac.lower())
+        mine_disks = {d["serial"] for d in (inv or {}).get("disks", []) if d.get("serial")}
+        other.macs = [m for m in other.macs if m not in mine_macs]
+        other.agent_ids = [a for a in other.agent_ids if a != agent_id]
+        other.disk_serials = [s for s in other.disk_serials if s not in mine_disks]
+        if other.key in self.ambiguous or other.key in (identity(inv, agent_id, mac),
+                                                         identity(inv, agent_id, mac, self.ambiguous)):
+            other.key = identity(other.inventory, "", "", self.ambiguous)
+            if other.key == identity(inv, agent_id, mac, self.ambiguous) or not other.key:   # Inventar war vom neuen
+                real = sorted(m for m in other.macs if real_mac(m))
+                other.key = "mac:" + real[0] if real else ""
+        self._mark_ambiguous({"disk:" + s for s in mine_disks & set(other.disk_serials)})
+        self.add_history(other, "getrennt", f"„{new.name}“ ist ein eigenes Gerät (gleiche Kennung ab Werk) – "
+                                           "Einträge getrennt", save=False)
+        self.save(other)
+        self.splits.append(other.id)
+        self.add_history(new, "getrennt", f"Von „{other.name}“ getrennt (gleiche Kennung ab Werk)", save=False)
 
     def add_history(self, dev: Device, kind: str, text: str, ok: bool | None = None, save: bool = True) -> None:
         with self.lock:
@@ -277,10 +379,20 @@ class DeviceStore:
     def duplicates(self) -> list[tuple[Device, Device]]:
         """Einträge, die sicher dasselbe Gerät sind: gleiche Board-UUID/Seriennummer oder gleiche Agent-ID
         (= Board-UUID). Paare (behalten, auflösen): einsortiert vor „Neu“, sonst der zuerst erfasste."""
+        def usable(key: str) -> bool:
+            if key in self.ambiguous:
+                return False
+            if key.startswith("uuid:"):
+                return not placeholder_uuid(key[5:])
+            if key.startswith("sn:"):
+                return not placeholder_serial(key.split(":", 2)[2] if key.count(":") >= 2 else "")
+            return True
+
         def same(a: Device, b: Device) -> bool:
             if a.key.startswith(STRONG) and b.key.startswith(STRONG):
-                return a.key == b.key
-            return any(UUID_RE.match(x) for x in set(a.agent_ids) & set(b.agent_ids))
+                return a.key == b.key and usable(a.key)
+            return any(UUID_RE.match(x) and not placeholder_uuid(x) and "uuid:" + x.lower() not in self.ambiguous
+                       for x in set(a.agent_ids) & set(b.agent_ids))
 
         with self.lock:
             devs = sorted(self.devices.values(), key=lambda d: (not d.folder, d.first_seen or "~", d.id))
