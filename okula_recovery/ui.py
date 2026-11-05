@@ -3224,9 +3224,12 @@ def beacon_inventory(info: discovery.AgentInfo) -> dict:
             "disks": [{"name": d.name, "size": d.size, "model": d.model, "serial": d.serial} for d in info.disks]}
 
 
+APP_ID = "ch.okula.RecoveryTool"     # = Name der .desktop-Datei (packaging/), WM_CLASS unter X11
+
+
 class App(Gtk.Application):
     def __init__(self):
-        super().__init__(application_id="ch.okula.RecoveryTool")
+        super().__init__(application_id=APP_ID)
 
     def do_activate(self):
         Gtk.IconTheme.get_default().append_search_path(str(ASSETS / "icons"))
@@ -3240,4 +3243,9 @@ class App(Gtk.Application):
 
 
 def main() -> int:
+    # Name für Alt+Tab, Dock und Fensterverwaltung: WM_CLASS (X11) = APP_ID = Name der .desktop-Datei,
+    # sonst steht dort „__main__.py“ mit einem Standard-Symbol
+    GLib.set_prgname(APP_ID)
+    GLib.set_application_name("Okula Recovery Tool")
+    Gdk.set_program_class(APP_ID)          # WM_CLASS-Klasse (sonst aus dem Startbefehl, z. B. „__main__.py“)
     return App().run(None)

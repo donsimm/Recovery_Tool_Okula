@@ -74,12 +74,17 @@ echo "==> Startmenü-Eintrag"
 install -D -m 0644 "$APP_DIR/okula_recovery/assets/okula-emblem.svg" \
     /usr/share/icons/hicolor/scalable/apps/okula-recovery.svg
 gtk-update-icon-cache -q /usr/share/icons/hicolor 2>/dev/null || true
-install -m 0644 "$APP_DIR/packaging/okula-recovery.desktop" /usr/share/applications/okula-recovery.desktop
-if [ "$AUTOSTART" -eq 1 ]; then
-    HOME_DIR=$(getent passwd "$TARGET_USER" | cut -d: -f6)
+# Dateiname = Programm-ID des Tools, damit Alt+Tab und Dock Name und Logo zeigen (früher okula-recovery.desktop)
+DESKTOP=ch.okula.RecoveryTool.desktop
+rm -f /usr/share/applications/okula-recovery.desktop
+install -m 0644 "$APP_DIR/packaging/$DESKTOP" "/usr/share/applications/$DESKTOP"
+update-desktop-database -q /usr/share/applications 2>/dev/null || true
+HOME_DIR=$(getent passwd "$TARGET_USER" | cut -d: -f6)
+if [ "$AUTOSTART" -eq 1 ] || [ -f "$HOME_DIR/.config/autostart/okula-recovery.desktop" ]; then
+    rm -f "$HOME_DIR/.config/autostart/okula-recovery.desktop"
     install -d -o "$TARGET_USER" -g "$TARGET_USER" "$HOME_DIR/.config/autostart"
     install -m 0644 -o "$TARGET_USER" -g "$TARGET_USER" \
-        "$APP_DIR/packaging/okula-recovery.desktop" "$HOME_DIR/.config/autostart/okula-recovery.desktop"
+        "$APP_DIR/packaging/$DESKTOP" "$HOME_DIR/.config/autostart/$DESKTOP"
 fi
 
 mkdir -p /mnt/okula-nas

@@ -7,3 +7,5 @@ Path=/opt/okula-recovery
 Icon=okula-recovery
 Terminal=false
 Categories=System;
+# Dateiname = Programm-ID (Wayland), StartupWMClass = WM_CLASS (X11): so zeigen Alt+Tab und Dock Name und Logo
+StartupWMClass=ch.okula.RecoveryTool

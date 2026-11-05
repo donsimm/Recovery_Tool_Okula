@@ -117,6 +117,10 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 05.11.2026
+- **Ä-035 Name und Logo in Alt+Tab und Dock** (Von: Dominik): statt „__main__.py“ mit Standard-Symbol steht „Okula
+  Recovery Tool“ mit dem Okula-Logo. Programm-ID `ch.okula.RecoveryTool` überall gleich: GApplication-ID (Wayland),
+  WM_CLASS Name und Klasse (X11, `GLib.set_prgname`, `Gdk.set_program_class`), Startmenü-Datei neu
+  `ch.okula.RecoveryTool.desktop` mit `StartupWMClass` (install.sh ersetzt die alte `okula-recovery.desktop`, auch im Autostart).
 - **Ä-034 Netzwerkstart sichtbar** (Von: Dominik/Claude): Gerätefenster → Netzwerk → „Netzwerkstart-Protokoll“ (letzte
   6 h, alle 5 s neu): Anfrage BIOS/UEFI, Antwort bzw. „nicht freigeschaltet“, shim/grub/Startart/Kernel/initrd bzw.
   pxelinux, Live-System und Agent per HTTP, Fehler rot mit Grund; Zusammenfassung oben (auch „Dienst läuft nicht“,

@@ -111,6 +111,7 @@ bestätigt.
 - (alle geprüft)
 
 ### 7. Allgemein
+- [ ] Ä-035: nach `sudo ./install.sh` und Neustart des Tools: Alt+Tab und Dock zeigen „Okula Recovery Tool“ mit Okula-Logo; Startmenü-Eintrag nur einmal vorhanden; Autostart funktioniert weiterhin
 - [ ] Ä-032: in Geräte, Images, Dateien, Backups und im Gerätefenster (Aufträge, Disks, Images, Backups, Netzwerk, Verlauf) je eine Spalte schmaler/breiter ziehen (auch „Status“ und „Auto“) → Tool neu starten → Breiten bleiben; nicht verstellte Spalten passen sich dem Inhalt an
 - [ ] I-030: Menü → Einstellungen … → Bandbreite **100 Mbit/s** → Disk-Image eines echten Geräts: Durchsatz in der Serverlast (LAN) und im Switch ≈ 100 Mbit/s (± 10 %), „begrenzt: 100 Mbit/s“ in der LAN-Kurve, Log-Zeile zu Beginn; während des Auftrags auf 300 Mbit/s ändern → Durchsatz steigt sofort, Restzeit rechnet neu
 - [ ] I-030: zwei Aufträge gleichzeitig (z. B. Disk-Image + Zurückspielen) → zusammen ≈ Grenze, je etwa die Hälfte; Zeitfenster so setzen, dass es gerade endet → danach unbegrenzt; Reiter Dateien (Kopieren aufs NAS) bleibt schnell
