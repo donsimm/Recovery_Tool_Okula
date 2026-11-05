@@ -142,6 +142,42 @@ class OldEncodingTest(unittest.TestCase):
             self.assertEqual(calls, [["modprobe", "-q", "hp_bioscfg"]])
 
 
+class GarbledDriverTest(unittest.TestCase):
+    """B-006: hp-bioscfg auf dem HP EliteBook 850 G1 (BIOS L71 01.11/01.49) liefert kaputte Namen und leere Werte."""
+
+    def data(self, version, ati):
+        return {"read": "2026-11-05T16:08:00", "bios": {"vendor": "Hewlett-Packard", "version": version},
+                "platform": {"uefi": False, "tpm": "1.2"}, "interfaces": ["hp-bioscfg"],
+                "auth": {"SPM": False, "\r": False},
+                "attributes": [{"name": "\x02\x03", "display": "\x02\x03", "type": "string", "value": ati,
+                                "max_length": "0"},
+                               {"name": "\x08\x08", "display": "\x08\x08", "type": "enumeration", "value": ""},
+                               {"name": "\r", "display": "\r", "type": "string", "value": "QDS-BRCM1058"},
+                               {"name": "Sure_Start", "display": "Sure_Start", "type": "enumeration", "value": ""},
+                               {"name": "í", "display": "í", "type": "string", "value": ""},
+                               {"name": "Î", "display": "Î", "type": "enumeration", "value": ""},
+                               {"name": "þ", "display": "þ", "type": "enumeration", "value": ""}]}
+
+    def test_hidden_and_explained(self):
+        bad, good = self.data("L71 Ver. 01.49", "ATI 08/22/14"), self.data("L71 Ver. 01.11", "ATI 12/30/13")
+        basics = dict(biosinfo.basics(bad))
+        self.assertEqual(basics["BIOS-Passwort"], "unbekannt")
+        self.assertEqual(basics["Secure Platform Management (HP)"], "nicht eingerichtet")
+        self.assertEqual(basics["Secure Boot"], "– (nur im UEFI-Modus)")
+        self.assertIn("unlesbare Daten (6 von 7", basics["Schnittstelle"])
+        rows = biosinfo.compare(bad, good)
+        names = [r["name"] for r in rows]
+        self.assertNotIn("\r", names)
+        self.assertIn("Sure_Start", names)
+        self.assertEqual(next(r for r in rows if r["name"] == "Sure_Start")["here"], "–")
+        self.assertEqual([r["name"] for r in biosinfo.compare(bad, good, only_diff=True)], ["BIOS"])
+        self.assertIn("1 Einstellung", biosinfo.summary(bad))
+        self.assertEqual(biosinfo.possible_text({"type": "string", "max_length": "0"}), "Text")
+        self.assertEqual(biosinfo.possible_text({"type": "enumeration"}), "")
+        for ok in ("Boot Mode", "PXE Internal IPV4 NIC boot", "Virtualization Technology (VTx)", "Sure_Start"):
+            self.assertTrue(biosinfo.plausible(ok), ok)
+
+
 class CompareTest(unittest.TestCase):
     def data(self, ipv4="Enable", mode="UEFI Native (Without CSM)", uefi=True):
         return {"read": "2026-11-05T14:00:00", "bios": {"vendor": "HP", "version": "L71 01.44"},

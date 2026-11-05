@@ -528,6 +528,9 @@ Netzwerkstart mit dem aktuellen Tool).
     TPM, BIOS-Passwort gesetzt ja/nein, UEFI-Startreihenfolge.
 •  <b>Einstellungen</b> (z. B. „PXE Internal IPV4 NIC boot“, „Fast Boot“, „Wake On LAN“) gibt es nur bei
     Modellen, die sie an Linux melden: HP, Dell und Lenovo Business-Geräte. Sonst steht „nur Grundangaben“.
+•  Ältere Modelle (z. B. HP EliteBook 850 G1) melden die Schnittstelle zwar, liefern aber unlesbare
+    Einträge. Diese blendet das Tool aus; unter <i>Schnittstelle</i> steht dann „liefert unlesbare Daten“.
+    Die Grundangaben (z. B. BIOS-Version) lassen sich trotzdem vergleichen.
 
 <b>Vergleichen</b> – zum Beispiel ein Gerät, das funktioniert, mit einem, das nicht funktioniert
 1.  Bei beiden Geräten einmal <i>BIOS lesen</i>.

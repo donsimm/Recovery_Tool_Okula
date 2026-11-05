@@ -29,7 +29,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
-| B-004 | 🔴 | offen | Dominik | **HP EliteBook 850 G1 in „UEFI Native (Without CSM)“: Agent-Stick wird nicht angezeigt, Netzwerkstart (UEFI IPv4) scheitert – im Tool kein Hinweis.** Stick: MBR + FAT32 (Typ 0x0c) mit Debian-shim; PXE: Proxy-DHCP mit `pxe-prompt`/`pxe-service` BC_EFI/X86-64_EFI. Befund 05.11. (BIOS-Fotos): Secure Boot aus, Fast Boot aus, USB device boot an; **„PXE Internal IPV4 NIC boot“ aus** (nur „PXE Internal NIC boot“ = Legacy an) → im UEFI-Modus gibt es keinen Netzwerkstart; F9 zeigt nur „Boot From EFI File“ – auch der Stick fehlt. Nächster Test: IPV4 NIC boot an; Stick über „Boot From EFI File“ → EFI/boot/bootx64.efi starten (liest die Firmware die FAT-Partition?) | 05.11. |
+| B-004 | 🔴 | offen | Dominik | **HP EliteBook 850 G1 in „UEFI Native (Without CSM)“: Agent-Stick wird nicht angezeigt, Netzwerkstart (UEFI IPv4) scheitert – im Tool kein Hinweis.** Stick: MBR + FAT32 (Typ 0x0c) mit Debian-shim; PXE: Proxy-DHCP mit `pxe-prompt`/`pxe-service` BC_EFI/X86-64_EFI. Befund 05.11. (BIOS-Fotos): Secure Boot aus, Fast Boot aus, USB device boot an; **„PXE Internal IPV4 NIC boot“ aus** (nur „PXE Internal NIC boot“ = Legacy an) → im UEFI-Modus gibt es keinen Netzwerkstart; F9 zeigt nur „Boot From EFI File“ – auch der Stick fehlt. Nächster Test: IPV4 NIC boot an; Stick über „Boot From EFI File“ → EFI/boot/bootx64.efi starten (liest die Firmware die FAT-Partition?). BIOS-Vergleich 05.11.: einziger lesbarer Unterschied die **BIOS-Version** – EliteBook 2 (geht nicht) L71 **01.49** (2020), EliteBook 1 (geht) L71 **01.11** (2014); Einstellungen über Linux nicht lesbar (B-006) | 05.11. |
 
 ## 🔧 Änderungen / Verbesserungen
 
@@ -116,6 +116,11 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 05.11.2026
+- **B-006 BIOS-Reiter: unlesbare Einträge beim HP EliteBook 850 G1** (Von: Dominik): `hp-bioscfg` liefert auf dem
+  BIOS L71 nur 8 Einträge mit kaputten Namen (`\r`, `Î`, `þ`, Steuerzeichen), leeren Werten und „max. 0 Zeichen“ – der
+  Treiber versteht dieses alte BIOS nicht. Tool: unlesbare Einträge ausgeblendet, Hinweis unter „Schnittstelle“,
+  „SPM“ als Secure Platform Management statt Passwort, Secure Boot im BIOS-Modus „– (nur im UEFI-Modus)“, leere
+  Werte „–“, kein „max. 0 Zeichen“/„enumeration“. Kein neuer Stick nötig. Tests `GarbledDriverTest`.
 - **I-023 Hardware-Test** (Von: Claude/Dominik): Reiter „Hardware-Test“ im Gerätefenster, nur lesend. Schnelltest
   (≈ 5 min: Akku, Temperaturen, SMART kurz, RAM-Teil, 1 min CPU-Last, Netzwerk-Durchsatz) und Gründlich (≈ 1–3 h:
   zusätzlich SMART lang, Oberfläche lesen, 15 min CPU-Last, grösserer RAM-Test). Ampel je Bereich mit Einzelheiten,
