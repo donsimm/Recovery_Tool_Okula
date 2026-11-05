@@ -15,7 +15,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
-| 🐞 Bugs | 0 | 0 | 0 |
+| 🐞 Bugs | 1 | 0 | 0 |
 | 🔧 Änderungen | 7 | 0 | 0 |
 | 💡 Ideen | 21 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
@@ -29,7 +29,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
-| – | | | | keine offenen Bugs | |
+| B-001 | 🔴 | offen | Dominik | **Baugleiche Geräte werden zu einem zusammengeführt:** zwei Geräte gleichzeitig mit Agent-Stick → nur ein Eintrag. Vermutete Ursache: gleiche (Dummy-)Board-UUID bzw. Seriennummer ab Werk (z. B. `03000200-0400-0500-0006-000700080009`, „Default string“, „To be filled by O.E.M.“). Die UUID ist zugleich Agent-ID (`discovery.machine_id`) und Identität (`devices.identity`) → Beacons überschreiben sich, `match`/`merge_duplicates` vereinen. Lösung (Vorschlag, nur im Tool): bekannte Platzhalter nie als Identität; gleiche UUID gleichzeitig von zwei MACs → als nicht eindeutig merken, Gerät dann über MAC/Disk-Seriennummer; Agents im Tool je Agent-ID **und** MAC führen; zusammengeführten Eintrag trennen. Prüfung offen: UUID/Seriennummer der zwei Geräte | 05.11. |
 
 ## 🔧 Änderungen / Verbesserungen
 

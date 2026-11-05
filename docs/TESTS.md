@@ -55,6 +55,7 @@ bestätigt.
 ### 1. Fixes von heute
 - [ ] **Debian-Direktinstallation** mit der echten Debian-13.7.0-Netinst-ISO (bei Fehler: neue, genauere Meldung schicken)
 - [ ] **Doppelter HP-Eintrag** nach dem Update: verschwindet beim Start, sonst Rechtsklick → „Zusammenführen mit …“
+      ⚠ 05.11.: zwei baugleiche Geräte erscheinen als **eines** → B-001 (UUID/Seriennummer prüfen)
 
 ### 2. Netzwerk (Reiter „Netzwerk“ im Gerätefenster)
 - [ ] Wake-on-LAN: Gerät ausgeschaltet, „Einschalten“ → startet Windows
