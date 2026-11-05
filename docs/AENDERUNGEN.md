@@ -15,9 +15,9 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
-| 🐞 Bugs | 0 | 0 | 0 |
-| 🔧 Änderungen | 7 | 0 | 0 |
-| 💡 Ideen | 21 | 0 | 0 |
+| 🐞 Bugs | 1 | 0 | 0 |
+| 🔧 Änderungen | 8 | 0 | 0 |
+| 💡 Ideen | 22 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
@@ -29,7 +29,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
-| – | | | | keine offenen Bugs | |
+| B-004 | 🔴 | offen | Dominik | **HP EliteBook 850 G1 in „UEFI Native (Without CSM)“: Agent-Stick wird nicht angezeigt, Netzwerkstart (UEFI IPv4) scheitert – im Tool kein Hinweis.** Stick: MBR + FAT32 (Typ 0x0c) mit Debian-shim; PXE: Proxy-DHCP mit `pxe-prompt`/`pxe-service` BC_EFI/X86-64_EFI. Offen: Secure Boot an/aus, Meldung am Gerät, Log `journalctl -u okula-pxe -u okula-pxe-http` während eines Versuchs | 05.11. |
 
 ## 🔧 Änderungen / Verbesserungen
 
@@ -42,6 +42,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 | Ä-007 | 🔴 | offen | Claude | **Bestätigung vor dem Löschen:** Wird der Schalter eingeschaltet, während das Gerät verbunden ist, startet die Automatisierung ohne Rückfrage nach 30 s und löscht die Disk (`ui.save_automation` → `consider`). Nötig: rote Zusammenfassung „Disk Samsung 256 GB von HP-PC-07 wird gelöscht, Master ‚Win11 Büro‘, neuer Name …, Backup: nein“ mit Knopf „Löschen und neu aufsetzen“ | 31.10. (Laien-Test) |
 | Ä-010 | 🟡 | offen | Claude | **Vorabprüfung mit Ampel statt Fehler mitten im Lauf:** Image passt auf die Disk, UEFI/BIOS-Modus passt zum Master, BitLocker auf der Zieldisk (dann ist kein Datei-Backup möglich), Agent-Stick aktuell, Windows-Edition des Masters passt zum Key (Pro/Home). Anzeige: „✔ Bereit“ bzw. „⚠ Achtung: …“ | 31.10. (Laien-Test) |
 | Ä-012 | 🟡 | offen | Claude | **Einfache Sprache im Reiter Automatisierung:** „Zieldisk“ → „Festplatte, die gelöscht wird“; Sysprep, Master und Content-Projekte mit einem „?“ pro Abschnitt erklären. Gerätenamen wie „DESKTOP-8F3K2LQ“ markieren und zum Umbenennen auffordern; optional Namensschema pro Vorlage (z. B. `KUNDE-001` fortlaufend) | 31.10. (Laien-Test) |
+| Ä-034 | 🟡 | offen | Dominik/Claude | **Netzwerkstart sichtbar machen:** Was der PXE-Dienst je Gerät sieht, im Reiter Netzwerk anzeigen (Anfrage mit Firmware-Art BIOS/UEFI, Antwort ja/nein und warum, Bootdatei geladen, Kernel/initrd per HTTP). dnsmasq `log-facility` in eine für das Tool lesbare Datei, HTTP-Dienst protokolliert mit. Heute: „kein Fehler im Tool“ | 05.11. |
 
 ## 💡 Ideen
 
@@ -58,6 +59,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 | I-012 | 🟡 | offen | Claude | **BitLocker entsperren:** Den Wiederherstellungsschlüssel pro Gerät hinterlegen (nur root-lesbar) und im Agent mit `dislocker` öffnen. Dann sichert partclone nur die belegten Blöcke statt einer `dd`-Rohkopie (Images viel kleiner), und auch ein Datei-Backup wird möglich |
 | I-014 | ⚪ | offen | Claude | **Treiber für Master-Images:** Treiberordner pro Modell auf dem NAS; nach dem Restore nach `Windows\Drivers\Okula` kopieren und in `unattend.xml` per `DriverPaths` (offlineServicing) einbinden. Damit passt ein Master auf verschiedene Hardware |
 | I-015 | ⚪ | offen | Claude | **Firmware/BIOS über den Agent:** `fwupd`/LVFS, wo der Hersteller es unterstützt (Dell, Lenovo, teilweise HP). Die BIOS-Version steht schon im Inventar; Hinweis anzeigen, wenn sie veraltet ist |
+| I-032 | 🟡 | offen | Dominik | **BIOS-Einstellungen im Tool lesen, sichern, vergleichen und setzen:** über die Linux-Schnittstelle `firmware-attributes` im Agent (Dell `dell-wmi-sysman`, Lenovo `think-lmi`, HP `hp-bioscfg`; nur Business-Modelle, je Modell testen). Werte je Gerät aufs NAS sichern, mit einer Vorlage vergleichen (Boot-Modus UEFI, Secure Boot, Wake-on-LAN, PXE), Änderungen gelten nach dem Neustart. BIOS-Admin-Passwort je Aktion eingeben, nie speichern. Zusammen mit I-015 (BIOS-Update) | 05.11. |
 | I-016 | 🔴 | offen | Claude | **Schutz vor Ransomware und Fehllöschung:** Das Tool-Konto hat heute volles Schreib- und Löschrecht auf dem NAS; wer den Server übernimmt, kann alle Backups löschen. Lösung: unveränderliche NAS-Snapshots (Synology Snapshot Replication mit Immutable), auf die das Tool-Konto keinen Zugriff hat, und ein Papierkorb im Tool (heute: „keinen Papierkorb – gelöschte Daten sind weg“). Das NCSC/BACS empfiehlt Offline- oder WORM-Medien und mindestens zwei Generationen |
 | I-017 | 🔴 | offen | Claude/Dominik | **Extras → Rescue … (Daten retten und Windows reparieren, zusammengeführt mit I-028):** eigenes Fenster wie Netzwerkstart/Multicast. 1. Gerät wählen (nur mit Agent verbunden), 2. Disk/Partition wählen (mit SMART-Zustand), 3. Werkzeug: **Daten retten** – Defekte Disk sichern (`ddrescue` mit Fehlerkarte, mehrere Durchgänge, Image aufs NAS), Gelöschte Dateien retten (PhotoRec, nicht interaktiv), Partitionen wiederherstellen (TestDisk: Suchen/Anzeigen im Tool, schwierige Fälle interaktiv am Bildschirm des Geräts); **Windows reparieren** – Start reparieren (UEFI-Booteinträge, BCD), NTFS reparieren (`ntfsfix`), lokales Passwort zurücksetzen (`chntpw`, im Verlauf protokolliert). Regeln: auf eine defekte Disk nie schreiben; Ergebnisse nach `Rescue/<Gerät>/<Datum>` auf dem NAS; schreibende Reparaturen nur mit Bestätigung und Empfehlung „vorher Disk-Image“; BitLocker: nur „Defekte Disk sichern“. Fortschritt, Log, Verlauf. Neuer Agent-Stick (gddrescue, testdisk, chntpw). Vorführbar am DEMO-PC (ohne NAS, Demo-Speicher). Heute bricht partclone bei Lesefehlern ab |
 | I-018 | 🟡 | offen | Claude | **Einzelne Dateien aus einem Disk-Image holen:** Disk-Image auf dem Server einhängen (partclone → Loop, ntfs-3g read-only), darin suchen und einzelne Dateien oder Ordner aufs NAS oder ans Gerät senden. Heute gibt es Einzeldateien nur aus Datei-Backups (Rescuezilla: Image Explorer, Macrium: Durchsuchen) |
