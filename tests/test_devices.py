@@ -280,6 +280,9 @@ class NetworkCardsTest(unittest.TestCase):
                              macs=["6c:c2:17:7d:33:db", "9a:ec:83:c0:b9:f9", "3c:6a:a7:c6:9a:76",
                                    "26:4c:e9:6c:c9:8e", "00:e0:6f:2c:73:2b"])
         self.assertEqual(devices.netboot_macs([dev]), ["00:e0:6f:2c:73:2b", "6c:c2:17:7d:33:db"])
+        vm = devices.Device(id="vm", netboot=True, macs=["52:54:00:12:34:56"],              # QEMU: lokal vergeben
+                            inventory={"network": [{"name": "ens3", "mac": "52:54:00:12:34:56"}]})
+        self.assertEqual(devices.netboot_macs([vm]), ["52:54:00:12:34:56"])
 
     def test_bios_mode(self):
         dev = devices.Device(id="x")

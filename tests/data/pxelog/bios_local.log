@@ -1,0 +1,31 @@
+Nov  5 11:55:58 dnsmasq[1120]: started, version 2.91 DNS disabled
+Nov  5 11:55:58 dnsmasq-dhcp[1120]: DHCP, proxy on subnet 10.77.0.0
+Nov  5 11:55:58 dnsmasq-dhcp[1120]: DHCP, sockets bound exclusively to interface e0
+Nov  5 11:55:58 dnsmasq-tftp[1120]: TFTP root is /var/lib/okula-recovery/pxe/tftp  
+Nov  5 11:55:58 dnsmasq-dhcp[1120]: read /var/lib/okula-recovery/pxe/allowed
+Nov  5 11:56:03 dnsmasq-dhcp[1120]: 1039888687 available DHCP subnet: 10.77.0.0/255.255.255.0
+Nov  5 11:56:03 dnsmasq-dhcp[1120]: 1039888687 vendor class: PXEClient:Arch:00000:UNDI:002001
+Nov  5 11:56:03 dnsmasq-dhcp[1120]: 1039888687 user class: iPXE
+Nov  5 11:56:03 dnsmasq-dhcp[1120]: 1039888687 PXE(e0) 52:54:00:12:34:57 proxy
+Nov  5 11:56:03 dnsmasq-dhcp[1120]: 1039888687 tags: okula, known, e0
+Nov  5 11:56:03 dnsmasq-dhcp[1120]: 1039888687 broadcast response
+Nov  5 11:56:04 dnsmasq-dhcp[1120]: 1039888687 available DHCP subnet: 10.77.0.0/255.255.255.0
+Nov  5 11:56:04 dnsmasq-dhcp[1120]: 1039888687 vendor class: PXEClient:Arch:00000:UNDI:002001
+Nov  5 11:56:04 dnsmasq-dhcp[1120]: 1039888687 user class: iPXE
+Nov  5 11:56:04 dnsmasq-dhcp[1120]: 1039888687 PXE(e0) 52:54:00:12:34:57 proxy
+Nov  5 11:56:04 dnsmasq-dhcp[1120]: 1039888687 tags: okula, known, e0
+Nov  5 11:56:04 dnsmasq-dhcp[1120]: 1039888687 broadcast response
+Nov  5 11:56:06 dnsmasq-dhcp[1120]: 1039888687 available DHCP subnet: 10.77.0.0/255.255.255.0
+Nov  5 11:56:06 dnsmasq-dhcp[1120]: 1039888687 vendor class: PXEClient:Arch:00000:UNDI:002001
+Nov  5 11:56:06 dnsmasq-dhcp[1120]: 1039888687 user class: iPXE
+Nov  5 11:56:08 dnsmasq-dhcp[1120]: 0 available DHCP subnet: 10.77.0.0/255.255.255.0
+Nov  5 11:56:08 dnsmasq-dhcp[1120]: 0 vendor class: PXEClient
+Nov  5 11:56:08 dnsmasq-dhcp[1120]: 0 user class: iPXE
+Nov  5 11:56:08 dnsmasq-dhcp[1120]: 0 PXE(e0) 10.77.0.59 52:54:00:12:34:57 pxelinux.0
+Nov  5 11:56:08 dnsmasq-dhcp[1120]: 0 tags: okula, known, e0
+Nov  5 11:56:08 dnsmasq-dhcp[1120]: 0 bootfile name: pxelinux.0
+Nov  5 11:56:08 dnsmasq-dhcp[1120]: 0 next server: 10.77.0.1
+Nov  5 11:56:08 dnsmasq-dhcp[1120]: 0 broadcast response
+Nov  5 11:56:08 dnsmasq-tftp[1120]: sent /var/lib/okula-recovery/pxe/tftp/pxelinux.0 to 10.77.0.59
+Nov  5 11:56:08 dnsmasq-tftp[1120]: sent /var/lib/okula-recovery/pxe/tftp/ldlinux.c32 to 10.77.0.59
+Nov  5 11:56:08 dnsmasq-tftp[1120]: sent /var/lib/okula-recovery/pxe/tftp/pxelinux.cfg/01-52-54-00-12-34-57 to 10.77.0.59

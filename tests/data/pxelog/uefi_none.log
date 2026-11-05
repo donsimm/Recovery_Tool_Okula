@@ -1,0 +1,21 @@
+Nov  5 11:57:29 dnsmasq[1188]: started, version 2.91 DNS disabled
+Nov  5 11:57:29 dnsmasq-dhcp[1188]: DHCP, proxy on subnet 10.77.0.0
+Nov  5 11:57:29 dnsmasq-dhcp[1188]: DHCP, sockets bound exclusively to interface e0
+Nov  5 11:57:29 dnsmasq-tftp[1188]: TFTP root is /var/lib/okula-recovery/pxe/tftp  
+Nov  5 11:57:29 dnsmasq-dhcp[1188]: read /var/lib/okula-recovery/pxe/allowed
+Nov  5 11:57:33 dnsmasq-dhcp[1188]: 3421508493 available DHCP subnet: 10.77.0.0/255.255.255.0
+Nov  5 11:57:33 dnsmasq-dhcp[1188]: 3421508493 vendor class: PXEClient:Arch:00007:UNDI:003001
+Nov  5 11:57:33 dnsmasq-dhcp[1188]: 3421508493 PXE(e0) 52:54:00:12:34:58 proxy-ignored
+Nov  5 11:57:33 dnsmasq-dhcp[1188]: 3421508493 tags: e0
+Nov  5 11:57:37 dnsmasq-dhcp[1188]: 3421508493 available DHCP subnet: 10.77.0.0/255.255.255.0
+Nov  5 11:57:37 dnsmasq-dhcp[1188]: 3421508493 vendor class: PXEClient:Arch:00007:UNDI:003001
+Nov  5 11:57:37 dnsmasq-dhcp[1188]: 3421508493 PXE(e0) 52:54:00:12:34:58 proxy-ignored
+Nov  5 11:57:37 dnsmasq-dhcp[1188]: 3421508493 tags: e0
+Nov  5 11:57:45 dnsmasq-dhcp[1188]: 3421508493 available DHCP subnet: 10.77.0.0/255.255.255.0
+Nov  5 11:57:45 dnsmasq-dhcp[1188]: 3421508493 vendor class: PXEClient:Arch:00007:UNDI:003001
+Nov  5 11:57:45 dnsmasq-dhcp[1188]: 3421508493 PXE(e0) 52:54:00:12:34:58 proxy-ignored
+Nov  5 11:57:45 dnsmasq-dhcp[1188]: 3421508493 tags: e0
+Nov  5 11:58:01 dnsmasq-dhcp[1188]: 3421508493 available DHCP subnet: 10.77.0.0/255.255.255.0
+Nov  5 11:58:01 dnsmasq-dhcp[1188]: 3421508493 vendor class: PXEClient:Arch:00007:UNDI:003001
+Nov  5 11:58:01 dnsmasq-dhcp[1188]: 3421508493 PXE(e0) 52:54:00:12:34:58 proxy-ignored
+Nov  5 11:58:01 dnsmasq-dhcp[1188]: 3421508493 tags: e0

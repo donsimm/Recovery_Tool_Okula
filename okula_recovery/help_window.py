@@ -276,6 +276,10 @@ Läuft auf dem Server eine Firewall: Ports im Kapitel <i>Erste Schritte</i> frei
 •  <i>Einschalten und Agent starten</i>: beides zusammen. Das Gerät erscheint danach im Tool,
     ohne dass jemand vor Ort sein muss.
 •  Nach Windows-Updates kann die Startreihenfolge zurückgesetzt sein. <i>Prüfen</i> zeigt es an.
+•  <i>Netzwerkstart-Protokoll</i> (unten im Reiter <i>Netzwerk</i>): was der Server in den letzten 6 Stunden
+    von diesem Gerät gesehen hat – Anfrage (BIOS oder UEFI), Antwort, Bootlader, Kernel, Live-System,
+    Agent. Grün = geklappt, rot = Fehler mit Grund. Aktualisiert sich alle 5 Sekunden, solange der
+    Reiter offen ist.
 •  <b>Gerät im BIOS-Modus (Legacy)</b>: Das Tool kann die Startreihenfolge nicht ändern. Im BIOS-Setup
     (Taste je Hersteller, z. B. HP: F10) „Netzwerk“ bzw. „PXE“ an die erste Stelle setzen, danach den
     Schalter <i>Netzwerkstart zuerst</i> einschalten – das Tool vermerkt es nur. <i>Beim nächsten Start den
@@ -748,6 +752,14 @@ Damit kommen nur die NAS-Einstellungen mit (ohne Passwort)."""),
 •  Bandbreite in <i>Menü → Einstellungen …</i> prüfen: Ist <i>Bandbreite begrenzen</i> angehakt, teilen sich
     alle laufenden Aufträge diesen Wert. Zeigt die LAN-Kurve „begrenzt: …“, gilt die Grenze gerade.
 •  Mehrere Aufträge gleichzeitig teilen sich auch ohne Grenze das Netzwerk und das NAS.
+
+<b>Netzwerkstart klappt nicht</b>
+•  Gerätefenster → <i>Netzwerk</i> → <i>Netzwerkstart-Protokoll</i> zeigt, bis wohin der Start kam.
+•  „keine Netzwerkstart-Anfrage“: im BIOS den Netzwerkstart (PXE) einschalten, Kabel prüfen, beim Start
+    „Netzwerk“ wählen.
+•  „nicht freigeschaltet“: oben im Reiter den Schalter <i>Netzwerkstart</i> einschalten.
+•  „Übertragung abgebrochen“: oft lehnt Secure Boot die Datei ab – Netzwerkstart neu vorbereiten
+    (<i>Tools → Netzwerkstart (PXE) …</i>), sonst Secure Boot im BIOS prüfen.
 
 <b>Das NAS ist rot</b>
 •  Ist das NAS eingeschaltet?

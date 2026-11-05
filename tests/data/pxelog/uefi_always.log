@@ -1,0 +1,35 @@
+Nov  5 11:53:04 dnsmasq[1025]: started, version 2.91 DNS disabled
+Nov  5 11:53:04 dnsmasq-dhcp[1025]: DHCP, proxy on subnet 10.77.0.0
+Nov  5 11:53:04 dnsmasq-dhcp[1025]: DHCP, sockets bound exclusively to interface e0
+Nov  5 11:53:04 dnsmasq-tftp[1025]: TFTP root is /var/lib/okula-recovery/pxe/tftp  
+Nov  5 11:53:04 dnsmasq-dhcp[1025]: read /var/lib/okula-recovery/pxe/allowed
+Nov  5 11:53:08 dnsmasq-dhcp[1025]: 333795048 available DHCP subnet: 10.77.0.0/255.255.255.0
+Nov  5 11:53:08 dnsmasq-dhcp[1025]: 333795048 vendor class: PXEClient:Arch:00007:UNDI:003001
+Nov  5 11:53:08 dnsmasq-dhcp[1025]: 333795048 PXE(e0) 52:54:00:12:34:56 proxy
+Nov  5 11:53:08 dnsmasq-dhcp[1025]: 333795048 tags: okula, known, e0
+Nov  5 11:53:08 dnsmasq-dhcp[1025]: 333795048 next server: 10.77.0.1
+Nov  5 11:53:08 dnsmasq-dhcp[1025]: 333795048 broadcast response
+Nov  5 11:53:11 dnsmasq-dhcp[1025]: 333795048 available DHCP subnet: 10.77.0.0/255.255.255.0
+Nov  5 11:53:11 dnsmasq-dhcp[1025]: 333795048 vendor class: PXEClient:Arch:00007:UNDI:003001
+Nov  5 11:53:11 dnsmasq-dhcp[1025]: 691076100 available DHCP subnet: 10.77.0.0/255.255.255.0
+Nov  5 11:53:11 dnsmasq-dhcp[1025]: 691076100 vendor class: PXEClient:Arch:00007:UNDI:003001
+Nov  5 11:53:11 dnsmasq-dhcp[1025]: 691076100 PXE(e0) 52:54:00:12:34:56 proxy
+Nov  5 11:53:11 dnsmasq-dhcp[1025]: 691076100 tags: okula, known, e0
+Nov  5 11:53:11 dnsmasq-dhcp[1025]: 691076100 bootfile name: bootx64.efi
+Nov  5 11:53:11 dnsmasq-dhcp[1025]: 691076100 server name: 10.77.0.1
+Nov  5 11:53:11 dnsmasq-dhcp[1025]: 691076100 next server: 10.77.0.1
+Nov  5 11:53:12 dnsmasq-tftp[1025]: error 8 User aborted the transfer received from 10.77.0.58
+Nov  5 11:53:12 dnsmasq-tftp[1025]: sent /var/lib/okula-recovery/pxe/tftp/bootx64.efi to 10.77.0.58
+Nov  5 11:53:13 dnsmasq-tftp[1025]: sent /var/lib/okula-recovery/pxe/tftp/bootx64.efi to 10.77.0.58
+Nov  5 11:53:13 dnsmasq-tftp[1025]: file /var/lib/okula-recovery/pxe/tftp/revocations.efi not found for 10.77.0.58
+Nov  5 11:53:14 dnsmasq-tftp[1025]: sent /var/lib/okula-recovery/pxe/tftp/grubx64.efi to 10.77.0.58
+Nov  5 11:53:15 dnsmasq-tftp[1025]: file /var/lib/okula-recovery/pxe/tftp/grub/x86_64-efi/command.lst not found for 10.77.0.58
+Nov  5 11:53:15 dnsmasq-tftp[1025]: file /var/lib/okula-recovery/pxe/tftp/grub/x86_64-efi/fs.lst not found for 10.77.0.58
+Nov  5 11:53:15 dnsmasq-tftp[1025]: file /var/lib/okula-recovery/pxe/tftp/grub/x86_64-efi/crypto.lst not found for 10.77.0.58
+Nov  5 11:53:15 dnsmasq-tftp[1025]: file /var/lib/okula-recovery/pxe/tftp/grub/x86_64-efi/terminal.lst not found for 10.77.0.58
+Nov  5 11:53:15 dnsmasq-tftp[1025]: sent /var/lib/okula-recovery/pxe/tftp/grub/grub.cfg to 10.77.0.58
+Nov  5 11:53:15 dnsmasq-tftp[1025]: sent /var/lib/okula-recovery/pxe/tftp/okula/mode/52:54:00:12:34:56 to 10.77.0.58
+Nov  5 11:53:18 dnsmasq-tftp[1025]: error 0 closed received from 10.77.0.58
+Nov  5 11:53:18 dnsmasq-tftp[1025]: failed sending /var/lib/okula-recovery/pxe/tftp/okula/vmlinuz to 10.77.0.58
+Nov  5 11:53:18 dnsmasq-tftp[1025]: error 0 closed received from 10.77.0.58
+Nov  5 11:53:18 dnsmasq-tftp[1025]: failed sending /var/lib/okula-recovery/pxe/tftp/okula/vmlinuz to 10.77.0.58

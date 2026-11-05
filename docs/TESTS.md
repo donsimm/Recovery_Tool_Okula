@@ -53,6 +53,7 @@ bestätigt.
 | Wake-on-LAN: Gerät aus → „Einschalten“ → Windows startet | R | 05.11.2026 (Dominik, HP EliteBook 850 G1) |
 | Demo-Gerät komplett: DEMO-PC, Disk-Image/Zurückspielen, Sperre für echte Geräte, Fehler-Demo, Automatisierung, Prozess beendet; Ä-027 ohne NAS, NAS unberührt, Demo-Daten zurücksetzen, alte Demo-Images | R | 05.11.2026 (Dominik) |
 | Ä-014: NAS-Webseite öffnet DSM (https 5001 bzw. http 5000) | R | 05.11.2026 (Dominik) |
+| Netzwerkstart-Protokoll: echte UEFI- (OVMF, shim/grub) und BIOS-Abläufe (iPXE, pxelinux), nicht freigeschaltet | A | Labor mit dnsmasq 2.91 und QEMU |
 | Image prüfen: ✔, ein Byte geändert → ✖ mit Datei, fehlende Datei, Abbrechen, Ordner mit Unterordnern, Clonezilla, Ergebnis nach Neustart | A, V | Loop-Disk und Clonezilla-Testimage |
 | Demo ohne NAS: ganzer Vorführablauf (Image, Prüfen ✔/✖, Zurückspielen, Backup, Ordner senden, Automatisierung) ohne NAS; mit NAS bleibt das NAS unverändert; Sperren Demo ↔ echt; Zurücksetzen | A, V | echter Demo-Prozess, Snapshot des NAS-Ordners |
 | Gerätefenster passt sich der Übersicht an (1920×1080 ganz sichtbar, 1366×768 begrenzt) | A, V | |
@@ -64,6 +65,7 @@ bestätigt.
 - (alle geprüft)
 
 ### 2. Netzwerk (Reiter „Netzwerk“ im Gerätefenster)
+- [ ] Ä-034: `git pull && sudo ./install.sh` (HTTP-Dienst neu); EliteBook F9 → Netzwerk → im Gerätefenster → Netzwerk → „Netzwerkstart-Protokoll“: Anfrage (UEFI/BIOS), Antwort, Bootlader … bzw. roter Grund; ohne Netzwerkkabel → „keine Netzwerkstart-Anfrage“
 - [ ] Ä-033: Rechtsklick auf ein ausgeschaltetes Gerät → Netzwerkstart → Einschalten (Gerät startet); „Einschalten und Agent starten“ nur aktiv mit „Netzwerkstart zuerst“, sonst ausgegraut mit Grund im Tooltip; bei verbundenem Gerät beides ausgegraut
 - [ ] B-003: EliteBook 850 G1 im BIOS auf **UEFI Native (Without CSM)** stellen, Agent-Stick starten → Übersicht „UEFI“; Netzwerk-Reiter: Zahnrad sichtbar, Netzwerkkarten nur enp0s25 (+ feste MACs), Modem „Mobilfunk – nein“; danach die Punkte unten
 - [ ] B-003: Gerät im BIOS-Modus (Legacy/CSM): Text nennt die BIOS-Taste; Schalter „Netzwerkstart zuerst“ ohne Fehlermeldung → „von Hand eingestellt“

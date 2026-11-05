@@ -11,6 +11,7 @@ Root-Helfer (gleiche sudo-Regel wie der Stick):
     sudo okula-make-stick pxe prepare --iso <Debian-Live-ISO> --server <IP>   (Schlüssel hex über stdin)
     sudo okula-make-stick pxe start --server <IP> | stop
     sudo okula-make-stick pxe allow                                           (MACs über stdin, eine pro Zeile)
+    sudo okula-make-stick pxe log                                             (Journal der Dienste, für das Tool)
 Dienste (install.sh): okula-pxe.service (dnsmasq), okula-pxe-http.service (python3 -m okula_recovery.pxe serve)
 """
 
@@ -288,7 +289,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
         if not self._allowed():
-            self.log_message("abgewiesen: %s ist nicht freigeschaltet", self.client_address[0])
+            self._note("abgewiesen – nicht freigeschaltet")
             self.send_error(403, "Geraet nicht fuer den Netzwerkstart freigeschaltet")
             return
         path = self.base / "http" / name
@@ -309,6 +310,12 @@ class Handler(BaseHTTPRequestHandler):
         if not head and name == stick.AGENT_LAYER:
             self._once_done()
 
+    def _note(self, text: str) -> None:
+        """Meldung mit MAC und IP ins Journal – für das Netzwerkstart-Protokoll im Tool (pxelog, Ä-034)."""
+        ip = self.client_address[0]
+        sys.stderr.write(f"{mac_of(ip, self.arp) or '00:00:00:00:00:00'} ({ip}): {text}\n")
+        sys.stderr.flush()
+
     def _once_done(self) -> None:
         """„Einmal Agent“ ist erledigt: das Gerät startet beim nächsten Mal wieder von der Festplatte."""
         mac = mac_of(self.client_address[0], self.arp)
@@ -316,7 +323,7 @@ class Handler(BaseHTTPRequestHandler):
         if modes.get(mac) == "once":
             modes[mac] = "local"
             write_allowed(modes, self.base)
-            self.log_message("%s: Agent einmal gestartet – ab jetzt wieder lokal", mac)
+            self._note("Agent einmal gestartet – ab jetzt wieder lokal")
 
 
 def serve(bind: str, base: Path = PXE_DIR) -> None:
@@ -489,6 +496,7 @@ def main(argv: list[str]) -> int:
     s.add_argument("--server", required=True)
     sp.add_parser("stop")
     sp.add_parser("allow")
+    sp.add_parser("log")    # Protokoll der Dienste für das Tool (Ä-034)
     v = sp.add_parser("serve")  # vom systemd-Dienst
     v.add_argument("--bind", default="")
     args = ap.parse_args(argv)
@@ -521,7 +529,10 @@ def main(argv: list[str]) -> int:
         elif args.cmd == "allow":
             allow(parse_allow(sys.stdin.read().splitlines()), emit)
             emit("DONE", "Freigabeliste aktualisiert")
-    except (StickError, ValueError, OSError) as e:
+        elif args.cmd == "log":
+            from okula_recovery import pxelog
+            pxelog.helper_main(emit, read_modes())
+    except (StickError, ValueError, OSError, subprocess.SubprocessError) as e:
         emit("ERROR", str(e))
         return 1
     return 0

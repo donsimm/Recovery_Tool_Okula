@@ -544,15 +544,17 @@ def nic_kind(nic: dict) -> str:
 
 
 def netboot_macs(store_devices) -> list[str]:
-    """MAC-Adressen aller für den Netzwerkstart freigeschalteten Geräte. Nur feste Kabel-MACs: WLAN und Mobilfunk
-    können kein PXE/Wake-on-LAN, zufällige (lokal vergebene) MACs ändern sich."""
+    """MAC-Adressen aller für den Netzwerkstart freigeschalteten Geräte: Kabel-Karten aus dem Inventar (auch VMs mit
+    lokal vergebener MAC) und früher gesehene feste MACs. WLAN und Mobilfunk können kein PXE/Wake-on-LAN."""
     macs = set()
     for dev in store_devices:
         if not dev.netboot:
             continue
-        other = {n["mac"].lower() for n in (dev.inventory.get("network") or [])
-                 if n.get("mac") and nic_kind(n) != "Kabel"}
-        macs |= {m.lower() for m in dev.macs if real_mac(m) and m.lower() not in other}
+        nics = [n for n in (dev.inventory.get("network") or []) if n.get("mac")]
+        cable = {n["mac"].lower() for n in nics if nic_kind(n) == "Kabel"}     # aktuelle Kabel-Karten: immer
+        listed = {n["mac"].lower() for n in nics}
+        # früher gesehene MACs ohne Karte im Inventar nur, wenn fest (zufällige MACs ändern sich)
+        macs |= {m.lower() for m in dev.macs if m.lower() in cable or (m.lower() not in listed and real_mac(m))}
     return sorted(macs)
 
 

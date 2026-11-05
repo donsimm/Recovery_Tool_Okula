@@ -12,7 +12,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
-from okula_recovery import archive, bootkeys, devices, imagecheck, jobs, nas, warranty, win11  # noqa: E402
+from okula_recovery import archive, bootkeys, devices, imagecheck, jobs, nas, pxelog, warranty, win11  # noqa: E402
 from okula_recovery.automation_tab import AutomationTab  # noqa: E402
 from okula_recovery.uikit import (ask_text, confirm_error, numbered_section, power_buttons,  # noqa: E402
                                   remember_columns, run_async, scrolled)
@@ -107,7 +107,9 @@ class DeviceWindow(Gtk.Window):
         self.tabs.append_page(scrolled(self.disk_view), Gtk.Label(label="Disks"))
         self.tabs.append_page(self._build_images(), Gtk.Label(label="Images"))
         self.tabs.append_page(self._build_backups(), Gtk.Label(label="Backups"))
-        self.tabs.append_page(self._build_network(), Gtk.Label(label="Netzwerk"))
+        self.network_page = self.tabs.append_page(self._build_network(), Gtk.Label(label="Netzwerk"))
+        self.tabs.connect("switch-page", lambda _n, _p, num: num == self.network_page and self.refresh_pxe_log())
+        self._pxe_timer = GLib.timeout_add_seconds(5, self._pxe_tick)   # nur solange der Reiter offen ist
         self.automation_tab = AutomationTab(main, dev)
         self.automation_page = self.tabs.append_page(self.automation_tab, Gtk.Label(label="Automatisierung"))
         self.history_view, self.history_store = table(["Zeit", "Ereignis", "Ergebnis"], (str, str, str), expand=1)
@@ -414,8 +416,72 @@ class DeviceWindow(Gtk.Window):
             "der Festplatte; ist ein Agent angefordert, startet der Agent. Ändern nur, während das Gerät mit dem "
             "Agent verbunden ist (UEFI). Ist der Server aus, dauert der Start etwas länger (Netzwerk-Wartezeit)."),
             False, False, 0)
+
+        # Ä-034: was die Netzwerkstart-Dienste von diesem Gerät gesehen haben (letzte 6 Stunden)
+        log = numbered_section(box, "", "Netzwerkstart-Protokoll", "was der Server gesehen hat (letzte 6 Stunden)")
+        row = Gtk.Box(spacing=8)
+        self.pxe_summary = Gtk.Label(xalign=0, wrap=True)
+        row.pack_start(self.pxe_summary, True, True, 0)
+        refresh = Gtk.Button(label="Aktualisieren")
+        refresh.set_tooltip_text("Protokoll neu lesen (läuft auch alle 5 s von selbst, solange dieser Reiter offen ist)")
+        refresh.connect("clicked", lambda _b: self.refresh_pxe_log())
+        row.pack_end(refresh, False, False, 0)
+        log.pack_start(row, False, False, 0)
+        self.pxe_store = Gtk.ListStore(str, str)          # Zeit, Meldung (Markup, grün/rot)
+        self.pxe_view = Gtk.TreeView(model=self.pxe_store)
+        for i, title in enumerate(("Zeit", "Schritt")):
+            cell = Gtk.CellRendererText()
+            self.pxe_view.append_column(Gtk.TreeViewColumn(title, cell, **({"text": i} if i == 0 else {"markup": i})))
+        remember_columns(self.pxe_view, "geraet_pxe_protokoll", {"Zeit": 130})
+        sw = scrolled(self.pxe_view)
+        sw.set_vexpand(False)
+        sw.set_propagate_natural_height(True)
+        sw.set_max_content_height(180)
+        log.pack_start(sw, False, False, 0)
+        self._pxe_busy = False
         self.update_netboot()
         return box
+
+    def _pxe_tick(self) -> bool:
+        if self.get_visible() and self.tabs.get_current_page() == self.network_page:
+            self.refresh_pxe_log()
+        return True
+
+    def refresh_pxe_log(self) -> None:
+        """Protokoll der Netzwerkstart-Dienste lesen (Root-Helfer) und die Schritte dieses Geräts zeigen."""
+        if self._pxe_busy:
+            return
+        self._pxe_busy = True
+        dev = self.dev
+        macs = sorted({m.lower() for m in dev.macs} |
+                      {n["mac"].lower() for n in dev.inventory.get("network") or [] if n.get("mac")})
+        wired = devices.netboot_macs([devices.Device(id="x", netboot=True, macs=dev.macs, inventory=dev.inventory)])
+        hints = {dev.last_ip: wired[0]} if dev.last_ip and wired else {}
+
+        def work():
+            states, rows, modes = pxelog.fetch()
+            events = pxelog.parse(rows, pxelog.arp_table(), hints, modes)
+            mine = pxelog.for_device(events, macs, [dev.last_ip] if dev.last_ip else [])
+            return states, mine
+
+        run_async(work, self._show_pxe_log)
+
+    def _show_pxe_log(self, result) -> bool:
+        self._pxe_busy = False
+        if isinstance(result, Exception):
+            self.pxe_summary.set_text(f"Protokoll nicht lesbar: {result}")
+            return False
+        states, events = result
+        text, ok = pxelog.summary(events, states)
+        color = {True: "#2e7d32", False: "#c62828"}.get(ok)
+        esc = GLib.markup_escape_text(text)
+        self.pxe_summary.set_markup(f'<span foreground="{color}">{esc}</span>' if color else esc)
+        self.pxe_store.clear()
+        for e in reversed(events[-60:]):                 # neueste zuoberst
+            esc = GLib.markup_escape_text(e.text)
+            c = {True: "#2e7d32", False: "#c62828"}.get(e.ok)
+            self.pxe_store.append([e.clock, f'<span foreground="{c}">{esc}</span>' if c else esc])
+        return False
 
     @staticmethod
     def _hint(text: str) -> Gtk.Label:
@@ -773,6 +839,9 @@ class DeviceWindow(Gtk.Window):
         return False
 
     def _on_close(self, *_a) -> bool:
+        if getattr(self, "_pxe_timer", 0):
+            GLib.source_remove(self._pxe_timer)
+            self._pxe_timer = 0
         self._save_name()
         self._save_notes()
         self.main.device_windows.pop(self.dev.id, None)
