@@ -120,6 +120,7 @@ Neueste zuoberst.
   der Maus verstellbar (vorher sperrten die dehnende Spalte und Mindestbreiten, z. B. „Status“ 340 px), Breiten je
   Liste in `spalten.json`; nur verstellte Spalten werden gespeichert. Mit echtem Maus-Ziehen (xdotool) und Neustart
   geprüft. Hilfe „Anzeigen im Fenster“. Tests `tests/test_colstate.py`.
+  Ergänzt: auch im Gerätefenster (Aufträge, Disks, Images, Backups, Netzwerk, Verlauf; Breiten für alle Geräte gleich).
 - **B-001 Baugleiche Geräte wurden zu einem zusammengeführt** (Von: Dominik, gemeldet 05.11.): zwei „CompactPlayer“
   ohne UUID und Seriennummer – vereint sehr wahrscheinlich über die gleiche Disk-Seriennummer („Board getauscht, Disk geblieben“).
   Fix nur im Tool: Platzhalter-UUIDs/-Seriennummern (auch Disk) nie als Identität, zufällige MACs nicht beim

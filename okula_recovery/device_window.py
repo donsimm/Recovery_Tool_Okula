@@ -15,7 +15,7 @@ from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 from okula_recovery import archive, bootkeys, devices, imagecheck, jobs, nas, warranty, win11  # noqa: E402
 from okula_recovery.automation_tab import AutomationTab  # noqa: E402
 from okula_recovery.uikit import (ask_text, confirm_error, numbered_section, power_buttons,  # noqa: E402
-                                  run_async, scrolled)
+                                  remember_columns, run_async, scrolled)
 
 if TYPE_CHECKING:
     from okula_recovery.ui import MainWindow
@@ -103,6 +103,7 @@ class DeviceWindow(Gtk.Window):
         self.disk_view, self.disk_store = table(
             ["Disk", "Modell", "Seriennummer", "Grösse", "Partitionen", "SMART", "Betriebsstunden", "Temperatur"],
             (str,) * 8, expand=4)
+        remember_columns(self.disk_view, "geraet_disks", {"Partitionen": 220})
         self.tabs.append_page(scrolled(self.disk_view), Gtk.Label(label="Disks"))
         self.tabs.append_page(self._build_images(), Gtk.Label(label="Images"))
         self.tabs.append_page(self._build_backups(), Gtk.Label(label="Backups"))
@@ -110,6 +111,7 @@ class DeviceWindow(Gtk.Window):
         self.automation_tab = AutomationTab(main, dev)
         self.automation_page = self.tabs.append_page(self.automation_tab, Gtk.Label(label="Automatisierung"))
         self.history_view, self.history_store = table(["Zeit", "Ereignis", "Ergebnis"], (str, str, str), expand=1)
+        remember_columns(self.history_view, "geraet_verlauf", {"Ereignis": 420})
         self.tabs.append_page(scrolled(self.history_view), Gtk.Label(label="Verlauf"))
         self.notes = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR)
         self.notes.get_buffer().set_text(dev.notes)
@@ -149,6 +151,7 @@ class DeviceWindow(Gtk.Window):
         col.set_expand(True)
         view.append_column(col)
         view.append_column(Gtk.TreeViewColumn("Start", Gtk.CellRendererText(), text=5))
+        remember_columns(view, "geraet_auftraege", {"Fortschritt": 380})
         view.get_selection().connect("changed", lambda _s: self._show_log())
         self.job_view = view
         sw = scrolled(view)
@@ -203,6 +206,7 @@ class DeviceWindow(Gtk.Window):
         col = Gtk.TreeViewColumn("Geprüft", cell, markup=5)
         col.set_resizable(True)
         self.image_view.append_column(col)
+        remember_columns(self.image_view, "geraet_images", {"Image": 260})
         self.image_view.set_tooltip_column(6)
         self.image_view.connect("row-activated", lambda *_a: self.main.start_restore(self.dev, self._sel_image()))
         self.image_view.connect("button-press-event", self._on_image_button)
@@ -217,6 +221,7 @@ class DeviceWindow(Gtk.Window):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=6)
         self.backup_view, self.backup_store = table(["Datum", "Notiz", "Inhalt", "Grösse", "Ablage"],
                                                     (str, str, str, str, str, str), expand=1)
+        remember_columns(self.backup_view, "geraet_backups", {"Notiz": 220})
         self.backup_view.connect("row-activated", lambda *_a: self._restore_backup())
         box.pack_start(scrolled(self.backup_view), True, True, 0)
         bar = Gtk.Box(spacing=6)
@@ -366,6 +371,7 @@ class DeviceWindow(Gtk.Window):
         # Netzwerkkarten: Name, MAC, Art, für Netzwerkstart/WoL
         self.nic_view, self.nic_store = table(["Netzwerkkarte", "MAC-Adresse", "Art", "Netzwerkstart / Wake-on-LAN"],
                                               (str, str, str, str), expand=3)
+        remember_columns(self.nic_view, "geraet_netzwerk")
         sw = scrolled(self.nic_view)
         sw.set_vexpand(False)                 # nur so hoch wie nötig – kein Leerraum zwischen den Abschnitten
         sw.set_propagate_natural_height(True)

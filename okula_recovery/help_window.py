@@ -647,8 +647,9 @@ zum Beispiel nachdem Dateien direkt auf das NAS kopiert wurden."""),
 •  Mit der Maus darüberfahren zeigt mehr Details.
 
 <b>Spalten in den Listen</b>
-•  In <i>Geräte</i>, <i>Images</i>, <i>Dateien</i> und <i>Backups</i> lässt sich jede Spalte am rechten Rand
-    ihres Titels mit der Maus breiter oder schmaler ziehen.
+•  In <i>Geräte</i>, <i>Images</i>, <i>Dateien</i>, <i>Backups</i> und in den Tabellen des Gerätefensters
+    (Aufträge, Disks, Images, Backups, Netzwerk, Verlauf) lässt sich jede Spalte am rechten Rand ihres Titels
+    mit der Maus breiter oder schmaler ziehen.
 •  Das Tool merkt sich die Breiten je Liste, auch nach einem Neustart. Nicht verstellte Spalten passen sich
     dem Inhalt an.
 
