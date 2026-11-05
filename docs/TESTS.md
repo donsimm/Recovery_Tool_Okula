@@ -45,6 +45,7 @@ bestätigt.
 | Unicode-Namen (NFC/NFD, Steuerzeichen, Umschrift), monotone Laufzeit, Win-11-Option nur von Hand | A, V | |
 | Hilfe: Reihenfolge, Suche, Test auf Menüeinträge/Querverweise/Anrede/Ich-Form, Sichtprüfung hell/dunkel | A, V | 24 Kapitel als Screenshot |
 | Bandbreite: ein Strom und 3 parallele ±10 % der Grenze, gerecht verteilt, Ändern im Lauf, Zeitfenster (Mitternacht, Wochenende), Export | A | Ende-zu-Ende über den Demo-Agent (24 Mbit/s); Sichtprüfung Einstellungen/Serverlast |
+| Spaltenbreiten: alle vier Listen mit der Maus verstellbar, nach Neustart gleich | A, V | xdotool-Ziehen unter Xvfb |
 | Image prüfen: ✔, ein Byte geändert → ✖ mit Datei, fehlende Datei, Abbrechen, Ordner mit Unterordnern, Clonezilla, Ergebnis nach Neustart | A, V | Loop-Disk und Clonezilla-Testimage |
 | Demo ohne NAS: ganzer Vorführablauf (Image, Prüfen ✔/✖, Zurückspielen, Backup, Ordner senden, Automatisierung) ohne NAS; mit NAS bleibt das NAS unverändert; Sperren Demo ↔ echt; Zurücksetzen | A, V | echter Demo-Prozess, Snapshot des NAS-Ordners |
 | Gerätefenster passt sich der Übersicht an (1920×1080 ganz sichtbar, 1366×768 begrenzt) | A, V | |
@@ -110,6 +111,7 @@ bestätigt.
 - [ ] Ä-027: Extras → Demo-Daten zurücksetzen … → Rückfrage, danach nur noch die zwei fertigen Images; alte Demo-Images auf dem NAS (vor Ä-027) sind ausgeblendet, Rechtsklick auf den Hinweis → „Alte Demo-Images vom NAS löschen …“
 
 ### 7. Allgemein
+- [ ] Ä-032: in Geräte, Images, Dateien, Backups je eine Spalte schmaler/breiter ziehen (auch „Status“ und „Auto“) → Tool neu starten → Breiten bleiben; nicht verstellte Spalten passen sich dem Inhalt an
 - [ ] I-030: Menü → Einstellungen … → Bandbreite **100 Mbit/s** → Disk-Image eines echten Geräts: Durchsatz in der Serverlast (LAN) und im Switch ≈ 100 Mbit/s (± 10 %), „begrenzt: 100 Mbit/s“ in der LAN-Kurve, Log-Zeile zu Beginn; während des Auftrags auf 300 Mbit/s ändern → Durchsatz steigt sofort, Restzeit rechnet neu
 - [ ] I-030: zwei Aufträge gleichzeitig (z. B. Disk-Image + Zurückspielen) → zusammen ≈ Grenze, je etwa die Hälfte; Zeitfenster so setzen, dass es gerade endet → danach unbegrenzt; Reiter Dateien (Kopieren aufs NAS) bleibt schnell
 - [ ] Ä-028: Symbole Neu starten / Herunterfahren unter der Geräteliste und im Gerätefenster – Tooltip, Rückfrage, nur aktiv bei verbundenem Gerät; Menü Tools ohne „Gerät herunterfahren“; Symbole auch im dunklen Design sichtbar

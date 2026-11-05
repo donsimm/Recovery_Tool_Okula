@@ -646,6 +646,12 @@ zum Beispiel nachdem Dateien direkt auf das NAS kopiert wurden."""),
 •  Die Kurve zeigt die letzte Minute. Über 90 % wird die Zahl rot.
 •  Mit der Maus darüberfahren zeigt mehr Details.
 
+<b>Spalten in den Listen</b>
+•  In <i>Geräte</i>, <i>Images</i>, <i>Dateien</i> und <i>Backups</i> lässt sich jede Spalte am rechten Rand
+    ihres Titels mit der Maus breiter oder schmaler ziehen.
+•  Das Tool merkt sich die Breiten je Liste, auch nach einem Neustart. Nicht verstellte Spalten passen sich
+    dem Inhalt an.
+
 <b>NAS-Zeile</b>
 •  <span foreground="#2e7d32">●</span> grün: NAS ist verbunden. Daneben steht der freie Speicher.
 •  <span foreground="#c62828">●</span> rot: NAS ist nicht verbunden. Auf das Zahnrad klicken.

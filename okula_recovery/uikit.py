@@ -167,3 +167,42 @@ def power_buttons(handler, sensitive: bool = False) -> dict[str, Gtk.Button]:
         b.connect("clicked", lambda _b, a=action: handler(a))
         out[action] = b
     return out
+
+
+def remember_columns(view: Gtk.TreeView, key: str, defaults: dict[str, int] | None = None) -> None:
+    """Alle Spalten mit der Maus verstellbar und gemerkt (colstate). Keine Spalte dehnt sich – sonst schiebt GTK
+    die Breite beim Ziehen zurück; den Rest der Breite nimmt eine leere Spalte am Ende.
+    Gespeichert werden nur Spalten, die mit der Maus verändert wurden (GTK setzt dabei „fixed-width“);
+    die anderen passen sich weiter dem Inhalt an."""
+    from okula_recovery import colstate
+    saved = dict(colstate.load().get(key, {}))
+    defaults = defaults or {}
+    pending = {"id": 0}
+
+    def write() -> bool:
+        pending["id"] = 0
+        try:
+            colstate.save(key, saved)
+        except OSError:
+            pass   # Breiten merken ist Komfort, kein Fehler fürs Tool
+        return False
+
+    def resized(col, _pspec, name: str) -> None:
+        width = col.get_fixed_width()
+        if width > 0 and saved.get(name) != width:
+            saved[name] = width
+            if not pending["id"]:
+                pending["id"] = GLib.timeout_add(500, write)
+
+    for i, col in enumerate(view.get_columns()):
+        name = col.get_title() or f"#{i}"
+        col.set_resizable(True)
+        col.set_expand(False)
+        col.set_min_width(colstate.MIN_WIDTH)        # frühere Mindestbreiten sperrten das Verkleinern
+        width = saved.get(name) or defaults.get(name)
+        if width:
+            col.set_fixed_width(width)
+        col.connect("notify::fixed-width", resized, name)
+    filler = Gtk.TreeViewColumn("")
+    filler.set_expand(True)
+    view.append_column(filler)

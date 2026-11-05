@@ -40,7 +40,7 @@ from okula_recovery.os_dialogs import (BootStickDialog, InstallDialog, IsoDetail
 from okula_recovery.restore_dialog import RestoreDialog  # noqa: E402
 from okula_recovery.stick_dialog import StickDialog  # noqa: E402
 from okula_recovery.uikit import (ask_text, confirm, confirm_error, make_tree, open_url, pane_title,  # noqa: E402
-                                  power_buttons, rgba_hex, run_async, scrolled, svg_pixbuf)
+                                  power_buttons, remember_columns, rgba_hex, run_async, scrolled, svg_pixbuf)
 
 ASSETS = Path(__file__).resolve().parent / "assets"
 NAS_POLL = 30  # Sekunden zwischen den NAS-Statusabfragen
@@ -566,6 +566,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self._demo_tree: archive.Tree | None = None       # Images im Demo-Speicher (Ä-027)
         self._old_demo_images: list[nas.ImageInfo] = []   # frühere Demo-Images auf dem NAS (ausgeblendet)
         self.checking: set[str] = set()                    # werden gerade geprüft (Löschen gesperrt)
+        remember_columns(view, "images", {"Name": 260})
         view.set_enable_tree_lines(True)
         view.set_tooltip_column(self.C_TIP)
         view.get_selection().connect("changed", self._on_image_selected)
@@ -1070,6 +1071,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.file_store = Gtk.ListStore(str, str, str, str, bool, GObject.TYPE_INT64)
         self.file_view = make_tree([("", -1), ("Name", 1), ("Grösse", 2), ("Geändert", 3)], self.file_store)
         self.file_view.get_column(2).set_sort_column_id(5)
+        remember_columns(self.file_view, "dateien", {"Name": 320})
         self.file_view.get_selection().set_mode(Gtk.SelectionMode.MULTIPLE)
         self.file_view.get_selection().connect("changed", lambda _s: self._update_file_buttons())
         self.file_view.connect("row-activated", self._on_file_activated)
@@ -1582,6 +1584,7 @@ class MainWindow(Gtk.ApplicationWindow):
             c.set_resizable(True)
             c.set_expand(idx == self.B_NOTE)
             view.append_column(c)
+        remember_columns(view, "backups", {"Gerät / Datum": 240, "Notiz": 200})
         view.set_tooltip_column(self.B_TIP)
         view.get_selection().connect("changed", lambda _s: self._on_backup_selected())
         view.connect("row-activated", self._on_backup_activated)
@@ -1884,6 +1887,7 @@ class MainWindow(Gtk.ApplicationWindow):
             c = Gtk.TreeViewColumn(title, cell, text=idx)
             c.set_resizable(True)
             view.append_column(c)
+        remember_columns(view, "geraete", {"Gerät": 260, "Status": 340})
         view.set_enable_tree_lines(True)
         view.get_selection().connect("changed", lambda _s: self._on_device_selected())
         view.connect("row-activated", self._on_device_activated)
