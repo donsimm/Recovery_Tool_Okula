@@ -72,7 +72,9 @@ def connect(host: str, key: bytes, port: int = PORT, timeout: float = 15.0) -> s
 
 
 def send_json(sock: socket.socket, obj: dict) -> None:
-    payload = json.dumps(obj, ensure_ascii=False).encode()
+    # „replace“: Platzhalter für Bytes in alter Kodierung (z. B. BIOS-Namen in Windows-1252) werden zu „?“,
+    # statt die Verbindung mit UnicodeEncodeError abzubrechen (B-005)
+    payload = json.dumps(obj, ensure_ascii=False).encode("utf-8", "replace")
     sock.sendall(_HEADER.pack(FRAME_JSON, len(payload)) + payload)
 
 

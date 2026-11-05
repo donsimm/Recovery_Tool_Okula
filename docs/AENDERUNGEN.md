@@ -116,6 +116,13 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 05.11.2026
+- **B-005 „BIOS nicht lesbar: Verbindung unerwartet beendet“** (Von: Dominik, HP EliteBook 850 G1 mit hp-bioscfg):
+  Das BIOS meldet Namen in Windows-1252 (Byte 0xCE) – Python übernimmt sie als Platzhalterzeichen, `wire.send_json`
+  brach mit UnicodeEncodeError ab und der Agent schloss die Verbindung ohne Antwort. Fix: biosread dekodiert Namen und
+  Werte als UTF-8, sonst Windows-1252, und schreibt Werte in derselben Kodierung zurück; `send_json` ersetzt nicht
+  darstellbare Zeichen statt abzubrechen (auch für Dateinamen im Datei-Backup); der Agent beantwortet jeden internen
+  Fehler mit einer Meldung (Traceback im Journal); nur noch der Treiber des Herstellers wird geladen (keine
+  „dell_wmi_sysman: Unable to run“-Zeilen mehr). **Neuer Agent-Stick nötig.** Tests `OldEncodingTest`.
 - **I-032 Reiter „BIOS“ im Gerätefenster** (Von: Dominik): Grundangaben (BIOS-Version, Boot-Modus, Secure Boot, TPM,
   BIOS-Passwort, UEFI-Startreihenfolge) für alle Geräte; Einstellungen über `firmware-attributes` (HP `hp-bioscfg`,
   Dell `dell-wmi-sysman`, Lenovo `think-lmi`). Stand beim Gerät gespeichert, Vergleich mit einem anderen Gerät („Nur

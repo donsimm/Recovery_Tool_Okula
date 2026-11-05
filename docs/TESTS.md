@@ -112,7 +112,7 @@ bestätigt.
 - (alle geprüft)
 
 ### 7. Allgemein
-- [ ] I-032: **Agent-Stick neu erstellen**; beide HP EliteBook 850 G1 mit dem Agent starten (das nicht startende ggf. wieder im Hybrid-/Legacy-Modus) → Reiter BIOS: Schnittstelle „HP (hp-bioscfg)“ mit Einstellungen oder „nur Grundangaben“ (notieren!); beim zweiten „Vergleichen mit“ das erste → Unterschiede (z. B. PXE Internal IPV4 NIC boot)
+- [ ] I-032/B-005: **Agent-Stick neu erstellen** (Stand mit B-005); beide HP EliteBook 850 G1 mit dem Agent starten (das nicht startende ggf. wieder im Hybrid-/Legacy-Modus) → Reiter BIOS: Schnittstelle „HP (hp-bioscfg)“ mit Einstellungen oder „nur Grundangaben“ (notieren!); beim zweiten „Vergleichen mit“ das erste → Unterschiede (z. B. PXE Internal IPV4 NIC boot)
 - [ ] I-032: eine harmlose Einstellung ändern (z. B. „Fast Boot“ oder „Asset Tracking Number“) → nach dem Neustart im BIOS-Setup sichtbar, Verlauf-Eintrag; mit gesetztem BIOS-Passwort: ohne Passwort Meldung, mit falschem „abgelehnt“; CSV in Excel öffnen
 - [ ] Ä-035: nach `sudo ./install.sh` und Neustart des Tools: Alt+Tab und Dock zeigen „Okula Recovery Tool“ mit Okula-Logo; Startmenü-Eintrag nur einmal vorhanden; Autostart funktioniert weiterhin
 - [ ] Ä-032: in Geräte, Images, Dateien, Backups und im Gerätefenster (Aufträge, Disks, Images, Backups, Netzwerk, Verlauf) je eine Spalte schmaler/breiter ziehen (auch „Status“ und „Auto“) → Tool neu starten → Breiten bleiben; nicht verstellte Spalten passen sich dem Inhalt an

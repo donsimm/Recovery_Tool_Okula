@@ -1,5 +1,6 @@
 """BIOS-Reiter (I-032): firmware-attributes lesen/setzen (nachgebautes sysfs), Vergleich, CSV, Demo-Agent."""
 
+import json
 import os
 import socket
 import subprocess
@@ -10,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from okula_recovery import agentclient, biosinfo, biosread, devices, discovery
+from okula_recovery import agentclient, biosinfo, biosread, devices, discovery, wire
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -83,18 +84,62 @@ class BiosReadTest(unittest.TestCase):
         with self.assertRaisesRegex(biosread.BiosError, "gibt es"):
             biosread.write("../../etc", "x", "geheim", root)
         written = []
-        real_write = Path.write_text
+        real_text, real_bytes = Path.write_text, Path.write_bytes
 
         def spy(self_, text, *a, **k):
             written.append((self_.name, text))
-            return real_write(self_, text, *a, **k)
-        with mock.patch.object(Path, "write_text", spy):
+            return real_text(self_, text, *a, **k)
+
+        def spy_bytes(self_, data, *a, **k):
+            written.append((self_.name, data.decode()))
+            return real_bytes(self_, data, *a, **k)
+        with mock.patch.object(Path, "write_text", spy), mock.patch.object(Path, "write_bytes", spy_bytes):
             res = biosread.write("PXE_Internal_IPV4_NIC_boot", "Enable", "geheim", root)
         self.assertEqual(res["value"], "Enable")
         self.assertEqual(attr.joinpath("current_value").read_text(), "Enable")
         self.assertEqual(written, [("current_password", "geheim"), ("current_value", "Enable"),
                                    ("current_password", "")])               # Passwort danach gelöscht
         self.assertEqual(pw.read_text(), "")
+
+
+class OldEncodingTest(unittest.TestCase):
+    """B-005: HP EliteBook 850 G1 meldet Namen in Windows-1252 (Byte 0xCE) – vorher brach der Agent beim Senden ab."""
+
+    def test_cp1252_names_and_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_sysfs(Path(tmp))
+            attrs = os.fsencode(root / "class/firmware-attributes/hp-bioscfg/attributes")
+            d = attrs + b"/Langue \xce"                        # „Langue Î“ in Windows-1252
+            os.mkdir(d)
+            for f, v in ((b"type", b"enumeration"), (b"current_value", b"Fran\xe7ais"),
+                         (b"possible_values", b"English;Fran\xe7ais;Deutsch")):
+                with open(d + b"/" + f, "wb") as fh:
+                    fh.write(v + b"\n")
+            data = biosread.read(root, drivers=False)
+            a = next(x for x in data["attributes"] if x["name"].startswith("Langue"))
+            self.assertEqual((a["name"], a["value"], a["possible"][1]), ("Langue Î", "Français", "Français"))
+            payload = json.dumps(data, ensure_ascii=False).encode("utf-8")      # vorher: UnicodeEncodeError
+            self.assertIn("Langue Î".encode(), payload)
+            res = biosread.write("Langue Î", "Deutsch", "", root)
+            self.assertEqual(res["value"], "Deutsch")
+            biosread.write("Langue Î", "Français", "", root)
+            with open(d + b"/current_value", "rb") as fh:
+                self.assertEqual(fh.read(), "Français".encode("cp1252"))   # in der Kodierung des BIOS zurück
+
+    def test_wire_never_fails_on_surrogates(self):
+        a, b = socket.socketpair()
+        with a, b:
+            wire.send_json(a, {"name": "x\udcce"})
+            self.assertEqual(wire.recv_json(b), {"name": "x?"})
+
+    def test_only_matching_driver_loaded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_sysfs(Path(tmp))
+            (root / "class/dmi/id/sys_vendor").write_text("Hewlett-Packard\n")
+            calls = []
+            with mock.patch.object(biosread.subprocess, "run", lambda cmd, **k: calls.append(cmd)):
+                biosread.load_drivers(root)
+            self.assertEqual(calls, [["modprobe", "-q", "hp_bioscfg"]])
 
 
 class CompareTest(unittest.TestCase):

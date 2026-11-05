@@ -378,6 +378,7 @@ def load_key(path: str) -> bytes | None:
 
 
 def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
+    tls = None
     try:
         with ctx.wrap_socket(conn, server_side=True) as tls:
             tls.settimeout(900)
@@ -495,6 +496,13 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
         log(f"Verbindung von {addr[0]} abgelehnt (falscher Schlüssel – Stick von anderem Tool?)", show=True)
     except (OSError, wire.ProtocolError) as e:
         log(f"Verbindung zu {addr[0]} beendet: {e}")
+    except Exception as e:     # Programmfehler: Grund ans Tool melden statt Verbindung kommentarlos schliessen
+        import traceback
+        log(f"Interner Fehler im Agent ({addr[0]}): {type(e).__name__}: {e}\n{traceback.format_exc()}")
+        try:
+            wire.send_json(tls, {"type": "error", "message": f"Interner Fehler im Agent: {type(e).__name__}: {e}"})
+        except Exception:
+            pass
 
 
 def serve_control(key: bytes, port: int, host: str = "") -> None:
