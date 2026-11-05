@@ -25,8 +25,8 @@ import threading
 import time
 from pathlib import Path
 
-from okula_recovery import (__version__, agent, biosread, deploy, discovery, filebackup, imaging, inventory,
-                            wininstall, wire)
+from okula_recovery import (__version__, agent, biosread, deploy, discovery, filebackup, hwtest, imaging,
+                            inventory, wininstall, wire)
 
 DEMO_ID = "okula-demo-0001"            # Agent-ID (beim echten Agent die Board-UUID)
 DEMO_MAC = "02:0d:e0:00:00:01"          # lokal verwaltete MAC – gibt es in keinem echten Gerät
@@ -391,6 +391,53 @@ def bios_write(name: str, value: str, password: str = "", *_a) -> dict:
     raise biosread.BiosError(f"Einstellung „{name}“ gibt es auf diesem Gerät nicht")
 
 
+# ---------- Hardware-Test (I-023): simulierte Messwerte, Netzwerk echt über 127.0.0.1 ----------
+
+def _wait(seconds: float, emit, cancel, detail: str) -> None:
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        if cancel():
+            raise hwtest.Cancelled()
+        left = end - time.monotonic()
+        emit({"event": "progress", "fraction": 1 - left / seconds, "detail": detail})
+        time.sleep(min(0.5, max(0.05, left)))
+
+
+def hw_battery(*_a):
+    return [hwtest.result("battery", hwtest.WARN, "Gesundheit 78 % der ursprünglichen Kapazität, 412 Ladezyklen",
+                          ["Okula DemoAkku", "Ladestand: 96 %, Charging"], {"health": 78, "cycles": 412}, "BAT0")]
+
+
+def hw_temperature(*_a):
+    return hwtest.result("temperature", hwtest.OK, "im Leerlauf höchstens 41 °C (coretemp Package id 0)",
+                         ["coretemp Package id 0: 41 °C", "nvme Composite: 35 °C"], {"max": 41})
+
+
+def hw_smart(disk, kind, emit, cancel, step, *_a):
+    _wait(DURATION * (0.08 if kind == "short" else 0.2), emit, cancel, f"{disk['name']}: Selbsttest läuft")
+    return hwtest.result(step, hwtest.OK, "Selbsttest bestanden",
+                         ["Betriebsstunden: 1834", "Abnutzung: 3 %", "Reserve: 100 % (Grenze 10 %)", "Medienfehler: 0"],
+                         {"hours": 1834, "used": 3}, f"{disk['name']} {disk.get('model', '')}".strip())
+
+
+def hw_surface(disk, emit, cancel):
+    _wait(DURATION * 0.2, emit, cancel, f"{disk['name']}: wird gelesen")
+    return hwtest.result("surface", hwtest.OK, "alle Sektoren lesbar · 1850 MB/s · 5 min", [], {"errors": 0},
+                         f"{disk['name']} {disk.get('model', '')}".strip())
+
+
+def hw_ram(level, emit, cancel, *_a, **_k):
+    _wait(DURATION * 0.08, emit, cancel, "1024 MiB · Muster werden geprüft")
+    return hwtest.result("ram", hwtest.OK, "keine Fehler · 1024 MiB von 16384 MiB geprüft",
+                         ["Teilprüfung im laufenden System – vollständiger Test mit memtest86+ (eigener Start) folgt"])
+
+
+def hw_cpu(level, emit, cancel, *_a, **_k):
+    _wait(DURATION * (0.1 if level == "quick" else 0.3), emit, cancel, "8 Kerne unter Last · 78 °C")
+    return hwtest.result("cpu", hwtest.OK, "höchstens 78 °C, stabil",
+                         ["8 Kerne, 1 min Volllast", "höchste Temperatur: 78 °C", "Takt: 3.1 GHz (höchstens 4.2 GHz)"])
+
+
 def power_action(action: str) -> None:
     """Neustart/Herunterfahren vorführen: das Demo-Gerät ist kurz weg und meldet sich dann wieder."""
     global offline_until
@@ -412,6 +459,10 @@ def install_fakes() -> None:
     deploy.customize, deploy.deliver = customize, deliver
     deploy.open_keyboards = lambda pattern="": []
     biosread.read, biosread.write = bios_read, bios_write
+    hwtest.battery, hwtest.temperature_step, hwtest.smart_test = hw_battery, hw_temperature, hw_smart
+    hwtest.surface, hwtest.ram, hwtest.cpu = hw_surface, hw_ram, hw_cpu
+    hwtest.network_info = lambda *_a: ["demo0: verbunden, 1000 Mbit/s full"]
+    hwtest.NET_BYTES = {"quick": 20_000_000, "thorough": 50_000_000}
     agent.power_action = power_action
     agent.console = ""
 

@@ -2934,6 +2934,44 @@ class MainWindow(Gtk.ApplicationWindow):
                                                "Updates nicht garantiert")
         return False
 
+    def start_hwtest(self, dev: devices.Device, level: str, disks: list[str]) -> None:
+        """Hardware-Test (I-023): läuft als Auftrag, Ergebnis beim Gerät und im Verlauf."""
+        from okula_recovery import hwreport
+        parent = self._parent_for(dev)
+        agent = self._ready_agent(dev, parent)
+        if agent is None:
+            return
+        what = f"Hardware-Test ({hwreport.LEVEL.get(level, level)})"
+
+        def after(job, report, error) -> None:
+            GLib.idle_add(self._after_hwtest, dev.id, what, report, error)
+
+        work = jobs.hwtest_work(agent.ip, self.key, agent.control_port, level, disks, after)
+        try:
+            self.jobs.start(dev.id, "hwtest", "hwtest", what, work)
+        except agentclient.AgentError as e:
+            confirm_error(parent, f"{e} – erst danach einen weiteren Hardware-Test starten.")
+            return
+        self.open_device(dev).show_jobs()
+
+    def _after_hwtest(self, dev_id: str, what: str, report: dict | None, error: Exception | None) -> bool:
+        from okula_recovery import hwreport
+        dev = self.store.devices.get(dev_id)
+        if dev is None:
+            return False
+        if report is not None:
+            hwreport.store(dev, report)
+            self.store.save(dev)
+            status = hwreport.overall(report)
+            self.store.add_history(dev, "hwtest", hwreport.headline(report), ok=status != hwreport.FAIL)
+            self.status(f"{dev.name}: {hwreport.headline(report)} – {hwreport.verdict(report)}")
+        else:
+            self.store.add_history(dev, "hwtest", f"{what}: {error}", ok=False)
+        win = self.device_windows.get(dev_id)
+        if win:
+            win.refresh()
+        return False
+
     def start_backup(self, dev: devices.Device) -> None:
         parent = self._parent_for(dev)
         agent = self._ready_agent(dev, parent)

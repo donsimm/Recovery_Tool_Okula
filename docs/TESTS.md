@@ -55,6 +55,7 @@ bestätigt.
 | Ä-014: NAS-Webseite öffnet DSM (https 5001 bzw. http 5000) | R | 05.11.2026 (Dominik) |
 | Netzwerkstart-Protokoll: echte UEFI- (OVMF, shim/grub) und BIOS-Abläufe (iPXE, pxelinux), nicht freigeschaltet | A | Labor mit dnsmasq 2.91 und QEMU |
 | BIOS-Reiter: Lesen/Setzen über nachgebautes firmware-attributes-sysfs (mit Passwort), Vergleich, CSV, Demo-Agent | A, V | echte HP-Hardware noch offen |
+| Hardware-Test: Akku/Temperatur/SMART ATA+NVMe/Selbsttest-Ablauf/Oberfläche mit Lesefehler/RAM/CPU, Protokoll-PDF, Demo-Agent mit Abbrechen | A, V | echte Geräte noch offen |
 | Image prüfen: ✔, ein Byte geändert → ✖ mit Datei, fehlende Datei, Abbrechen, Ordner mit Unterordnern, Clonezilla, Ergebnis nach Neustart | A, V | Loop-Disk und Clonezilla-Testimage |
 | Demo ohne NAS: ganzer Vorführablauf (Image, Prüfen ✔/✖, Zurückspielen, Backup, Ordner senden, Automatisierung) ohne NAS; mit NAS bleibt das NAS unverändert; Sperren Demo ↔ echt; Zurücksetzen | A, V | echter Demo-Prozess, Snapshot des NAS-Ordners |
 | Gerätefenster passt sich der Übersicht an (1920×1080 ganz sichtbar, 1366×768 begrenzt) | A, V | |
@@ -112,6 +113,8 @@ bestätigt.
 - (alle geprüft)
 
 ### 7. Allgemein
+- [ ] I-023: Agent-Stick neu erstellen; Schnelltest auf beiden EliteBooks → Akku-Gesundheit plausibel (mit BIOS/HP-Diagnose vergleichen), SMART-Selbsttest „bestanden“, CPU-Temperatur unter Last, Netzwerk ≈ 900 Mbit/s bei 1 Gbit/s; Abbrechen während des Selbsttests; PDF-Protokoll öffnen
+- [ ] I-023: Gründlich auf einem Gerät mit HDD bzw. älterer SSD → Dauer notieren: ______; Oberflächentest-Geschwindigkeit plausibel; währenddessen „Image zurückspielen“ auf dieselbe Disk → abgelehnt
 - [ ] I-032/B-005: **Agent-Stick neu erstellen** (Stand mit B-005); beide HP EliteBook 850 G1 mit dem Agent starten (das nicht startende ggf. wieder im Hybrid-/Legacy-Modus) → Reiter BIOS: Schnittstelle „HP (hp-bioscfg)“ mit Einstellungen oder „nur Grundangaben“ (notieren!); beim zweiten „Vergleichen mit“ das erste → Unterschiede (z. B. PXE Internal IPV4 NIC boot)
 - [ ] I-032: eine harmlose Einstellung ändern (z. B. „Fast Boot“ oder „Asset Tracking Number“) → nach dem Neustart im BIOS-Setup sichtbar, Verlauf-Eintrag; mit gesetztem BIOS-Passwort: ohne Passwort Meldung, mit falschem „abgelehnt“; CSV in Excel öffnen
 - [ ] Ä-035: nach `sudo ./install.sh` und Neustart des Tools: Alt+Tab und Dock zeigen „Okula Recovery Tool“ mit Okula-Logo; Startmenü-Eintrag nur einmal vorhanden; Autostart funktioniert weiterhin

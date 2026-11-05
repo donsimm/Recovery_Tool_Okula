@@ -146,6 +146,39 @@ def bios_set(ip: str, key: bytes, name: str, value: str, password: str = "", por
                       "bios_set")
 
 
+def hwtest(ip: str, key: bytes, level: str, disks: list[str], progress: Callable[[dict], None],
+           cancel: threading.Event, port: int = wire.PORT) -> dict:
+    """Hardware-Test (I-023) auf dem Agent; progress(ev) für step_start/progress/step. Gibt den Bericht zurück."""
+    with _connect(ip, key, port) as sock:
+        sock.settimeout(180)          # der Agent meldet sich mindestens alle paar Sekunden
+        wire.send_json(sock, {"cmd": "hwtest", "level": level, "disks": disks})
+        net_left, cancelled = None, False
+        while True:
+            if cancel.is_set() and not cancelled:
+                cancelled = True
+                wire.send_json(sock, {"type": "cancel"})
+            kind, msg = wire.recv_frame(sock, limited=False)     # Durchsatzmessung ohne Bandbreitengrenze
+            if kind == wire.FRAME_DATA:
+                if net_left is not None:
+                    net_left -= len(msg)
+                    if net_left <= 0:
+                        net_left = None
+                        wire.send_json(sock, {"type": "cancel" if cancel.is_set() else "net_ack"})
+                continue
+            t = msg.get("type")
+            if t == "hw":
+                if msg.get("event") == "net_begin":
+                    net_left = int(msg.get("bytes") or 0)
+                progress(msg)
+            elif t == "done":
+                return msg["report"]
+            else:
+                message = msg.get("message", "Agent hat abgelehnt")
+                if "Unbekannter Befehl" in message:
+                    message = "Agent zu alt – Agent-Stick bzw. Netzwerkstart mit dem aktuellen Tool neu erstellen"
+                raise AgentError(message)
+
+
 class Notifier:
     """Meldet dem Agent, was das Tool gerade für ihn vorbereitet (z. B. Image-Prüfung).
 

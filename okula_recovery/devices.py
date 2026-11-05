@@ -90,6 +90,7 @@ class Device:
     automation: dict = field(default_factory=dict)        # Einstellungen der Automatisierung (automation.Settings)
     warranty: dict = field(default_factory=dict)          # Garantie (warranty.result/manual): until, source, checked …
     bios: dict = field(default_factory=dict)              # zuletzt gelesenes BIOS (biosread, I-032) – zum Vergleichen
+    hwtests: list = field(default_factory=list)           # Hardware-Tests (I-023), neuester zuerst, höchstens 10
     win11_unsupported: str = ""        # Datum: Windows 11 trotz „nicht tauglich“ installiert (keine Update-Garantie)
     history: list[dict] = field(default_factory=list)
     folder: str = ""                   # nicht gespeichert: ergibt sich aus dem Ablageort
@@ -367,6 +368,7 @@ class DeviceStore:
             keep.product_key = keep.product_key or other.product_key
             keep.warranty = keep.warranty or other.warranty
             keep.bios = keep.bios if keep.bios.get("read", "") >= other.bios.get("read", "") else other.bios
+            keep.hwtests = sorted(keep.hwtests + other.hwtests, key=lambda r: r.get("started", ""), reverse=True)[:10]
             keep.win11_unsupported = keep.win11_unsupported or other.win11_unsupported
             keep.netboot = keep.netboot or other.netboot
             keep.boot_request = keep.boot_request or other.boot_request

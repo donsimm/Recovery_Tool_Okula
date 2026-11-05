@@ -94,11 +94,12 @@ def _recv_exact(sock: socket.socket, n: int) -> bytes:
     return bytes(buf)
 
 
-def recv_frame(sock: socket.socket) -> tuple[bytes, dict | bytes]:
+def recv_frame(sock: socket.socket, limited: bool = True) -> tuple[bytes, dict | bytes]:
+    """limited=False: ohne Bandbreitengrenze (Durchsatzmessung im Hardware-Test)."""
     kind, length = _HEADER.unpack(_recv_exact(sock, _HEADER.size))
     if length > MAX_FRAME:
         raise ProtocolError(f"Frame zu gross ({length} Bytes)")
-    if kind == FRAME_DATA and _limiter is not None:
+    if kind == FRAME_DATA and _limiter is not None and limited:
         _limiter.take(length)   # später lesen bremst den Absender über TCP
     payload = _recv_exact(sock, length)
     if kind == FRAME_JSON:

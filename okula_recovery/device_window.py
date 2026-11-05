@@ -14,6 +14,7 @@ from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
 from okula_recovery import archive, bootkeys, devices, imagecheck, jobs, nas, pxelog, warranty, win11  # noqa: E402
 from okula_recovery.bios_tab import BiosTab  # noqa: E402
+from okula_recovery.hw_tab import HwTab  # noqa: E402
 from okula_recovery.automation_tab import AutomationTab  # noqa: E402
 from okula_recovery.uikit import (ask_text, confirm_error, numbered_section, power_buttons,  # noqa: E402
                                   remember_columns, run_async, scrolled)
@@ -111,6 +112,8 @@ class DeviceWindow(Gtk.Window):
         self.network_page = self.tabs.append_page(self._build_network(), Gtk.Label(label="Netzwerk"))
         self.bios_tab = BiosTab(main, dev)
         self.bios_page = self.tabs.append_page(self.bios_tab, Gtk.Label(label="BIOS"))
+        self.hw_tab = HwTab(main, dev)
+        self.hw_page = self.tabs.append_page(self.hw_tab, Gtk.Label(label="Hardware-Test"))
         self.tabs.connect("switch-page", lambda _n, _p, num: num == self.network_page and self.refresh_pxe_log())
         self.tabs.connect("switch-page", lambda _n, _p, num: num == self.bios_page and self._bios_auto())
         self._pxe_timer = GLib.timeout_add_seconds(5, self._pxe_tick)   # nur solange der Reiter offen ist
@@ -286,6 +289,8 @@ class DeviceWindow(Gtk.Window):
             self.automation_tab.refresh()
         if hasattr(self, "bios_tab"):
             self.bios_tab.refresh()
+        if hasattr(self, "hw_tab"):
+            self.hw_tab.refresh()
         self._fill_overview()
         self._fill_disks()
         self.history_store.clear()

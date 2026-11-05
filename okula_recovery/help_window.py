@@ -546,6 +546,36 @@ Netzwerkstart mit dem aktuellen Tool).
     Secure Boot verlangt bei HP beim nächsten Start eine Bestätigung am Gerät.
 •  Jede Änderung steht im Verlauf des Geräts."""),
 
+    ("Hardware-Test", """<big><b>Hardware prüfen (Hardware-Test)</b></big>
+
+Reiter <i>Hardware-Test</i> im Gerätefenster. Das Gerät muss mit dem Agent verbunden sein (neuer Agent-Stick bzw.
+Netzwerkstart mit dem aktuellen Tool). Geprüft wird nur lesend: Daten, Windows und BIOS bleiben unverändert.
+
+<b>Test starten</b>
+1.  Unter <i>Disks</i> die zu prüfenden Disks anhaken (alle internen sind vorgewählt, USB-Sticks nicht).
+2.  <i>Schnelltest (≈ 5 min)</i>: Akku, Temperaturen, SMART-Selbsttest kurz, Arbeitsspeicher (Teil),
+    1 Minute CPU-Last, Netzwerk-Durchsatz zum Server.
+3.  <i>Gründlich (≈ 1–3 h)</i>: zusätzlich SMART-Selbsttest lang, jeden Sektor der Disk lesen,
+    15 Minuten CPU-Last, grösserer Arbeitsspeicher-Test.
+4.  Der Fortschritt steht im Reiter <i>Aufträge</i> und am Bildschirm des Geräts. Abbrechen geht dort jederzeit.
+•  Während des Tests sind die gewählten Disks für andere Aufträge gesperrt.
+
+<b>Ergebnis</b>
+•  Je Bereich <span foreground="#2e7d32">✔ in Ordnung</span>, <span foreground="#b26a00">⚠ Achtung</span>,
+    <span foreground="#c62828">✖ Fehler</span> oder – nicht geprüft (z. B. kein Akku, Disk ohne Selbsttest).
+•  Pfeil bzw. Doppelklick zeigt die Einzelheiten (z. B. Betriebsstunden, Abnutzung, Temperatur, Takt).
+•  <i>Test vom</i> wählt einen früheren Test (die letzten 10 bleiben gespeichert). Jeder Test steht im Verlauf.
+•  <i>Protokoll als PDF …</i>: Prüfprotokoll mit Gerät, Seriennummer, Ergebnissen und Unterschriftsfeld,
+    zum Beispiel für die Übergabe oder den Verkauf eines Geräts.
+
+<b>Was die Bereiche bedeuten</b>
+•  <i>Akku</i>: heutige Kapazität im Vergleich zu neu – unter 80 % Achtung, unter 60 % Fehler.
+•  <i>Disk</i>: Selbsttest der Disk und wichtige Werte (umgeschriebene oder unlesbare Sektoren, Abnutzung).
+•  <i>Oberfläche</i>: Jeder Sektor wird gelesen; Lesefehler bedeuten: Disk ersetzen.
+•  <i>Arbeitsspeicher</i>: Teilprüfung im laufenden System. Ein Test ohne Befund schliesst Defekte nicht ganz aus.
+•  <i>CPU unter Last</i>: Temperatur, Takt und Drosselung – drosselt das Gerät, Lüfter und Wärmeleitpaste prüfen.
+•  <i>Netzwerk</i>: tatsächlicher Durchsatz zum Server (ohne Bandbreitengrenze) und Verbindungsgeschwindigkeit."""),
+
     ("Windows / Linux installieren", """<big><b>Betriebssystem installieren</b></big>
 
 <b>1. ISO-Datei hinzufügen (einmal pro Version)</b>

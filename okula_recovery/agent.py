@@ -18,8 +18,8 @@ import threading
 import time
 from pathlib import Path
 
-from okula_recovery import (__version__, biosread, deploy, discovery, filebackup, imaging, inventory, network,
-                            wininstall, wire)
+from okula_recovery import (__version__, biosread, deploy, discovery, filebackup, hwtest, imaging, inventory,
+                            network, wininstall, wire)
 
 
 # So lange ohne IPv4, dann DHCP nachfassen bzw. Link-Local-Adresse setzen
@@ -369,6 +369,69 @@ def run_job(tls, addr, req: dict, kind: str) -> None:
             threading.Timer(15, power_action, args=("reboot",)).start()
 
 
+def run_hwtest(tls, addr, req: dict) -> None:
+    """Hardware-Test (I-023): nur lesend; die gewählten Disks sind währenddessen für Aufträge gesperrt."""
+    import select
+    known = {d["path"]: d for d in imaging.list_disks()}
+    disks = [known[p] for p in req.get("disks") or [] if p in known]
+    locked = []
+    for d in disks:
+        if not disk_locks.acquire(d["path"], "hwtest"):
+            for p in locked:
+                disk_locks.release(p)
+            wire.send_json(tls, {"type": "error", "message": f"Auf {d['path']} läuft bereits ein Auftrag"})
+            return
+        locked.append(d["path"])
+    job = next(_job_ids)
+    level = "Gründlich" if req.get("level") == "thorough" else "Schnelltest"
+    state = {"cancel": False}
+
+    def cancel() -> bool:
+        """Tool hat abgebrochen (Meldung „cancel“ oder Verbindung zu)?"""
+        if state["cancel"]:
+            return True
+        try:
+            if tls.pending() or select.select([tls], [], [], 0)[0]:
+                msg = wire.recv_json(tls)
+                state["cancel"] = msg.get("type") == "cancel"
+        except (OSError, wire.ProtocolError):
+            state["cancel"] = True
+        return state["cancel"]
+
+    def emit(ev: dict) -> None:
+        if ev.get("event") == "step_start":
+            log(f"Hardware-Test: {ev['title']} …", show=True)
+            job_state.update(job, "Hardware-Test", ev.get("index", 0) / max(1, ev.get("count", 1)))
+        elif ev.get("event") == "step":
+            r = ev["result"]
+            log(f"  {hwtest.SYMBOL.get(r['status'], '?')} {r['title']}: {r['summary']}", show=True)
+        wire.send_json(tls, {"type": "hw", **ev})
+
+    def wait_ack() -> None:
+        msg = wire.recv_json(tls)
+        if msg.get("type") != "net_ack":
+            state["cancel"] = True
+            raise hwtest.Cancelled()
+
+    try:
+        job_state.update(job, "Hardware-Test", 0.0)
+        log(f"Hardware-Test ({level}) für {addr[0]} gestartet – nur lesend, nichts wird verändert", show=True)
+        report = hwtest.run(req, disks, emit, cancel, lambda b: wire.send_data(tls, b), wait_ack)
+        report["agent_version"] = __version__
+        wire.send_json(tls, {"type": "done", "report": report})
+        log(f"Hardware-Test ({level}) fertig", show=True)
+    except hwtest.Cancelled:
+        log("Hardware-Test abgebrochen", show=True)
+        try:
+            wire.send_json(tls, {"type": "error", "message": "Hardware-Test abgebrochen"})
+        except OSError:
+            pass
+    finally:
+        job_state.finish(job)
+        for p in locked:
+            disk_locks.release(p)
+
+
 def load_key(path: str) -> bytes | None:
     try:
         key = bytes.fromhex(Path(path).read_text().strip())
@@ -462,6 +525,8 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
                 except (imaging.ImagingError, OSError) as e:
                     reply = {"type": "error", "message": str(e)}
                 wire.send_json(tls, reply)
+            elif cmd == "hwtest":
+                run_hwtest(tls, addr, req)
             elif cmd == "bios":
                 # BIOS-Einstellungen lesen (I-032) – nur lesen, ändert nichts
                 try:

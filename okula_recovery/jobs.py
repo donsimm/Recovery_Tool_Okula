@@ -51,7 +51,7 @@ class Job:
         return self.phase or {"image": "Disk-Image", "install": "Windows-Installation", "linux": "Linux-Installation",
                               "backup": "Backup", "filerestore": "Dateien zurückspielen",
                               "download": "Backup herunterladen", "auto": "Automatisierung",
-                              "deliver": "Ordner senden"}.get(self.kind, "Zurückspielen")
+                              "deliver": "Ordner senden", "hwtest": "Hardware-Test"}.get(self.kind, "Zurückspielen")
 
     @property
     def shown_fraction(self) -> float:
@@ -188,6 +188,37 @@ class JobManager:
 
 
 # ---------- Arbeitsfunktionen (laufen im Auftrags-Thread) ----------
+
+def hwtest_work(ip: str, key: bytes, port: int, level: str, disks: list[str],
+                after: Callable[[Job, dict | None, Exception | None], None]):
+    """Hardware-Test (I-023): Fortschritt je Bereich, Ergebnis je Bereich ins Log; after(job, bericht, fehler)."""
+    from okula_recovery import hwreport
+
+    def work(job: Job, jm: JobManager) -> str:
+        state = {"index": 0, "count": 1, "title": ""}
+
+        def progress(ev: dict) -> None:
+            if ev.get("event") == "step_start":
+                state.update(index=ev.get("index", 0), count=max(1, ev.get("count", 1)), title=ev.get("title", ""))
+                jm.log(job, f"{state['title']} …")
+                jm.progress(job, state["index"] / state["count"], "", state["title"], 0.0)
+            elif ev.get("event") == "progress":
+                f = float(ev.get("fraction") or 0)
+                jm.progress(job, (state["index"] + f) / state["count"], ev.get("detail", ""), state["title"], f)
+            elif ev.get("event") == "step":
+                r = ev.get("result") or {}
+                jm.log(job, f"  {hwreport.SYMBOL.get(r.get('status'), '?')} {r.get('title')}: {r.get('summary')}")
+
+        try:
+            report = agentclient.hwtest(ip, key, level, disks, progress, job.cancel, port)
+        except Exception as e:
+            after(job, None, e)
+            raise
+        after(job, report, None)
+        return hwreport.headline(report)
+
+    return work
+
 
 def image_work(ip: str, key: bytes, port: int, disk: dict, nas_root: str, machine: str, source: dict,
                after: Callable[[Job, str | None, Exception | None], None]):

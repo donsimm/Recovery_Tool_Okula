@@ -64,7 +64,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 | I-020 | ⚪ | offen | Claude | **Software nach dem Aufsetzen installieren:** pro Vorlage eine winget-Liste (z. B. 7-Zip, Adobe Reader, Teams), installiert per `FirstLogonCommands`/`SetupComplete.cmd` – der Mechanismus ist schon da (`winunattend.py`). So bleibt der Master klein, und die Software ist immer aktuell (FOG: Snapins, SmartDeploy: Application Packs) |
 | I-021 | 🟡 | offen | Claude | **Firmen-Anmeldung:** Domänenbeitritt (`UnattendedJoin` in unattend.xml) bzw. Entra ID. Dazu den Autopilot-Hardware-Hash erfassen (beim ersten Start per `Get-WindowsAutopilotInfo`) und als CSV aufs NAS legen, für den Import in Intune |
 | I-022 | 🟡 | offen | Claude | **Geräte vorab erfassen (CSV-Import):** Liste mit Seriennummer oder MAC, Name, Ordner/Kunde und Vorlage, z. B. vom Lieferschein. Startet das Gerät zum ersten Mal mit dem Agent, ist alles schon zugeordnet und die Automatisierung läuft (Acronis Snap Deploy: Einstellungen pro MAC). Passt zu Ä-006 |
-| I-023 | 🟡 | offen | Claude | **Hardware-Diagnose am Gerät:** SMART-Selbsttest (kurz/lang), Oberflächentest der Disk, RAM-Test (memtest86+ im PXE- bzw. Stick-Menü). Ergebnis im Verlauf und im Inventar. Heute wird SMART nur gelesen |
+| I-033 | 🟡 | offen | Dominik/Claude | **Hardware-Test Teil 2:** vollständiger RAM-Test mit memtest86+ als eigener Starteintrag (Agent-Stick und Netzwerkstart; nicht für Secure Boot signiert → dafür Secure Boot kurz aus) mit Ergebnis im Tool; Tests mit Person am Gerät (Tastatur, Lautsprecher, Bildschirm-Testbilder, Kamera); optional Schnelltest als Schritt der Automatisierung | 05.11. |
 | I-026 | ⚪ | offen | Claude | **Hardware-Änderungen erkennen:** RAM, Disk oder Seriennummer anders als beim letzten Mal → Hinweis im Verlauf (Diebstahl, Tausch, Defekt) |
 | I-027 | ⚪ | offen | Claude | **Neu aufsetzen direkt am Gerät:** Auf dem Agent-Bildschirm ein Menü „Mit Master neu aufsetzen“, geschützt mit PIN, damit Techniker vor Ort das Tool nicht brauchen (Acronis: user-initiated deployment) |
 | I-029 | ⚪ | offen | Claude | **Intel vPro/AMT:** Gerät ein- und ausschalten, ins BIOS starten und den Bildschirm sehen, auch ohne Agent und bei abgestürztem OS (MeshCentral) |
@@ -116,6 +116,12 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 05.11.2026
+- **I-023 Hardware-Test** (Von: Claude/Dominik): Reiter „Hardware-Test“ im Gerätefenster, nur lesend. Schnelltest
+  (≈ 5 min: Akku, Temperaturen, SMART kurz, RAM-Teil, 1 min CPU-Last, Netzwerk-Durchsatz) und Gründlich (≈ 1–3 h:
+  zusätzlich SMART lang, Oberfläche lesen, 15 min CPU-Last, grösserer RAM-Test). Ampel je Bereich mit Einzelheiten,
+  die letzten 10 Tests beim Gerät, Verlauf, PDF-Prüfprotokoll mit Unterschriftsfeld. Agent `hwtest.py` + Befehl
+  `hwtest` (Abbrechen, Disk-Sperre; **neuer Agent-Stick nötig**), Tool `hwreport.py`/`hw_tab.py`, Demo-Gerät mit
+  simulierten Werten (Netzwerk echt). Hilfe-Kapitel „Hardware-Test“. Tests `tests/test_hwtest.py`. Teil 2 → I-033.
 - **B-005 „BIOS nicht lesbar: Verbindung unerwartet beendet“** (Von: Dominik, HP EliteBook 850 G1 mit hp-bioscfg):
   Das BIOS meldet Namen in Windows-1252 (Byte 0xCE) – Python übernimmt sie als Platzhalterzeichen, `wire.send_json`
   brach mit UnicodeEncodeError ab und der Agent schloss die Verbindung ohne Antwort. Fix: biosread dekodiert Namen und
