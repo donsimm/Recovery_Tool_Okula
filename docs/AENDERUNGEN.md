@@ -116,6 +116,10 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 05.11.2026
+- **Ä-033 Rechtsklick auf ein Gerät → „Netzwerkstart“** (Von: Dominik): Untermenü „Einschalten“ und „Einschalten und
+  Agent starten“ (Wake-on-LAN wie im Reiter Netzwerk). Nicht mögliches ausgegraut, Grund im Tooltip (schon verbunden,
+  keine Kabel-Netzwerkkarte, Netzwerkstart nicht eingerichtet bzw. für das Gerät aus, „Netzwerkstart zuerst“ fehlt);
+  dieselbe Prüfung (`MainWindow.wake_options`) gilt für die Knöpfe im Gerätefenster. Hilfe „Geräte verwalten“.
 - **B-003 Netzwerk-Reiter bei Geräten im BIOS-Modus** (Von: Dominik, gemeldet 05.11., HP EliteBook 850 G1 – Stick per
   CSM im Legacy-Modus gestartet): „Netzwerkstart zuerst“ meldete erst nach dem Klick „nur im BIOS-Setup änderbar“.
   Neu: Hinweis vorab mit BIOS-Taste; nach Umstellen im BIOS-Setup vermerkt der Schalter „von Hand eingestellt“, dann

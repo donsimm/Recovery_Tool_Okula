@@ -336,6 +336,25 @@ class MainWindow(Gtk.ApplicationWindow):
 
     # ---------- Fernsteuerung: Wake-on-LAN, Netzwerkstart zuerst, Agent beim nächsten Start ----------
 
+    def wake_options(self, dev: devices.Device) -> tuple[str, str]:
+        """Warum „Einschalten“ bzw. „Einschalten und Agent starten“ gerade nicht geht ("" = möglich).
+        Gemeinsam für Rechtsklick → Netzwerkstart und den Reiter Netzwerk im Gerätefenster."""
+        wired = devices.netboot_macs([devices.Device(id="x", netboot=True, macs=dev.macs, inventory=dev.inventory)])
+        if self.online_agent(dev) is not None:
+            return ("Gerät ist schon eingeschaltet und verbunden",) * 2
+        if not wired:
+            return ("Keine Kabel-Netzwerkkarte bekannt – Gerät einmal mit dem Agent-Stick starten",) * 2
+        ready, reason = self.netboot_ready()
+        if not ready:
+            agent = reason.split(" – ")[0] if reason else "Netzwerkstart ist nicht eingerichtet"
+        elif not dev.netboot:
+            agent = "Netzwerkstart für dieses Gerät ist aus (Gerätefenster → Netzwerk)"
+        elif not dev.netfirst:
+            agent = "Braucht „Netzwerkstart zuerst“ (Gerätefenster → Netzwerk)"
+        else:
+            agent = ""
+        return "", agent
+
     def wake_device(self, dev: devices.Device, with_agent: bool = False) -> None:
         """Gerät per Wake-on-LAN einschalten; mit Agent: vorher „Agent beim nächsten Start“ vormerken."""
         parent = self._parent_for(dev)
@@ -2150,6 +2169,22 @@ class MainWindow(Gtk.ApplicationWindow):
             menu.append(Gtk.SeparatorMenuItem())   # Strom abgesetzt von den Aufträgen
             add("Herunterfahren", lambda: self.power(dev, "poweroff"), ready)
             add("Neu starten", lambda: self.power(dev, "reboot"), ready)
+            # Netzwerkstart: aus der Ferne einschalten (Wake-on-LAN), nicht mögliches ausgegraut mit Grund
+            why_wake, why_agent = self.wake_options(dev)
+            net = Gtk.MenuItem(label="Netzwerkstart", sensitive=not (why_wake and why_agent))
+            sub = Gtk.Menu()
+            for label, why, agent_too in (("Einschalten", why_wake, False),
+                                          ("Einschalten und Agent starten", why_agent, True)):
+                item = Gtk.MenuItem(label=label, sensitive=not why)
+                item.set_tooltip_text(why or ("Gerät per Wake-on-LAN einschalten – es startet wie gewohnt" if not
+                                              agent_too else "Agent beim nächsten Start vormerken und einschalten – "
+                                              "das Gerät verbindet sich danach mit dem Tool"))
+                item.connect("activate", lambda _i, a=agent_too: self.wake_device(dev, with_agent=a))
+                sub.append(item)
+            net.set_submenu(sub)
+            if why_wake and why_agent:
+                net.set_tooltip_text(why_wake if why_wake == why_agent else f"{why_wake} · {why_agent}")
+            menu.append(net)
             menu.append(Gtk.SeparatorMenuItem())
             add("Umbenennen …", lambda: self.on_rename_device_entry(None))
             if dev.folder:

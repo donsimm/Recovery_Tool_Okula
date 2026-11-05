@@ -299,6 +299,9 @@ Die Aufträge für das gewählte Gerät stehen zusätzlich im Menü <i>Tools</i>
 •  <i>Aus der Liste löschen …</i>: nur möglich, wenn das Gerät nicht verbunden ist.
     Images und Backups auf dem NAS bleiben.
 •  <i>Inventar neu einlesen</i>: Angaben zum Gerät neu holen (zum Beispiel nach einem Disk-Tausch).
+•  <i>Netzwerkstart → Einschalten</i> bzw. <i>Einschalten und Agent starten</i>: Gerät aus der Ferne
+    einschalten (Wake-on-LAN, wie im Reiter <i>Netzwerk</i>). Ausgegraut, wenn es nicht geht – der Grund
+    steht im Tooltip (z. B. schon verbunden, keine Kabel-Netzwerkkarte, „Netzwerkstart zuerst“ fehlt).
 •  <i>Neu starten</i> und <i>Herunterfahren</i>: Symbole rechts unter der Geräteliste und im Gerätefenster
     (Name als Tooltip), mit Rückfrage; nur wenn das Gerät verbunden ist und kein Auftrag läuft.
 •  <i>Inventar exportieren …</i>: Liste zu diesem Gerät (Kapitel <i>Inventar, Garantie, Windows 11</i>).

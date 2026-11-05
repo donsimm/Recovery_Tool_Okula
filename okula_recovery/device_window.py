@@ -487,10 +487,13 @@ class DeviceWindow(Gtk.Window):
         # Wake-on-LAN
         connected = self.main.online_agent(self.dev) is not None
         usable = ready and bool(wired) and self.dev.netboot
-        self.btn_wake.set_sensitive(bool(wired) and not connected)
-        self.btn_wake_agent.set_sensitive(usable and self.dev.netfirst and not connected)
-        self.btn_wake.set_tooltip_text("Gerät ist schon eingeschaltet und verbunden" if connected else
-                                       "Gerät per Wake-on-LAN einschalten – es startet wie gewohnt (z. B. Windows)")
+        why_wake, why_agent = self.main.wake_options(self.dev)   # gleich wie Rechtsklick → Netzwerkstart
+        self.btn_wake.set_sensitive(not why_wake)
+        self.btn_wake_agent.set_sensitive(not why_agent)
+        self.btn_wake.set_tooltip_text(why_wake or "Gerät per Wake-on-LAN einschalten – es startet wie gewohnt "
+                                                   "(z. B. Windows)")
+        self.btn_wake_agent.set_tooltip_text(why_agent or "Agent beim nächsten Start vormerken und Gerät einschalten "
+                                                          "– es verbindet sich danach mit dem Tool")
         # Netzwerkstart zuerst
         st = self.dev.boot_status or {}
         self._netboot_updating = True
