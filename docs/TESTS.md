@@ -51,6 +51,7 @@ bestätigt.
 | B-001: zwei baugleiche CompactPlayer gleichzeitig → zwei Einträge | R | 05.11.2026 (Dominik) |
 | B-002: OS installieren mit steckendem Agent-Stick → startet nach 15 s von der Disk | R | 05.11.2026 (Dominik) |
 | Wake-on-LAN: Gerät aus → „Einschalten“ → Windows startet | R | 05.11.2026 (Dominik, HP EliteBook 850 G1) |
+| Demo-Gerät komplett: DEMO-PC, Disk-Image/Zurückspielen, Sperre für echte Geräte, Fehler-Demo, Automatisierung, Prozess beendet; Ä-027 ohne NAS, NAS unberührt, Demo-Daten zurücksetzen, alte Demo-Images | R | 05.11.2026 (Dominik) |
 | Image prüfen: ✔, ein Byte geändert → ✖ mit Datei, fehlende Datei, Abbrechen, Ordner mit Unterordnern, Clonezilla, Ergebnis nach Neustart | A, V | Loop-Disk und Clonezilla-Testimage |
 | Demo ohne NAS: ganzer Vorführablauf (Image, Prüfen ✔/✖, Zurückspielen, Backup, Ordner senden, Automatisierung) ohne NAS; mit NAS bleibt das NAS unverändert; Sperren Demo ↔ echt; Zurücksetzen | A, V | echter Demo-Prozess, Snapshot des NAS-Ordners |
 | Gerätefenster passt sich der Übersicht an (1920×1080 ganz sichtbar, 1366×768 begrenzt) | A, V | |
@@ -104,16 +105,7 @@ bestätigt.
 - [ ] Nach 3 Tagen: Häkchen wieder an (oder Option aus → bleibt aus)
 
 ### 6. Demo-Gerät (Vorführung)
-- [ ] Extras → Demo-Gerät: DEMO-PC erscheint grün, Inventar sichtbar
-- [ ] Disk-Image vom DEMO-PC (≈ 45 s, grüner Balken), danach Zurückspielen auf den DEMO-PC
-- [ ] Demo-Image auf ein echtes Gerät zurückspielen → wird verweigert
-- [ ] „Demo: nächster Auftrag mit Fehler“ → roter Balken bei ~40 %
-- [ ] Automatisierung auf dem DEMO-PC (Countdown, Schritte 1–5, „wieder aktiv in 3 Tagen“)
-- [ ] Tool schliessen → Demo-Prozess ist beendet
-
-- [ ] Ä-027: **NAS abstecken** (bzw. nicht eingehängt), Tool starten → Extras → Demo-Gerät: Bereich „Demo (lokal, nicht auf dem NAS)“ mit ★ DEMO-Master-Win11 und DEMO-Image-beschaedigt; ganzen Ablauf vorführen: Disk-Image, Image prüfen (✔ bzw. ✖), Zurückspielen, Datei-Backup, Ordner senden, Automatisierung – nirgends eine NAS-Meldung
-- [ ] Ä-027: mit eingehängtem NAS dasselbe → auf dem NAS entsteht nichts (Ordner images/, Backups/, Verteilen/ vorher/nachher vergleichen); DEMO-Images erscheinen bei echten Geräten nicht zur Auswahl, NAS-Images nicht beim DEMO-PC
-- [ ] Ä-027: Extras → Demo-Daten zurücksetzen … → Rückfrage, danach nur noch die zwei fertigen Images; alte Demo-Images auf dem NAS (vor Ä-027) sind ausgeblendet, Rechtsklick auf den Hinweis → „Alte Demo-Images vom NAS löschen …“
+- (alle geprüft)
 
 ### 7. Allgemein
 - [ ] Ä-032: in Geräte, Images, Dateien, Backups und im Gerätefenster (Aufträge, Disks, Images, Backups, Netzwerk, Verlauf) je eine Spalte schmaler/breiter ziehen (auch „Status“ und „Auto“) → Tool neu starten → Breiten bleiben; nicht verstellte Spalten passen sich dem Inhalt an
