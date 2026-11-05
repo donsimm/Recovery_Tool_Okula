@@ -48,6 +48,7 @@ bestätigt.
 | Spaltenbreiten: vier Listen und sechs Tabellen im Gerätefenster mit der Maus verstellbar, nach Neustart gleich | A, V | xdotool-Ziehen unter Xvfb |
 | Debian-Direktinstallation mit echter Debian-13.7.0-Netinst-ISO | R | 05.11.2026 (Dominik) |
 | Doppelter HP-Eintrag verschwindet nach dem Update | R | 05.11.2026 (Dominik) |
+| B-001: zwei baugleiche CompactPlayer gleichzeitig → zwei Einträge | R | 05.11.2026 (Dominik) |
 | Image prüfen: ✔, ein Byte geändert → ✖ mit Datei, fehlende Datei, Abbrechen, Ordner mit Unterordnern, Clonezilla, Ergebnis nach Neustart | A, V | Loop-Disk und Clonezilla-Testimage |
 | Demo ohne NAS: ganzer Vorführablauf (Image, Prüfen ✔/✖, Zurückspielen, Backup, Ordner senden, Automatisierung) ohne NAS; mit NAS bleibt das NAS unverändert; Sperren Demo ↔ echt; Zurücksetzen | A, V | echter Demo-Prozess, Snapshot des NAS-Ordners |
 | Gerätefenster passt sich der Übersicht an (1920×1080 ganz sichtbar, 1366×768 begrenzt) | A, V | |
@@ -57,7 +58,6 @@ bestätigt.
 
 ### 1. Fixes von heute
 - [ ] **B-002:** OS installieren (Windows bzw. Linux) mit steckendem Agent-Stick → nach „vorbereitet“ Stick **stecken lassen**, Gerät startet nach 15 s von der Disk und installiert; Stick erst abziehen, wenn die Installation läuft (Meldung am Gerät erst mit neuem Agent-Stick)
-- [ ] **B-001:** nach dem Update beide CompactPlayer gleichzeitig mit Agent-Stick starten → zwei Einträge („CompactPlayer 1“ und „… (2)“), Statuszeile „Baugleiche Geräte erkannt“; danach je einzeln starten → jedes landet bei sich; Tool neu starten → bleibt getrennt
 
 ### 2. Netzwerk (Reiter „Netzwerk“ im Gerätefenster)
 - [ ] Wake-on-LAN: Gerät ausgeschaltet, „Einschalten“ → startet Windows
