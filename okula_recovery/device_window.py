@@ -354,7 +354,7 @@ class DeviceWindow(Gtk.Window):
         box.pack_start(self.netboot_switch, False, False, 0)
         self.netboot_text = Gtk.Label(xalign=0, wrap=True)
         box.pack_start(self.netboot_text, False, False, 0)
-        gear = Gtk.Button.new_from_icon_name("emblem-system-symbolic", Gtk.IconSize.BUTTON)
+        gear = Gtk.Button.new_from_icon_name("okula-settings-symbolic", Gtk.IconSize.BUTTON)
         gear.set_relief(Gtk.ReliefStyle.NONE)
         gear.set_tooltip_text("Netzwerkstart einrichten, ein-/ausschalten (Tools → Netzwerkstart (PXE))")
         gear.connect("clicked", lambda _b: self.main.open_pxe_dialog())
@@ -467,11 +467,23 @@ class DeviceWindow(Gtk.Window):
         self.nic_store.clear()
         nics = self.dev.inventory.get("network") or []
         known = {n.get("mac", "").lower() for n in nics}
-        for n in nics + [{"name": "–", "mac": m} for m in self.dev.macs if m.lower() not in known]:
+        # früher gesehene Karten nur mit fester MAC (zufällige MACs von Windows/Tethering sind nicht nutzbar)
+        extra = [{"name": "– (früher gesehen)", "mac": m} for m in self.dev.macs
+                 if m.lower() not in known and devices.real_mac(m)]
+        for n in nics + extra:
             mac = (n.get("mac") or "").lower()
-            self.nic_store.append([n.get("name", ""), mac, "WLAN" if n.get("wireless") else "Kabel",
-                                   "ja" if mac in wired else "nein (WLAN kann kein PXE/Wake-on-LAN)"
-                                   if n.get("wireless") else "–"])
+            kind = devices.nic_kind(n)
+            if mac in wired:
+                use = "ja"
+            elif kind == "WLAN":
+                use = "nein (WLAN kann kein PXE/Wake-on-LAN)"
+            elif kind == "Mobilfunk":
+                use = "nein (Mobilfunk-Modem)"
+            elif not devices.real_mac(mac):
+                use = "nein (zufällige MAC)"
+            else:
+                use = "–"
+            self.nic_store.append([n.get("name", ""), mac, kind, use])
         # Wake-on-LAN
         connected = self.main.online_agent(self.dev) is not None
         usable = ready and bool(wired) and self.dev.netboot
@@ -485,13 +497,19 @@ class DeviceWindow(Gtk.Window):
         self.netfirst_switch.set_active(self.dev.netfirst)
         self.request_check.set_active(self.dev.boot_request)
         self._netboot_updating = False
-        self.netfirst_switch.set_sensitive(usable and connected)
+        bios = devices.bios_mode(self.dev)
+        self.netfirst_switch.set_sensitive(usable and (connected or bios))
         self.request_check.set_sensitive(usable and self.dev.netfirst)
         self.btn_bootcheck.set_sensitive(connected)
+        keys = bootkeys.lookup(self.dev.inventory.get("dmi"))
         if not usable:
             text = "Erst den Netzwerkstart oben einschalten" if not reason else reason.split(" – ")[0]
-        elif st.get("uefi") is False:
-            text = "Gerät startet im BIOS-Modus – Startreihenfolge nur im BIOS-Setup änderbar"
+        elif bios and self.dev.netfirst:
+            text = ("Ein – im BIOS-Setup von Hand eingestellt (BIOS-Modus: das Tool kann die Reihenfolge nicht "
+                    "prüfen)") + (" · Agent beim nächsten Start angefordert" if self.dev.boot_request else "")
+        elif bios:
+            text = (f"BIOS-Modus: im BIOS-Setup ({keys.bios if keys else 'Taste je Hersteller'}) „Netzwerk“ bzw. "
+                    "„PXE“ an die erste Stelle der Startreihenfolge setzen, danach hier einschalten")
         elif self.dev.netfirst:
             ok = st.get("netfirst")
             checked = devices.short_time(st.get("checked", "")) if st.get("checked") else ""

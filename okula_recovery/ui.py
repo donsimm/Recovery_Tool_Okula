@@ -367,8 +367,20 @@ class MainWindow(Gtk.ApplicationWindow):
         self.netboot_changed()
 
     def set_netfirst(self, dev: devices.Device, on: bool) -> None:
-        """UEFI-Startreihenfolge des Geräts ändern (über den Agent) und die Startart beim Tool nachführen."""
+        """UEFI-Startreihenfolge des Geräts ändern (über den Agent) und die Startart beim Tool nachführen.
+        BIOS-Modus: Die Reihenfolge stellt man im BIOS-Setup von Hand ein – hier wird sie nur vermerkt."""
         parent = self._parent_for(dev)
+        if devices.bios_mode(dev):
+            dev.netfirst, dev.boot_request = on, False
+            self.store.save(dev)
+            self.store.add_history(dev, "notiz", "Netzwerkstart zuerst " + (
+                "eingeschaltet (im BIOS-Setup von Hand eingestellt, BIOS-Modus)" if on else
+                "ausgeschaltet – im BIOS-Setup die Reihenfolge wieder zurückstellen"))
+            self.sync_netboot()
+            self.status(f"{dev.name}: " + ("Netzwerkstart zuerst vermerkt (im BIOS von Hand eingestellt)" if on else
+                                           "Netzwerkstart zuerst aus – im BIOS-Setup die Reihenfolge zurückstellen"))
+            self.netboot_changed()
+            return
         agent = self._ready_agent(dev, parent)
         if agent is None:
             self.netboot_changed()   # Schalter zurückstellen
@@ -413,7 +425,7 @@ class MainWindow(Gtk.ApplicationWindow):
                                                           "message")}
             dev.boot_status["checked"] = devices.now()
             self.store.save(dev)
-            if dev.netfirst and not result.get("netfirst"):
+            if dev.netfirst and result.get("uefi") is not False and not result.get("netfirst"):
                 self.status(f"Achtung {dev.name}: Netzwerkstart steht nicht mehr an erster Stelle (z. B. nach einem "
                             "Windows-Update) – im Reiter Netzwerk neu einschalten")
             self.netboot_changed()
@@ -481,7 +493,7 @@ class MainWindow(Gtk.ApplicationWindow):
         bar.pack_start(self.nas_status, True, True, 0)
         self.nas_space = Gtk.Label(label="", xalign=0)
         bar.pack_start(self.nas_space, False, False, 0)
-        btn_settings = Gtk.Button.new_from_icon_name("emblem-system-symbolic", Gtk.IconSize.BUTTON)
+        btn_settings = Gtk.Button.new_from_icon_name("okula-settings-symbolic", Gtk.IconSize.BUTTON)
         btn_settings.set_relief(Gtk.ReliefStyle.NONE)
         btn_settings.set_tooltip_text("NAS-Verbindung einrichten (Menü → NAS-Verbindung …)")
         btn_settings.connect("clicked", lambda _b: self.open_nas_dialog())

@@ -275,7 +275,13 @@ Läuft auf dem Server eine Firewall: Ports im Kapitel <i>Erste Schritte</i> frei
 •  <i>Beim nächsten Start den Agent laden</i>: Beim nächsten Start kommt der Agent statt Windows. Nur einmal.
 •  <i>Einschalten und Agent starten</i>: beides zusammen. Das Gerät erscheint danach im Tool,
     ohne dass jemand vor Ort sein muss.
-•  Nach Windows-Updates kann die Startreihenfolge zurückgesetzt sein. <i>Prüfen</i> zeigt es an."""),
+•  Nach Windows-Updates kann die Startreihenfolge zurückgesetzt sein. <i>Prüfen</i> zeigt es an.
+•  <b>Gerät im BIOS-Modus (Legacy)</b>: Das Tool kann die Startreihenfolge nicht ändern. Im BIOS-Setup
+    (Taste je Hersteller, z. B. HP: F10) „Netzwerk“ bzw. „PXE“ an die erste Stelle setzen, danach den
+    Schalter <i>Netzwerkstart zuerst</i> einschalten – das Tool vermerkt es nur. <i>Beim nächsten Start den
+    Agent laden</i> und <i>Einschalten und Agent starten</i> gehen dann wie bei UEFI.
+•  In der Liste <i>Netzwerkkarten</i> taugen nur Kabel-Karten mit fester MAC für Netzwerkstart und
+    Wake-on-LAN – nicht WLAN, Mobilfunk-Modems und zufällige MACs."""),
 
     ("Geräte verwalten", """<big><b>Geräte verwalten</b></big>
 

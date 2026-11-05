@@ -116,6 +116,13 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 05.11.2026
+- **B-003 Netzwerk-Reiter bei Geräten im BIOS-Modus** (Von: Dominik, gemeldet 05.11., HP EliteBook 850 G1 – Stick per
+  CSM im Legacy-Modus gestartet): „Netzwerkstart zuerst“ meldete erst nach dem Klick „nur im BIOS-Setup änderbar“.
+  Neu: Hinweis vorab mit BIOS-Taste; nach Umstellen im BIOS-Setup vermerkt der Schalter „von Hand eingestellt“, dann
+  gehen „Agent beim nächsten Start“ und „Einschalten und Agent starten“ wie bei UEFI (`devices.bios_mode`). Dazu:
+  Netzwerkkarten-Liste ohne zufällige MACs, Mobilfunk-Modem („wwp…“) nicht mehr als „Kabel“/PXE-tauglich
+  (`nic_kind`, `netboot_macs`); eigenes Zahnrad-Symbol (`okula-settings-symbolic`), weil `emblem-system-symbolic`
+  im Icon-Thema des Servers fehlt (blaues Quadrat). Hilfe „Netzwerkstart“, TECHNIK. Tests `NetworkCardsTest`.
 - **B-002 „Stick abziehen“ zur falschen Zeit** (Von: Dominik, gemeldet 05.11.): Nach „OS installieren … vorbereitet“
   hiess es „Stick JETZT abziehen“, 15 s später Neustart – der Agent läuft aber vom Stick, ohne ihn klappt der Neustart
   nicht. Richtig: Stick stecken lassen, BootNext startet einmalig von der Disk; abziehen, sobald die Installation

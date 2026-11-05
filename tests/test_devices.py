@@ -269,5 +269,28 @@ class LookalikeDevicesTest(unittest.TestCase):
         self.assertEqual((again.id, new), (a.id, False))
 
 
+class NetworkCardsTest(unittest.TestCase):
+    """B-003: nur feste Kabel-MACs für Netzwerkstart/WoL; BIOS-Modus erkennen."""
+
+    def test_kinds_and_netboot_macs(self):
+        nics = [{"name": "enp0s25", "mac": "6c:c2:17:7d:33:db"}, {"name": "wwp0s20u6i4", "mac": "9a:ec:83:c0:b9:f9"},
+                {"name": "wlo1", "mac": "3c:6a:a7:c6:9a:76", "wireless": True}]
+        self.assertEqual([devices.nic_kind(n) for n in nics], ["Kabel", "Mobilfunk", "WLAN"])
+        dev = devices.Device(id="x", netboot=True, inventory={"network": nics},
+                             macs=["6c:c2:17:7d:33:db", "9a:ec:83:c0:b9:f9", "3c:6a:a7:c6:9a:76",
+                                   "26:4c:e9:6c:c9:8e", "00:e0:6f:2c:73:2b"])
+        self.assertEqual(devices.netboot_macs([dev]), ["00:e0:6f:2c:73:2b", "6c:c2:17:7d:33:db"])
+
+    def test_bios_mode(self):
+        dev = devices.Device(id="x")
+        self.assertFalse(devices.bios_mode(dev))                                    # unbekannt
+        dev.boot_status = {"uefi": False}
+        self.assertTrue(devices.bios_mode(dev))
+        dev.inventory = {"platform": {"uefi": True}}                                 # im BIOS auf UEFI umgestellt
+        self.assertFalse(devices.bios_mode(dev))
+        dev.inventory = {"platform": {"uefi": False}}
+        self.assertTrue(devices.bios_mode(devices.Device(id="y", inventory=dev.inventory)))
+
+
 if __name__ == "__main__":
     unittest.main()

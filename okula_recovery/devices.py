@@ -536,12 +536,30 @@ def netboot_modes(store_devices) -> dict[str, str]:
     return dict(sorted(modes.items()))
 
 
+def nic_kind(nic: dict) -> str:
+    """„WLAN“, „Mobilfunk“ (wwan…) oder „Kabel“."""
+    if nic.get("wireless"):
+        return "WLAN"
+    return "Mobilfunk" if str(nic.get("name", "")).startswith("ww") else "Kabel"
+
+
 def netboot_macs(store_devices) -> list[str]:
-    """MAC-Adressen aller für den Netzwerkstart freigeschalteten Geräte (kabelgebundene zuerst; WLAN kann kein PXE)."""
+    """MAC-Adressen aller für den Netzwerkstart freigeschalteten Geräte. Nur feste Kabel-MACs: WLAN und Mobilfunk
+    können kein PXE/Wake-on-LAN, zufällige (lokal vergebene) MACs ändern sich."""
     macs = set()
     for dev in store_devices:
         if not dev.netboot:
             continue
-        wireless = {n["mac"].lower() for n in (dev.inventory.get("network") or []) if n.get("wireless") and n.get("mac")}
-        macs |= {m.lower() for m in dev.macs if m and m.lower() not in wireless}
+        other = {n["mac"].lower() for n in (dev.inventory.get("network") or [])
+                 if n.get("mac") and nic_kind(n) != "Kabel"}
+        macs |= {m.lower() for m in dev.macs if real_mac(m) and m.lower() not in other}
     return sorted(macs)
+
+
+def bios_mode(dev: "Device") -> bool:
+    """Startet das Gerät im BIOS-Modus (Legacy)? Laut Inventar (bei jedem Start neu), sonst letzte Prüfung der
+    Startreihenfolge. Nach dem Umstellen im BIOS auf UEFI stimmt es nach dem nächsten Start wieder."""
+    uefi = (dev.inventory.get("platform") or {}).get("uefi")
+    if uefi is not None:
+        return uefi is False
+    return (dev.boot_status or {}).get("uefi") is False
