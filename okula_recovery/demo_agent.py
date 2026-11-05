@@ -25,8 +25,8 @@ import threading
 import time
 from pathlib import Path
 
-from okula_recovery import (__version__, agent, deploy, discovery, filebackup, imaging, inventory, wininstall,
-                            wire)
+from okula_recovery import (__version__, agent, biosread, deploy, discovery, filebackup, imaging, inventory,
+                            wininstall, wire)
 
 DEMO_ID = "okula-demo-0001"            # Agent-ID (beim echten Agent die Board-UUID)
 DEMO_MAC = "02:0d:e0:00:00:01"          # lokal verwaltete MAC – gibt es in keinem echten Gerät
@@ -350,6 +350,47 @@ def set_netfirst(on: bool, saved: list[str] | None = None) -> dict:
     return {**boot_status(), "previous": previous}
 
 
+# ---------- BIOS (I-032): simuliertes HP-BIOS ----------
+
+def _enum(name: str, value: str, possible: tuple[str, ...]) -> dict:
+    return {"name": name, "display": name, "type": "enumeration", "value": value, "possible": list(possible),
+            "driver": "hp-bioscfg"}
+
+
+BIOS = [_enum("Boot Mode", "UEFI Native (Without CSM)", ("Legacy", "UEFI Hybrid (With CSM)", "UEFI Native (Without CSM)")),
+        _enum("SecureBoot", "Enable", ("Disable", "Enable")),
+        _enum("Fast Boot", "Disable", ("Disable", "Enable")),
+        _enum("USB device boot", "Enable", ("Disable", "Enable")),
+        _enum("PXE Internal NIC boot", "Enable", ("Disable", "Enable")),
+        _enum("PXE Internal IPV4 NIC boot", "Enable", ("Disable", "Enable")),
+        _enum("PXE Internal IPV6 NIC boot", "Disable", ("Disable", "Enable")),
+        _enum("Wake On LAN", "Boot to Network", ("Disable", "Boot to Network", "Follow Boot Order")),
+        _enum("Virtualization Technology (VTx)", "Enable", ("Disable", "Enable", "Reset to default")),
+        _enum("TPM Device", "Available", ("Hidden", "Available")),
+        {"name": "Asset Tracking Number", "display": "Asset Tracking Number", "type": "string",
+         "value": "OKULA-DEMO-0001", "max_length": "18", "driver": "hp-bioscfg"}]
+BIOS_PENDING = {"on": False}
+
+
+def bios_read(*_a, **_k) -> dict:
+    return {"read": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "bios": {"vendor": "Okula", "version": "1.0 (Demo)", "date": "10/29/2026", "release": "1.0"},
+            "platform": {"tpm": "2.0", "uefi": True, "secure_boot": True}, "interfaces": ["hp-bioscfg"],
+            "attributes": json.loads(json.dumps(BIOS)), "auth": {"Setup Password": False},
+            "pending_reboot": BIOS_PENDING["on"], "boot": boot_status()}
+
+
+def bios_write(name: str, value: str, password: str = "", *_a) -> dict:
+    for a in BIOS:
+        if a["name"] == name:
+            if a.get("possible") and value not in a["possible"]:
+                raise biosread.BiosError(f"„{value}“ ist für „{name}“ nicht erlaubt ({', '.join(a['possible'])})")
+            a["value"] = value
+            BIOS_PENDING["on"] = True
+            return {"name": name, "value": value, "pending_reboot": True}
+    raise biosread.BiosError(f"Einstellung „{name}“ gibt es auf diesem Gerät nicht")
+
+
 def power_action(action: str) -> None:
     """Neustart/Herunterfahren vorführen: das Demo-Gerät ist kurz weg und meldet sich dann wieder."""
     global offline_until
@@ -370,6 +411,7 @@ def install_fakes() -> None:
     wininstall.boot_status, wininstall.set_netfirst = boot_status, set_netfirst
     deploy.customize, deploy.deliver = customize, deliver
     deploy.open_keyboards = lambda pattern="": []
+    biosread.read, biosread.write = bios_read, bios_write
     agent.power_action = power_action
     agent.console = ""
 

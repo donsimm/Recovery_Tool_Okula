@@ -13,6 +13,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
 from okula_recovery import archive, bootkeys, devices, imagecheck, jobs, nas, pxelog, warranty, win11  # noqa: E402
+from okula_recovery.bios_tab import BiosTab  # noqa: E402
 from okula_recovery.automation_tab import AutomationTab  # noqa: E402
 from okula_recovery.uikit import (ask_text, confirm_error, numbered_section, power_buttons,  # noqa: E402
                                   remember_columns, run_async, scrolled)
@@ -108,7 +109,10 @@ class DeviceWindow(Gtk.Window):
         self.tabs.append_page(self._build_images(), Gtk.Label(label="Images"))
         self.tabs.append_page(self._build_backups(), Gtk.Label(label="Backups"))
         self.network_page = self.tabs.append_page(self._build_network(), Gtk.Label(label="Netzwerk"))
+        self.bios_tab = BiosTab(main, dev)
+        self.bios_page = self.tabs.append_page(self.bios_tab, Gtk.Label(label="BIOS"))
         self.tabs.connect("switch-page", lambda _n, _p, num: num == self.network_page and self.refresh_pxe_log())
+        self.tabs.connect("switch-page", lambda _n, _p, num: num == self.bios_page and self._bios_auto())
         self._pxe_timer = GLib.timeout_add_seconds(5, self._pxe_tick)   # nur solange der Reiter offen ist
         self.automation_tab = AutomationTab(main, dev)
         self.automation_page = self.tabs.append_page(self.automation_tab, Gtk.Label(label="Automatisierung"))
@@ -280,6 +284,8 @@ class DeviceWindow(Gtk.Window):
         self.update_netboot()
         if hasattr(self, "automation_tab"):
             self.automation_tab.refresh()
+        if hasattr(self, "bios_tab"):
+            self.bios_tab.refresh()
         self._fill_overview()
         self._fill_disks()
         self.history_store.clear()
@@ -441,6 +447,12 @@ class DeviceWindow(Gtk.Window):
         self._pxe_busy = False
         self.update_netboot()
         return box
+
+    def _bios_auto(self) -> bool:
+        """Reiter BIOS geöffnet: einmal von selbst lesen, wenn noch nichts gespeichert ist und das Gerät verbunden ist."""
+        if not self.dev.bios and self.bios_tab.connected() is not None:
+            self.bios_tab.read()
+        return False
 
     def _pxe_tick(self) -> bool:
         if self.get_visible() and self.tabs.get_current_page() == self.network_page:

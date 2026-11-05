@@ -515,6 +515,37 @@ Ohne Schlüssel, ohne Internet oder bei einem anderen Hersteller: mit <i>Von Han
 3.  Speicherort wählen und auf <i>Exportieren</i> klicken.
 Der Windows-Schlüssel kommt standardmässig nicht mit. Auf Wunsch nur verdeckt (XXXXX-…-ABCDE)."""),
 
+    ("BIOS", """<big><b>BIOS-Einstellungen lesen, vergleichen und ändern</b></big>
+
+Reiter <i>BIOS</i> im Gerätefenster. Das Gerät muss mit dem Agent verbunden sein (neuer Agent-Stick bzw.
+Netzwerkstart mit dem aktuellen Tool).
+
+<b>Lesen</b>
+1.  Gerätefenster öffnen, Reiter <i>BIOS</i> wählen. Beim ersten Mal liest das Tool von selbst.
+2.  Später: <i>BIOS lesen</i>. Der Stand wird beim Gerät gespeichert und bleibt sichtbar, auch wenn das
+    Gerät aus ist.
+•  <b>Grundangaben</b> gibt es bei jedem Gerät: BIOS-Version, Boot-Modus (UEFI oder BIOS-Modus), Secure Boot,
+    TPM, BIOS-Passwort gesetzt ja/nein, UEFI-Startreihenfolge.
+•  <b>Einstellungen</b> (z. B. „PXE Internal IPV4 NIC boot“, „Fast Boot“, „Wake On LAN“) gibt es nur bei
+    Modellen, die sie an Linux melden: HP, Dell und Lenovo Business-Geräte. Sonst steht „nur Grundangaben“.
+
+<b>Vergleichen</b> – zum Beispiel ein Gerät, das funktioniert, mit einem, das nicht funktioniert
+1.  Bei beiden Geräten einmal <i>BIOS lesen</i>.
+2.  Beim zweiten Gerät unter <i>Vergleichen mit</i> das erste wählen.
+3.  <i>Nur Unterschiede</i> zeigt nur, was verschieden ist – rot. Wichtige Einstellungen für Start,
+    Netzwerk und Secure Boot stehen oben und fett.
+•  <i>Einstellung suchen</i> filtert nach Namen und Werten.
+•  <i>Als CSV speichern …</i> speichert die Liste für Excel (bzw. den Vergleich).
+
+<b>Ändern</b>
+1.  Einstellung doppelklicken (oder wählen und <i>Ändern …</i>).
+2.  Neuen Wert wählen, falls im BIOS ein Passwort gesetzt ist, das BIOS-Admin-Passwort eingeben.
+3.  <i>Setzen</i>. Die Änderung gilt nach dem nächsten Neustart; die Grundangaben zeigen „warten auf Neustart“.
+•  Das Passwort geht verschlüsselt an den Agent und wird nie gespeichert.
+•  Vorsicht beim Boot-Modus: Ein Windows im BIOS-Modus startet im UEFI-Modus nicht mehr (und umgekehrt).
+    Secure Boot verlangt bei HP beim nächsten Start eine Bestätigung am Gerät.
+•  Jede Änderung steht im Verlauf des Geräts."""),
+
     ("Windows / Linux installieren", """<big><b>Betriebssystem installieren</b></big>
 
 <b>1. ISO-Datei hinzufügen (einmal pro Version)</b>

@@ -123,6 +123,29 @@ def bootorder(ip: str, key: bytes, action: str = "status", saved: list[str] | No
     return reply
 
 
+def _bios_call(ip: str, key: bytes, port: int, request: dict, kind: str) -> dict:
+    with _connect(ip, key, port) as sock:
+        wire.send_json(sock, request)
+        reply = wire.recv_json(sock)
+    if reply.get("type") != kind:
+        message = reply.get("message", "Agent hat abgelehnt")
+        if "Unbekannter Befehl" in message:
+            message = "Agent zu alt – Agent-Stick bzw. Netzwerkstart mit dem aktuellen Tool neu erstellen"
+        raise AgentError(message)
+    return reply
+
+
+def bios(ip: str, key: bytes, port: int = wire.PORT) -> dict:
+    """BIOS lesen (I-032): Grundangaben, UEFI-Startreihenfolge, Einstellungen über firmware-attributes."""
+    return _bios_call(ip, key, port, {"cmd": "bios"}, "bios")["data"]
+
+
+def bios_set(ip: str, key: bytes, name: str, value: str, password: str = "", port: int = wire.PORT) -> dict:
+    """Eine BIOS-Einstellung setzen; gilt nach dem Neustart. Das Passwort geht nur verschlüsselt an den Agent."""
+    return _bios_call(ip, key, port, {"cmd": "bios_set", "name": name, "value": value, "password": password},
+                      "bios_set")
+
+
 class Notifier:
     """Meldet dem Agent, was das Tool gerade für ihn vorbereitet (z. B. Image-Prüfung).
 

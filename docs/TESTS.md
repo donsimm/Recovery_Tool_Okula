@@ -54,6 +54,7 @@ bestätigt.
 | Demo-Gerät komplett: DEMO-PC, Disk-Image/Zurückspielen, Sperre für echte Geräte, Fehler-Demo, Automatisierung, Prozess beendet; Ä-027 ohne NAS, NAS unberührt, Demo-Daten zurücksetzen, alte Demo-Images | R | 05.11.2026 (Dominik) |
 | Ä-014: NAS-Webseite öffnet DSM (https 5001 bzw. http 5000) | R | 05.11.2026 (Dominik) |
 | Netzwerkstart-Protokoll: echte UEFI- (OVMF, shim/grub) und BIOS-Abläufe (iPXE, pxelinux), nicht freigeschaltet | A | Labor mit dnsmasq 2.91 und QEMU |
+| BIOS-Reiter: Lesen/Setzen über nachgebautes firmware-attributes-sysfs (mit Passwort), Vergleich, CSV, Demo-Agent | A, V | echte HP-Hardware noch offen |
 | Image prüfen: ✔, ein Byte geändert → ✖ mit Datei, fehlende Datei, Abbrechen, Ordner mit Unterordnern, Clonezilla, Ergebnis nach Neustart | A, V | Loop-Disk und Clonezilla-Testimage |
 | Demo ohne NAS: ganzer Vorführablauf (Image, Prüfen ✔/✖, Zurückspielen, Backup, Ordner senden, Automatisierung) ohne NAS; mit NAS bleibt das NAS unverändert; Sperren Demo ↔ echt; Zurücksetzen | A, V | echter Demo-Prozess, Snapshot des NAS-Ordners |
 | Gerätefenster passt sich der Übersicht an (1920×1080 ganz sichtbar, 1366×768 begrenzt) | A, V | |
@@ -111,6 +112,8 @@ bestätigt.
 - (alle geprüft)
 
 ### 7. Allgemein
+- [ ] I-032: **Agent-Stick neu erstellen**; beide HP EliteBook 850 G1 mit dem Agent starten (das nicht startende ggf. wieder im Hybrid-/Legacy-Modus) → Reiter BIOS: Schnittstelle „HP (hp-bioscfg)“ mit Einstellungen oder „nur Grundangaben“ (notieren!); beim zweiten „Vergleichen mit“ das erste → Unterschiede (z. B. PXE Internal IPV4 NIC boot)
+- [ ] I-032: eine harmlose Einstellung ändern (z. B. „Fast Boot“ oder „Asset Tracking Number“) → nach dem Neustart im BIOS-Setup sichtbar, Verlauf-Eintrag; mit gesetztem BIOS-Passwort: ohne Passwort Meldung, mit falschem „abgelehnt“; CSV in Excel öffnen
 - [ ] Ä-035: nach `sudo ./install.sh` und Neustart des Tools: Alt+Tab und Dock zeigen „Okula Recovery Tool“ mit Okula-Logo; Startmenü-Eintrag nur einmal vorhanden; Autostart funktioniert weiterhin
 - [ ] Ä-032: in Geräte, Images, Dateien, Backups und im Gerätefenster (Aufträge, Disks, Images, Backups, Netzwerk, Verlauf) je eine Spalte schmaler/breiter ziehen (auch „Status“ und „Auto“) → Tool neu starten → Breiten bleiben; nicht verstellte Spalten passen sich dem Inhalt an
 - [ ] I-030: Menü → Einstellungen … → Bandbreite **100 Mbit/s** → Disk-Image eines echten Geräts: Durchsatz in der Serverlast (LAN) und im Switch ≈ 100 Mbit/s (± 10 %), „begrenzt: 100 Mbit/s“ in der LAN-Kurve, Log-Zeile zu Beginn; während des Auftrags auf 300 Mbit/s ändern → Durchsatz steigt sofort, Restzeit rechnet neu

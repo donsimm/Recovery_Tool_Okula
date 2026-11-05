@@ -17,7 +17,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 |---|---|---|---|
 | 🐞 Bugs | 1 | 0 | 0 |
 | 🔧 Änderungen | 7 | 0 | 0 |
-| 💡 Ideen | 22 | 0 | 0 |
+| 💡 Ideen | 21 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
@@ -58,7 +58,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 | I-012 | 🟡 | offen | Claude | **BitLocker entsperren:** Den Wiederherstellungsschlüssel pro Gerät hinterlegen (nur root-lesbar) und im Agent mit `dislocker` öffnen. Dann sichert partclone nur die belegten Blöcke statt einer `dd`-Rohkopie (Images viel kleiner), und auch ein Datei-Backup wird möglich |
 | I-014 | ⚪ | offen | Claude | **Treiber für Master-Images:** Treiberordner pro Modell auf dem NAS; nach dem Restore nach `Windows\Drivers\Okula` kopieren und in `unattend.xml` per `DriverPaths` (offlineServicing) einbinden. Damit passt ein Master auf verschiedene Hardware |
 | I-015 | ⚪ | offen | Claude | **Firmware/BIOS über den Agent:** `fwupd`/LVFS, wo der Hersteller es unterstützt (Dell, Lenovo, teilweise HP). Die BIOS-Version steht schon im Inventar; Hinweis anzeigen, wenn sie veraltet ist |
-| I-032 | 🟡 | offen | Dominik | **BIOS-Einstellungen im Tool lesen, sichern, vergleichen und setzen:** über die Linux-Schnittstelle `firmware-attributes` im Agent (Dell `dell-wmi-sysman`, Lenovo `think-lmi`, HP `hp-bioscfg`; nur Business-Modelle, je Modell testen). Werte je Gerät aufs NAS sichern, mit einer Vorlage vergleichen (Boot-Modus UEFI, Secure Boot, Wake-on-LAN, PXE), Änderungen gelten nach dem Neustart. BIOS-Admin-Passwort je Aktion eingeben, nie speichern. Zusammen mit I-015 (BIOS-Update) | 05.11. |
 | I-016 | 🔴 | offen | Claude | **Schutz vor Ransomware und Fehllöschung:** Das Tool-Konto hat heute volles Schreib- und Löschrecht auf dem NAS; wer den Server übernimmt, kann alle Backups löschen. Lösung: unveränderliche NAS-Snapshots (Synology Snapshot Replication mit Immutable), auf die das Tool-Konto keinen Zugriff hat, und ein Papierkorb im Tool (heute: „keinen Papierkorb – gelöschte Daten sind weg“). Das NCSC/BACS empfiehlt Offline- oder WORM-Medien und mindestens zwei Generationen |
 | I-017 | 🔴 | offen | Claude/Dominik | **Extras → Rescue … (Daten retten und Windows reparieren, zusammengeführt mit I-028):** eigenes Fenster wie Netzwerkstart/Multicast. 1. Gerät wählen (nur mit Agent verbunden), 2. Disk/Partition wählen (mit SMART-Zustand), 3. Werkzeug: **Daten retten** – Defekte Disk sichern (`ddrescue` mit Fehlerkarte, mehrere Durchgänge, Image aufs NAS), Gelöschte Dateien retten (PhotoRec, nicht interaktiv), Partitionen wiederherstellen (TestDisk: Suchen/Anzeigen im Tool, schwierige Fälle interaktiv am Bildschirm des Geräts); **Windows reparieren** – Start reparieren (UEFI-Booteinträge, BCD), NTFS reparieren (`ntfsfix`), lokales Passwort zurücksetzen (`chntpw`, im Verlauf protokolliert). Regeln: auf eine defekte Disk nie schreiben; Ergebnisse nach `Rescue/<Gerät>/<Datum>` auf dem NAS; schreibende Reparaturen nur mit Bestätigung und Empfehlung „vorher Disk-Image“; BitLocker: nur „Defekte Disk sichern“. Fortschritt, Log, Verlauf. Neuer Agent-Stick (gddrescue, testdisk, chntpw). Vorführbar am DEMO-PC (ohne NAS, Demo-Speicher). Heute bricht partclone bei Lesefehlern ab |
 | I-018 | 🟡 | offen | Claude | **Einzelne Dateien aus einem Disk-Image holen:** Disk-Image auf dem Server einhängen (partclone → Loop, ntfs-3g read-only), darin suchen und einzelne Dateien oder Ordner aufs NAS oder ans Gerät senden. Heute gibt es Einzeldateien nur aus Datei-Backups (Rescuezilla: Image Explorer, Macrium: Durchsuchen) |
@@ -117,6 +116,14 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 05.11.2026
+- **I-032 Reiter „BIOS“ im Gerätefenster** (Von: Dominik): Grundangaben (BIOS-Version, Boot-Modus, Secure Boot, TPM,
+  BIOS-Passwort, UEFI-Startreihenfolge) für alle Geräte; Einstellungen über `firmware-attributes` (HP `hp-bioscfg`,
+  Dell `dell-wmi-sysman`, Lenovo `think-lmi`). Stand beim Gerät gespeichert, Vergleich mit einem anderen Gerät („Nur
+  Unterschiede“, wichtige Einstellungen zuerst), Suche, CSV, Ändern mit Passwortabfrage (nie gespeichert) und Warnung
+  vor riskanten Werten; gilt nach dem Neustart, Eintrag im Verlauf. Agent `biosread.py` + Befehle `bios`/`bios_set`
+  (**neuer Agent-Stick nötig**), Tool `biosinfo.py`/`bios_tab.py`, Demo-Gerät mit simuliertem HP-BIOS. Hilfe-Kapitel
+  „BIOS“. Tests `tests/test_bios.py` (nachgebautes sysfs, Setzen mit Passwort, Vergleich, CSV, Demo-Agent). I-015
+  (BIOS-Update) bleibt offen.
 - **Ä-035 Name und Logo in Alt+Tab und Dock** (Von: Dominik): statt „__main__.py“ mit Standard-Symbol steht „Okula
   Recovery Tool“ mit dem Okula-Logo. Programm-ID `ch.okula.RecoveryTool` überall gleich: GApplication-ID (Wayland),
   WM_CLASS Name und Klasse (X11, `GLib.set_prgname`, `Gdk.set_program_class`), Startmenü-Datei neu

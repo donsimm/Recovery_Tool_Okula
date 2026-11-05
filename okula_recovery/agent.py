@@ -18,7 +18,8 @@ import threading
 import time
 from pathlib import Path
 
-from okula_recovery import __version__, deploy, discovery, filebackup, imaging, inventory, network, wininstall, wire
+from okula_recovery import (__version__, biosread, deploy, discovery, filebackup, imaging, inventory, network,
+                            wininstall, wire)
 
 
 # So lange ohne IPv4, dann DHCP nachfassen bzw. Link-Local-Adresse setzen
@@ -458,6 +459,22 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
                     else:
                         reply = {"type": "error", "message": f"Unbekannte Aktion: {action}"}
                 except (imaging.ImagingError, OSError) as e:
+                    reply = {"type": "error", "message": str(e)}
+                wire.send_json(tls, reply)
+            elif cmd == "bios":
+                # BIOS-Einstellungen lesen (I-032) – nur lesen, ändert nichts
+                try:
+                    reply = {"type": "bios", "data": biosread.read()}
+                except (biosread.BiosError, OSError) as e:
+                    reply = {"type": "error", "message": str(e)}
+                wire.send_json(tls, reply)
+            elif cmd == "bios_set":
+                # eine BIOS-Einstellung setzen; Passwort nur für diesen Aufruf, nie gespeichert oder protokolliert
+                name, value = str(req.get("name") or "")[:200], str(req.get("value") or "")[:500]
+                try:
+                    reply = {"type": "bios_set", **biosread.write(name, value, str(req.get("password") or ""))}
+                    log(f"BIOS: {name} = {value} (Tool {addr[0]}) – gilt nach dem Neustart", show=True)
+                except (biosread.BiosError, OSError) as e:
                     reply = {"type": "error", "message": str(e)}
                 wire.send_json(tls, reply)
             elif cmd == "power":
