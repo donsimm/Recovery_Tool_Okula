@@ -197,7 +197,8 @@ Achtung: Ist das Gerät gerade verbunden, beginnt der Countdown sofort (30 Sekun
 
 <b>5. Gerät neu aufsetzen</b>
 Gerät mit dem Agent-Stick oder per Netzwerkstart starten. Der Rest läuft von selbst.
-Vor dem Neustart am Ende den Stick abziehen.
+Den Stick nie abziehen, solange der Agent läuft – erst wenn das Gerät aus ist bzw. beim Neustart
+der Bildschirm dunkel wird.
 
 <b>6. Inventar festhalten</b>
 <i>Menü → Inventar exportieren (CSV/PDF) …</i> – zum Beispiel als Liste für die Übergabe."""),
@@ -340,7 +341,8 @@ Damit kommt ein Gerät auf den Stand des Images zurück.
 6.  Zur Bestätigung den Namen der Zieldisk eintippen (zum Beispiel „sda“ oder „nvme0n1“).
 7.  Auf <i>Zurückspielen</i> klicken.
 
-Am Ende den Stick abziehen und das Gerät neu starten.
+Am Ende das Gerät herunterfahren (Symbol <i>Herunterfahren</i> oder Häkchen oben), dann den Stick abziehen
+und das Gerät einschalten. Den Stick nie abziehen, solange der Agent läuft: Er läuft vom Stick.
 
 <b>Zieldisk kleiner als das Image</b>
 Zum Beispiel 256 statt 512 GB: Das Tool prüft, ob die Daten passen.
@@ -441,7 +443,8 @@ Nach 30 Sekunden wird die Zieldisk überschrieben.
 1.  Das Gerät startet mit dem Agent (Stick oder Netzwerkstart).
 2.  30 Sekunden Countdown – am Gerät bricht <b>Esc</b> ab, im Tool <i>Abbrechen</i>.
 3.  Backup (wenn gewählt), Image zurückspielen, anpassen, Ordner senden.
-4.  Abschluss. Vor dem Neustart den Agent-Stick abziehen, sonst startet wieder der Agent.
+4.  Abschluss. Bei Neustart den Agent-Stick erst abziehen, wenn der Bildschirm dunkel wird – sonst
+    startet wieder der Agent. Mit Stick einfacher: Abschluss <i>Herunterfahren</i>, dann Stick abziehen.
 5.  Danach schaltet sich die Automatisierung aus und nach 3 Tagen wieder ein.
     Das lässt sich mit dem Häkchen <i>Nach 3 Tagen wieder einschalten</i> abschalten.
 
@@ -543,7 +546,7 @@ Der Stick enthält ein Image und stellt ein Gerät auch <b>ohne Netzwerk</b> wie
 2.  Am Gerät vom Stick starten (Boot-Menü, Kapitel <i>Gerät verbinden</i>).
 3.  Auf dem Bildschirm die Zieldisk wählen und zur Bestätigung ihren Namen eintippen.
 4.  Der Stick prüft das Image, spielt es zurück und fragt am Ende: neu starten oder herunterfahren.
-    Vor dem Neustart den Stick abziehen.
+    Den Stick erst abziehen, wenn das Gerät aus ist (bzw. beim Neustart der Bildschirm dunkel).
 
 <b>Agent-Stick</b>
 •  <i>Menü → Agent-USB-Stick erstellen …</i> (Kapitel <i>Erste Schritte</i>).
@@ -751,7 +754,7 @@ Damit kommen nur die NAS-Einstellungen mit (ohne Passwort)."""),
 •  Passen die Daten nicht, nennt das Tool die Zahlen. Dann ist eine grössere Disk nötig.
 
 <b>Nach dem Zurückspielen startet wieder der Agent statt Windows</b>
-•  Der Agent-Stick steckt noch. Stick abziehen und neu starten.
+•  Der Agent-Stick steckt noch. Gerät herunterfahren, Stick abziehen, einschalten.
 
 <b>Wake-on-LAN schaltet das Gerät nicht ein</b>
 •  Im BIOS Wake-on-LAN einschalten. Bei Notebooks muss das Netzteil angeschlossen sein.

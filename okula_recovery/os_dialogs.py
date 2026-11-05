@@ -771,7 +771,8 @@ class InstallDialog(Gtk.Dialog):
                                  "ab 24.04, Debian sowie Fedora/Rocky/Alma mit Anaconda-Installer.</small>")
         else:
             self.info.set_markup(f"<small>{texts.get(which, '')} <b>Gerät muss im UEFI-Modus laufen. Agent-Stick "
-                                 "beim Neustart abziehen.</b></small>")
+                                 "stecken lassen – nach dem Neustart abziehen, sobald die Installation "
+                                 "läuft.</b></small>")
         self._update()
 
     def unsupported_reasons(self) -> list[str] | None:

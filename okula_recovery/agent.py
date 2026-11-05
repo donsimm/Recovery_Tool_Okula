@@ -343,9 +343,13 @@ def run_job(tls, addr, req: dict, kind: str) -> None:
         wire.send_json(tls, {"type": "error", "message": str(e)})
     finally:
         if bar:
-            done_text = {"image": "fertig", "restore": "zurückgespielt – Stick abziehen und neu starten",
-                         "install": "vorbereitet – Neustart, Windows wird installiert (Stick abziehen)",
-                         "bootprep": "vorbereitet – Neustart, Installation startet (Stick JETZT abziehen)",
+            # Der Agent läuft vom Stick: nie abziehen, solange er läuft (sonst klappt der Neustart nicht)
+            done_text = {"image": "fertig",
+                         "restore": "zurückgespielt – herunterfahren, dann Stick abziehen und einschalten",
+                         "install": "vorbereitet – Neustart in 15 s, Stick stecken lassen "
+                                    "(abziehen, sobald Windows installiert wird)",
+                         "bootprep": "vorbereitet – Neustart in 15 s, Stick stecken lassen "
+                                     "(abziehen, sobald die Installation läuft)",
                          "backup": "fertig", "filerestore": "fertig", "customize": "fertig",
                          "deliver": "fertig"}[kind]
             result = done_text if ok else ("abgebrochen" if kind in ("image", "customize", "deliver")
@@ -359,7 +363,8 @@ def run_job(tls, addr, req: dict, kind: str) -> None:
         if disk_locks.busy():
             log("Kein Neustart – auf einer anderen Disk läuft noch ein Auftrag. Danach neu starten.", show=True)
         else:
-            log("Neustart in 15 s – Agent-Stick jetzt abziehen, danach startet die Installation", show=True)
+            log("Neustart in 15 s – Agent-Stick stecken lassen: das Gerät startet einmalig von der Disk "
+                "(BootNext). Stick abziehen, sobald die Installation läuft.", show=True)
             threading.Timer(15, power_action, args=("reboot",)).start()
 
 

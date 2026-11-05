@@ -328,7 +328,7 @@ def install_work(ip: str, key: bytes, port: int, iso: str, index: int, opts, dis
                 jm.progress(job, 0.8 + 0.2 * f, "install.swm", "Teilen (2/2)", f)
             elif phase == "done":
                 jm.log(job, "Setup-Partition bereit – das Gerät startet in 15 s neu und installiert Windows "
-                            "selbständig (Agent-Stick JETZT abziehen)")
+                            "selbständig. Agent-Stick stecken lassen, abziehen sobald Windows installiert wird")
 
         try:
             boot = agentclient.install_windows(ip, key, iso, plan, disk, progress, job.cancel, port)
@@ -372,8 +372,8 @@ def linux_install_work(ip: str, key: bytes, port: int, iso: str, meta: dict, dis
                     jm.progress(job, ev.get("fraction", 0),
                                 f"{state['files']}/{len(plan.files)} Dateien · {ev.get('speed', 0) / 1e6:.0f} MB/s")
                 elif phase == "done":
-                    jm.log(job, "Vorbereitet – das Gerät startet in 15 s neu und installiert selbständig "
-                                "(Agent-Stick JETZT abziehen)")
+                    jm.log(job, "Vorbereitet – das Gerät startet in 15 s neu und installiert selbständig. "
+                                "Agent-Stick stecken lassen, abziehen sobald die Installation läuft")
 
             boot = agentclient.bootprep(ip, key, plan, disk, progress, job.cancel, port)
         except Exception as e:

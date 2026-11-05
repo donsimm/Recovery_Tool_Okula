@@ -154,7 +154,7 @@ def restore(ui: Ui, src: dict, disk: dict) -> None:
 
 
 def final_menu(ui: Ui, power: Callable[[str], None]) -> None:
-    ui.write("\n  Fertig. Stick abziehen, dann:")
+    ui.write("\n  Fertig. Stick erst abziehen, wenn das Gerät aus ist (bzw. beim Neustart der Bildschirm dunkel).")
     answer = ui.ask("  Enter = herunterfahren, n = neu starten, s = Kommandozeile: ").lower()
     if answer == "s":
         power("shell")

@@ -22,7 +22,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
 Erledigt 31.10. zusätzlich: I-007 ✔ (Image prüfen) → Ä-027 ✔ (Demo ohne NAS) → Ä-028 ✔ (Ein/Aus-Symbole) → Ä-029 ✔ (Legende) → Ä-030 ✔ (NAS-Leiste) → I-030 ✔ (Bandbreite) → Ä-031 ✔ (Tage hell/dunkel).
-Als Nächstes: Tests am realen System in [TESTS.md](TESTS.md) – „Fixes von heute“, Abschnitt 6 (Vorführung mit abgestecktem NAS) und 7 (inkl. I-007: Dauer für ein grosses Image).
+Als Nächstes: Tests am realen System in [TESTS.md](TESTS.md) – „Fixes von heute“ (B-001, B-002), Abschnitt 6 (Vorführung mit abgestecktem NAS) und 7 (inkl. I-007: Dauer für ein grosses Image).
 Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
 ## 🐞 Bugs
@@ -116,6 +116,12 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 05.11.2026
+- **B-002 „Stick abziehen“ zur falschen Zeit** (Von: Dominik, gemeldet 05.11.): Nach „OS installieren … vorbereitet“
+  hiess es „Stick JETZT abziehen“, 15 s später Neustart – der Agent läuft aber vom Stick, ohne ihn klappt der Neustart
+  nicht. Richtig: Stick stecken lassen, BootNext startet einmalig von der Disk; abziehen, sobald die Installation
+  läuft. Nach dem Zurückspielen: erst herunterfahren, dann abziehen. Texte im Tool-Log, Installations-Dialog,
+  Automatisierung (Banner), Restore-Stick, Hilfe, TECHNIK. Die Meldung am Gerät (agent.py) erscheint erst mit einem
+  neu erstellten Agent-Stick – bis dahin gilt: Stick stecken lassen.
 - **Ä-032 Spaltenbreiten verstellbar und gemerkt** (Von: Dominik): Geräte, Images, Dateien, Backups – alle Spalten mit
   der Maus verstellbar (vorher sperrten die dehnende Spalte und Mindestbreiten, z. B. „Status“ 340 px), Breiten je
   Liste in `spalten.json`; nur verstellte Spalten werden gespeichert. Mit echtem Maus-Ziehen (xdotool) und Neustart

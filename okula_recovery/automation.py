@@ -584,7 +584,8 @@ def automation_work(ip: str, key: bytes, port: int, dev, s: Settings, nas_root: 
             # 5 Abschluss
             begin(4, FINISH[s.finish])
             agentclient.banner(ip, key, [f"Automatisierung fertig ({dev.name})",
-                                         {"reboot": "Neustart in 10 s – Agent-Stick abziehen",
+                                         {"reboot": "Neustart in 10 s – Stick erst abziehen, wenn der "
+                                                    "Bildschirm dunkel wird (nicht vorher)",
                                           "poweroff": "Gerät wird in 10 s ausgeschaltet",
                                           "none": "Gerät bleibt eingeschaltet"}[s.finish]], False, port)
             if s.finish != "none":

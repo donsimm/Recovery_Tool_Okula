@@ -194,7 +194,7 @@ class DirectInstallTest(unittest.TestCase):
                 threading.Event().wait(0.1)
         self.assertEqual(job.state, jobs.DONE, job.log)
         self.assertEqual(results, [("0007", None)])
-        self.assertTrue(any("Stick JETZT abziehen" in line for line in job.log))
+        self.assertTrue(any("Agent-Stick stecken lassen" in line for line in job.log))
 
 
 if __name__ == "__main__":
