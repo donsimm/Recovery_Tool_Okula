@@ -13,7 +13,7 @@ Windows-11-Prüfung, Export als CSV/PDF · Agent-, Boot- und Restore-Sticks · U
 
 ```bash
 sudo apt install git
-git clone https://github.com/donsimm/recovery_tool_okula.git
+git clone https://github.com/donsimm/Recovery_Tool_Okula.git recovery_tool_okula
 cd recovery_tool_okula
 git checkout claude/blissful-goldberg-mo3xda
 sudo ./install.sh --autostart

@@ -26,7 +26,7 @@ Oberfläche (Disk, Zieldisk, Datenträger für USB, Windows-Schlüssel, Agent-St
 
 ```bash
 sudo apt install git
-git clone https://github.com/donsimm/recovery_tool_okula.git
+git clone https://github.com/donsimm/Recovery_Tool_Okula.git recovery_tool_okula
 cd recovery_tool_okula
 git checkout claude/blissful-goldberg-mo3xda   # bis zum Merge
 sudo ./install.sh --autostart

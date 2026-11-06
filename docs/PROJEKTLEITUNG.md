@@ -6,7 +6,7 @@ und wie aus einer Idee ein umgesetztes Feature wird.
 ## Grundregeln
 
 - **Chat immer auf Deutsch** (Schweiz, „ss“ statt „ß“). Gilt für Projektleitung und Umsetzungs-Agenten.
-- **Gearbeitet wird nur über GitHub:** <https://github.com/donsimm/recovery_tool_okula>, Branch
+- **Gearbeitet wird nur über GitHub:** <https://github.com/donsimm/Recovery_Tool_Okula>, Branch
   `claude/blissful-goldberg-mo3xda` (einziger Branch). Änderungen erreichen den Server nur über diesen Branch.
 - **Installation macht Dominik von Hand** auf dem Server: `git pull && sudo ./install.sh`, bei Agent-Änderungen
   zusätzlich neuer Agent-Stick. Claude installiert nichts auf dem Server.
