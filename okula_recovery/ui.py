@@ -137,7 +137,8 @@ class MainWindow(Gtk.ApplicationWindow):
         wire.set_limiter(bandwidth.Limiter(self.bandwidth_rate, lambda _rate: self.jobs.rebase()))
         self.automation = automation.Engine(self.store, self.jobs, self.key, self._nas_root, lambda: self.cfg,
                                             lambda dev_id: GLib.idle_add(self._on_automation_change, dev_id),
-                                            root_for=self.root_for)
+                                            root_for=self.root_for,
+                                            snapshot=lambda dev: self.vm_auto_snapshot(dev, "Automatisierung"))
         self._demo_backups: dict[str, backups.BackupInfo] = {}   # Backups des Demo-Geräts (Demo-Speicher)
         self._image_tree: archive.Tree | None = None   # zuletzt gelesene Images (für die Automatisierung)
         self.demo_proc: subprocess.Popen | None = None  # Demo-Gerät (simulierter Agent auf diesem Server)
@@ -164,6 +165,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.vm_error = ""
         self._vm_polling = False
         self.vm_viewers: dict[str, subprocess.Popen] = {}   # Bildschirm-Fenster (virt-viewer) je VM
+        self.vm_snap_busy: set[str] = set()        # VMs mit laufendem Snapshot-Vorgang (Löschen dauert)
 
         header = Gtk.HeaderBar(title="Recovery Tool", subtitle=f"Version {__version__}",
                                show_close_button=True)
@@ -2460,7 +2462,8 @@ class MainWindow(Gtk.ApplicationWindow):
         return vm.state_text(self.vm_state(dev))
 
     def vm_why(self, dev: devices.Device, what: str) -> str:
-        """Warum eine VM-Aktion gerade nicht geht ("" = möglich). what: start | stop | screen | hardware | delete."""
+        """Warum eine VM-Aktion gerade nicht geht ("" = möglich).
+        what: start | stop | screen | hardware | delete | snapshot (erstellen, zurück, löschen)."""
         if not vm.available():
             return "libvirt fehlt – sudo ./install.sh am Server ausführen"
         if self.vm_error:
@@ -2473,11 +2476,13 @@ class MainWindow(Gtk.ApplicationWindow):
                 "VM gibt es in libvirt nicht (mehr) – Eintrag mit „VM löschen …“ entfernen"
         if what == "screen":
             return ""
+        if dev.vm.get("name") in self.vm_snap_busy:
+            return "Ein Snapshot-Vorgang läuft – bitte warten"
         if what == "stop":
             return "" if state in VM_ON else "VM ist ausgeschaltet"
         if state not in VM_OFF:
             return "VM läuft bereits" if what == "start" else "Nur bei ausgeschalteter VM – zuerst herunterfahren"
-        if what in ("hardware", "delete") and self.jobs.summary(dev.id):
+        if what in ("hardware", "delete", "snapshot") and self.jobs.summary(dev.id):
             return "Auf der VM läuft ein Auftrag"
         return ""
 
@@ -2504,18 +2509,21 @@ class MainWindow(Gtk.ApplicationWindow):
             ("hardware", "Hardware ändern …", lambda: self.vm_hardware(dev), self.vm_why(dev, "hardware"),
              "RAM, Kerne, Disk-Grösse, Netzwerkkarte (nur bei ausgeschalteter VM)"),
             ("delete", "VM löschen …", lambda: self.vm_delete(dev), self.vm_why(dev, "delete"),
-             "VM, Disk und Geräteeintrag löschen (nur bei ausgeschalteter VM)"),
+             "VM, Disk, Snapshots und Geräteeintrag löschen (nur bei ausgeschalteter VM)"),
         ]
 
     def _vm_task(self, work, done_text: str = "", dev: devices.Device | None = None, after=None,
-                 parent: Gtk.Window | None = None) -> None:
-        """virsh im Hintergrund; Fehler als Meldung (nie Traceback), Erfolg im Verlauf und in der Statuszeile."""
+                 parent: Gtk.Window | None = None, failed=None) -> None:
+        """virsh im Hintergrund; Fehler als Meldung (nie Traceback), Erfolg im Verlauf und in der Statuszeile.
+        failed() läuft nach einem Fehler (z. B. Anzeige zurücksetzen)."""
         parent = parent or (self._parent_for(dev) if dev is not None else self)
 
         def done(result) -> None:
             if isinstance(result, Exception):
                 msg = str(result) if isinstance(result, vm.VmError) else f"Unerwarteter Fehler: {result}"
                 self.status(f"{dev.name}: {msg}" if dev is not None else msg)
+                if failed is not None:
+                    failed()
                 confirm_error(parent, msg)
             else:
                 if done_text and dev is not None:
@@ -2852,8 +2860,9 @@ class MainWindow(Gtk.ApplicationWindow):
             return
         name = dev.vm["name"]
 
-        def edit(p: vm.VmProfile) -> None:
-            dlg = HardwareDialog(parent, name, p, vm.ram_mb()[0], os.cpu_count() or 8)
+        def edit(result) -> None:
+            p, snapshots = result
+            dlg = HardwareDialog(parent, name, p, vm.ram_mb()[0], os.cpu_count() or 8, snapshots)
             ok = dlg.run() == Gtk.ResponseType.OK
             new, changes = dlg.profile(), dlg.changes()
             dlg.destroy()
@@ -2861,7 +2870,7 @@ class MainWindow(Gtk.ApplicationWindow):
                 self._vm_task(lambda: self.virsh.set_profile(name, new), "Hardware geändert: " + ", ".join(changes),
                               dev)
 
-        self._vm_task(lambda: self.virsh.get_profile(name), dev=dev, after=edit)
+        self._vm_task(lambda: (self.virsh.get_profile(name), len(self.virsh.snapshots(name))), dev=dev, after=edit)
 
     def vm_delete(self, dev: devices.Device) -> None:
         parent = self._parent_for(dev)
@@ -2871,8 +2880,8 @@ class MainWindow(Gtk.ApplicationWindow):
             return
         name = dev.vm["name"]
         if not confirm(parent, f"VM „{name}“ löschen?",
-                       "VM, Disk und Geräteeintrag werden gelöscht; Images und Backups auf dem NAS bleiben.\n\n"
-                       "Die Disk der VM lässt sich danach nicht wiederherstellen.", ok_label="VM löschen"):
+                       "VM, Disk, alle Snapshots und Geräteeintrag werden gelöscht; Images und Backups auf dem NAS "
+                       "bleiben.\n\nDie Disk der VM lässt sich danach nicht wiederherstellen.", ok_label="VM löschen"):
             return
 
         def work() -> bool:
@@ -2894,6 +2903,125 @@ class MainWindow(Gtk.ApplicationWindow):
             self.status(f"VM „{name}“ gelöscht – Images und Backups auf dem NAS bleiben")
 
         self._vm_task(work, dev=dev, after=after)
+
+    # ---------- Snapshots (I-001 Auftrag 4) ----------
+
+    def _snapshot_info(self, dev: devices.Device) -> dict:
+        """Stand des Geräteeintrags zum Snapshot: Disks und Systeme aus dem Inventar, Disk leer (Ä-036).
+        Beim Zurücksetzen gilt wieder dieser Stand."""
+        inv = dev.inventory
+        return {"disks": json.loads(json.dumps(inv.get("disks") or [])),
+                "systems": json.loads(json.dumps(inv.get("systems") or [])),
+                "blank": vm.blank_disk(inv, dev.history)}
+
+    def _snapshots_changed(self, dev_id: str) -> bool:
+        win = self.device_windows.get(dev_id)
+        if win is not None:
+            win.refresh()
+            win.load_snapshots()
+        return False
+
+    def vm_auto_snapshot(self, dev: devices.Device, action: str) -> None:
+        """Häkchen „Vorher Snapshot“: Snapshot direkt vor dem Auftrag. In der VM läuft der Agent, Windows/Linux
+        nicht – die Disk ist unbenutzt, darum auch bei laufender VM. Fehler als VmError → Auftrag nicht starten.
+        Läuft im UI-Thread (Dialog) oder im Thread der Automatisierung."""
+        try:
+            snap = self.virsh.snapshot_create(dev.vm["name"], vm.auto_title(action), auto=True,
+                                              info=self._snapshot_info(dev), running_ok=True)
+        except vm.VmError as e:
+            raise vm.VmError(f"Snapshot vorher fehlgeschlagen – Auftrag nicht gestartet: {e}") from None
+        self.store.add_history(dev, "vm", vm.history_text("erstellt", snap.title) + " (automatisch)")
+        GLib.idle_add(self._snapshots_changed, dev.id)
+
+    def vm_snapshot_create(self, dev: devices.Device) -> None:
+        parent = self._parent_for(dev)
+        why = self.vm_why(dev, "snapshot")
+        if why:
+            confirm_error(parent, why)
+            return
+        low = vm.low_space_text(vm.free_disk())
+        if low and not confirm(parent, "Wenig Platz auf dem Server", low, ok_label="Trotzdem erstellen"):
+            return
+        title = ask_text(parent, "Snapshot erstellen",
+                         "Titel des Snapshots (z. B. „frisch installiert“ oder „vor Sysprep“).\n"
+                         "Gesichert wird die Disk der ausgeschalteten VM, in Sekunden:", vm.snapshot_title())
+        if title is None:
+            return
+        name, info = dev.vm["name"], self._snapshot_info(dev)
+
+        def after(snap: vm.Snapshot) -> None:
+            self.store.add_history(dev, "vm", vm.history_text("erstellt", snap.title))
+            self.status(f"{dev.name}: {vm.history_text('erstellt', snap.title)}")
+            self._snapshots_changed(dev.id)
+
+        self._vm_task(lambda: self.virsh.snapshot_create(name, title, info=info), dev=dev, after=after,
+                      failed=lambda: self._snapshots_changed(dev.id))
+
+    def vm_snapshot_revert(self, dev: devices.Device, snap: vm.Snapshot) -> None:
+        parent = self._parent_for(dev)
+        why = self.vm_why(dev, "snapshot")
+        if why:
+            confirm_error(parent, why)
+            return
+        if not confirm(parent, f"Zurück zu ‚{snap.title}‘?",
+                       f"Alle Änderungen seit {snap.title} ({snap.when}) gehen verloren. Die Disk der VM ist danach "
+                       "wieder so wie beim Snapshot; die anderen Snapshots bleiben.", ok_label="Zurücksetzen"):
+            return
+        name = dev.vm["name"]
+
+        def after(item: vm.Snapshot) -> None:
+            info = item.info or {}
+            for key in ("disks", "systems"):           # Vor-Inventar wie zum Zeitpunkt des Snapshots
+                if key in info:
+                    dev.inventory[key] = info[key]
+            self.store.save(dev)
+            extra = {"snapshot_blank": bool(info["blank"])} if "blank" in info else {}
+            self.store.add_history(dev, "vm", vm.history_text("zurückgesetzt", item.title), **extra)
+            self.status(f"{dev.name}: {vm.history_text('zurückgesetzt', item.title)}")
+            self.update_device_rows()
+            self._snapshots_changed(dev.id)
+
+        self._vm_task(lambda: self.virsh.snapshot_revert(name, snap.id), dev=dev, after=after,
+                      failed=lambda: self._snapshots_changed(dev.id))
+
+    def vm_snapshot_delete(self, dev: devices.Device, snap: vm.Snapshot) -> None:
+        parent = self._parent_for(dev)
+        why = self.vm_why(dev, "snapshot")
+        if why:
+            confirm_error(parent, why)
+            return
+        if not confirm(parent, f"Snapshot ‚{snap.title}‘ löschen?",
+                       "Zu diesem Stand lässt sich danach nicht mehr zurückkehren. Der aktuelle Stand und die anderen "
+                       "Snapshots bleiben. Die Daten des Snapshots werden dafür in die folgende Datei übernommen – je "
+                       "nach Grösse dauert das bis zu einigen Minuten; die VM bleibt so lange gesperrt.",
+                       ok_label="Löschen"):
+            return
+        name = dev.vm["name"]
+        self.vm_snap_busy.add(name)
+        self._snapshots_changed(dev.id)
+
+        def progress(fraction: float, text: str) -> None:
+            GLib.idle_add(self._snapshot_progress, dev.id, fraction, text)
+
+        def work():
+            try:
+                return self.virsh.snapshot_delete(name, snap.id, progress)
+            finally:
+                self.vm_snap_busy.discard(name)
+
+        def after(item: vm.Snapshot) -> None:
+            self.store.add_history(dev, "vm", vm.history_text("gelöscht", item.title))
+            self.status(f"{dev.name}: {vm.history_text('gelöscht', item.title)}")
+            self._snapshots_changed(dev.id)
+
+        self.status(f"{dev.name}: Snapshot ‚{snap.title}‘ wird gelöscht …")
+        self._vm_task(work, dev=dev, after=after, failed=lambda: self._snapshots_changed(dev.id))
+
+    def _snapshot_progress(self, dev_id: str, fraction: float, text: str) -> bool:
+        win = self.device_windows.get(dev_id)
+        if win is not None and win.snapshot_tab is not None:
+            win.snapshot_tab.progress(fraction, text)
+        return False
 
     # ---------- Demo-Gerät ----------
 
@@ -3423,7 +3551,11 @@ class MainWindow(Gtk.ApplicationWindow):
             if it is not None and model[it][self.C_KIND] == "image":
                 preselect = model[it][self.C_PATH]
 
-        def start(image, source_disk, target, verify, shutdown, label, custom=None, adapt=None) -> None:
+        def start(image, source_disk, target, verify, shutdown, label, custom=None, adapt=None,
+                  snapshot=False) -> None:
+            if snapshot and dev.is_vm:           # Häkchen „Vorher Snapshot“; Fehler → Dialog meldet, kein Auftrag
+                self.vm_auto_snapshot(dev, "Zurückspielen")
+
             def after(job, path, error) -> None:
                 GLib.idle_add(self._after_job, dev.id, job, f"Zurückspielen {label} → {target}", path, error,
                               shutdown)
@@ -3459,7 +3591,9 @@ class MainWindow(Gtk.ApplicationWindow):
             iso = self._selected_iso()
             preselect = str(iso.path) if iso else None
 
-        def start(iso: oslib.IsoInfo, disk: dict, index: int | None, opts) -> None:
+        def start(iso: oslib.IsoInfo, disk: dict, index: int | None, opts, snapshot: bool = False) -> None:
+            if snapshot and dev.is_vm:           # Häkchen „Vorher Snapshot“; Fehler → Dialog meldet, kein Auftrag
+                self.vm_auto_snapshot(dev, "OS-Installation")
             if iso.family == "windows":
                 edition = next((e["name"] for e in iso.meta["windows"]["editions"] if e["index"] == index), "")
                 what = f"Windows-Installation {edition} → {disk['path']}"

@@ -1,8 +1,9 @@
 # Virtuelle Maschinen (VM) im Tool – Konzept (I-001)
 
-Stand: **in Arbeit** – Konzept mit Dominik festgelegt am 06.11.2026, Umsetzung in 4 Aufträgen
+Stand: **umgesetzt** – Konzept mit Dominik festgelegt am 06.11.2026, Umsetzung in 4 Aufträgen
 (Prompts `docs/prompts/I-001-*.md`). Auftrag 1 „VM-Grundlage“ umgesetzt 06.11.2026, Nacharbeit 1b am selben Tag,
-Auftrag 2 „VMs im Tool“ (Oberfläche) ebenfalls am 06.11.2026, Auftrag 3 „Digitaler Zwilling“ (mit Ä-036) am 06.11.2026.
+Auftrag 2 „VMs im Tool“ (Oberfläche) ebenfalls am 06.11.2026, Auftrag 3 „Digitaler Zwilling“ (mit Ä-036) am 06.11.2026,
+Auftrag 4 „Snapshots“ am 06.11.2026.
 
 ## Ziel
 
@@ -85,7 +86,7 @@ Nicht nachbildbar sind auch Eigenheiten echter Hersteller-Firmware (z. B. B-004,
 | 1 | **VM-Grundlage** ✔ 06.11. (Nacharbeit 1b ✔ 06.11.) | `install.sh`: Pakete, Pool `okula`, Brücke `br0` (`okula-bridge`); `vm.py`: Hardware-Profil → libvirt-Konfiguration, Aktionen über virsh (als Benutzer, kein Root-Helfer nötig); Tests | `I-001-1-vm-grundlage.md`, `I-001-1b-vm-nacharbeit.md` |
 | 2 | **VMs im Tool** ✔ 06.11. | Ordner „Virtuelle Maschinen“, „Neue VM …“ mit Profilen, Starten (Normal / Mit Agent / Von ISO), Herunterfahren, Bildschirm, Netzwerkstart-Freigabe, Hardware ändern | `I-001-2-vms-im-tool.md` |
 | 3 | **Hardware vom Gerät** ✔ 06.11. | „VM mit dieser Hardware erstellen …“, Identität abwandeln, letztes Image einspielen; Ä-036 leere Disk | `I-001-3-digitaler-zwilling.md` |
-| 4 | **Snapshots** | Zustand sichern und zurückholen | folgt |
+| 4 | **Snapshots** ✔ 06.11. | Zustand der Disk einfrieren und zurückholen, automatisch vor Zurückspielen/OS installieren/Automatisierung | `I-001-4-snapshots.md` |
 
 Kein neuer Agent-Stick nötig (Agent unverändert).
 
@@ -147,3 +148,82 @@ Kein neuer Agent-Stick nötig (Agent unverändert).
   Originals, Seriennummern `VM-…`, UUID `0c1a0000-…`, Disk-Seriennummer im QEMU-Gerät; `match()` findet das Original
   nicht; danach gelöscht. Den ganzen Ablauf mit Image prüft Dominik im Tool ([TESTS.md](TESTS.md) Abschnitt 10) –
   das Tool lief während der Umsetzung, eine zweite Instanz hätte mit Beacons und Netzwerkstart kollidiert.
+
+## Snapshots (Auftrag 4, 06.11.2026)
+
+**Entscheide (Dominik, 06.11.):** von Hand nur bei ausgeschalteter VM, nur die Disk (kein Arbeitsspeicher);
+automatisch vor Zurückspielen, OS installieren und Automatisierung (Häkchen „Vorher Snapshot“, Standard an);
+unbegrenzt viele, Warnung unter 50 GB frei. Projektleitung: der automatische Snapshot darf bei laufender VM entstehen,
+weil dann der Agent läuft und die Disk unbenutzt ist – bei laufendem Windows nie.
+
+### Technik-Entscheid: externe Overlays, vom Tool verwaltet
+
+Am Server mit libvirt 11.3 / QEMU 10.0 geprüft:
+
+| Weg | Ergebnis |
+|---|---|
+| Interne Snapshots (`snapshot-create-as` ohne `--disk-only`) | bei ausgeschalteten VMs angenommen, auch UEFI – aber bei laufender VM (automatischer Snapshot mit Agent) mit pflash-NVRAM nicht möglich, und ein Disk-Snapshot einer laufenden VM geht nur extern. Für alle Fälle gleich: **extern** |
+| libvirt-Snapshots extern (`--disk-only`) anlegen und zurücksetzen | geht (Zurücksetzen seit libvirt 9.9: neues Overlay auf der Snapshot-Datei) |
+| libvirt-Snapshot **löschen** (`snapshot-delete`) | **scheitert** – ausgeschaltet wie laufend: „block-commit: Could not open …qcow2: Permission denied“. Ursache: virt-aa-helper schreibt für jede Backing-Datei `deny "<Datei>" w,` ins AppArmor-Profil der VM; block-commit muss aber in die Backing-Datei schreiben, und eine deny-Regel lässt sich in AppArmor nicht übersteuern |
+| block-stream (`blockpull`) | geht: schreibt nur in die **oberste** Datei, die übernimmt die Daten ihrer Backing-Dateien |
+
+Darum verwaltet das Tool die Snapshots selbst (`vm.py`, ohne libvirt-Snapshot-Metadaten):
+
+- **Dateien** im Pool-Verzeichnis (AppArmor-Freigabe wie bei der Disk, Lehre aus 1b): `<Name>.qcow2` (ursprüngliche
+  Disk) und `<Name>.snap-<n>.qcow2` (Overlays). Ein Snapshot friert die bisherige Disk-Datei ein, die VM schreibt in
+  ein neues Overlay darüber (`vol-create-as … --backing-vol`, Sekunden). Für alle drei Firmware-Arten gleich.
+- **Liste** als JSON in den Metadaten der VM (eigener Namensraum `https://okula.ch/recovery/vm-snapshots/1`, neben dem
+  Profil): Titel, Zeit, automatisch, eingefrorene Datei, Eltern-Snapshot, aktueller Stand, Inventar-Stand fürs Tool.
+- **Zurück:** neues Overlay auf der Datei des Snapshots, das bisherige Overlay wird gelöscht. Spätere Snapshots bleiben
+  gültig (ihre Dateien ändern sich nie) – auch zu ihnen lässt sich wieder springen.
+- **Löschen:** Jede Datei, die direkt auf dem Snapshot aufbaut (folgender Snapshot bzw. aktuelles Overlay), übernimmt
+  per `blockpull --base <Eltern-Datei>` seine Daten – in einer **angehaltenen Hilfs-VM** `okula-merge-<Name>` (nur
+  diese Disk, kein Netzwerk, `virsh create --paused`, läuft nie). Danach wird die Datei gelöscht. Erst nach geprüftem
+  Ergebnis (neue Backing-Datei laut libvirt), sonst bleibt der Snapshot. Dauer: so viele Daten wie der Snapshot selbst
+  enthält – beim ältesten (die ganze bisherige Disk) bis zu einigen Minuten.
+- **Automatisch bei laufendem Agent:** `snapshot-create-as --no-metadata --disk-only --atomic --diskspec
+  sda,snapshot=external,file=…` – libvirt stellt die laufende VM und die gespeicherte Konfiguration auf das neue
+  Overlay um; die Liste schreibt `virsh metadata --live --config`.
+- Neu-Definieren der VM (Start mit Agent bzw. von ISO, Hardware ändern) übernimmt Disk-Datei und Liste.
+
+**NVRAM (`*_VARS.fd`) und TPM-Zustand werden nicht mitkopiert** – beim Zurückspringen bleiben sie, wie sie sind:
+- Secure Boot hängt an den Schlüsseln im NVRAM (PK/KEK/db aus der Vorlage `OVMF_VARS_4M.ms.fd`); die Disk ändert sie
+  nicht. Am Server geprüft: VM-Win11-Probe nach dem Zurückspringen im UEFI-Menü „Current Secure Boot State
+  **Enabled**“.
+- Boot-Einträge im NVRAM, die auf eine nicht mehr vorhandene Partition zeigen (z. B. Zurück auf einen Stand vor der
+  Installation), überspringt OVMF; Windows startet über `\EFI\BOOT\BOOTX64.EFI` und legt seinen Eintrag neu an.
+- TPM: Schlüssel, die Windows im TPM ablegt (BitLocker, Windows Hello), hängen am Speicher-Stammschlüssel des TPM. Der
+  bleibt, solange das TPM nicht gelöscht wird – ein älterer Disk-Stand passt also weiter. Ausnahme: Wurde das TPM nach
+  dem Snapshot gelöscht oder änderte ein Windows-Update die Secure-Boot-Sperrliste (dbx im NVRAM) und ist BitLocker
+  aktiv, verlangt Windows nach dem Zurückspringen den Wiederherstellungsschlüssel. Für Master-VMs BitLocker darum aus
+  lassen (beim Master ohnehin Standard; „OS installieren“ setzt „Keine automatische BitLocker-Verschlüsselung“).
+- NVRAM und TPM-Zustand liegen ausserhalb des Pools (`/var/lib/libvirt/qemu/nvram`, `/var/lib/libvirt/swtpm`, nur
+  root); Mitkopieren bräuchte einen Root-Helfer (bewusst keiner seit Auftrag 1) – für den Zweck nicht nötig.
+
+### Zusammenspiel
+
+- **VM löschen …** löscht alle Overlays und die Disk (`undefine --remove-all-storage` entfernt nur die oberste Datei;
+  den Rest löscht das Tool, auch liegengebliebene `<Name>.snap-*.qcow2`). Am Server geprüft: Pool danach ohne Datei der VM.
+- **Hardware ändern …:** Disk vergrössern bei vorhandenen Snapshots gesperrt („zuerst Snapshots löschen“); RAM, Kerne
+  und Netzwerkkarte gehen (das Tool definiert die VM neu, libvirt kennt die Snapshots nicht) – am Server geprüft.
+  Zurück zu einem Snapshot setzt nur die Disk zurück, nicht die Hardware.
+- **Vor-Inventar / Ä-036:** Jeder Snapshot speichert Disks und Systeme aus dem Inventar des Geräteeintrags und ob die
+  Disk „leer“ war. Beim Zurückspringen gilt wieder dieser Stand; der Verlaufseintrag trägt `snapshot_blank`, die Prüfung
+  „Disk leer“ wertet nur den Verlauf danach aus.
+- **Zwillinge** wie jede VM. Das Einspielen des letzten Images beim Erstellen eines Zwillings macht keinen Snapshot
+  (die Disk ist dort neu und leer).
+
+### Abweichungen und Grenzen aus Auftrag 4 (06.11.2026)
+
+- **Nicht über libvirts Snapshot-Verwaltung** (siehe Technik-Entscheid): `virsh snapshot-list` zeigt die Snapshots
+  des Tools nicht.
+- **Löschen nur bei ausgeschalteter VM** (im Prompt nur für Erstellen/Zurück verlangt): Beim Zusammenführen ändert sich
+  eine Datei der Kette, die eine laufende VM liest. Während des Löschens ist die VM gesperrt (Einschalten ausgegraut).
+- **Grösse je Snapshot** = belegter Platz seiner eingefrorenen Datei (die Änderungen bis zu diesem Snapshot; beim
+  ersten die ganze bisherige Disk); unter der Liste die Änderungen seit dem aktuellen Snapshot und die Summe.
+- Am Server geprüft (ohne Oberfläche, echter Code, Probe-VMs mit Profil VM-Legacy und VM-Win11, Disk-Inhalt per
+  hochgeladenen qcow2-Dateien gesetzt und über die heruntergeladene Kette gelesen): Snapshot → ändern → Start mit Kette
+  (AppArmor) → automatischer Snapshot bei laufender VM → ändern → zurück zu A (alter Inhalt) → zurück zum späteren
+  Snapshot → RAM ändern (geht), Disk vergrössern (gesperrt) → ältesten und letzten Snapshot löschen (Inhalt bleibt,
+  Datei weg) → Start → VM löschen: keine Datei übrig, keine Hilfs-VM. Den Ablauf im Tool prüft Dominik
+  ([TESTS.md](TESTS.md) Abschnitt 11).

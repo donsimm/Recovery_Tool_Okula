@@ -140,7 +140,8 @@ BUS_LABELS = {"nvme": "NVMe", "sata": "SATA"}
 class HardwareDialog(Gtk.Dialog):
     """Hardware einer ausgeschalteten VM ändern. run() → OK, danach profile() und changes()."""
 
-    def __init__(self, parent: Gtk.Window, name: str, p: vm.VmProfile, total_mb: int, cores: int):
+    def __init__(self, parent: Gtk.Window, name: str, p: vm.VmProfile, total_mb: int, cores: int,
+                 snapshots: int = 0):
         super().__init__(title=f"Hardware ändern – {name}", transient_for=parent, modal=True)
         self.old = p
         self.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
@@ -157,6 +158,10 @@ class HardwareDialog(Gtk.Dialog):
         self.disk.set_value(p.disk.size_gb)
         self.disk.set_tooltip_text("Nur vergrössern – verkleinern geht nicht. Die Partitionen in der VM bleiben "
                                    "gleich gross (danach im Betriebssystem erweitern).")
+        if snapshots:                    # Snapshots bauen auf der Grösse auf (I-001 Auftrag 4)
+            self.disk.set_sensitive(False)
+            self.disk.set_tooltip_text(f"Die VM hat {snapshots} Snapshot{'s' if snapshots != 1 else ''} – zum "
+                                       "Vergrössern der Disk zuerst Snapshots löschen (Reiter „Snapshots“)")
         self.nic = Gtk.ComboBoxText()
         for key, label in NIC_LABELS.items():
             self.nic.append(key, label)
@@ -197,7 +202,10 @@ class HardwareDialog(Gtk.Dialog):
         self.check = Gtk.Label(xalign=0, wrap=True, max_width_chars=70)
         box.pack_start(self.check, False, False, 0)
         box.pack_start(_hint("Hersteller, Modell, Seriennummer, UUID und MAC bleiben. Das Inventar im Tool zeigt die "
-                             "neue Hardware nach dem nächsten Start mit Agent."), False, False, 0)
+                             "neue Hardware nach dem nächsten Start mit Agent."
+                             + (" Disk vergrössern geht erst, wenn keine Snapshots mehr da sind (zuerst Snapshots "
+                                "löschen); Zurück zu einem Snapshot setzt nur die Disk zurück, nicht die Hardware."
+                                if snapshots else "")), False, False, 0)
         for w in (self.ram, self.cores, self.disk):
             w.connect("value-changed", lambda _w: self._check())
         for w in (self.nic, self.firmware, self.bus):

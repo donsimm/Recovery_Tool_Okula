@@ -41,6 +41,7 @@ class AutomationError(Exception):
 class Settings:
     enabled: bool = False
     rearm: bool = True               # nach erfolgreichem Durchlauf 3 Tage später wieder einschalten
+    snapshot: bool = True            # nur VMs: vorher Snapshot der Disk (I-001 Auftrag 4)
     backup: bool = False             # 1: vorher sichern
     backup_mode: str = "files"       #    files (Benutzerdaten) | image (ganze Disk als Disk-Image)
     image_mode: str = "master"       # 2: master | own
@@ -248,8 +249,11 @@ class Engine:
 
     def __init__(self, store, job_manager: jobs.JobManager, key: bytes, nas_root: Callable[[], str | None],
                  cfg: Callable[[], config.Config], on_change: Callable[[str], None] = lambda dev_id: None,
-                 root_for: Callable[[object], str | None] | None = None):
+                 root_for: Callable[[object], str | None] | None = None,
+                 snapshot: Callable[[object], None] | None = None):
+        """snapshot(dev): Snapshot einer VM vor dem Auftrag (Einstellung „Vorher Snapshot“); Fehler → Abbruch."""
         self.store, self.jobs, self.key = store, job_manager, key
+        self.snapshot = snapshot
         self.nas_root, self.cfg, self.on_change = nas_root, cfg, on_change
         self.root_for = root_for     # Ablage je Gerät (Demo-Gerät: lokaler Demo-Speicher statt NAS)
         self.runs: dict[str, Run] = {}
@@ -400,11 +404,20 @@ class Engine:
             finally:
                 finished.set()
 
-        try:
-            run.job = self.jobs.start(dev.id, "auto", "automatisierung", f"Automatisierung ({dev.name})", wrapped)
-        except agentclient.AgentError as e:
-            error["message"] = str(e)
+        if s.snapshot and getattr(dev, "is_vm", False) and self.snapshot is not None:
+            try:
+                self.snapshot(dev)
+            except Exception as e:  # Snapshot fehlgeschlagen: Auftrag nicht starten, nichts überschrieben
+                error.update(step="Vorher Snapshot", message=str(e))
+        if error:
             finished.set()
+        else:
+            try:
+                run.job = self.jobs.start(dev.id, "auto", "automatisierung", f"Automatisierung ({dev.name})",
+                                          wrapped)
+            except agentclient.AgentError as e:
+                error["message"] = str(e)
+                finished.set()
         self.on_change(dev.id)
         finished.wait()
         while run.job is not None and run.job.running:

@@ -366,9 +366,11 @@ class DeviceStore:
         self.splits.append(other.id)
         self.add_history(new, "getrennt", f"Von „{other.name}“ getrennt (gleiche Kennung ab Werk)", save=False)
 
-    def add_history(self, dev: Device, kind: str, text: str, ok: bool | None = None, save: bool = True) -> None:
+    def add_history(self, dev: Device, kind: str, text: str, ok: bool | None = None, save: bool = True,
+                    **extra) -> None:
+        """extra: zusätzliche Felder des Eintrags (z. B. snapshot_blank beim Zurücksetzen einer VM, Ä-036)."""
         with self.lock:
-            dev.history.append({"time": now(), "kind": kind, "text": text, "ok": ok})
+            dev.history.append({"time": now(), "kind": kind, "text": text, "ok": ok, **extra})
             del dev.history[:-MAX_HISTORY]
             if save:
                 self.save(dev)

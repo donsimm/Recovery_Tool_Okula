@@ -24,7 +24,8 @@ class RestoreDialog(Gtk.Dialog):
     def __init__(self, parent: Gtk.Window, agent: discovery.AgentInfo, nas_root: str,
                  start_job: Callable[..., None], preselect: str | None = None,
                  device_name: str = "", device: devices.Device | None = None):
-        """start_job(image, quelldisk, zieldisk, prüfen, herunterfahren, bezeichnung, anpassen) startet den Auftrag;
+        """start_job(image, quelldisk, zieldisk, prüfen, herunterfahren, bezeichnung, anpassen, snapshot=…) startet
+        den Auftrag (snapshot: nur VMs, Häkchen „Vorher Snapshot“);
         anpassen = {"swiss", "account"} oder None."""
         super().__init__(title="Image zurückspielen", transient_for=parent, modal=True)
         self.start_job = start_job
@@ -94,6 +95,14 @@ class RestoreDialog(Gtk.Dialog):
         row += 1
         self.shutdown = Gtk.CheckButton(label="Maschine danach herunterfahren (Stick dann abziehen und einschalten)")
         grid.attach(self.shutdown, 0, row, 2, 1)
+        row += 1
+        # nur VMs (I-001 Auftrag 4): Snapshot der Disk direkt vor dem Zurückspielen
+        is_vm = device is not None and device.is_vm
+        self.snapshot = Gtk.CheckButton(label="Vorher Snapshot", active=is_vm, no_show_all=not is_vm)
+        self.snapshot.set_tooltip_text("Direkt vor dem Start einen Snapshot der Disk der VM erstellen (Reiter "
+                                       "„Snapshots“) – damit lässt sich der Stand davor in Sekunden zurückholen. "
+                                       "Schlägt der Snapshot fehl, startet der Auftrag nicht.")
+        grid.attach(self.snapshot, 0, row, 2, 1)
         row += 1
         # Master-Image: danach Gerätename, Windows-Schlüssel (und Region/Konto) setzen
         self.device = device
@@ -317,7 +326,8 @@ class RestoreDialog(Gtk.Dialog):
                 if self.custom.get_active() else None
             adapt = self.disks[target]["size"] if self.adapt.get_visible() and self.adapt.get_active() else None
             self.start_job(chosen["path"], chosen["disk"], target, self.verify.get_active(),
-                           self.shutdown.get_active(), label, custom, adapt)
+                           self.shutdown.get_active(), label, custom, adapt,
+                           snapshot=self.snapshot.get_visible() and self.snapshot.get_active())
         except Exception as e:
             self.append_log(f"Nicht gestartet: {e}")
             return

@@ -362,6 +362,9 @@ Damit kommt ein Gerät auf den Stand des Images zurück.
 5.  Optionen prüfen:
     •  <i>Image vor dem Schreiben vollständig prüfen</i> (empfohlen, Standard an).
     •  <i>Maschine danach herunterfahren</i>: danach den Stick abziehen und das Gerät einschalten.
+    •  Nur bei VMs: <i>Vorher Snapshot</i> (Standard an) – direkt vor dem Zurückspielen entsteht ein Snapshot
+        der Disk, damit lässt sich der Stand davor in Sekunden zurückholen (Kapitel <i>Virtuelle Maschinen</i>).
+        Schlägt der Snapshot fehl, startet das Zurückspielen nicht.
 6.  Zur Bestätigung den Namen der Zieldisk eintippen (zum Beispiel „sda“ oder „nvme0n1“).
 7.  Auf <i>Zurückspielen</i> klicken.
 
@@ -489,15 +492,41 @@ Die Disk ist eine Datei auf der SSD des Servers und wächst mit dem belegten Pla
 •  <i>Ausschalten …</i>: hart ausschalten wie Stecker ziehen, mit Rückfrage.
 •  <i>Hardware ändern …</i> (nur ausgeschaltet): Arbeitsspeicher, Kerne, Disk vergrössern (nie verkleinern),
     Netzwerkkarte. Firmware und Disk-Anschluss nur mit Warnung – ein installiertes System startet danach
-    evtl. nicht mehr.
-•  <i>VM löschen …</i> (nur ausgeschaltet): VM, Disk und Geräteeintrag werden gelöscht; Images und Backups
-    auf dem NAS bleiben.
+    evtl. nicht mehr. Hat die VM Snapshots, ist <i>Disk</i> gesperrt: zuerst die Snapshots löschen.
+•  <i>VM löschen …</i> (nur ausgeschaltet): VM, Disk, alle Snapshots und Geräteeintrag werden gelöscht;
+    Images und Backups auf dem NAS bleiben.
 In der Geräteliste steht der Zustand: <i>aus</i>, <i>läuft</i> oder <i>läuft – Agent verbunden</i>
 (alle 5 Sekunden neu). Die Startreihenfolge stellt das Tool selbst ein: normal startet die VM von der Disk,
 nach <i>Einschalten und Agent starten</i> einmal über das Netzwerk. Sobald der Agent verbunden ist, gilt wieder
 die Disk – ein Neustart danach (z. B. nach dem Zurückspielen) startet das System auf der Disk. Im Gerätefenster,
 Reiter <i>Netzwerk</i>, lässt sich der Agent auch für den nächsten Neustart einer laufenden VM vormerken.
 Wake-on-LAN und „Netzwerkstart zuerst“ gibt es bei VMs nicht.
+
+<b>Snapshots – Stand der Disk einfrieren und zurückholen</b>
+Wozu: einen Stand festhalten, z. B. „frisch installiert“ oder „vor Sysprep“, und in Sekunden dorthin
+zurückkehren. So lassen sich Master-Bau und Tests beliebig wiederholen, ohne neu zu installieren.
+Gerätefenster der VM → Reiter <i>Snapshots</i>: Liste mit Titel, Datum, <i>Automatisch</i> ja/nein und Grösse;
+<i>◀ aktueller Stand</i> markiert den Snapshot, auf dem der jetzige Stand aufbaut.
+•  <i>Snapshot erstellen …</i> (nur ausgeschaltet): Titel eingeben (Vorgabe „Snapshot TT.MM. HH:MM“).
+    Gesichert wird nur die Disk, ohne Arbeitsspeicher; das dauert Sekunden.
+•  <i>Zurück zu diesem Snapshot …</i> (nur ausgeschaltet, auch per Doppelklick): Die Disk ist danach wieder
+    so wie beim Snapshot. <b>Alle Änderungen seit diesem Snapshot gehen verloren.</b> Die anderen Snapshots
+    bleiben – auch spätere, zu denen sich wieder zurückspringen lässt. Das Inventar im Tool gilt wieder wie
+    zum Zeitpunkt des Snapshots (eine damals leere Disk gilt wieder als leer).
+•  <i>Löschen …</i> (nur ausgeschaltet): Der aktuelle Stand und die anderen Snapshots bleiben. Die Daten des
+    Snapshots werden dafür in die folgende Datei übernommen – je nach Grösse dauert das bis zu einigen
+    Minuten (Balken im Reiter); so lange bleibt die VM gesperrt.
+•  <b>Automatisch vor Aktionen:</b> Bei <i>Image zurückspielen …</i>, <i>OS installieren …</i> und in der
+    Automatisierung gibt es bei VMs das Häkchen <i>Vorher Snapshot</i> (Standard an). Der Snapshot entsteht direkt
+    vor dem Auftrag, bei laufendem Agent (die Disk ist dann unbenutzt), Titel z. B. „vor Zurückspielen 06.11. 14:05“.
+    Schlägt er fehl, startet der Auftrag nicht. Bei laufendem Windows gibt es nie einen Snapshot.
+•  <b>Platz:</b> Snapshots sind unbegrenzt möglich. Jeder belegt so viel, wie sich seither auf der Disk geändert
+    hat; der erste enthält die ganze bisherige Disk. Unter 50 GB frei auf der Server-SSD erscheint unter der
+    Liste eine Warnung – dann nicht mehr benötigte Snapshots löschen.
+•  Zurückgesetzt wird nur die Disk: Hardware (RAM, Kerne …), UEFI-Einstellungen mit Secure Boot und der
+    TPM-Zustand bleiben wie sie sind. Im Verlauf stehen „Snapshot ‚…‘ erstellt / zurückgesetzt / gelöscht“.
+Beispiel Master-Image: Windows in der VM installieren und einrichten → VM herunterfahren → Snapshot
+„vor Sysprep“ → Sysprep → Disk-Image. Für die nächste Version zurück zu „vor Sysprep“, ändern, wieder Sysprep.
 
 <b>Digitaler Zwilling – VM mit der Hardware eines Geräts</b>
 Wozu: ein Image auf „derselben“ Hardware testen, ohne das echte Gerät anzufassen.
@@ -545,6 +574,8 @@ Mit der Automatisierung setzt das Tool ein Gerät selbst neu auf, sobald es mit 
     auf Wunsch <i>Region Schweiz</i> und ein <i>Lokales Konto</i> (Passwort beim ersten Anmelden setzen).
 5.  <b>Ordner senden</b> (Option): Software, Test Files, Content-Projekte.
 6.  <b>Abschluss</b>: Neustart, Herunterfahren oder nichts.
+    Nur bei VMs: <i>Vorher Snapshot</i> (oben, Standard an) – direkt vor dem Start entsteht ein Snapshot der Disk
+    (Kapitel <i>Virtuelle Maschinen</i>). Schlägt er fehl, startet die Automatisierung nicht.
 7.  Schalter <i>Automatisierung</i> einschalten – oder in der Liste das Häkchen <i>Auto</i> setzen.
 
 <b>Achtung:</b> Ist das Gerät beim Einschalten des Schalters verbunden, beginnt der Countdown sofort.
@@ -697,6 +728,8 @@ Netzwerkstart mit dem aktuellen Tool). Geprüft wird nur lesend: Daten, Windows 
     Bei Debian gibt es die ganze Auswahl wie im Debian-Installer.
 5.  Starten. Das Gerät startet danach neu und installiert selbständig.
     Am Gerät wird nichts gefragt. Was nicht ausgewählt ist, wird nicht installiert.
+    Nur bei VMs: <i>Vorher Snapshot</i> (Standard an) – direkt vor der Installation entsteht ein Snapshot der
+    Disk (Kapitel <i>Virtuelle Maschinen</i>). Schlägt er fehl, startet die Installation nicht.
 
 Der <b>Computername</b> ist immer der Gerätename im Tool. Für einen anderen Namen das Gerät umbenennen.
 Windows erlaubt nur 15 Zeichen ohne Sonderzeichen. Der Dialog zeigt, wie der Name ankommt.

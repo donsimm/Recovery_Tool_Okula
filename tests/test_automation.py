@@ -177,6 +177,39 @@ class EngineTest(unittest.TestCase):
         self.release.setdefault(b.id, threading.Event()).set()
         self.assertTrue(wait_for(lambda: self.engine.run(b.id).phase == "done"))
 
+    def test_snapshot_before_vm_job(self):
+        """I-001 Auftrag 4: VM mit „Vorher Snapshot“ – Snapshot direkt vor dem Auftrag, bei Fehler kein Auftrag."""
+        taken = []
+
+        def snapshot(dev):
+            if dev.name == "VM-Voll":
+                raise RuntimeError("Snapshot vorher fehlgeschlagen – Auftrag nicht gestartet: kein Platz")
+            taken.append((dev.name, self.jm.summary(dev.id)))
+
+        self.engine.snapshot = snapshot
+        vm_ok, vm_full, real = self.device("VM-Ok"), self.device("VM-Voll"), self.device("Echt")
+        for d in (vm_ok, vm_full):
+            d.vm = {"name": d.name}
+        off = self.device("VM-Ohne")
+        off.vm = {"name": "VM-Ohne"}
+        s = automation.settings(off)
+        s.snapshot = False
+        off.automation = s.to_dict()
+        self.assertTrue(automation.Settings().snapshot)                 # Standard an
+        self.cfg.automation_max = 4
+        for d in (vm_ok, vm_full, real, off):
+            self.release.setdefault(d.id, threading.Event()).set()
+            self.engine.consider(d, self.agent())
+        self.assertTrue(wait_for(lambda: self.engine.run(vm_ok.id).phase == "done"))
+        self.assertTrue(wait_for(lambda: self.engine.run(vm_full.id).phase == "error"))
+        self.assertTrue(wait_for(lambda: self.engine.run(real.id).phase == "done"))
+        self.assertTrue(wait_for(lambda: self.engine.run(off.id).phase == "done"))
+        self.assertEqual(taken, [("VM-Ok", "")])                         # vor dem Auftrag, nur VM mit Häkchen
+        self.assertIsNone(self.engine.run(vm_full.id).job)               # Auftrag nicht gestartet
+        self.assertTrue(automation.settings(vm_full).last_error.startswith("Vorher Snapshot: Snapshot vorher"))
+        self.assertTrue(any(h["text"].startswith("Automatisierung fehlgeschlagen – Vorher Snapshot")
+                            for h in vm_full.history))
+
     def test_error_cancel_paused(self):
         bad = self.device("Kaputt")
         self.release[bad.id] = threading.Event()

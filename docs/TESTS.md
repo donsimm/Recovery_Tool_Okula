@@ -32,6 +32,7 @@ bestätigt.
 | VMs im Tool (I-001 2), Prüfung durch den Agenten | A | 06.11., neue Version mit echter Geräteliste, NAS und Netzwerkstart (Dialoge im Skript bestätigt): VM-Klein angelegt (Eintrag im Ordner, MAC sofort in der Freigabeliste) → Einschalten und Agent starten → Agent nach 30 s verbunden, Inventar Okula VM-Klein, kein zweites Gerät → laufende VM auf Disk zuerst umgestellt → Disk-Image aufs NAS → Herunterfahren über den Agent → Einschalten startet von der Disk (Test-Disk mit grub) → Bildschirm öffnet, zweites Öffnen ersetzt das Fenster → Ausschalten → VM löschen: Pool leer, Freigabeliste wie vorher, Test-Image entfernt. Startart „lokal“: SeaBIOS startet von der Disk, OVMF zeigt das Setup-Menü (darum Disk → Netzwerk, siehe [VM.md](VM.md)). Von ISO starten (Debian-Netinst vom NAS) in VM-Win11 und VM-Legacy, ISO nicht umbesessen |
 | VM-Grundlage nach `sudo ./install.sh` (I-001 1 + 1b) | R | 06.11.: Brücke `br0` mit gleicher IP 192.168.110.199, Internet ok, `virsh` ohne sudo, Pool `okula` aktiv, Standardnetz aus, SPICE-Paket installiert, PXE-Konfiguration `interface=br0`; mit dem echten Code alle drei Profile erstellt/gestartet/gelöscht; virt-viewer-Fenster VM-Win11: „Start PXE over IPv4“, Secure Boot **Enabled** (Dominik); VM-Legacy iPXE mit Intel 82540EM |
 | Digitaler Zwilling (I-001 3), Prüfung durch den Agenten | A | 06.11., ohne Oberfläche mit dem echten Code: `profile_from_inventory` aus den Inventaren von CompactPlayer 2 (OEM SHARKBAY, MBR → BIOS/i440FX, SATA 121 GB KINGSTON, Realtek → e1000) und IOVERSAL-1 (GPT → UEFI/Q35, NVMe 1001 GB, 8 → 6 Kerne, RAM gekürzt) → `Virsh.create` + Start: läuft, SMBIOS OEM/SHARKBAY bzw. ASRock, Seriennummern `VM-…`, UUID `0c1a0000-…`, Disk-Seriennummer `VM…` im QEMU-Gerät, NVMe-Gerät vorhanden; `DeviceStore.match()` findet das Original nicht; danach gelöscht, nur VM-Klein und VM-Win11 übrig. Ablauf mit Image im Tool: offen (Abschnitt 10) |
+| Snapshots der VMs (I-001 4), Prüfung durch den Agenten | A | 06.11., ohne Oberfläche mit dem echten Code an Probe-VMs (Profil VM-Legacy und VM-Win11, 1 GB): Inhalt per qcow2-Upload gesetzt und über die heruntergeladene Kette gelesen – Snapshot → ändern → Start mit Overlay-Kette (AppArmor) → automatischer Snapshot bei laufender VM → zurück zu A (alter Inhalt) → zurück zum späteren → RAM ändern geht, Disk vergrössern gesperrt → ältesten und letzten Snapshot löschen (Inhalt bleibt) → VM löschen: keine Datei, keine Hilfs-VM übrig. UEFI-Probe nach dem Zurückspringen: Secure Boot **Enabled** (UEFI-Menü). libvirts eigenes Löschen scheitert an AppArmor (siehe [VM.md](VM.md)) |
 | install.sh auf neuem Debian 13 | R | |
 | USB klonen / formatieren | A | |
 | Einstellungen exportieren / importieren (inkl. Vorlagen) | A | |
@@ -207,3 +208,32 @@ SMBIOS mit `VM-…`, kein Treffer auf das Original, gelöscht (06.11., Agent).
 - [ ] Gerät ohne Image (z. B. CompactPlayer 2): Häkchen aus und ausgegraut, „Kein Image dieses Geräts auf dem NAS“
 - [ ] Rechtsklick auf ein Gerät → *VM mit dieser Hardware erstellen …*; bei VMs und beim DEMO-PC nicht vorhanden
 - [ ] Danach Zwilling löschen (*VM löschen …*); Images auf dem NAS bleiben
+
+### 11. Snapshots der VMs (I-001 Auftrag 4)
+Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stick). Ohne Oberfläche am Server geprüft
+(siehe „Bereits geprüft“). Am besten mit einer Test-VM (z. B. neue VM-Klein), nicht mit der Master-VM.
+- [ ] Gerätefenster der VM → Reiter **Snapshots**: bei laufender VM alle Knöpfe ausgegraut, Tooltip „Nur bei
+      ausgeschalteter VM …“; VM aus → *Snapshot erstellen …* → Titel „frisch“ → Liste: Titel, Datum, Automatisch
+      „nein“, Grösse, „◀ aktueller Stand“; Verlauf „Snapshot ‚frisch‘ erstellt“
+- [ ] Einschalten, in der VM etwas ändern (Datei auf den Desktop), herunterfahren → *Zurück zu diesem Snapshot …* →
+      Rückfrage „Alle Änderungen seit frisch …“ → Zurücksetzen → Einschalten: Datei weg; Verlauf „… zurückgesetzt“
+- [ ] Bei VM-Win11 (UEFI + Secure Boot + TPM): nach dem Zurückspringen startet Windows normal, in Windows
+      `msinfo32` → Sicherer Startzustand **Ein**, TPM vorhanden; kein BitLocker-Wiederherstellungsschlüssel verlangt
+- [ ] *Image zurückspielen …* an der VM (mit Agent): Häkchen **Vorher Snapshot** sichtbar und an → Zurückspielen →
+      im Reiter Snapshots „vor Zurückspielen TT.MM. HH:MM“, Automatisch „ja“; Verlauf „… erstellt (automatisch)“.
+      Bei echten Geräten ist das Häkchen nicht da
+- [ ] Dasselbe bei *OS installieren …* („vor OS-Installation …“) und in der **Automatisierung** der VM (Häkchen
+      *Vorher Snapshot* unter „Nach 3 Tagen wieder einschalten“; „vor Automatisierung …“)
+- (Abbruch, wenn der automatische Snapshot fehlschlägt: „Nicht gestartet: Snapshot vorher fehlgeschlagen …“, kein
+  Auftrag – mit Tests geprüft, am Server kaum herbeizuführen; tritt es auf, Meldung notieren)
+- [ ] Nach dem Zurückspielen zurück zum automatischen Snapshot → wieder der Stand davor
+- [ ] Leere VM: Snapshot „leer“ → OS installieren → zurück zu „leer“ → *Einschalten* fragt wieder „Die Disk von … ist
+      leer“ (Ä-036)
+- [ ] *Löschen …* eines Snapshots: Rückfrage, Balken im Reiter, VM so lange gesperrt; danach aktueller Stand
+      unverändert (VM startet wie vorher), Verlauf „… gelöscht“; Zeit für den ältesten Snapshot einer Windows-VM notieren
+- [ ] *Hardware ändern …* mit Snapshots: Disk ausgegraut mit Grund „zuerst Snapshots löschen“; RAM ändern geht
+- [ ] Platzwarnung unter der Liste erscheint unter 50 GB frei (nur zur Kenntnis, schwer herbeizuführen)
+- [ ] *VM löschen …* einer VM mit Snapshots → `virsh -c qemu:///system vol-list okula` ohne Dateien dieser VM
+- [ ] **Master-Ablauf** ([MASTER-IMAGE.md](MASTER-IMAGE.md)): Windows in der VM einrichten → herunterfahren →
+      Snapshot **„vor Sysprep“** → Sysprep → Einschalten und Agent starten → Disk-Image → zurück zu „vor Sysprep“ →
+      Windows startet wieder im eingerichteten Zustand (nicht in der Ersteinrichtung)

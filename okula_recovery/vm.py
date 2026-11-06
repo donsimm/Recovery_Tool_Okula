@@ -10,6 +10,13 @@ Konzept und Profile: docs/VM.md. Grundsätze:
   gelöscht wird sie weiterhin über den Pool (vol-create-as/vol-resize/vol-delete).
 - Das Profil liegt als JSON in den Metadaten der VM; damit lässt es sich später wieder lesen und ändern.
 
+Snapshots (Auftrag 4) als externe qcow2-Overlays im Pool-Verzeichnis, verwaltet vom Tool selbst (Metadaten in der VM,
+eigener Namensraum) statt über libvirts Snapshot-Verwaltung: libvirt 11.3 kann externe Snapshots anlegen und
+zurücksetzen, das Löschen (block-commit in die Backing-Datei) scheitert aber an AppArmor – virt-aa-helper verbietet
+das Schreiben in Backing-Dateien ausdrücklich („deny … w“). Gelöscht wird darum per block-stream (blockpull): Die
+Kind-Datei übernimmt die Daten, geschrieben wird nur in die oberste Datei einer angehaltenen Hilfs-VM. NVRAM und
+TPM-Zustand bleiben beim Zurücksetzen unverändert (Begründung in docs/VM.md).
+
 libvirt in Debian 13 ist 11.3: Der Disk-Bus „nvme“ kommt erst mit 11.5. Eine NVMe-Disk wird darum als SATA-Disk
 definiert (libvirt verwaltet Rechte und AppArmor) und per <qemu:override> zum QEMU-Gerät „nvme“ umgebaut.
 QEMU 10.0 kennt für NVMe keinen Modellnamen – dort bleibt „QEMU NVMe Ctrl“. Der CPU-Name wird per -global gesetzt.
@@ -26,9 +33,11 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import uuid as uuidlib
 import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass, field, fields
+from datetime import datetime
 from typing import Callable
 
 from okula_recovery import devices, textnorm
@@ -40,6 +49,8 @@ POOL_DIR = "/var/lib/libvirt/images/okula"
 BRIDGE = "br0"
 QEMU_NS = "http://libvirt.org/schemas/domain/qemu/1.0"
 OKULA_NS = "https://okula.ch/recovery/vm/1"
+SNAP_NS = "https://okula.ch/recovery/vm-snapshots/1"   # eigener Namensraum: libvirt erlaubt ein Element je Namensraum
+SNAP_KEY = "okulasnap"
 DISK_ALIAS, NIC_ALIAS = "ua-disk0", "ua-net0"   # feste Namen der Geräte in QEMU (NVMe-Umbau, Startreihenfolge)
 NVME_ADDR = "0x1b"          # PCI-Steckplatz der NVMe-Disk (libvirt belegt Steckplätze ab 0x2 aufsteigend)
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$")
@@ -57,10 +68,13 @@ NIC_MODELS = ("e1000e", "e1000", "rtl8139")
 # stellt das Tool die Reihenfolge der laufenden VM um (set_boot_runtime), sobald der Agent verbunden ist.
 START_MODES = ("normal", "agent", "iso")
 MIN_FREE_GB = 20            # so viel muss auf dem Server mindestens frei bleiben
+LOW_SPACE_GB = 50           # Snapshots: Warnung, wenn weniger frei ist
+SNAP_TITLE_MAX = 80
 RAM_RESERVE_MB = 2048       # für den Server selbst
 
 ET.register_namespace("qemu", QEMU_NS)
 ET.register_namespace("okula", OKULA_NS)
+ET.register_namespace(SNAP_KEY, SNAP_NS)
 
 
 class VmError(Exception):
@@ -239,9 +253,12 @@ def _escape_global(value: str) -> str:
     return value.replace(",", ",,")
 
 
-def domain_xml(p: VmProfile, boot: str = "normal", iso: str = "") -> str:
+def domain_xml(p: VmProfile, boot: str = "normal", iso: str = "", disk_file: str = "",
+               snapshots: "SnapState | None" = None) -> str:
     """libvirt-Domain-XML zum Profil. boot: normal (Disk → Netzwerk), agent (Netzwerk → Disk), iso (CD → Disk →
-    Netzwerk). Gespeichert ist immer „normal“; agent/iso gelten nur für einen Start (siehe Virsh.start)."""
+    Netzwerk). Gespeichert ist immer „normal“; agent/iso gelten nur für einen Start (siehe Virsh.start).
+    disk_file: aktuelle Disk-Datei (mit Snapshots das oberste Overlay, sonst <Name>.qcow2); snapshots: Liste der
+    Snapshots für die Metadaten – beides muss beim Neu-Definieren erhalten bleiben."""
     if boot not in START_MODES:
         raise VmError(f"Unbekannte Startart „{boot}“")
     p.validate()
@@ -254,6 +271,8 @@ def domain_xml(p: VmProfile, boot: str = "normal", iso: str = "") -> str:
     _sub(dom, "uuid", s.uuid)
     meta = _sub(dom, "metadata")
     ET.SubElement(meta, f"{{{OKULA_NS}}}profile").text = p.to_json()
+    if snapshots is not None and (snapshots.items or snapshots.seq):
+        ET.SubElement(meta, f"{{{SNAP_NS}}}snapshots").text = snapshots.to_json()
     _sub(dom, "memory", p.ram_mb, unit="MiB")
     _sub(dom, "currentMemory", p.ram_mb, unit="MiB")
     _sub(dom, "vcpu", p.cpu.cores * p.cpu.threads, placement="static")
@@ -303,7 +322,7 @@ def domain_xml(p: VmProfile, boot: str = "normal", iso: str = "") -> str:
     dev = _sub(dom, "devices")
     disk = _sub(dev, "disk", type="file", device="disk")        # Datei statt Pool-Volume: AppArmor (siehe oben)
     _sub(disk, "driver", name="qemu", type="qcow2", discard="unmap")
-    _sub(disk, "source", file=volume_path(p.name))
+    _sub(disk, "source", file=disk_file or volume_path(p.name))
     target = {"dev": "sda", "bus": "sata"}
     if p.disk.bus == "sata":
         target["rotation_rate"] = str(p.disk.rpm or 1)       # 1 = SSD
@@ -378,6 +397,100 @@ def profile_from_xml(xml: str) -> VmProfile | None:
         return VmProfile.from_dict(json.loads(el.text))
     except (ValueError, TypeError):
         return None
+
+
+# ---------- Snapshots (I-001 Auftrag 4) ----------
+#
+# Dateien im Pool-Verzeichnis: <Name>.qcow2 (ursprüngliche Disk) und <Name>.snap-<n>.qcow2 (Overlays).
+# Ein Snapshot friert die Datei ein, die bis dahin die Disk war („file“); die VM schreibt danach in ein neues
+# Overlay darüber. Der Zustand eines Snapshots = seine Datei samt ihren Backing-Dateien. „parent“ ist der Snapshot,
+# dessen Datei die Backing-Datei ist; „current“ der Snapshot, auf dem der aktuelle Stand aufbaut.
+
+@dataclass
+class Snapshot:
+    id: int
+    title: str
+    created: str = ""                 # ISO-Zeit
+    auto: bool = False                # automatisch vor einer Aktion
+    file: str = ""                    # eingefrorene Datei (Pfad im Pool-Verzeichnis)
+    parent: int = 0                   # 0 = keiner (Datei ohne Backing)
+    info: dict = field(default_factory=dict)   # vom Tool: Inventar der Disks zum Zeitpunkt, „leer“ (Ä-036)
+    size: int = 0                     # belegter Platz der Datei (nur gelesen, nicht gespeichert)
+    current: bool = False             # aktueller Stand baut hierauf auf (nur gelesen)
+
+    @property
+    def when(self) -> str:
+        try:
+            return datetime.fromisoformat(self.created).strftime("%d.%m.%Y %H:%M")
+        except ValueError:
+            return self.created
+
+
+@dataclass
+class SnapState:
+    seq: int = 0                      # letzte vergebene Nummer (Snapshot-IDs und Overlay-Dateien)
+    current: int = 0
+    items: list[Snapshot] = field(default_factory=list)
+
+    def to_json(self) -> str:
+        keep = ("id", "title", "created", "auto", "file", "parent", "info")
+        return json.dumps({"seq": self.seq, "current": self.current,
+                           "items": [{k: getattr(i, k) for k in keep} for i in self.items]},
+                          ensure_ascii=False, sort_keys=True)
+
+    @classmethod
+    def from_json(cls, text: str) -> "SnapState":
+        data = json.loads(text or "{}")
+        known = {f.name for f in fields(Snapshot)} - {"size", "current"}
+        items = [Snapshot(**{k: v for k, v in i.items() if k in known}) for i in data.get("items") or []]
+        return cls(seq=int(data.get("seq") or 0), current=int(data.get("current") or 0), items=items)
+
+    def get(self, snap_id: int) -> Snapshot | None:
+        return next((i for i in self.items if i.id == snap_id), None)
+
+    def file_of(self, snap_id: int) -> str:
+        item = self.get(snap_id)
+        return item.file if item else ""
+
+
+def snapshots_from_xml(xml: str) -> SnapState:
+    try:
+        el = ET.fromstring(xml).find(f"metadata/{{{SNAP_NS}}}snapshots")
+        return SnapState.from_json(el.text) if el is not None and el.text else SnapState()
+    except (ET.ParseError, ValueError, TypeError):
+        return SnapState()
+
+
+def disk_from_xml(xml: str) -> str:
+    """Aktuelle Disk-Datei der VM (oberstes Overlay); "" = keine."""
+    try:
+        src = ET.fromstring(xml).find("devices/disk[@device='disk']/source")
+    except ET.ParseError:
+        return ""
+    return src.get("file", "") if src is not None else ""
+
+
+def snapshot_title(now: datetime | None = None) -> str:
+    """Vorgabe für einen Snapshot von Hand: „Snapshot 06.11. 14:05“."""
+    return f"Snapshot {(now or datetime.now()):%d.%m. %H:%M}"
+
+
+def auto_title(action: str, now: datetime | None = None) -> str:
+    """Titel eines automatischen Snapshots: „vor Zurückspielen 06.11. 14:05“."""
+    return f"vor {action} {(now or datetime.now()):%d.%m. %H:%M}"
+
+
+def low_space_text(free_bytes: int) -> str:
+    """Warnung unter der Snapshot-Liste ("" = genug Platz)."""
+    if free_bytes >= LOW_SPACE_GB * 10**9:
+        return ""
+    return (f"Nur noch {free_bytes / 10**9:.0f} GB frei auf der Server-SSD (unter {LOW_SPACE_GB} GB) – "
+            "nicht mehr benötigte Snapshots löschen")
+
+
+def history_text(verb: str, title: str) -> str:
+    """Verlaufseintrag: „Snapshot ‚vor Sysprep‘ erstellt“ (verb: erstellt, zurückgesetzt, gelöscht)."""
+    return f"Snapshot ‚{title}‘ {verb}"
 
 
 def macs_in_xml(xml: str) -> set[str]:
@@ -731,11 +844,14 @@ SYSTEM_KINDS = ("install", "linux", "restore", "auto")
 def blank_disk(inv: dict, history: list[dict]) -> bool:
     """Ä-036: Hatte die VM noch nie ein System? Ja, wenn keine Disk im Inventar Partitionen bzw. eine
     Partitionstabelle hat und im Verlauf weder eine Installation noch ein Zurückspielen noch ein Start von ISO
-    steht (von ISO lässt sich in der VM von Hand installieren)."""
+    steht (von ISO lässt sich in der VM von Hand installieren). Nach dem Zurücksetzen auf einen Snapshot zählt
+    nur der Verlauf danach, davor gilt der Stand des Snapshots (Eintrag mit „snapshot_blank“)."""
     disks = (inv or {}).get("disks") or []
     if any(d.get("partitions") or d.get("pttype") for d in disks):
         return False
-    for h in history or []:
+    for h in reversed(history or []):
+        if "snapshot_blank" in h:
+            return bool(h["snapshot_blank"])
         if h.get("kind") in SYSTEM_KINDS and h.get("ok") is not False:
             return False
         if h.get("kind") == "vm" and (h.get("text") or "").startswith("VM von ISO gestartet"):
@@ -814,6 +930,30 @@ def volume_path(name: str) -> str:
     return os.path.join(POOL_DIR, volume_name(name))
 
 
+def snap_element(st: SnapState) -> str:
+    """Metadaten-Element für „virsh metadata --set“ (ohne Namensraum-Präfix, den setzt virsh mit --key)."""
+    el = ET.Element("snapshots")
+    el.text = st.to_json()
+    return ET.tostring(el, encoding="unicode")
+
+
+def helper_xml(helper: str, disk: str) -> str:
+    """Hilfs-VM zum Zusammenführen: nur die Disk, kein Netzwerk; wird angehalten gestartet und läuft nie."""
+    dom = ET.Element("domain", {"type": "kvm"})
+    _sub(dom, "name", helper)
+    _sub(dom, "memory", 64, unit="MiB")
+    os_el = _sub(dom, "os")
+    _sub(os_el, "type", "hvm", arch="x86_64", machine="pc")
+    dev = _sub(dom, "devices")
+    d = _sub(dev, "disk", type="file", device="disk")
+    _sub(d, "driver", name="qemu", type="qcow2")
+    _sub(d, "source", file=disk)
+    _sub(d, "target", dev="hda", bus="ide")
+    _sub(dev, "memballoon", model="none")
+    ET.indent(dom)
+    return ET.tostring(dom, encoding="unicode") + "\n"
+
+
 # ---------- virsh ----------
 
 Run = Callable[[list[str], "str | None"], subprocess.CompletedProcess]
@@ -841,8 +981,8 @@ def _default_run(cmd: list[str], input_text: str | None = None) -> subprocess.Co
 class Virsh:
     """Aktionen auf den VMs. Alle Fehler kommen als VmError mit deutschem Text."""
 
-    def __init__(self, run: Run = _default_run, uri: str = URI):
-        self._run, self.uri = run, uri
+    def __init__(self, run: Run = _default_run, uri: str = URI, sleep: Callable[[float], None] = time.sleep):
+        self._run, self.uri, self._sleep = run, uri, sleep
 
     def virsh(self, *args: str, input_text: str | None = None, check: bool = True) -> str:
         cmd = ["virsh", "-c", self.uri, *args]
@@ -953,11 +1093,11 @@ class Virsh:
             self.virsh("start", name)
             return
         # Startreihenfolge nur für diesen Start ändern: definieren, starten, wieder normal definieren
-        self._define(domain_xml(p, boot=mode, iso=iso))
+        self._define(self._rebuild(name, p, boot=mode, iso=iso))
         try:
             self.virsh("start", name)
         finally:
-            self._define(domain_xml(p))
+            self._define(self._rebuild(name, p))
 
     def shutdown(self, name: str) -> None:
         self.virsh("shutdown", name, "--mode", "acpi")
@@ -990,12 +1130,23 @@ class Virsh:
         return True
 
     def delete(self, name: str) -> None:
-        """VM mit Disk, NVRAM und TPM-Zustand löschen (Rückfrage ist Sache der Oberfläche)."""
+        """VM mit Disk, Snapshots (alle Overlay-Dateien), NVRAM und TPM-Zustand löschen (Rückfrage ist Sache der
+        Oberfläche). --remove-all-storage entfernt nur die oberste Disk-Datei, die übrigen löscht das Tool."""
         self.get_profile(name)          # nur VMs des Tools
+        disk, st = self._layout(name)
         if self.state(name) != "shut off":
             self.virsh("destroy", name, check=False)
         self.virsh("undefine", name, "--nvram", "--tpm", "--remove-all-storage")
-        self.virsh("vol-delete", "--pool", POOL, volume_name(name), check=False)
+        self._pool_refresh()
+        files = [volume_path(name), disk] + [i.file for i in st.items]
+        pattern = re.compile(rf"^{re.escape(name)}\.snap-\d+\.qcow2$")
+        names = {os.path.basename(f) for f in files if f and os.path.dirname(f) == POOL_DIR}
+        names |= {v for v in self.volumes() if pattern.match(v)}
+        def order(vol: str) -> int:        # oberste Overlays zuerst, die ursprüngliche Disk zuletzt
+            m = re.search(r"\.snap-(\d+)\.qcow2$", vol)
+            return -int(m.group(1)) if m else 0
+        for vol in sorted(names, key=order):
+            self.virsh("vol-delete", "--pool", POOL, vol, check=False)
 
     def set_profile(self, name: str, p: VmProfile) -> VmProfile:
         """Hardware einer ausgeschalteten VM ändern. Disk lässt sich nur vergrössern; Name bleibt."""
@@ -1011,8 +1162,198 @@ class Virsh:
         if p.disk.size_gb < old.disk.size_gb:
             raise VmError("Disk lässt sich nicht verkleinern")
         p = fill_identity(p)
-        xml = domain_xml(p)
+        disk, st = self._layout(name)
+        xml = domain_xml(p, disk_file=disk, snapshots=st)
         if p.disk.size_gb > old.disk.size_gb:
-            self.virsh("vol-resize", "--pool", POOL, volume_name(name), str(p.disk.size_gb * 10**9))
+            if st.items:
+                raise VmError("Disk lässt sich nicht vergrössern, solange es Snapshots gibt – zuerst Snapshots "
+                              "löschen")
+            self._pool_refresh()
+            self.virsh("vol-resize", "--pool", POOL, os.path.basename(disk), str(p.disk.size_gb * 10**9))
         self._define(xml)
         return p
+
+    # --- Snapshots (I-001 Auftrag 4) ---
+
+    def _layout(self, name: str) -> tuple[str, SnapState]:
+        """(aktuelle Disk-Datei, Snapshots) aus der gespeicherten VM."""
+        xml = self.xml(name)
+        return disk_from_xml(xml) or volume_path(name), snapshots_from_xml(xml)
+
+    def _rebuild(self, name: str, p: VmProfile, boot: str = "normal", iso: str = "") -> str:
+        """Domain-XML zum Profil mit der aktuellen Disk-Datei und den Snapshots (beides bleibt erhalten)."""
+        disk, st = self._layout(name)
+        return domain_xml(p, boot=boot, iso=iso, disk_file=disk, snapshots=st)
+
+    def _pool_refresh(self) -> None:
+        """Dateien, die libvirt ausserhalb des Pools angelegt hat (Snapshot einer laufenden VM), bekannt machen."""
+        self.virsh("pool-refresh", POOL, check=False)
+
+    def volumes(self) -> list[str]:
+        """Dateinamen im Pool „okula“."""
+        out = self.virsh("vol-list", POOL, check=False)
+        return [line.split()[0] for line in out.splitlines()[2:] if line.strip()]
+
+    def _vol_info(self, path: str) -> dict[str, int]:
+        """{"capacity", "allocation"} in Byte (Datei im Pool, nach _pool_refresh)."""
+        out = self.virsh("vol-info", "--pool", POOL, os.path.basename(path), "--bytes", check=False)
+        return {k.lower(): int(v) for k, v in re.findall(r"^(Capacity|Allocation):\s*(\d+)", out, re.M)}
+
+    def _backing(self, path: str) -> str:
+        """Backing-Datei eines Overlays ("" = keine)."""
+        out = self.virsh("vol-dumpxml", "--pool", POOL, os.path.basename(path))
+        try:
+            el = ET.fromstring(out).find("backingStore/path")
+        except ET.ParseError:
+            raise VmError(f"Unerwartete Antwort von libvirt zu {os.path.basename(path)}") from None
+        return el.text.strip() if el is not None and el.text else ""
+
+    def _require_off(self, name: str, what: str) -> None:
+        if self.state(name) != "shut off":
+            raise VmError(f"{what} nur bei ausgeschalteter VM – zuerst herunterfahren")
+
+    def _overlay(self, name: str, st: SnapState) -> str:
+        st.seq += 1
+        return os.path.join(POOL_DIR, f"{name}.snap-{st.seq}.qcow2")
+
+    def _create_overlay(self, path: str, backing: str) -> None:
+        capacity = self._vol_info(backing).get("capacity")
+        if not capacity:
+            raise VmError(f"Grösse der Disk-Datei {os.path.basename(backing)} nicht lesbar")
+        self.virsh("vol-create-as", POOL, os.path.basename(path), str(capacity), "--format", "qcow2",
+                   "--backing-vol", backing, "--backing-vol-format", "qcow2")
+
+    def snapshots(self, name: str) -> list[Snapshot]:
+        """Snapshots, älteste zuerst, mit belegtem Platz; current = der aktuelle Stand baut darauf auf."""
+        _disk, st = self._layout(name)
+        if st.items:
+            self._pool_refresh()
+        for item in st.items:
+            item.size = self._vol_info(item.file).get("allocation", 0)
+            item.current = item.id == st.current
+        return sorted(st.items, key=lambda i: (i.created, i.id))
+
+    def snapshot_changes(self, name: str) -> int:
+        """Belegter Platz der aktuellen Disk-Datei (mit Snapshots: Änderungen seit dem letzten)."""
+        disk, _st = self._layout(name)
+        self._pool_refresh()
+        return self._vol_info(disk).get("allocation", 0)
+
+    def snapshot_create(self, name: str, title: str = "", auto: bool = False, info: dict | None = None,
+                        running_ok: bool = False, now: datetime | None = None) -> Snapshot:
+        """Snapshot der Disk (ohne Arbeitsspeicher). Von Hand nur bei ausgeschalteter VM; running_ok nur für den
+        automatischen Snapshot vor einem Auftrag – dann läuft in der VM der Agent und die Disk ist unbenutzt."""
+        p = self.get_profile(name)
+        state = self.state(name)
+        running = state != "shut off"
+        if running and not (running_ok and state == "running"):
+            raise VmError("Snapshot nur bei ausgeschalteter VM – zuerst herunterfahren")
+        now = now or datetime.now()
+        title = re.sub(r"\s+", " ", title or "").strip() or snapshot_title(now)
+        if len(title) > SNAP_TITLE_MAX:
+            raise VmError(f"Titel höchstens {SNAP_TITLE_MAX} Zeichen")
+        disk, st = self._layout(name)
+        item = Snapshot(id=0, title=title, created=now.isoformat(timespec="seconds"), auto=auto, file=disk,
+                        parent=st.current, info=info or {})
+        new = self._overlay(name, st)
+        item.id = st.seq
+        st.items.append(item)
+        st.current = item.id
+        if running:
+            # Disk-Snapshot der laufenden VM: libvirt legt das Overlay an und stellt VM und Konfiguration um
+            self.virsh("snapshot-create-as", name, "--no-metadata", "--disk-only", "--atomic",
+                       "--diskspec", f"sda,snapshot=external,file={new}")
+            try:
+                self.virsh("metadata", name, SNAP_NS, "--key", SNAP_KEY, "--set", snap_element(st), "--live",
+                           "--config")
+            except VmError as e:
+                raise VmError(f"Snapshot angelegt, aber nicht in der VM vermerkt: {e}") from None
+            return item
+        self._pool_refresh()
+        self._create_overlay(new, disk)
+        try:
+            self._define(domain_xml(p, disk_file=new, snapshots=st))
+        except VmError:
+            self.virsh("vol-delete", "--pool", POOL, os.path.basename(new), check=False)
+            raise
+        return item
+
+    def snapshot_revert(self, name: str, snap_id: int) -> Snapshot:
+        """Zurück zum Stand des Snapshots: neues Overlay auf seiner Datei, das bisherige Overlay (alle Änderungen
+        seit dem letzten Snapshot) wird gelöscht. Andere Snapshots bleiben. Nur bei ausgeschalteter VM."""
+        p = self.get_profile(name)
+        self._require_off(name, "Zurück zu einem Snapshot")
+        disk, st = self._layout(name)
+        item = st.get(snap_id)
+        if item is None:
+            raise VmError("Snapshot nicht gefunden")
+        self._pool_refresh()
+        new = self._overlay(name, st)
+        self._create_overlay(new, item.file)
+        st.current = item.id
+        try:
+            self._define(domain_xml(p, disk_file=new, snapshots=st))
+        except VmError:
+            self.virsh("vol-delete", "--pool", POOL, os.path.basename(new), check=False)
+            raise
+        if disk not in {i.file for i in st.items}:
+            self.virsh("vol-delete", "--pool", POOL, os.path.basename(disk), check=False)
+        return item
+
+    def snapshot_delete(self, name: str, snap_id: int,
+                        progress: Callable[[float, str], None] | None = None) -> Snapshot:
+        """Snapshot löschen: Seine Daten wandern in die Dateien, die darauf aufbauen (block-stream in einer
+        angehaltenen Hilfs-VM), danach wird seine Datei gelöscht. Der aktuelle Stand bleibt. Nur ausgeschaltet."""
+        p = self.get_profile(name)
+        self._require_off(name, "Snapshot löschen")
+        disk, st = self._layout(name)
+        item = st.get(snap_id)
+        if item is None:
+            raise VmError("Snapshot nicht gefunden")
+        base = st.file_of(item.parent)
+        children = [i for i in st.items if i.parent == item.id]
+        targets = [c.file for c in children] + ([disk] if st.current == item.id else [])
+        self._pool_refresh()
+        for n, target in enumerate(targets, 1):
+            label = f"Daten werden übernommen ({n}/{len(targets)})" if len(targets) > 1 else "Daten werden übernommen"
+            self._stream(name, target, base, lambda f, t=label: progress and progress(f, t))
+        for c in children:
+            c.parent = item.parent
+        if st.current == item.id:
+            st.current = item.parent
+        st.items.remove(item)
+        self._define(domain_xml(p, disk_file=disk, snapshots=st))
+        try:
+            self.virsh("vol-delete", "--pool", POOL, os.path.basename(item.file))
+        except VmError as e:
+            raise VmError(f"Snapshot gelöscht, Datei {os.path.basename(item.file)} aber nicht entfernt: {e}") from None
+        return item
+
+    def _stream(self, name: str, target: str, base: str, progress: Callable[[float], None]) -> None:
+        """Daten der Backing-Dateien bis „base“ in „target“ übernehmen (block-stream). target ist die oberste Disk
+        einer angehaltenen Hilfs-VM ohne Netzwerk – nur dorthin darf QEMU laut AppArmor schreiben."""
+        helper = f"okula-merge-{name}"
+        if helper in self.names():
+            self.virsh("destroy", helper, check=False)
+        fd, path = tempfile.mkstemp(prefix="okula-merge-", suffix=".xml")
+        with os.fdopen(fd, "w") as f:
+            f.write(helper_xml(helper, target))
+        try:
+            self.virsh("create", path, "--paused")
+        finally:
+            os.unlink(path)
+        try:
+            self.virsh("blockpull", helper, "hda", *(["--base", base] if base else []))
+            while True:
+                out = self.virsh("blockjob", helper, "hda", "--raw", check=False)
+                cur, end = re.search(r"\bcur=(\d+)", out), re.search(r"\bend=(\d+)", out)
+                if not (cur and end):
+                    break
+                progress(int(cur.group(1)) / int(end.group(1)) if int(end.group(1)) else 0.0)
+                self._sleep(1.0)
+        finally:
+            self.virsh("destroy", helper, check=False)
+        self._pool_refresh()
+        if self._backing(target) != base:
+            raise VmError(f"Zusammenführen von {os.path.basename(target)} nicht abgeschlossen – Snapshot bleibt")
+        progress(1.0)

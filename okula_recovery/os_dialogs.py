@@ -510,7 +510,8 @@ class InstallDialog(Gtk.Dialog):
 
     def __init__(self, parent: Gtk.Window, agent, isos: list[oslib.IsoInfo], device, start_job,
                  preselect: str | None = None):
-        """start_job(iso, disk_info, edition_index|None, optionen) – Optionen: WinOptions oder LinuxOptions."""
+        """start_job(iso, disk_info, edition_index|None, optionen, snapshot=…) – Optionen: WinOptions oder
+        LinuxOptions; snapshot: nur VMs, Häkchen „Vorher Snapshot“."""
         from okula_recovery import linuxsetup
         self.linuxsetup = linuxsetup
         super().__init__(title="OS installieren", transient_for=parent, modal=True)
@@ -668,6 +669,14 @@ class InstallDialog(Gtk.Dialog):
             self.unsupported.pack_start(w, False, False, 0)
             w.show()
         grid.attach(self.unsupported, 0, r, 2, 1)
+        r += 1
+        # nur VMs (I-001 Auftrag 4): Snapshot der Disk direkt vor der Installation
+        is_vm = bool(getattr(device, "is_vm", False))
+        self.snapshot = Gtk.CheckButton(label="Vorher Snapshot", active=is_vm, no_show_all=not is_vm)
+        self.snapshot.set_tooltip_text("Direkt vor dem Start einen Snapshot der Disk der VM erstellen (Reiter "
+                                       "„Snapshots“) – damit lässt sich der Stand davor in Sekunden zurückholen. "
+                                       "Schlägt der Snapshot fehl, startet der Auftrag nicht.")
+        grid.attach(self.snapshot, 0, r, 2, 1)
         r += 1
         self.confirm_label = Gtk.Label(xalign=0)
         grid.attach(self.confirm_label, 0, r, 1, 1)
@@ -888,7 +897,8 @@ class InstallDialog(Gtk.Dialog):
         disk = self.disks[self.disk_combo.get_active_id()]
         index = int(self.edition.get_active_id()) if iso.family == "windows" else None
         try:
-            self.start_job(iso, disk, index, self.options())
+            self.start_job(iso, disk, index, self.options(),
+                           snapshot=self.snapshot.get_visible() and self.snapshot.get_active())
         except Exception as e:
             self.status.set_text(f"Nicht gestartet: {e}")
             return

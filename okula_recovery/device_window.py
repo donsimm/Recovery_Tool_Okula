@@ -17,6 +17,7 @@ from okula_recovery import (archive, bootkeys, demostore, devices, imagecheck, j
 from okula_recovery.bios_tab import BiosTab  # noqa: E402
 from okula_recovery.hw_tab import HwTab  # noqa: E402
 from okula_recovery.automation_tab import AutomationTab  # noqa: E402
+from okula_recovery.snapshot_tab import SnapshotTab  # noqa: E402
 from okula_recovery.uikit import (ask_text, confirm_error, numbered_section, power_buttons,  # noqa: E402
                                   remember_columns, run_async, scrolled)
 
@@ -152,6 +153,11 @@ class DeviceWindow(Gtk.Window):
         self.tabs.append_page(scrolled(self.disk_view), Gtk.Label(label="Disks"))
         self.tabs.append_page(self._build_images(), Gtk.Label(label="Images"))
         self.tabs.append_page(self._build_backups(), Gtk.Label(label="Backups"))
+        self.snapshot_tab: SnapshotTab | None = None
+        if dev.is_vm:                # I-001 Auftrag 4
+            self.snapshot_tab = SnapshotTab(main, dev)
+            snap_page = self.tabs.append_page(self.snapshot_tab, Gtk.Label(label="Snapshots"))
+            self.tabs.connect("switch-page", lambda _n, _p, num: num == snap_page and self.load_snapshots())
         self.network_page = self.tabs.append_page(self._build_network(), Gtk.Label(label="Netzwerk"))
         self.bios_tab = BiosTab(main, dev)
         self.bios_page = self.tabs.append_page(self.bios_tab, Gtk.Label(label="BIOS"))
@@ -175,9 +181,14 @@ class DeviceWindow(Gtk.Window):
         self.refresh()
         self.refresh_jobs()
         self.load_images()
+        self.load_snapshots()
         self.set_focus(self.tabs)  # Name nicht gleich markiert – Bearbeiten erst per Klick
         self.show_all()
         self.fit_overview()
+
+    def load_snapshots(self) -> None:
+        if self.snapshot_tab is not None:
+            self.snapshot_tab.load()
 
     def _vm_action(self, key: str) -> None:
         for entry in self.main.vm_actions(self.dev):
@@ -381,6 +392,8 @@ class DeviceWindow(Gtk.Window):
                 if button is not None:
                     button.set_sensitive(not why)
                     button.set_tooltip_text(why or tip)
+            if self.snapshot_tab is not None:
+                self.snapshot_tab.refresh_buttons()
             stop = self.main.vm_why(dev, "stop")
             for action in ("poweroff", "reboot"):       # Symbole: mit Agent über den Agent, sonst libvirt
                 if action in self.buttons:

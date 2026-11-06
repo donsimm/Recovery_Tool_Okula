@@ -64,6 +64,13 @@ class AutomationTab(Gtk.Box):
         self.rearm = Gtk.CheckButton(label="Nach 3 Tagen wieder einschalten")
         self.rearm.connect("toggled", lambda _c: self._changed())
         self.pack_start(self.rearm, False, False, 0)
+        # nur VMs (I-001 Auftrag 4): Snapshot der Disk direkt vor dem Auftrag
+        self.snapshot = Gtk.CheckButton(label="Vorher Snapshot", no_show_all=not dev.is_vm)
+        self.snapshot.set_tooltip_text("Direkt vor dem Start einen Snapshot der Disk der VM erstellen (Reiter "
+                                       "„Snapshots“) – damit lässt sich der Stand davor in Sekunden zurückholen. "
+                                       "Schlägt der Snapshot fehl, startet die Automatisierung nicht.")
+        self.snapshot.connect("toggled", lambda _c: self._changed())
+        self.pack_start(self.snapshot, False, False, 0)
 
         # Vorlagen
         row = Gtk.Box(spacing=6)
@@ -191,6 +198,7 @@ class AutomationTab(Gtk.Box):
             s = automation.settings(self.dev)
             self.switch.set_active(s.enabled)
             self.rearm.set_active(s.rearm)
+            self.snapshot.set_active(s.snapshot)
             self.template.remove_all()
             for name in sorted(automation.load_templates(), key=str.lower):
                 self.template.append(name, name)
@@ -284,6 +292,7 @@ class AutomationTab(Gtk.Box):
         s = automation.settings(self.dev)
         s.enabled = self.switch.get_active()
         s.rearm = self.rearm.get_active()
+        s.snapshot = self.snapshot.get_active()
         s.backup = self.backup.get_active()
         s.backup_mode = "image" if self.backup_image.get_active() else "files"
         s.image_mode = "master" if self.mode_master.get_active() else "own"

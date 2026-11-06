@@ -17,12 +17,12 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 |---|---|---|---|
 | 🐞 Bugs | 1 | 0 | 0 |
 | 🔧 Änderungen | 7 | 0 | 0 |
-| 💡 Ideen | 20 | 1 | 0 |
+| 💡 Ideen | 20 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
 Erledigt 31.10. zusätzlich: I-007 ✔ (Image prüfen) → Ä-027 ✔ (Demo ohne NAS) → Ä-028 ✔ (Ein/Aus-Symbole) → Ä-029 ✔ (Legende) → Ä-030 ✔ (NAS-Leiste) → I-030 ✔ (Bandbreite) → Ä-031 ✔ (Tage hell/dunkel).
-Als Nächstes: **I-001 VMs** (in Arbeit, 4 Aufträge, [VM.md](VM.md)) – Auftrag 1 „VM-Grundlage“ ✔ 06.11., Nacharbeit 1b ✔ 06.11., Auftrag 2 „VMs im Tool“ ✔ 06.11., Auftrag 3 „Digitaler Zwilling“ mit Ä-036 ✔ 06.11. (umgesetzt, Abnahme offen; am Server `git pull && sudo ./install.sh`, Tool neu starten, Tests [TESTS.md](TESTS.md) Abschnitte 9 und 10), dann Auftrag 4 „Snapshots“. Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
+Als Nächstes: **I-001 VMs erledigt** ✔ 06.11. (alle 4 Aufträge, [VM.md](VM.md)) – Auftrag 3 „Digitaler Zwilling“ und Auftrag 4 „Snapshots“ umgesetzt, Abnahme offen; am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitte 9, 10 und 11 (inkl. Master-Ablauf mit Snapshot „vor Sysprep“). Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 3 (Master-Image mit VMs), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
 Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
 ## 🐞 Bugs
@@ -47,7 +47,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 
 | ID | Prio | Status | Von | Beschreibung |
 |---|---|---|---|---|
-| I-001 | 🟡 | in Arbeit | Dominik | **Virtuelle Maschinen im Tool:** 2–3 VMs (QEMU/KVM, libvirt) im Ordner „Virtuelle Maschinen“ der Geräteliste – Master bauen, Images testen, Testlabor. 3 Profile (Win11/UEFI+TPM, Legacy-BIOS, kleine Disk) und „VM mit dieser Hardware erstellen …“ aus dem Inventar eines Geräts (digitaler Zwilling). Konzept, Entscheide und 4 Aufträge: [VM.md](VM.md) (06.11.) |
 | I-003 | ⚪ | offen | früher | **Nicht generalisierte 1:1-Images anpassen:** Gerätename per Registry (Offline-Hive `SYSTEM`: ComputerName/Hostname), Windows-Key per Skript beim ersten Start (`slmgr /ipk`). Achtung: gleiche SID und Gerätekennung auf mehreren Geräten → nur für Einzelplätze ohne Domäne geeignet. Wieder aufgenommen 31.10.2026 |
 | I-004 | 🟡 | offen | Dominik | **Webinterface für den Fernzugriff:** Geräteübersicht und Gerätereiter im Browser (HTTPS, Anmeldung, über VPN); pro Gerät „Im Webinterface sichtbar“ (Reiter Netzwerk). Offen: nur anschauen oder auch Aktionen, Benutzer/Rechte, LAN oder VPN. Details: [WEBINTERFACE.md](WEBINTERFACE.md) |
 | I-005 | 🔴 | offen | Claude | **Aufbewahrungsregeln:** Pro Gerät die letzten N Images bzw. Backups behalten, ältere automatisch löschen; Master-Images sind geschützt. Vor jedem Auftrag den Platz prüfen (belegte Blöcke + Reserve), sonst gar nicht erst starten |
@@ -123,11 +122,34 @@ Gerätename = Name im Tool.
   i440FX → e1000, auch wenn das Gerät eine Realtek-Karte hat; die echte Karte steht in der Vorschau. Zweiter Zwilling
   desselben Geräts bekommt UUID `0c1a0001-…` usw. (Umsetzungs-Agent).
 
+- **VM-Snapshots als externe Overlays, vom Tool verwaltet** (I-001 Auftrag 4, 06.11.2026, Umsetzungs-Agent nach
+  Prüfung am Server): libvirt 11.3 legt externe Snapshots an und setzt sie zurück, das Löschen (block-commit) scheitert
+  aber an AppArmor (`deny … w` für Backing-Dateien). Darum eigene Liste in den VM-Metadaten, Löschen per block-stream in
+  einer angehaltenen Hilfs-VM. NVRAM und TPM-Zustand werden bewusst nicht mitkopiert (Secure Boot bleibt, BitLocker in
+  Master-VMs aus). Löschen nur bei ausgeschalteter VM. Details [VM.md](VM.md).
+
 ## ✅ Erledigt – Änderungsprotokoll
 
 Neueste zuoberst.
 
 ### 06.11.2026
+- **I-001 – Virtuelle Maschinen im Tool erledigt** (Von: Dominik, alle 4 Aufträge am 06.11.2026): VM-Grundlage mit
+  Nacharbeit 1b, VMs im Tool, Digitaler Zwilling (mit Ä-036), Snapshots. Konzept, Entscheide und Abweichungen:
+  [VM.md](VM.md); Prüfungen im Tool offen: [TESTS.md](TESTS.md) Abschnitte 8–11.
+- **I-001 Auftrag 4 – Snapshots der VMs** (Von: Dominik): Reiter **„Snapshots“** im Gerätefenster einer VM – Liste
+  (Titel, Datum, automatisch, Grösse, „◀ aktueller Stand“), *Snapshot erstellen …*, *Zurück zu diesem Snapshot …*
+  (Rückfrage „Alle Änderungen seit … gehen verloren“), *Löschen …* (mit Fortschritt), alles nur bei ausgeschalteter
+  VM; Platzwarnung unter 50 GB frei. Häkchen **„Vorher Snapshot“** (nur VMs, Standard an) in *Image zurückspielen*,
+  *OS installieren* und in der Automatisierung: Snapshot direkt vor dem Auftrag bei laufendem Agent, schlägt er fehl,
+  startet nichts. Verlauf „Snapshot ‚…‘ erstellt / zurückgesetzt / gelöscht“. Zurückspringen stellt das Vor-Inventar
+  und Ä-036 („Disk leer“) wie zum Zeitpunkt des Snapshots her. *VM löschen …* entfernt alle Overlays; *Hardware
+  ändern …* sperrt Disk vergrössern bei Snapshots. **Technik** (Entscheid oben, Details [VM.md](VM.md)): externe
+  qcow2-Overlays im Pool-Verzeichnis, Liste in den VM-Metadaten, Löschen per block-stream in einer Hilfs-VM (libvirts
+  block-commit scheitert an AppArmor), NVRAM/TPM bleiben. **Abweichungen:** keine libvirt-Snapshot-Metadaten, Löschen
+  nur ausgeschaltet, Twin-Bestücken ohne Snapshot. Hilfe: Abschnitt „Snapshots“ im Kapitel „Virtuelle Maschinen“,
+  Häkchen in „Image zurückspielen“, „Windows / Linux installieren“, „Automatisierung“. Tests
+  `tests/test_vm_snapshots.py`, `tests/test_automation.py`. Am Server mit Probe-VMs (BIOS und UEFI + Secure Boot +
+  TPM) geprüft ([TESTS.md](TESTS.md), Abschnitt 11 für den Ablauf im Tool). Kein neuer Agent-Stick.
 - **I-001 Auftrag 3 – Digitaler Zwilling** (Von: Dominik): **„VM mit dieser Hardware erstellen …“** im Gerätefenster
   (oben rechts) und im Rechtsklick auf ein Gerät (nicht für VMs/DEMO-PC, ohne Inventar ausgegraut).
   `vm.profile_from_inventory`: Firmware aus der Partitionstabelle der Systemdisk, Secure Boot/TPM, Disk (Grösse,
