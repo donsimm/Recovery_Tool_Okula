@@ -53,7 +53,8 @@ Vor dem Start lesen: `CLAUDE.md`, `docs/PROJEKTLEITUNG.md`, den Eintrag <ID> in 
 ## Abschluss
 
 1. Ein Commit (oder wenige, sinnvoll getrennt) mit der ID im Titel, z. B. `<ID>: <Titel>`; pushen auf
-   `claude/blissful-goldberg-mo3xda`.
+   `claude/blissful-goldberg-mo3xda`. **Nur eigene Dateien committen** (`git add <Pfade>`, nie `git add -A`/`.`):
+   Die Projektleitung arbeitet im selben Ordner, fremde Entwürfe (z. B. andere Dateien in `docs/prompts/`) bleiben liegen.
 2. In dieser Datei oben `Status: umgesetzt (Commit <hash>)` setzen (im selben Commit).
 3. Abschlussmeldung im Chat: was geändert wurde, Testergebnis, ob ein neuer Agent-Stick nötig ist, Schritte für
    den Server (`git pull && sudo ./install.sh`), offene Punkte oder Abweichungen vom Prompt.

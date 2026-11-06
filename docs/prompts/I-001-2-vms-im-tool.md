@@ -22,7 +22,10 @@ Agent je lief – und lassen sich im Tool anlegen, starten (normal, mit Agent, v
 
 - VMs im LAN sichtbar (Brücke `br0`), Bildschirm im eigenen Fenster (virt-viewer), Windows „nicht aktiviert“ (06.11., Dominik).
 - Drei Profile VM-Win11 / VM-Legacy / VM-Klein (`vm.PROFILES`); Agent über den bestehenden Netzwerkstart.
-- <offen – siehe Fragen an Dominik unten, vor Freigabe ausfüllen>
+- „Neue VM …“ im Menü **Extras → „Neue virtuelle Maschine …“** und per Rechtsklick auf den Ordner (06.11., Dominik).
+- **„Hardware ändern …“** gehört in diesen Auftrag (06.11., Dominik).
+- Ordner „Virtuelle Maschinen“ **fest**, keine Unterordner (06.11., Dominik).
+- VMs mit fester Startreihenfolge Netzwerk → Disk wie „Netzwerkstart zuerst“ (06.11., Projektleitung – Begründung bei Anforderung 2).
 
 ## Anforderungen
 
@@ -48,11 +51,11 @@ Agent je lief – und lassen sich im Tool anlegen, starten (normal, mit Agent, v
    normal starten). Ist der Netzwerkstart im Tool aus: VM startet trotzdem (nach kurzem PXE-Versuch von der
    Disk) – Hinweis beim Start „Mit Agent“, dass der Netzwerkstart eingeschaltet sein muss (`netboot_ready()`).
    Am Server prüfen, dass „local“ in OVMF (UEFI) und SeaBIOS (BIOS) wirklich von der Disk weiterstartet.
-3. **Ordner „Virtuelle Maschinen“** in der Geräteliste: fest, nicht umbenennbar/löschbar, VMs nicht
-   herausziehbar und echte Geräte nicht hinein. Erscheint nur, wenn es mindestens eine VM gibt oder libvirt
+3. **Ordner „Virtuelle Maschinen“** in der Geräteliste: fest, keine Unterordner, nicht umbenennbar/löschbar, VMs
+   nicht herausziehbar und echte Geräte nicht hinein. Erscheint nur, wenn es mindestens eine VM gibt oder libvirt
    installiert ist. Zeile einer VM: LED wie bei Geräten (grün = Agent verbunden), zusätzlich Zustand der VM
    („aus“, „läuft“, „läuft – Agent verbunden“); Zustand alle 5 s über `virsh list` (ein Aufruf für alle).
-4. **Neue VM …** (<Menüort laut Entscheid>): Dialog mit Profil-Auswahl (die drei Profile mit Kurzbeschreibung aus
+4. **Neue virtuelle Maschine …** (Menü Extras und Rechtsklick auf den Ordner „Virtuelle Maschinen“): Dialog mit Profil-Auswahl (die drei Profile mit Kurzbeschreibung aus
    `docs/VM.md`), Name (Vorschlag = Profilname, eindeutig), Anzeige der Hardware, Prüfung freier Platz
    (`/var/lib/libvirt/images`) und RAM. „Erstellen“ legt VM + Geräteeintrag an.
 5. **Aktionen** (Rechtsklick auf die VM und Knöpfe im Gerätefenster; bei VMs ersetzen sie Wake-on-LAN):
@@ -65,7 +68,10 @@ Agent je lief – und lassen sich im Tool anlegen, starten (normal, mit Agent, v
      bisher über den Agent
    - **VM löschen …** mit roter Rückfrage („VM, Disk und Geräteeintrag werden gelöscht; Images und Backups auf dem
      NAS bleiben“), nur ausgeschaltet
-   - <„Hardware ändern …“ laut Entscheid>
+   - **Hardware ändern …** (nur ausgeschaltet, über `vm.Virsh.set_profile`): RAM, CPU-Kerne, Disk vergrössern
+     (nie verkleinern), Netzwerkkarte (e1000e / e1000 / rtl8139 mit Hinweis „nur Linux“). Firmware (UEFI/BIOS,
+     Secure Boot) und Disk-Anschluss nur mit deutlicher Warnung („installiertes System startet danach evtl. nicht
+     mehr“). Geräteeintrag (Vor-Inventar) und `docs/VM.md`-Profilwerte bleiben unberührt; Änderung im Verlauf.
    - Alle Stellen, die heute Wake-on-LAN senden (Rechtsklick, Reiter Netzwerk, Automatisierung o. ä. – im Code
      suchen), bei VMs durch das Einschalten über libvirt ersetzen. Reiter „Netzwerk“: bei VMs Wake-on-LAN und
      „Netzwerkstart zuerst“ ausblenden bzw. als „bei VMs immer aktiv“ zeigen.
@@ -108,15 +114,8 @@ Agent je lief – und lassen sich im Tool anlegen, starten (normal, mit Agent, v
 
 ## Abschluss
 
-1. Commit(s) `I-001 (2/4): VMs im Tool – Ordner, Neue VM, Starten, Bildschirm`; pushen.
+1. Commit(s) `I-001 (2/4): VMs im Tool – Ordner, Neue VM, Starten, Bildschirm`; pushen. Nur eigene Dateien
+   committen (`git add <Pfade>`, nie `git add -A`) – die Projektleitung arbeitet im selben Ordner.
 2. In dieser Datei oben `Status: umgesetzt (Commit <hash>)` setzen.
 3. Abschlussmeldung: Änderungen, Testergebnis, Prüfung am Server, Abweichungen, Schritte für Dominik
    (`git pull && sudo ./install.sh`, Tool neu starten).
-
----
-
-## Fragen an Dominik (vor Freigabe klären, dann diesen Abschnitt entfernen)
-
-1. Wo „Neue VM …“: Menü **Extras → „Neue virtuelle Maschine …“** + Rechtsklick auf den Ordner (Vorschlag) oder Menü Tools?
-2. „Hardware ändern …“ (RAM, CPU, Disk vergrössern, Netzwerkkarte) schon in Auftrag 2 oder später?
-3. Ordner „Virtuelle Maschinen“ fest (Vorschlag) oder dürfen VMs in eigene Unterordner sortiert werden?
