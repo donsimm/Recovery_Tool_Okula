@@ -10,8 +10,10 @@ und wie aus einer Idee ein umgesetztes Feature wird.
   `claude/blissful-goldberg-mo3xda` (einziger Branch). Änderungen erreichen den Server nur über diesen Branch.
 - **Installation macht Dominik von Hand** auf dem Server: `git pull && sudo ./install.sh`, bei Agent-Änderungen
   zusätzlich neuer Agent-Stick. Claude installiert nichts auf dem Server.
-- **Statuszeile:** `.claude/settings.json` + `.claude/statusline.sh` (Kontext, 5 h, 7 Tage) gehören immer ins
-  Repo und werden nicht entfernt.
+- **Statuszeile:** `.claude/settings.json` + `.claude/statusline.sh` gehören immer ins Repo und werden nicht
+  entfernt. Drei Zeilen: Verbrauch (Kontext, 5 h / 7 Tage mit Reset-Zeit, Kosten, Dauer), Sitzung (Modell,
+  Denkstufe, Cache), Repo und Projektstand (Branch, ✎ ↑ ↓, 🐞 🔧 💡 offen, 📥 neue Notizen, Prompts).
+  Neue Spalten oder Status in `AENDERUNGEN.md`, `EINGANG.md` oder `docs/prompts/` → Skript mitprüfen.
 
 ## Zwei Rollen
 
