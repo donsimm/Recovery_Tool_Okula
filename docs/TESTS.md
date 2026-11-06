@@ -179,8 +179,8 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stic
 - [ ] **Windows 11 in VM-Win11 von ISO:** Neue VM VM-Win11 → zuerst Bildschirm → Von ISO starten … → Windows-11-ISO → im Fenster
       schnell eine Taste („Press any key to boot from CD“) → Windows installieren (ohne Key, „nicht aktiviert“);
       Secure Boot und TPM erfüllt die VM (keine Meldung „PC erfüllt die Anforderungen nicht“)
-- [ ] Danach in Windows: Gerätefenster → Netzwerk → „Beim nächsten Start den Agent laden“ → Windows neu starten →
-      Agent startet; nach dem Verbinden Agent-Symbol „Neu starten“ → Windows startet wieder (nicht der Agent)
+- [x] Danach in Windows: Gerätefenster → Netzwerk → „Beim nächsten Start den Agent laden“ → Windows neu starten →
+      Agent startet; nach dem Verbinden Agent-Symbol „Neu starten“ → Windows startet wieder (nicht der Agent) – ✔ 06.11. (VM-Win11)
 - [ ] Automatisierung an der VM: Image zurückspielen mit Neustart danach → Windows startet von der Disk
 - [ ] VM löschen … (aus) → rote Rückfrage → VM und Eintrag weg; `virsh -c qemu:///system vol-list okula` leer
 - [ ] Ä-036 (nach Umsetzung): neue VM ohne System → Einschalten → Rückfrage „Die Disk ist leer …“ statt UEFI-Setup-Menü
