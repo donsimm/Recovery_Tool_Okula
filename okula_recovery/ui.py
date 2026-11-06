@@ -19,7 +19,7 @@ from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 
 from okula_recovery import (__version__, agentclient, archive, automation, backups, bandwidth,  # noqa: E402
                             clonezilla, config, demostore, devices, discovery, distribute, imagecheck, jobs, nas,
-                            nasfiles, oslib, pxe, warranty, wire, wol)
+                            nasfiles, oslib, pxe, vm, warranty, wire, wol)
 from okula_recovery.automation_tab import SendFoldersDialog, SettingsDialog  # noqa: E402
 from okula_recovery.inventory_dialog import InventoryExportDialog  # noqa: E402
 from okula_recovery.imagecheck_dialog import CheckWindow  # noqa: E402
@@ -33,6 +33,7 @@ from okula_recovery.pxe_dialog import PxeDialog  # noqa: E402
 from okula_recovery.stick_dialog import helper_subcommand, run_helper  # noqa: E402
 from okula_recovery.loadbar import LoadBar  # noqa: E402
 from okula_recovery.usb_dialogs import CloneDialog, FormatDialog  # noqa: E402
+from okula_recovery.vm_dialogs import HardwareDialog, IsoDialog, NewVmDialog  # noqa: E402
 from okula_recovery.image_dialog import ImageDialog  # noqa: E402
 from okula_recovery.nas_dialog import NasDialog  # noqa: E402
 from okula_recovery.os_dialogs import (BootStickDialog, InstallDialog, IsoDetailsDialog, UploadDialog,  # noqa: E402
@@ -52,6 +53,9 @@ OS_ICONS = {"windows": "okula-os-windows", "linux": "okula-os-linux", "other": "
 
 # Gerät gilt als getrennt, wenn so lange kein Beacon seines Agents kam
 AGENT_TIMEOUT = 15
+VM_POLL = 5  # Sekunden zwischen den Zustandsabfragen der VMs (ein virsh-Aufruf für alle)
+VM_OFF = ("shut off", "crashed")
+VM_ON = ("running", "paused", "in shutdown", "idle", "blocked", "pmsuspended")
 
 # Menüleiste: Titel → Einträge (None = Trennlinie). „_“ markiert die Alt-Taste. Die Hilfe (F1) muss jeden Eintrag
 # von Menü, Tools und Extras nennen – geprüft in tests/test_help.py.
@@ -64,7 +68,8 @@ MENU_LABELS: dict[str, list[str | None]] = {
                "_Backup erstellen …", "Backup zur_ückspielen …", "Ordner _senden …", "_Inventar neu einlesen",
                None, "_Restore-Stick aus Image …", "IS_O hinzufügen …",
                "_Boot-Stick aus ISO …", "_Netzwerkstart (PXE) …", None, "Images _aktualisieren"],
-    "E_xtras": ["_USB klonen …", "USB _formatieren …", None, DEMO_LABEL, "Demo: nächster Auftrag mit _Fehler",
+    "E_xtras": ["_USB klonen …", "USB _formatieren …", None, "Neue _virtuelle Maschine …", None, DEMO_LABEL,
+                "Demo: nächster Auftrag mit _Fehler",
                 "Demo-Daten _zurücksetzen …"],
     "_Hilfe": ["_So funktioniert das Tool", "_Tastenkürzel", "Ü_ber Okula Recovery Tool"],
 }
@@ -151,6 +156,12 @@ class MainWindow(Gtk.ApplicationWindow):
         self.nas_dialog: NasDialog | None = None
         self.copies: set = set()     # laufende Kopien aufs NAS (Fenster)
         self.pxe_dialog = None
+        self.virsh = vm.Virsh()
+        self.vm_states: dict[str, str] = {}        # libvirt-Name → Zustand (alle VM_POLL s)
+        self.vm_loaded = False                     # Zustände mindestens einmal gelesen
+        self.vm_error = ""
+        self._vm_polling = False
+        self.vm_viewers: dict[str, subprocess.Popen] = {}   # Bildschirm-Fenster (virt-viewer) je VM
 
         header = Gtk.HeaderBar(title="Recovery Tool", subtitle=f"Version {__version__}",
                                show_close_button=True)
@@ -190,6 +201,8 @@ class MainWindow(Gtk.ApplicationWindow):
         GLib.timeout_add_seconds(NAS_POLL, self.refresh_nas_status)
         GLib.idle_add(lambda: (self.sync_netboot(), False)[1])  # Freigabeliste nach Geräteänderungen nachführen
         GLib.timeout_add_seconds(60, self._automation_tick)    # Automatisierung nach 3 Tagen wieder einschalten
+        GLib.idle_add(lambda: (self.vm_poll(), False)[1])
+        GLib.timeout_add_seconds(VM_POLL, lambda: (self.vm_poll(), True)[1])
 
     # ---------- Menüleiste ----------
 
@@ -242,6 +255,7 @@ class MainWindow(Gtk.ApplicationWindow):
             "Images _aktualisieren": (self.refresh_images, "F5"),
             "_USB klonen …": (lambda: CloneDialog(self), None),
             "USB _formatieren …": (lambda: FormatDialog(self), None),
+            "Neue _virtuelle Maschine …": (self.vm_new, None),
             "Demo: nächster Auftrag mit _Fehler": (self.demo_fail_next, None),
             "Demo-Daten _zurücksetzen …": (self.reset_demo_data, None),
             "_So funktioniert das Tool": (self.show_help, "F1"),
@@ -300,9 +314,12 @@ class MainWindow(Gtk.ApplicationWindow):
             return
         if not on and dev.netfirst and not confirm(
                 parent or self._parent_for(dev), "Netzwerkstart trotzdem sperren?",
-                f"„{dev.name}“ fragt bei jedem Start zuerst das Netzwerk (Netzwerkstart zuerst). Ohne Freigabe "
-                "wartet es jedes Mal vergeblich und startet erst danach von der Festplatte.\n\nBesser: Gerät "
-                "verbinden und im Reiter Netzwerk zuerst „Netzwerkstart zuerst“ ausschalten.",
+                (f"„{dev.name}“ ist eine virtuelle Maschine und fragt bei jedem Start zuerst das Netzwerk. Ohne "
+                 "Freigabe wartet sie jedes Mal kurz und startet dann von der Disk; „Einschalten und Agent starten“ "
+                 "geht erst wieder mit Freigabe." if dev.is_vm else
+                 f"„{dev.name}“ fragt bei jedem Start zuerst das Netzwerk (Netzwerkstart zuerst). Ohne Freigabe "
+                 "wartet es jedes Mal vergeblich und startet erst danach von der Festplatte.\n\nBesser: Gerät "
+                 "verbinden und im Reiter Netzwerk zuerst „Netzwerkstart zuerst“ ausschalten."),
                 ok_label="Trotzdem sperren"):
             self.netboot_changed()   # Schalter zurückstellen
             return
@@ -314,9 +331,12 @@ class MainWindow(Gtk.ApplicationWindow):
             self.pxe_dialog.update()
         self.netboot_changed()
 
-    def sync_netboot(self) -> None:
-        """Läuft der Netzwerkstart, die MAC-Freigabeliste des Dienstes auf den Stand der Geräte bringen."""
+    def sync_netboot(self, after=None) -> None:
+        """Läuft der Netzwerkstart, die MAC-Freigabeliste des Dienstes auf den Stand der Geräte bringen.
+        after() danach (auch ohne Netzwerkstart) – z. B. eine VM erst einschalten, wenn die Startart gilt."""
         if not pxe.is_active():
+            if after:
+                after()
             return
         modes = devices.netboot_modes(self.store.devices.values())
         macs = list(modes)
@@ -324,11 +344,15 @@ class MainWindow(Gtk.ApplicationWindow):
             cmd = helper_subcommand("pxe", ["allow"])
         except FileNotFoundError as e:
             self.status(str(e))
+            if after:
+                after()
             return
 
         def done(ok: bool, error: str) -> bool:
             self.status(f"Netzwerkstart: {len(macs)} MAC-Adresse{'n' if len(macs) != 1 else ''} freigeschaltet" if ok
                         else f"Netzwerkstart: Freigabeliste nicht aktualisiert – {error}")
+            if after:
+                after()
             return False
 
         run_helper(cmd, "".join(f"{m} {mode}\n" for m, mode in modes.items()), lambda *_a: False, lambda *_a: False,
@@ -342,6 +366,9 @@ class MainWindow(Gtk.ApplicationWindow):
         wired = devices.netboot_macs([devices.Device(id="x", netboot=True, macs=dev.macs, inventory=dev.inventory)])
         if self.online_agent(dev) is not None:
             return ("Gerät ist schon eingeschaltet und verbunden",) * 2
+        if dev.is_vm:          # VMs: Einschalten über libvirt statt Wake-on-LAN
+            why = self.vm_why(dev, "start")
+            return why, why
         if not wired:
             return ("Keine Kabel-Netzwerkkarte bekannt – Gerät einmal mit dem Agent-Stick starten",) * 2
         ready, reason = self.netboot_ready()
@@ -356,7 +383,11 @@ class MainWindow(Gtk.ApplicationWindow):
         return "", agent
 
     def wake_device(self, dev: devices.Device, with_agent: bool = False) -> None:
-        """Gerät per Wake-on-LAN einschalten; mit Agent: vorher „Agent beim nächsten Start“ vormerken."""
+        """Gerät per Wake-on-LAN einschalten; mit Agent: vorher „Agent beim nächsten Start“ vormerken.
+        VMs schaltet libvirt ein (kein Wake-on-LAN)."""
+        if dev.is_vm:
+            self.vm_start(dev, "agent" if with_agent else "normal")
+            return
         parent = self._parent_for(dev)
         macs = devices.netboot_macs([devices.Device(id="x", netboot=True, macs=dev.macs, inventory=dev.inventory)])
         if not macs:
@@ -383,6 +414,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.store.save(dev)
         self.store.add_history(dev, "notiz", "Agent beim nächsten Start " + ("angefordert" if on else "abbestellt"))
         self.sync_netboot()
+        self.vm_boot_order(dev, on)       # laufende VM: beim nächsten Neustart Netzwerk bzw. Disk zuerst
         self.netboot_changed()
 
     def set_netfirst(self, dev: devices.Device, on: bool) -> None:
@@ -1974,7 +2006,8 @@ class MainWindow(Gtk.ApplicationWindow):
         if what:
             return what, fraction, eta
         if agent is None:
-            return " · ".join(p for p in ("nicht verbunden", auto) if p), None, ""
+            return " · ".join(p for p in (self.vm_state_text(dev) if dev.is_vm else "nicht verbunden", auto)
+                              if p), None, ""
         if auto:
             return auto, None, ""
         if agent.agent_id in self.inv_pending:
@@ -1983,6 +2016,8 @@ class MainWindow(Gtk.ApplicationWindow):
             return "Agent-Stick veraltet", None, ""
         if agent.job:  # z. B. Image-Prüfung, die das Tool dem Agent meldet
             return agent.job, agent.progress, ""
+        if dev.is_vm:
+            return " · ".join(p for p in ("läuft – Agent verbunden", agent.status) if p), None, ""
         return agent.status, None, ""
 
     def _device_values(self, dev: devices.Device) -> list:
@@ -2012,6 +2047,7 @@ class MainWindow(Gtk.ApplicationWindow):
             parts = self._dev_expand_after.split("/") if self._dev_expand_after else []
             keys |= {"folder:" + "/".join(parts[:i]) for i in range(1, len(parts) + 1)}
             self._dev_expand_after = None
+        keys |= {"vmfolder:" + k[7:] for k in keys if k.startswith("folder:")}
         model, it = view.get_selection().get_selected()
         selected = (model[it][self.D_KIND], model[it][self.D_ID] or model[it][self.D_REL]) if it else None
         store.clear()
@@ -2020,6 +2056,12 @@ class MainWindow(Gtk.ApplicationWindow):
                                        "", "", "", "", "", "unsorted", ""] + self.NO_PROGRESS)
         for dev in new:
             store.append(unsorted, self._device_values(dev))
+        vms = self.store.in_folder(devices.VM_FOLDER)
+        if vms or vm.available():     # fester Ordner, keine Unterordner (I-001)
+            folder = store.append(None, ["computer-symbolic", f"{devices.VM_FOLDER} ({len(vms)})", "", "", "", "",
+                                         "", "vmfolder", devices.VM_FOLDER] + self.NO_PROGRESS)
+            for dev in vms:
+                store.append(folder, self._device_values(dev))
 
         def count(rel: str) -> int:
             return sum(1 for d in self.store.devices.values() if d.folder == rel or d.folder.startswith(rel + "/"))
@@ -2034,7 +2076,7 @@ class MainWindow(Gtk.ApplicationWindow):
                 store.append(it, self._device_values(dev))
 
         for rel in self.store.folders:
-            if "/" not in rel:
+            if "/" not in rel and rel != devices.VM_FOLDER:
                 add(None, rel)
 
         def walk(it):
@@ -2113,10 +2155,13 @@ class MainWindow(Gtk.ApplicationWindow):
         agent = self.online_agent(dev) if dev else None
         ready = agent is not None and agent.control_port > 0
         self.btn_open.set_sensitive(dev is not None)
-        for b in (self.btn_image, self.btn_restore, *self.power_buttons.values()):
+        for b in (self.btn_image, self.btn_restore):
             b.set_sensitive(ready)
+        for b in self.power_buttons.values():   # VMs auch ohne Agent (über libvirt)
+            b.set_sensitive(ready or (dev is not None and dev.is_vm and not self.vm_why(dev, "stop")))
         self.dev_buttons["rename"].set_sensitive(kind in ("folder", "device"))
-        self.dev_buttons["delete"].set_sensitive(kind == "folder" or (dev is not None and agent is None))
+        self.dev_buttons["delete"].set_sensitive(kind == "folder" or (dev is not None and agent is None and (
+            not dev.is_vm or not self.vm_why(dev, "delete"))))
         for label in ("Gerät öffnen …", "Disk-Image erstellen …", "Image zurückspielen …", "OS installieren …",
                       "Backup erstellen …", "Backup zurückspielen …",
                       "Inventar neu einlesen"):
@@ -2167,6 +2212,32 @@ class MainWindow(Gtk.ApplicationWindow):
             send.set_submenu(sub)
             menu.append(send)
             menu.append(Gtk.SeparatorMenuItem())   # Strom abgesetzt von den Aufträgen
+        if dev is not None and dev.is_vm:
+            # VM: Einschalten, Bildschirm, Ausschalten … über libvirt statt Wake-on-LAN
+            for entry in self.vm_actions(dev):
+                if entry is None:
+                    menu.append(Gtk.SeparatorMenuItem())
+                    continue
+                _key, label, handler, why, tip = entry
+                item = Gtk.MenuItem(label=label, sensitive=not why)
+                item.set_tooltip_text(why or tip)
+                item.connect("activate", lambda _i, h=handler: h())
+                menu.append(item)
+            menu.append(Gtk.SeparatorMenuItem())
+            add("Umbenennen …", lambda: self.on_rename_device_entry(None))
+            menu.append(Gtk.SeparatorMenuItem())
+            add("Inventar exportieren …", lambda: self.export_inventory(marked={dev.id}))
+            menu.show_all()
+            menu.popup_at_pointer(event)
+            return True
+        if kind == "vmfolder":
+            add("Neue virtuelle Maschine …", self.vm_new)
+            menu.append(Gtk.SeparatorMenuItem())
+            add("Inventar exportieren …", lambda: self.export_inventory(folder=devices.VM_FOLDER))
+            menu.show_all()
+            menu.popup_at_pointer(event)
+            return True
+        if dev is not None:
             add("Herunterfahren", lambda: self.power(dev, "poweroff"), ready)
             add("Neu starten", lambda: self.power(dev, "reboot"), ready)
             # Netzwerkstart: aus der Ferne einschalten (Wake-on-LAN), nicht mögliches ausgegraut mit Grund
@@ -2272,6 +2343,9 @@ class MainWindow(Gtk.ApplicationWindow):
         dev = self._selected_device()
         if dev is None:
             return
+        if dev.is_vm:
+            self.vm_delete(dev)
+            return
         if self.online_agent(dev) is not None or self.jobs.summary(dev.id):
             self.status("Verbundene Geräte und Geräte mit laufenden Aufträgen können nicht gelöscht werden")
             return
@@ -2339,6 +2413,317 @@ class MainWindow(Gtk.ApplicationWindow):
         if win:
             win.refresh()
         return True
+
+    # ---------- Virtuelle Maschinen (I-001) ----------
+
+    def vm_poll(self) -> None:
+        """Zustand aller VMs lesen (ein virsh-Aufruf, im Hintergrund) und die Anzeige nachführen."""
+        if self._vm_polling or not (self.store.vm_devices() or self.vm_states):
+            return
+        if not vm.available():
+            self.vm_states, self.vm_error, self.vm_loaded = {}, "libvirt fehlt – sudo ./install.sh", True
+            return
+        self._vm_polling = True
+
+        def done(result) -> None:
+            self._vm_polling = False
+            err, states = (str(result), {}) if isinstance(result, Exception) else ("", result)
+            changed = (states, err) != (self.vm_states, self.vm_error) or not self.vm_loaded
+            self.vm_states, self.vm_error, self.vm_loaded = states, err, True
+            if changed:
+                self.update_device_rows()
+                for win in self.device_windows.values():
+                    if win.dev.is_vm:
+                        win.refresh_head()
+
+        run_async(self.virsh.states, done)
+
+    def vm_state(self, dev: devices.Device) -> str:
+        return self.vm_states.get(dev.vm.get("name", ""), "")
+
+    def vm_state_text(self, dev: devices.Device) -> str:
+        """„aus“, „läuft“ … für die Geräteliste und das Gerätefenster."""
+        if self.vm_error:
+            return "VM-Zustand nicht lesbar"
+        if not self.vm_loaded:
+            return "Zustand wird gelesen …"
+        if dev.vm.get("name") not in self.vm_states:
+            return "VM fehlt in libvirt"
+        return vm.state_text(self.vm_state(dev))
+
+    def vm_why(self, dev: devices.Device, what: str) -> str:
+        """Warum eine VM-Aktion gerade nicht geht ("" = möglich). what: start | stop | screen | hardware | delete."""
+        if not vm.available():
+            return "libvirt fehlt – sudo ./install.sh am Server ausführen"
+        if self.vm_error:
+            return f"VM-Zustand nicht lesbar: {self.vm_error}"
+        if not self.vm_loaded:
+            return "Zustand der VM wird gelesen …"
+        state, exists = self.vm_state(dev), dev.vm.get("name") in self.vm_states
+        if not exists:
+            return "" if what == "delete" else \
+                "VM gibt es in libvirt nicht (mehr) – Eintrag mit „VM löschen …“ entfernen"
+        if what == "screen":
+            return ""
+        if what == "stop":
+            return "" if state in VM_ON else "VM ist ausgeschaltet"
+        if state not in VM_OFF:
+            return "VM läuft bereits" if what == "start" else "Nur bei ausgeschalteter VM – zuerst herunterfahren"
+        if what in ("hardware", "delete") and self.jobs.summary(dev.id):
+            return "Auf der VM läuft ein Auftrag"
+        return ""
+
+    def vm_actions(self, dev: devices.Device) -> list:
+        """Aktionen einer VM: (Schlüssel, Beschriftung, Aktion, Grund falls nicht möglich, Tooltip) bzw. None als
+        Trennlinie. Gemeinsam für Rechtsklick in der Geräteliste und das Gerätefenster."""
+        start, stop = self.vm_why(dev, "start"), self.vm_why(dev, "stop")
+        return [
+            ("start", "Einschalten", lambda: self.vm_start(dev, "normal"), start,
+             "VM einschalten – ohne Auftrag startet sie von der Disk"),
+            ("agent", "Einschalten und Agent starten", lambda: self.vm_start(dev, "agent"), start,
+             "Agent beim nächsten Start vormerken und VM einschalten – sie verbindet sich danach mit dem Tool"),
+            ("iso", "Von ISO starten …", lambda: self.vm_start(dev, "iso"), start,
+             "Einmal von einer ISO aus der ISO-Bibliothek starten (z. B. Windows installieren)"),
+            ("screen", "Bildschirm", lambda: self.vm_screen(dev), self.vm_why(dev, "screen"),
+             "Bildschirm der VM im eigenen Fenster (wartet, bis die VM läuft)"),
+            None,
+            ("shutdown", "Herunterfahren", lambda: self.power(dev, "poweroff"), stop,
+             "Geordnet herunterfahren (mit Agent über den Agent, sonst Signal an das Betriebssystem)"),
+            ("reboot", "Neu starten", lambda: self.power(dev, "reboot"), stop, "VM neu starten"),
+            ("poweroff", "Ausschalten …", lambda: self.vm_poweroff(dev), stop,
+             "Hart ausschalten wie Stecker ziehen (mit Rückfrage)"),
+            None,
+            ("hardware", "Hardware ändern …", lambda: self.vm_hardware(dev), self.vm_why(dev, "hardware"),
+             "RAM, Kerne, Disk-Grösse, Netzwerkkarte (nur bei ausgeschalteter VM)"),
+            ("delete", "VM löschen …", lambda: self.vm_delete(dev), self.vm_why(dev, "delete"),
+             "VM, Disk und Geräteeintrag löschen (nur bei ausgeschalteter VM)"),
+        ]
+
+    def _vm_task(self, work, done_text: str = "", dev: devices.Device | None = None, after=None,
+                 parent: Gtk.Window | None = None) -> None:
+        """virsh im Hintergrund; Fehler als Meldung (nie Traceback), Erfolg im Verlauf und in der Statuszeile."""
+        parent = parent or (self._parent_for(dev) if dev is not None else self)
+
+        def done(result) -> None:
+            if isinstance(result, Exception):
+                msg = str(result) if isinstance(result, vm.VmError) else f"Unerwarteter Fehler: {result}"
+                self.status(f"{dev.name}: {msg}" if dev is not None else msg)
+                confirm_error(parent, msg)
+            else:
+                if done_text and dev is not None:
+                    self.store.add_history(dev, "vm", done_text)
+                    self.status(f"{dev.name}: {done_text}")
+                if after is not None:
+                    try:
+                        after(result)
+                    except (devices.DeviceError, OSError, vm.VmError) as e:
+                        confirm_error(parent, str(e))
+                if dev is not None and dev.id in self.device_windows:
+                    self.device_windows[dev.id].refresh()
+            self.vm_poll()
+
+        run_async(work, done)
+
+    def vm_new(self) -> None:
+        """Extras → Neue virtuelle Maschine … bzw. Rechtsklick auf den Ordner „Virtuelle Maschinen“."""
+        if not vm.available():
+            confirm_error(self, "libvirt ist nicht installiert – sudo ./install.sh am Server ausführen.")
+            return
+
+        def work():
+            taken = self.virsh.names()
+            existing = [v["profile"] for v in self.virsh.list()]
+            return taken, existing, vm.free_disk(), vm.ram_mb()
+
+        def ask(result) -> None:
+            taken, existing, free, ram = result
+            taken = taken + [d.name for d in self.store.devices.values()]
+            dlg = NewVmDialog(self, taken, existing, free, ram)
+            ok = dlg.run() == Gtk.ResponseType.OK
+            profile_name, name = dlg.values()
+            dlg.destroy()
+            if not ok:
+                return
+            self.status(f"VM „{name}“ wird angelegt …")
+            self._vm_task(lambda: self.virsh.create(vm.profile(profile_name), name), after=lambda p: self._vm_created(
+                p, profile_name))
+
+        self._vm_task(work, after=ask)
+
+    def _vm_created(self, p: vm.VmProfile, profile_name: str) -> None:
+        dev = self.store.register_vm(p.name, vm.pre_inventory(p, devices.now()), profile_name)
+        self.sync_netboot()               # VM-MAC sofort freischalten
+        self._dev_expand_after = devices.VM_FOLDER
+        self.refresh_devices()
+        self.status(f"VM „{p.name}“ angelegt ({vm.describe(p)}) – Einschalten über Rechtsklick oder im "
+                    "Gerätefenster")
+        self.open_device(dev)
+
+    def vm_start(self, dev: devices.Device, mode: str) -> None:
+        """mode: normal (ohne Auftrag von der Disk), agent (einmal den Agent per Netzwerkstart), iso."""
+        parent = self._parent_for(dev)
+        why = self.vm_why(dev, "start")
+        if why:
+            confirm_error(parent, why)
+            return
+        name = dev.vm["name"]
+        need = int(dev.inventory.get("memory") or 0) // 2**20
+        _total, free = vm.ram_mb()
+        if need and free and need > free - vm.RAM_RESERVE_MB and not confirm(
+                parent, "Wenig freier Arbeitsspeicher",
+                f"Die VM braucht {need / 1024:.0f} GB, frei sind {free / 1024:.1f} GB. Andere VMs vorher "
+                "herunterfahren – sonst wird der Server langsam.", ok_label="Trotzdem einschalten"):
+            return
+        if mode == "iso":
+            isos = [i for i in self._isos.values() if i.path.suffix.lower() == ".iso"]
+            if not isos:
+                confirm_error(parent, "Keine ISO in der ISO-Bibliothek – NAS verbinden (Menü → NAS-Verbindung …) "
+                                      "bzw. ISO hinzufügen (Tools → ISO hinzufügen …).")
+                return
+            dlg = IsoDialog(parent, name, isos)
+            ok = dlg.run() == Gtk.ResponseType.OK
+            path = dlg.path()
+            dlg.destroy()
+            if ok and path:
+                self._vm_task(lambda: self.virsh.start(name, "iso", path),
+                              f"VM von ISO gestartet ({os.path.basename(path)})", dev)
+            return
+        if mode == "agent":
+            ready, reason = self.netboot_ready()
+            if not ready and not confirm(
+                    parent, "Netzwerkstart ist nicht bereit",
+                    f"{reason.split(' – ')[0]}. Ohne Netzwerkstart startet die VM nach kurzer Wartezeit ohne Agent "
+                    "von der Disk.\n\nEinschalten: Tools → Netzwerkstart (PXE) …", ok_label="Trotzdem einschalten"):
+                return
+            if not dev.netboot:
+                self.store.update(dev, netboot=True)
+                self.store.add_history(dev, "notiz", "Netzwerkstart erlaubt")
+            if not dev.boot_request:
+                dev.boot_request = True
+                self.store.save(dev)
+                self.store.add_history(dev, "notiz", "Agent beim nächsten Start angefordert")
+            self.netboot_changed()
+            # erst einschalten, wenn die Startart „einmal Agent“ beim Netzwerkstart gilt
+            self.sync_netboot(after=lambda: self._vm_task(lambda: self.virsh.start(name, "agent"),
+                                                          "VM eingeschaltet – Agent angefordert", dev))
+            return
+        if dev.boot_request:          # „Einschalten“ = ohne Agent: Vormerkung aufheben
+            dev.boot_request = False
+            self.store.save(dev)
+            self.store.add_history(dev, "notiz", "Agent beim nächsten Start abbestellt")
+            self.sync_netboot()
+            self.netboot_changed()
+        self._vm_task(lambda: self.virsh.start(name), "VM eingeschaltet", dev)
+
+    def vm_boot_order(self, dev: devices.Device, network_first: bool) -> None:
+        """Laufende VM für den nächsten Neustart umstellen: Netzwerk zuerst (Agent angefordert) bzw. Disk zuerst
+        (Agent verbunden – ein Neustart danach, z. B. nach dem Zurückspielen, startet das System auf der Disk)."""
+        if not dev.is_vm or not vm.available():
+            return
+        name = dev.vm["name"]
+
+        def done(result) -> None:
+            if isinstance(result, Exception):
+                self.status(f"{dev.name}: Startreihenfolge der VM nicht umgestellt – {result}")
+
+        run_async(lambda: self.virsh.set_boot_runtime(name, network_first), done)
+
+    def vm_screen(self, dev: devices.Device) -> None:
+        """Bildschirm im eigenen Fenster (virt-viewer). Unter Wayland lässt sich ein fremdes Fenster nicht nach
+        vorne holen – ein offenes Fenster derselben VM wird darum geschlossen und neu geöffnet."""
+        name = dev.vm["name"]
+        old = self.vm_viewers.get(name)
+        if old is not None and old.poll() is None:
+            old.terminate()
+        try:
+            self.vm_viewers[name] = subprocess.Popen(vm.viewer_command(name), stdout=subprocess.DEVNULL,
+                                                     stderr=subprocess.DEVNULL, start_new_session=True)
+        except OSError:
+            confirm_error(self._parent_for(dev), "virt-viewer fehlt – sudo ./install.sh am Server ausführen.")
+            return
+        self.status(f"{dev.name}: Bildschirm wird geöffnet …")
+
+    def vm_power(self, dev: devices.Device, action: str) -> None:
+        """Herunterfahren/Neu starten ohne Agent: Signal an das Betriebssystem der VM (ACPI)."""
+        parent = self._parent_for(dev)
+        why = self.vm_why(dev, "stop")
+        if why:
+            confirm_error(parent, why)
+            return
+        name, off = dev.vm["name"], action == "poweroff"
+        what = "herunterfahren" if off else "neu starten"
+        if not confirm(parent, f"„{dev.name}“ {what}?",
+                       "Die VM bekommt das Signal wie beim kurzen Druck auf den Einschaltknopf; das Betriebssystem "
+                       f"soll geordnet {what}. Reagiert die VM nicht (z. B. ohne Betriebssystem), „Ausschalten …“ "
+                       "verwenden.", ok_label=what.capitalize()):
+            return
+        self._vm_task((lambda: self.virsh.shutdown(name)) if off else (lambda: self.virsh.reboot(name)),
+                      "Herunterfahren gesendet (ACPI)" if off else "Neustart gesendet (ACPI)", dev)
+
+    def vm_poweroff(self, dev: devices.Device) -> None:
+        parent = self._parent_for(dev)
+        why = self.vm_why(dev, "stop")
+        if why:
+            confirm_error(parent, why)
+            return
+        busy = "\n\nAuf der VM läuft ein Auftrag – er bricht ab." if self.jobs.summary(dev.id) else ""
+        if not confirm(parent, f"„{dev.name}“ hart ausschalten?",
+                       "Wie Stecker ziehen: Das Betriebssystem in der VM wird nicht heruntergefahren, nicht "
+                       f"gespeicherte Daten gehen verloren.{busy}", ok_label="Ausschalten"):
+            return
+        name = dev.vm["name"]
+        self._vm_task(lambda: self.virsh.poweroff(name), "VM hart ausgeschaltet", dev)
+
+    def vm_hardware(self, dev: devices.Device) -> None:
+        parent = self._parent_for(dev)
+        why = self.vm_why(dev, "hardware")
+        if why:
+            confirm_error(parent, why)
+            return
+        name = dev.vm["name"]
+
+        def edit(p: vm.VmProfile) -> None:
+            dlg = HardwareDialog(parent, name, p, vm.ram_mb()[0], os.cpu_count() or 8)
+            ok = dlg.run() == Gtk.ResponseType.OK
+            new, changes = dlg.profile(), dlg.changes()
+            dlg.destroy()
+            if ok and changes:
+                self._vm_task(lambda: self.virsh.set_profile(name, new), "Hardware geändert: " + ", ".join(changes),
+                              dev)
+
+        self._vm_task(lambda: self.virsh.get_profile(name), dev=dev, after=edit)
+
+    def vm_delete(self, dev: devices.Device) -> None:
+        parent = self._parent_for(dev)
+        why = self.vm_why(dev, "delete")
+        if why:
+            confirm_error(parent, why)
+            return
+        name = dev.vm["name"]
+        if not confirm(parent, f"VM „{name}“ löschen?",
+                       "VM, Disk und Geräteeintrag werden gelöscht; Images und Backups auf dem NAS bleiben.\n\n"
+                       "Die Disk der VM lässt sich danach nicht wiederherstellen.", ok_label="VM löschen"):
+            return
+
+        def work() -> bool:
+            if name in self.virsh.names():
+                self.virsh.delete(name)
+                return True
+            return False             # schon weg: nur den Eintrag entfernen
+
+        def after(_existed) -> None:
+            win = self.device_windows.pop(dev.id, None)
+            if win:
+                win.destroy()
+            viewer = self.vm_viewers.pop(name, None)
+            if viewer is not None and viewer.poll() is None:
+                viewer.terminate()
+            self.store.delete(dev)
+            self.sync_netboot()
+            self.refresh_devices()
+            self.status(f"VM „{name}“ gelöscht – Images und Backups auf dem NAS bleiben")
+
+        self._vm_task(work, dev=dev, after=after)
 
     # ---------- Demo-Gerät ----------
 
@@ -2636,6 +3021,8 @@ class MainWindow(Gtk.ApplicationWindow):
             self._dev_expand_after = target
             self._device_op(lambda: self.store.move_device(dev, target),
                             f"Verschoben nach „{target or 'Neu / nicht einsortiert'}“")
+        elif kind == "vmfolder":
+            self.status(f"Der Ordner „{devices.VM_FOLDER}“ bleibt fest an seinem Platz")
         elif kind == "folder":
             parent = rel.rsplit("/", 1)[0] if "/" in rel else ""
             if dest_kind == "unsorted":
@@ -2759,7 +3146,8 @@ class MainWindow(Gtk.ApplicationWindow):
             dev.boot_request = False
             self.store.save(dev)
             self.sync_netboot()
-        if dev.netfirst and info.control_port:
+        self.vm_boot_order(dev, False)   # VM: nächster Neustart von der Disk (nicht wieder der Agent)
+        if dev.netfirst and info.control_port and not dev.is_vm:   # VM: Reihenfolge fest in libvirt
             GLib.timeout_add_seconds(3, lambda: (self.check_bootorder(dev, quiet=True), False)[1])
         if self.automation.consider(dev, info):
             self.status(f"Automatisierung für {dev.name} startet in {automation.COUNTDOWN} s – im Tool oder am "
@@ -3181,6 +3569,9 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def power(self, dev: devices.Device, action: str) -> None:
         parent = self._parent_for(dev)
+        if dev.is_vm and self.online_agent(dev) is None:     # VM ohne Agent: über libvirt (ACPI)
+            self.vm_power(dev, action)
+            return
         agent = self._ready_agent(dev, parent)
         if agent is None:
             return

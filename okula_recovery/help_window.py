@@ -32,6 +32,7 @@ Alles läuft über das Netzwerk. Die Sicherungen liegen auf dem <b>NAS</b>.
 •  <b>Inventar</b> jedes Geräts: Hardware, Disks mit Zustand, Windows-11-Tauglichkeit, Garantie.
     Export als Liste (CSV) oder PDF.
 •  USB-Sticks erstellen (Agent-, Boot- und Restore-Stick), USB-Datenträger klonen und formatieren.
+•  <b>Virtuelle Maschinen</b> auf dem Server: Master-Image bauen und Images testen ohne echtes Gerät.
 •  Ein <b>Demo-Gerät</b> zum Vorführen.
 
 <b>Aufbau des Fensters:</b>
@@ -114,6 +115,11 @@ Das Gerät startet den Agent über das Netzwerkkabel statt vom USB-Stick.
 
 <b>Wake-on-LAN</b>
 Ein ausgeschaltetes Gerät über das Netzwerk einschalten.
+
+<b>Virtuelle Maschine (VM)</b>
+Ein nachgebildeter Computer, der auf dem Server läuft – mit eigener Disk (eine Datei auf dem Server),
+Netzwerkkarte und Bildschirm im eigenen Fenster. Im Tool ist sie ein Gerät wie jedes andere.
+Siehe Kapitel <i>Virtuelle Maschinen</i>.
 
 <b>TPM und Secure Boot</b>
 Sicherheitsfunktionen im Gerät. Windows 11 verlangt TPM 2.0 und Secure Boot.
@@ -308,12 +314,15 @@ Die Aufträge für das gewählte Gerät stehen zusätzlich im Menü <i>Tools</i>
     steht im Tooltip (z. B. schon verbunden, keine Kabel-Netzwerkkarte, „Netzwerkstart zuerst“ fehlt).
 •  <i>Neu starten</i> und <i>Herunterfahren</i>: Symbole rechts unter der Geräteliste und im Gerätefenster
     (Name als Tooltip), mit Rückfrage; nur wenn das Gerät verbunden ist und kein Auftrag läuft.
+    Bei virtuellen Maschinen auch ohne Agent (Kapitel <i>Virtuelle Maschinen</i>).
 •  <i>Inventar exportieren …</i>: Liste zu diesem Gerät (Kapitel <i>Inventar, Garantie, Windows 11</i>).
 
 <b>Ordner</b>
 •  <i>Neuer Ordner …</i>, <i>Ordner umbenennen …</i>, <i>Ordner löschen (nur leer)</i>.
 •  Höchstens 3 Ordnerebenen, zum Beispiel <i>Firma → Standort → Abteilung</i>.
-•  Geräte und Ordner lassen sich mit der Maus verschieben (ziehen und loslassen)."""),
+•  Geräte und Ordner lassen sich mit der Maus verschieben (ziehen und loslassen).
+•  Der Ordner <i>Virtuelle Maschinen</i> ist fest: keine Unterordner, nicht umbenennbar, VMs bleiben darin
+    und echte Geräte kommen nicht hinein."""),
 
     ("Disk-Image", """<big><b>Ganze Disk sichern (Disk-Image)</b></big>
 
@@ -415,6 +424,8 @@ seinen eigenen Namen, seinen Windows-Schlüssel und auf Wunsch Region Schweiz un
 5.  Windows <b>nicht mehr starten</b>. Direkt mit dem Agent-Stick starten.
 6.  <i>Disk-Image erstellen …</i>, Name zum Beispiel „Master-Win11-2026-10“.
 Die ausführliche Anleitung steht im Projekt in <tt>docs/MASTER-IMAGE.md</tt>.
+Ohne Referenzgerät geht das auch in einer virtuellen Maschine (Profil <i>VM-Win11</i>,
+Kapitel <i>Virtuelle Maschinen</i>).
 
 <b>Im Tool:</b>
 1.  Rechts im Reiter <i>Images</i>: Rechtsklick auf das Image → <i>Als Master-Image markieren</i>.
@@ -428,6 +439,66 @@ Die ausführliche Anleitung steht im Projekt in <tt>docs/MASTER-IMAGE.md</tt>.
     unter <i>Übersicht → Windows-Schlüssel</i> hinterlegen.
 •  Ein Image eines UEFI-Geräts läuft nur auf UEFI-Geräten.
 •  Ein normales Image (ohne Sysprep) wird nicht angepasst. Das Log sagt es."""),
+
+    ("Virtuelle Maschinen", """<big><b>Virtuelle Maschinen (VM) auf dem Server</b></big>
+
+Eine virtuelle Maschine ist ein nachgebildeter Computer, der auf dem Server läuft. Die VM ist im LAN sichtbar wie
+ein echter PC und startet den Agent über den Netzwerkstart – ohne Stick. Wozu:
+•  <b>Master-Image bauen</b> ohne Referenzgerät: ISO installieren → einrichten → Sysprep → Disk-Image
+    (Kapitel <i>Master-Image</i>).
+•  <b>Images testen</b>, bevor sie auf echte Geräte gehen: zurückspielen, starten, prüfen.
+•  <b>Ausprobieren</b> von Agent, Netzwerkstart und Automatisierung, bevor ein echtes Gerät dran ist.
+
+<b>Drei Profile (Vorlagen)</b>
+•  <b>VM-Win11</b>: moderner Business-Laptop – UEFI mit Secure Boot und TPM 2.0, NVMe 128 GB, Intel e1000e,
+    4 Kerne, 8 GB RAM. Für Master-Image, Windows 11, Automatisierung.
+•  <b>VM-Legacy</b>: älteres Gerät – BIOS (Legacy), SATA-HDD 80 GB, Intel e1000, 2 Kerne, 4 GB RAM.
+    Für BIOS-Netzwerkstart, Windows 10, alte Hardware.
+•  <b>VM-Klein</b>: Gerät mit kleiner Disk – UEFI ohne Secure Boot, SATA-SSD 64 GB, Intel e1000e, 2 Kerne,
+    4 GB RAM. Für Zurückspielen auf eine kleinere Disk und Linux.
+
+<b>Anlegen</b>
+1.  <i>Extras → Neue virtuelle Maschine …</i> oder Rechtsklick auf den Ordner <i>Virtuelle Maschinen</i>.
+2.  Profil wählen. Der Name ist vorgeschlagen und lässt sich ändern.
+3.  Unten steht, wie viel Platz und Arbeitsspeicher auf dem Server frei sind. Rot = geht nicht.
+4.  <i>Erstellen</i>. Die VM steht danach im Ordner <i>Virtuelle Maschinen</i>, ist für den Netzwerkstart
+    freigeschaltet und hat ein vorläufiges Inventar aus dem Profil. Beim ersten Start mit Agent kommt das echte.
+Die Disk ist eine Datei auf der SSD des Servers und wächst mit dem belegten Platz.
+
+<b>Starten und Bedienen</b> – Rechtsklick auf die VM oder Knöpfe im Gerätefenster (Zeile <i>Virtuelle Maschine</i>):
+•  <i>Einschalten</i>: Die VM startet von ihrer Disk (z. B. Windows). Eine leere Disk meldet „kein Betriebssystem“.
+•  <i>Einschalten und Agent starten</i>: Agent vormerken und einschalten. Die VM startet den Agent über den
+    Netzwerkstart und erscheint mit grünem Punkt. Danach geht alles wie bei echten Geräten: Disk-Image,
+    Image zurückspielen, Backup, Automatisierung. Dafür muss der Netzwerkstart eingeschaltet sein
+    (<i>Tools → Netzwerkstart (PXE) …</i>, Kapitel <i>Netzwerkstart</i>).
+•  <i>Von ISO starten …</i>: einmal von einer ISO aus der ISO-Bibliothek auf dem NAS starten, zum Beispiel
+    um Windows 11 zu installieren. Nach dem Ausschalten startet die VM wieder normal.
+    Tipp: zuerst <i>Bildschirm</i> öffnen (das Fenster wartet auf die VM) – Windows-ISOs verlangen beim Start
+    innert weniger Sekunden einen Tastendruck („Press any key to boot from CD“).
+•  <i>Bildschirm</i>: zeigt den Bildschirm der VM in einem eigenen Fenster; es wartet, bis die VM läuft.
+    Nochmals klicken öffnet das Fenster neu. Maus und Tastatur gehen in die VM, Ctrl+Alt gibt sie wieder frei.
+•  <i>Herunterfahren</i> und <i>Neu starten</i>: mit Agent über den Agent, sonst bekommt das Betriebssystem
+    in der VM das Signal wie beim kurzen Druck auf den Einschaltknopf.
+•  <i>Ausschalten …</i>: hart ausschalten wie Stecker ziehen, mit Rückfrage.
+•  <i>Hardware ändern …</i> (nur ausgeschaltet): Arbeitsspeicher, Kerne, Disk vergrössern (nie verkleinern),
+    Netzwerkkarte. Firmware und Disk-Anschluss nur mit Warnung – ein installiertes System startet danach
+    evtl. nicht mehr.
+•  <i>VM löschen …</i> (nur ausgeschaltet): VM, Disk und Geräteeintrag werden gelöscht; Images und Backups
+    auf dem NAS bleiben.
+In der Geräteliste steht der Zustand: <i>aus</i>, <i>läuft</i> oder <i>läuft – Agent verbunden</i>
+(alle 5 Sekunden neu). Die Startreihenfolge stellt das Tool selbst ein: normal startet die VM von der Disk,
+nach <i>Einschalten und Agent starten</i> einmal über das Netzwerk. Sobald der Agent verbunden ist, gilt wieder
+die Disk – ein Neustart danach (z. B. nach dem Zurückspielen) startet das System auf der Disk. Im Gerätefenster,
+Reiter <i>Netzwerk</i>, lässt sich der Agent auch für den nächsten Neustart einer laufenden VM vormerken.
+Wake-on-LAN und „Netzwerkstart zuerst“ gibt es bei VMs nicht.
+
+<b>Grenzen</b>
+•  Kein echtes Hersteller-BIOS: Eigenheiten echter Geräte (z. B. Einstellungen im HP- oder Lenovo-BIOS)
+    lassen sich nicht nachbilden. Der Reiter <i>BIOS</i> zeigt nur das einfache BIOS der VM.
+•  Windows in der VM bleibt „nicht aktiviert“. Der Windows-Schlüssel eines Geräts wird nie übernommen.
+•  Ein Image aus der VM läuft auf echten Geräten nur mit Sysprep (Kapitel <i>Master-Image</i>).
+    Die VM nutzt dafür nur Standard-Hardware (SATA/NVMe, Intel-Netzwerkkarte).
+•  Die VMs laufen auf dem Server weiter, auch wenn das Tool geschlossen ist."""),
 
     ("Automatisierung", """<big><b>Geräte automatisch neu aufsetzen</b></big>
 
@@ -761,6 +832,10 @@ In der Geräteliste steht bei jedem Gerät ein Balken mit Prozent und Restzeit.
 
 <b>Stern ★ bei Images</b>
 Das Image ist als Master-Image markiert.
+
+<b>Ordner „Virtuelle Maschinen“ in der Geräteliste</b>
+Die VMs auf dem Server. Statt „nicht verbunden“ steht der Zustand der VM: <i>aus</i>, <i>läuft</i> oder
+<i>läuft – Agent verbunden</i> (Kapitel <i>Virtuelle Maschinen</i>).
 
 <b>Bereich „Demo (lokal, nicht auf dem NAS)“</b>
 Erscheint nur bei eingeschaltetem Demo-Gerät: Images des DEMO-PC im Demo-Speicher (Kapitel <i>Demo-Gerät</i>).

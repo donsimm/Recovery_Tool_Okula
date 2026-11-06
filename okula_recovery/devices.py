@@ -33,7 +33,8 @@ PLACEHOLDER_SERIALS = {"default string", "to be filled by o.e.m.", "to be filled
                        "not specified", "not applicable", "none", "null", "n/a", "na", "oem", "o.e.m.", "invalid",
                        "chassis serial number", "base board serial number", "serial", "serial number", "unknown",
                        "123456789", "0123456789", "1234567890", "default", "empty", "type1productconfigid"}
-AMBIGUOUS_FILE = "mehrdeutig.ids"   # Kennungen, die an zwei Geräten gleichzeitig gesehen wurden (JSON-Liste)
+AMBIGUOUS_FILE = "mehrdeutig.ids"
+VM_FOLDER = "Virtuelle Maschinen"   # fester Ordner für die VMs des Tools (I-001): keine Unterordner, nicht umbenennbar   # Kennungen, die an zwei Geräten gleichzeitig gesehen wurden (JSON-Liste)
 
 
 def placeholder_uuid(value: str) -> bool:
@@ -92,6 +93,7 @@ class Device:
     bios: dict = field(default_factory=dict)              # zuletzt gelesenes BIOS (biosread, I-032) – zum Vergleichen
     hwtests: list = field(default_factory=list)           # Hardware-Tests (I-023), neuester zuerst, höchstens 10
     win11_unsupported: str = ""        # Datum: Windows 11 trotz „nicht tauglich“ installiert (keine Update-Garantie)
+    vm: dict = field(default_factory=dict)  # virtuelle Maschine des Tools: {"name": libvirt-Name, "profile": …}
     history: list[dict] = field(default_factory=list)
     folder: str = ""                   # nicht gespeichert: ergibt sich aus dem Ablageort
 
@@ -113,6 +115,11 @@ class Device:
         """Edition des zuletzt erkannten Windows (z. B. Professional, Core) – passt meist zur Lizenz."""
         return next((s.get("edition", "") for s in self.inventory.get("systems") or []
                      if s.get("family") == "Windows" and s.get("edition")), "")
+
+    @property
+    def is_vm(self) -> bool:
+        """VM des Tools: Einschalten/Ausschalten über libvirt statt Wake-on-LAN."""
+        return bool(self.vm.get("name"))
 
     @property
     def hardware(self) -> str:
@@ -296,6 +303,45 @@ class DeviceStore:
             self.save(dev)
             return dev, new
 
+    def register_vm(self, name: str, inv: dict, profile: str = "") -> Device:
+        """Geräteeintrag für eine neue VM im Ordner „Virtuelle Maschinen“ mit Vor-Inventar aus dem Profil.
+        Identität = SMBIOS-UUID der VM (auch als Agent-ID): Der Agent meldet beim ersten Start genau diese UUID,
+        darum erkennt match() den Eintrag wieder, und es entsteht kein zweites Gerät. Netzwerkstart ist frei,
+        „Netzwerkstart zuerst“ an (feste Startreihenfolge der VM)."""
+        with self.lock:
+            uuid = ((inv.get("dmi") or {}).get("product_uuid") or "").lower()
+            if not uuid:
+                raise DeviceError("VM ohne UUID")
+            if any(d.key == "uuid:" + uuid for d in self.devices.values()):
+                raise DeviceError(f"Ein Gerät mit der UUID {uuid} gibt es schon")
+            self.ensure_vm_folder()
+            taken = {d.name for d in self.devices.values()}
+            label, count = name, 2
+            while label in taken:
+                label, count = f"{name} ({count})", count + 1
+            dev = Device(id=secrets.token_hex(6), key="uuid:" + uuid, name=label, first_seen=now(),
+                         agent_ids=[uuid], inventory=inv, netboot=True, netfirst=True,
+                         macs=[nic["mac"].lower() for nic in inv.get("network") or [] if nic.get("mac")],
+                         disk_serials=[d["serial"] for d in inv.get("disks") or [] if d.get("serial")],
+                         vm={"name": name, "profile": profile}, folder=VM_FOLDER)
+            self.devices[dev.id] = dev
+            self.add_history(dev, "erfasst", "Virtuelle Maschine angelegt" + (f" (Profil {profile})" if profile
+                                                                                else ""), save=False)
+            self.save(dev)
+            return dev
+
+    def vm_devices(self) -> list[Device]:
+        return sorted((d for d in self.devices.values() if d.is_vm), key=lambda d: d.name.lower())
+
+    def vm_device(self, name: str) -> Device | None:
+        return next((d for d in self.devices.values() if d.vm.get("name") == name), None)
+
+    def ensure_vm_folder(self) -> None:
+        path = self.base / VM_FOLDER
+        if not path.is_dir():
+            path.mkdir()
+            self.load()
+
     def _split(self, other: Device, new: Device, agent_id: str, mac: str, inv: dict) -> None:
         """Früher fälschlich vereinten Eintrag bereinigen: Kennungen des neuen Geräts dort entfernen (B-001)."""
         mine_macs = {n["mac"].lower() for n in (inv or {}).get("network", []) if n.get("mac")}
@@ -370,6 +416,7 @@ class DeviceStore:
             keep.bios = keep.bios if keep.bios.get("read", "") >= other.bios.get("read", "") else other.bios
             keep.hwtests = sorted(keep.hwtests + other.hwtests, key=lambda r: r.get("started", ""), reverse=True)[:10]
             keep.win11_unsupported = keep.win11_unsupported or other.win11_unsupported
+            keep.vm = keep.vm or other.vm
             keep.netboot = keep.netboot or other.netboot
             keep.boot_request = keep.boot_request or other.boot_request
             if other.netfirst and not keep.netfirst:
@@ -431,9 +478,18 @@ class DeviceStore:
             raise DeviceError(f"Mehr als {MAX_DEPTH} Ebenen sind nicht möglich")
         return nasfiles.resolve(self.base, rel) if rel else self.base
 
+    @staticmethod
+    def _vm_rel(rel: str) -> bool:
+        """Liegt rel im Ordner „Virtuelle Maschinen“ (oder ist es der Ordner selbst)?"""
+        return rel == VM_FOLDER or rel.startswith(VM_FOLDER + "/")
+
     def make_folder(self, parent: str, name: str) -> str:
+        if self._vm_rel(parent):
+            raise DeviceError(f"Im Ordner „{VM_FOLDER}“ sind keine Unterordner möglich")
         rel = str(PurePosixPath(parent) / nasfiles.validate_name(name, new=True)) if parent \
             else nasfiles.validate_name(name, new=True)
+        if rel.lower() == VM_FOLDER.lower():
+            raise DeviceError(f"„{VM_FOLDER}“ ist für die VMs des Tools reserviert")
         path = self._folder(rel)
         if nasfiles.name_taken(path):
             raise DeviceError(f"„{path.name}“ existiert bereits")
@@ -442,6 +498,10 @@ class DeviceStore:
         return rel
 
     def rename_folder(self, rel: str, new_name: str) -> str:
+        if self._vm_rel(rel):
+            raise DeviceError(f"Der Ordner „{VM_FOLDER}“ lässt sich nicht umbenennen")
+        if not ("/" in rel) and new_name.strip().lower() == VM_FOLDER.lower():
+            raise DeviceError(f"„{VM_FOLDER}“ ist für die VMs des Tools reserviert")
         src = self._folder(rel)
         parent = str(PurePosixPath(rel).parent)
         new_rel = str(PurePosixPath(parent) / nasfiles.validate_name(new_name, new=True)) if parent != "." \
@@ -457,6 +517,8 @@ class DeviceStore:
         return new_rel
 
     def delete_folder(self, rel: str) -> None:
+        if self._vm_rel(rel):
+            raise DeviceError(f"Der Ordner „{VM_FOLDER}“ lässt sich nicht löschen")
         path = self._folder(rel)
         if not rel or not path.is_dir():
             raise DeviceError("Ordner nicht gefunden")
@@ -466,6 +528,10 @@ class DeviceStore:
         self.load()
 
     def move_device(self, dev: Device, folder: str) -> None:
+        if dev.is_vm and folder != VM_FOLDER:
+            raise DeviceError(f"VMs bleiben im Ordner „{VM_FOLDER}“")
+        if not dev.is_vm and self._vm_rel(folder):
+            raise DeviceError(f"Im Ordner „{VM_FOLDER}“ stehen nur die VMs des Tools")
         with self.lock:
             target = self._folder(folder)
             if folder and not target.is_dir():
@@ -475,6 +541,10 @@ class DeviceStore:
             src.rename(self._path(dev))
 
     def move_folder(self, rel: str, dest: str) -> str:
+        if self._vm_rel(rel):
+            raise DeviceError(f"Der Ordner „{VM_FOLDER}“ lässt sich nicht verschieben")
+        if self._vm_rel(dest):
+            raise DeviceError(f"Im Ordner „{VM_FOLDER}“ sind keine Unterordner möglich")
         src = self._folder(rel)
         if not rel or not src.is_dir():
             raise DeviceError("Ordner nicht gefunden")

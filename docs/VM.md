@@ -1,7 +1,8 @@
 # Virtuelle Maschinen (VM) im Tool – Konzept (I-001)
 
 Stand: **in Arbeit** – Konzept mit Dominik festgelegt am 06.11.2026, Umsetzung in 4 Aufträgen
-(Prompts `docs/prompts/I-001-*.md`). Auftrag 1 „VM-Grundlage“ umgesetzt 06.11.2026, Nacharbeit 1b am selben Tag (noch ohne Oberfläche).
+(Prompts `docs/prompts/I-001-*.md`). Auftrag 1 „VM-Grundlage“ umgesetzt 06.11.2026, Nacharbeit 1b am selben Tag,
+Auftrag 2 „VMs im Tool“ (Oberfläche) ebenfalls am 06.11.2026.
 
 ## Ziel
 
@@ -82,7 +83,7 @@ Nicht nachbildbar sind auch Eigenheiten echter Hersteller-Firmware (z. B. B-004,
 | # | Auftrag | Inhalt | Prompt |
 |---|---|---|---|
 | 1 | **VM-Grundlage** ✔ 06.11. (Nacharbeit 1b ✔ 06.11.) | `install.sh`: Pakete, Pool `okula`, Brücke `br0` (`okula-bridge`); `vm.py`: Hardware-Profil → libvirt-Konfiguration, Aktionen über virsh (als Benutzer, kein Root-Helfer nötig); Tests | `I-001-1-vm-grundlage.md`, `I-001-1b-vm-nacharbeit.md` |
-| 2 | **VMs im Tool** | Ordner „Virtuelle Maschinen“, „Neue VM …“ mit Profilen, Starten (Normal / Mit Agent / Von ISO), Herunterfahren, Bildschirm, Netzwerkstart-Freigabe | folgt |
+| 2 | **VMs im Tool** ✔ 06.11. | Ordner „Virtuelle Maschinen“, „Neue VM …“ mit Profilen, Starten (Normal / Mit Agent / Von ISO), Herunterfahren, Bildschirm, Netzwerkstart-Freigabe, Hardware ändern | `I-001-2-vms-im-tool.md` |
 | 3 | **Hardware vom Gerät** | „VM mit dieser Hardware erstellen …“, Identität abwandeln, letztes Image einspielen | folgt |
 | 4 | **Snapshots** | Zustand sichern und zurückholen | folgt |
 
@@ -113,3 +114,18 @@ Kein neuer Agent-Stick nötig (Agent unverändert).
   `install.sh` installiert ohne Empfehlungen und nennt es darum ausdrücklich. Ohne es meldet `virsh define`
   „spice graphics are not supported with this QEMU“ (im Tool: „Bildschirm (SPICE) fehlt – sudo ./install.sh …“).
 - **Netzwerkkarte VM-Legacy:** Intel e1000 statt Realtek rtl8139 (siehe Entscheide).
+
+### Abweichungen und Grenzen aus Auftrag 2 (06.11.2026)
+
+- **Startreihenfolge Disk → Netzwerk statt fest Netzwerk → Disk** (Entscheid Projektleitung im Prompt): Am Server
+  geprüft – nach der Startart „lokal“ beendet sich grub mit `exit`; OVMF (UEFI) startet dann nicht den nächsten
+  Eintrag, sondern zeigt das Setup-Menü (auch mit `exit 1`). Ohne Antwort braucht OVMF über eine Minute. SeaBIOS
+  startet nach „lokal“ korrekt von der Disk. Lösung ohne Änderung am Netzwerkstart: gespeichert ist Disk → Netzwerk;
+  „Einschalten und Agent starten“ startet einmal mit Netzwerk zuerst; sobald der Agent verbunden ist, stellt das Tool
+  die laufende VM per QEMU (`qom-set bootindex`) auf Disk zuerst um. Das Ziel des Entscheids bleibt erfüllt: Ein
+  Neustart nach dem Zurückspielen (Automatisierung) startet Windows, nicht wieder den Agent. Bei laufender VM stellt
+  „Beim nächsten Start den Agent laden“ auf Netzwerk zuerst. Grenze: Ist das Tool geschlossen, während der Agent
+  startet, bleibt die laufende VM auf Netzwerk zuerst (UEFI: ein Neustart endet im Setup-Menü; Ausschalten hilft).
+- **Bildschirm nach vorne holen:** unter Wayland nicht möglich – ein offenes virt-viewer-Fenster derselben VM wird
+  geschlossen und neu geöffnet.
+- **Geräteeintrag Umbenennen** ändert nur den Namen im Tool, nicht den libvirt-Namen der VM.

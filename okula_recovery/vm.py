@@ -23,6 +23,7 @@ import json
 import os
 import random
 import re
+import shutil
 import subprocess
 import tempfile
 import uuid as uuidlib
@@ -30,12 +31,15 @@ import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass, field, fields
 from typing import Callable
 
+from okula_recovery.inventory import CHASSIS
+
 URI = "qemu:///system"
 POOL = "okula"
 POOL_DIR = "/var/lib/libvirt/images/okula"
 BRIDGE = "br0"
 QEMU_NS = "http://libvirt.org/schemas/domain/qemu/1.0"
 OKULA_NS = "https://okula.ch/recovery/vm/1"
+DISK_ALIAS, NIC_ALIAS = "ua-disk0", "ua-net0"   # feste Namen der Geräte in QEMU (NVMe-Umbau, Startreihenfolge)
 NVME_ADDR = "0x1b"          # PCI-Steckplatz der NVMe-Disk (libvirt belegt Steckplätze ab 0x2 aufsteigend)
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$")
 MAC_RE = re.compile(r"^52:54:00(:[0-9a-f]{2}){3}$")
@@ -46,7 +50,13 @@ DISK_BUSES = ("nvme", "sata")
 # e1000e (Intel 82574L) und e1000 (Intel 82540EM): Treiber in Windows enthalten.
 # rtl8139: in Windows 10/11 ohne mitgelieferten Treiber – nur für Linux sinnvoll.
 NIC_MODELS = ("e1000e", "e1000", "rtl8139")
-START_MODES = ("normal", "pxe", "iso")
+# Startarten: normal = Disk → Netzwerk; agent = einmal Netzwerk zuerst (Agent per Netzwerkstart); iso = einmal CD.
+# Nicht fest „Netzwerk zuerst“ wie bei echten Geräten: Beendet sich grub mit „von der Festplatte starten“ (exit),
+# zeigt OVMF (UEFI) das Setup-Menü statt den nächsten Eintrag zu starten – am Server geprüft (06.11.2026). Darum
+# stellt das Tool die Reihenfolge der laufenden VM um (set_boot_runtime), sobald der Agent verbunden ist.
+START_MODES = ("normal", "agent", "iso")
+MIN_FREE_GB = 20            # so viel muss auf dem Server mindestens frei bleiben
+RAM_RESERVE_MB = 2048       # für den Server selbst
 
 ET.register_namespace("qemu", QEMU_NS)
 ET.register_namespace("okula", OKULA_NS)
@@ -228,7 +238,10 @@ def _escape_global(value: str) -> str:
 
 
 def domain_xml(p: VmProfile, boot: str = "normal", iso: str = "") -> str:
-    """libvirt-Domain-XML zum Profil. boot: normal (Disk → Netzwerk), pxe (Netzwerk zuerst), iso (CD zuerst)."""
+    """libvirt-Domain-XML zum Profil. boot: normal (Disk → Netzwerk), agent (Netzwerk → Disk), iso (CD → Disk →
+    Netzwerk). Gespeichert ist immer „normal“; agent/iso gelten nur für einen Start (siehe Virsh.start)."""
+    if boot not in START_MODES:
+        raise VmError(f"Unbekannte Startart „{boot}“")
     p.validate()
     if not p.nic.mac or not p.smbios.uuid:
         raise VmError("MAC und UUID fehlen (fill_identity aufrufen)")
@@ -283,7 +296,7 @@ def domain_xml(p: VmProfile, boot: str = "normal", iso: str = "") -> str:
         _sub(pm, "suspend-to-mem", enabled="no")
         _sub(pm, "suspend-to-disk", enabled="no")
 
-    order = {"normal": (1, 2, 0), "pxe": (2, 1, 0), "iso": (2, 3, 1)}[boot]   # Disk, Netzwerk, CD
+    order = {"normal": (1, 2, 0), "agent": (2, 1, 0), "iso": (2, 3, 1)}[boot]   # Disk, Netzwerk, CD
     dev = _sub(dom, "devices")
     disk = _sub(dev, "disk", type="file", device="disk")        # Datei statt Pool-Volume: AppArmor (siehe oben)
     _sub(disk, "driver", name="qemu", type="qcow2", discard="unmap")
@@ -296,14 +309,16 @@ def domain_xml(p: VmProfile, boot: str = "normal", iso: str = "") -> str:
     if p.disk.model and p.disk.bus == "sata":
         _sub(disk, "product", p.disk.model)
     _sub(disk, "boot", order=order[0])
-    _sub(disk, "alias", name="ua-disk0")
+    _sub(disk, "alias", name=DISK_ALIAS)
 
     if boot == "iso":
         if not iso:
             raise VmError("Kein ISO angegeben")
         cd = _sub(dev, "disk", type="file", device="cdrom")
         _sub(cd, "driver", name="qemu", type="raw")
-        _sub(cd, "source", file=iso)
+        src = _sub(cd, "source", file=iso)
+        # ISO meist auf dem NAS (CIFS): libvirt darf die Datei nicht umbesitzen (chown geht dort nicht)
+        _sub(src, "seclabel", model="dac", relabel="no")
         _sub(cd, "target", dev="sdb" if q35 else "hdc", bus="sata" if q35 else "ide")
         _sub(cd, "readonly")
         _sub(cd, "boot", order=order[2])
@@ -313,6 +328,7 @@ def domain_xml(p: VmProfile, boot: str = "normal", iso: str = "") -> str:
     _sub(nic, "source", bridge=BRIDGE)
     _sub(nic, "model", type=p.nic.model)
     _sub(nic, "boot", order=order[1])
+    _sub(nic, "alias", name=NIC_ALIAS)
 
     if p.tpm:
         tpm = _sub(dev, "tpm", model="tpm-crb")
@@ -333,7 +349,7 @@ def domain_xml(p: VmProfile, boot: str = "normal", iso: str = "") -> str:
             ET.SubElement(cl, f"{{{QEMU_NS}}}arg", {"value": arg})
     if p.disk.bus == "nvme":
         ov = ET.SubElement(dom, f"{{{QEMU_NS}}}override")
-        qdev = ET.SubElement(ov, f"{{{QEMU_NS}}}device", {"alias": "ua-disk0"})
+        qdev = ET.SubElement(ov, f"{{{QEMU_NS}}}device", {"alias": DISK_ALIAS})
         front = ET.SubElement(qdev, f"{{{QEMU_NS}}}frontend")
         for name, typ, value in (("driver", "string", "nvme"), ("bus", "string", "pcie.0" if q35 else "pci.0"),
                                  ("addr", "string", NVME_ADDR), ("model", "remove", None),
@@ -367,6 +383,134 @@ def macs_in_xml(xml: str) -> set[str]:
     except ET.ParseError:
         return set()
     return {m.get("address", "").lower() for m in root.iter("mac") if m.get("address")}
+
+
+def unique_name(base: str, taken) -> str:
+    """Name für eine neue VM: Vorschlag (Profilname), sonst „VM-Klein-2“, „VM-Klein-3“ …"""
+    taken = {t.lower() for t in taken}
+    if base.lower() not in taken:
+        return base
+    n = 2
+    while f"{base}-{n}".lower() in taken:
+        n += 1
+    return f"{base}-{n}"
+
+
+def disk_name(p: VmProfile) -> str:
+    """Name der Disk, wie der Agent sie in der VM sieht."""
+    return "nvme0n1" if p.disk.bus == "nvme" else "sda"
+
+
+def pre_inventory(p: VmProfile, collected: str = "") -> dict:
+    """Vorläufiges Inventar aus dem Profil (Format wie inventory.collect), bis der Agent in der VM das echte
+    meldet. Enthält die Kabel-Netzwerkkarte mit der VM-MAC: Lokal vergebene MACs (52:54:00:…) nimmt der
+    Netzwerkstart nur aus dem Inventar (devices.netboot_macs) – sonst bekäme die VM keine Antwort."""
+    if not p.nic.mac or not p.smbios.uuid:
+        raise VmError("MAC und UUID fehlen (fill_identity aufrufen)")
+    s, uefi = p.smbios, p.firmware.startswith("uefi")
+    dmi = {"sys_vendor": s.manufacturer, "product_name": s.product, "product_version": s.version,
+           "product_serial": s.serial, "product_uuid": s.uuid.lower(), "product_sku": s.sku,
+           "product_family": s.family, "board_vendor": s.board_vendor, "board_name": s.board_product,
+           "board_serial": s.board_serial, "bios_vendor": s.bios_vendor, "bios_version": s.bios_version,
+           "bios_date": s.bios_date, "chassis_type": str(s.chassis_type), "chassis_vendor": s.chassis_vendor,
+           "chassis_serial": s.serial, "chassis": CHASSIS.get(str(s.chassis_type), "")}
+    nvme = p.disk.bus == "nvme"
+    disk = {"name": disk_name(p), "path": f"/dev/{disk_name(p)}", "size": p.disk.size_gb * 10**9,
+            "model": "QEMU NVMe Ctrl" if nvme else p.disk.model, "serial": p.disk.serial,
+            "transport": "nvme" if nvme else "sata", "pttype": "", "fstype": "", "partitions": []}
+    return {"collected": collected, "provisional": "VM-Profil",
+            "dmi": dmi, "cpu": {"model": p.cpu.name or "Prozessor des Servers (virtuell)",
+                                "cores": p.cpu.cores, "threads": p.cpu.cores * p.cpu.threads},
+            "memory": p.ram_mb * 1024 * 1024, "batteries": [],
+            "network": [{"name": "eth0", "mac": p.nic.mac.lower(), "wireless": False, "driver": p.nic.model}],
+            "disks": [disk], "systems": [],
+            "platform": {"tpm": "2.0" if p.tpm else "", "uefi": uefi,
+                         "secure_boot": (p.firmware == "uefi-sb") if uefi else None},
+            "oem_key": ""}
+
+
+def describe(p: VmProfile) -> str:
+    """Hardware in einer Zeile, z. B. „UEFI + Secure Boot + TPM 2.0 · Q35 · NVMe 128 GB · Intel e1000e · …“."""
+    fw = {"uefi-sb": "UEFI + Secure Boot", "uefi": "UEFI", "bios": "BIOS (Legacy)"}[p.firmware]
+    if p.tpm:
+        fw += " + TPM 2.0"
+    disk = ("NVMe" if p.disk.bus == "nvme" else "SATA-HDD" if p.disk.rpm else "SATA-SSD") + f" {p.disk.size_gb} GB"
+    nic = {"e1000e": "Intel e1000e", "e1000": "Intel e1000", "rtl8139": "Realtek rtl8139"}[p.nic.model]
+    ram = p.ram_mb / 1024
+    ram_text = f"{ram:.0f} GB" if ram == int(ram) else f"{ram:.1f} GB"
+    return " · ".join((fw, "Q35" if p.chipset == "q35" else "i440FX", disk, nic,
+                       f"{p.cpu.cores * p.cpu.threads} Kern{'e' if p.cpu.cores * p.cpu.threads != 1 else ''}",
+                       f"{ram_text} RAM"))
+
+
+# Kurzbeschreibung der Profile (docs/VM.md) für den Dialog „Neue virtuelle Maschine“
+PROFILE_NOTES = {
+    "VM-Win11": "Moderner Business-Laptop – Master-Image bauen, Windows 11, Automatisierung",
+    "VM-Legacy": "Älteres Gerät mit BIOS – BIOS-Netzwerkstart, Windows 10, alte Hardware",
+    "VM-Klein": "Gerät mit kleiner Disk – Zurückspielen auf kleinere Disk, Linux",
+}
+
+
+def free_disk(path: str = POOL_DIR) -> int:
+    """Freier Platz (Byte) für die Disk-Dateien; Pool-Ordner fehlt → übergeordneter Ordner."""
+    while path and not os.path.isdir(path):
+        path = os.path.dirname(path)
+    try:
+        return shutil.disk_usage(path or "/").free
+    except OSError:
+        return 0
+
+
+def ram_mb(meminfo: str | None = None) -> tuple[int, int]:
+    """(RAM gesamt, verfügbar) des Servers in MiB."""
+    if meminfo is None:
+        try:
+            with open("/proc/meminfo") as f:
+                meminfo = f.read()
+        except OSError:
+            return 0, 0
+    values = dict(re.findall(r"^(MemTotal|MemAvailable):\s*(\d+) kB", meminfo, re.M))
+    return int(values.get("MemTotal", 0)) // 1024, int(values.get("MemAvailable", 0)) // 1024
+
+
+def check_resources(p: VmProfile, free_bytes: int, total_mb: int, available_mb: int,
+                    planned: list[VmProfile] = ()) -> tuple[list[str], list[str]]:
+    """(Fehler, Hinweise) vor dem Erstellen. Die Disk-Datei wächst mit dem belegten Platz – darum ist zu wenig
+    Platz für die volle Grösse nur ein Hinweis; unter MIN_FREE_GB ist Schluss. planned = bestehende VMs."""
+    errors, notes = [], []
+    gb = 10**9
+    if free_bytes < MIN_FREE_GB * gb:
+        errors.append(f"Nur {free_bytes / gb:.0f} GB frei auf dem Server – mindestens {MIN_FREE_GB} GB nötig")
+    else:
+        full = p.disk.size_gb * gb + sum(o.disk.size_gb * gb for o in planned)
+        if free_bytes < full:
+            notes.append(f"{free_bytes / gb:.0f} GB frei – reicht nicht, wenn alle VM-Disks ganz gefüllt werden "
+                         f"({full / gb:.0f} GB)")
+    if total_mb and p.ram_mb > total_mb - RAM_RESERVE_MB:
+        errors.append(f"{p.ram_mb // 1024} GB RAM sind zu viel – der Server hat {total_mb / 1024:.0f} GB")
+    elif available_mb and p.ram_mb > available_mb - RAM_RESERVE_MB:
+        notes.append(f"Zurzeit nur {available_mb / 1024:.1f} GB RAM frei – vor dem Einschalten andere VMs "
+                     "herunterfahren")
+    return errors, notes
+
+
+def viewer_command(name: str, uri: str = URI) -> list[str]:
+    """Bildschirm der VM im eigenen Fenster; wartet, bis die VM läuft, und verbindet nach Neustarts neu."""
+    return ["virt-viewer", "-c", uri, "--wait", "--reconnect", name]
+
+
+def available() -> bool:
+    """libvirt-Werkzeuge installiert? (Ordner „Virtuelle Maschinen“ zeigen)"""
+    return shutil.which("virsh") is not None
+
+
+STATE_TEXT = {"running": "läuft", "shut off": "aus", "paused": "angehalten", "in shutdown": "fährt herunter",
+              "crashed": "abgestürzt", "pmsuspended": "Standby", "idle": "läuft", "blocked": "läuft"}
+
+
+def state_text(state: str) -> str:
+    """virsh-Zustand → Anzeige („aus“, „läuft“ …); leer/unbekannt → „Zustand unbekannt“."""
+    return STATE_TEXT.get(state, "Zustand unbekannt" if not state else state)
 
 
 def volume_name(name: str) -> str:
@@ -449,6 +593,15 @@ class Virsh:
         """running | shut off | paused | … (wie virsh domstate)."""
         return self.virsh("domstate", name).strip()
 
+    def states(self) -> dict[str, str]:
+        """Zustand aller VMs mit einem Aufruf (virsh list --all) – für die Anzeige alle 5 s."""
+        result = {}
+        for line in self.virsh("list", "--all").splitlines():
+            parts = line.split(None, 2)
+            if len(parts) == 3 and parts[0] != "Id" and not parts[0].startswith("-" * 3):
+                result[parts[1]] = parts[2].strip()
+        return result
+
     def get_profile(self, name: str) -> VmProfile:
         p = profile_from_xml(self.xml(name))
         if not p:
@@ -494,7 +647,9 @@ class Virsh:
         return p
 
     def start(self, name: str, mode: str = "normal", iso: str = "") -> None:
-        """normal; pxe = einmal Netzwerkstart zuerst; iso = ISO als CD einlegen und einmal davon starten."""
+        """normal = von der Disk; agent = einmal Netzwerk zuerst (Agent per Netzwerkstart); iso = ISO als CD
+        einlegen und einmal davon starten. Die geänderte Reihenfolge gilt bis zum Ausschalten bzw. bis
+        set_boot_runtime sie umstellt; gespeichert bleibt „normal“."""
         if mode not in START_MODES:
             raise VmError(f"Unbekannte Startart „{mode}“")
         if mode == "iso" and not (iso and os.path.isfile(iso)):
@@ -517,6 +672,30 @@ class Virsh:
 
     def poweroff(self, name: str) -> None:
         self.virsh("destroy", name)
+
+    def reboot(self, name: str) -> None:
+        self.virsh("reboot", name, "--mode", "acpi")
+
+    def _qmp(self, name: str, command: str, **arguments) -> object:
+        out = self.virsh("qemu-monitor-command", name, json.dumps({"execute": command, "arguments": arguments}))
+        try:
+            return json.loads(out).get("return")
+        except (ValueError, AttributeError):
+            raise VmError(f"Unerwartete Antwort von QEMU: {out.strip()[:200]}") from None
+
+    def set_boot_runtime(self, name: str, network_first: bool) -> bool:
+        """Startreihenfolge einer laufenden VM für den nächsten Neustart umstellen (QEMU liest sie bei jedem
+        Neustart neu, OVMF und SeaBIOS richten sich danach). Ausgeschaltet: nichts zu tun (False).
+        Neue Nummern über den bisherigen, weil QEMU doppelte Nummern ablehnt."""
+        if self.state(name) != "running":
+            return False
+        paths = {alias: f"/machine/peripheral/{alias}" for alias in (DISK_ALIAS, NIC_ALIAS)}
+        current = [self._qmp(name, "qom-get", path=path, property="bootindex") for path in paths.values()]
+        base = max([c for c in current if isinstance(c, int)] + [0]) + 1
+        order = (NIC_ALIAS, DISK_ALIAS) if network_first else (DISK_ALIAS, NIC_ALIAS)
+        for i, alias in enumerate(order):
+            self._qmp(name, "qom-set", path=paths[alias], property="bootindex", value=base + i)
+        return True
 
     def delete(self, name: str) -> None:
         """VM mit Disk, NVRAM und TPM-Zustand löschen (Rückfrage ist Sache der Oberfläche)."""

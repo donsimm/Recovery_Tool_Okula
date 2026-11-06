@@ -29,6 +29,7 @@ bestätigt.
 | Serverlast (CPU/RAM/LAN), CPU-Fix (84 % → 0,3 %) | A, R | |
 | Netzwerkstart (PXE) – Agent ohne Stick, nur freigeschaltete Geräte | A, R | QEMU: UEFI Secure Boot und BIOS; fremde MAC bekommt keine Antwort |
 | VM-Grundlage (I-001 1b): `Virsh.create/start/set_profile/poweroff/delete` für VM-Win11, VM-Legacy, VM-Klein am Server | A | 06.11., Bildschirm in einer Testkopie auf VNC (SPICE-Modul noch nicht installiert); Screenshots: UEFI TianoCore mit „UEFI QEMU NVMe Ctrl …“ bzw. „UEFI Okula SATA SSD 64GB …“, SeaBIOS mit iPXE auf Intel 82540EM und DHCP-Adresse aus dem LAN; danach keine VM, Pool leer |
+| VMs im Tool (I-001 2), Prüfung durch den Agenten | A | 06.11., neue Version mit echter Geräteliste, NAS und Netzwerkstart (Dialoge im Skript bestätigt): VM-Klein angelegt (Eintrag im Ordner, MAC sofort in der Freigabeliste) → Einschalten und Agent starten → Agent nach 30 s verbunden, Inventar Okula VM-Klein, kein zweites Gerät → laufende VM auf Disk zuerst umgestellt → Disk-Image aufs NAS → Herunterfahren über den Agent → Einschalten startet von der Disk (Test-Disk mit grub) → Bildschirm öffnet, zweites Öffnen ersetzt das Fenster → Ausschalten → VM löschen: Pool leer, Freigabeliste wie vorher, Test-Image entfernt. Startart „lokal“: SeaBIOS startet von der Disk, OVMF zeigt das Setup-Menü (darum Disk → Netzwerk, siehe [VM.md](VM.md)). Von ISO starten (Debian-Netinst vom NAS) in VM-Win11 und VM-Legacy, ISO nicht umbesessen |
 | VM-Grundlage nach `sudo ./install.sh` (I-001 1 + 1b) | R | 06.11.: Brücke `br0` mit gleicher IP 192.168.110.199, Internet ok, `virsh` ohne sudo, Pool `okula` aktiv, Standardnetz aus, SPICE-Paket installiert, PXE-Konfiguration `interface=br0`; mit dem echten Code alle drei Profile erstellt/gestartet/gelöscht; virt-viewer-Fenster VM-Win11: „Start PXE over IPv4“, Secure Boot **Enabled** (Dominik); VM-Legacy iPXE mit Intel 82540EM |
 | install.sh auf neuem Debian 13 | R | |
 | USB klonen / formatieren | A | |
@@ -158,3 +159,23 @@ Installation, Brücke, libvirt und Probe-VMs am 06.11. geprüft (siehe „Bereit
 - [ ] Server neu starten → `br0` kommt wieder mit derselben IP (`ip -br a`), Tool und NAS laufen
 - [ ] Netzwerkstart eingeschaltet (Konfiguration zeigt schon `interface=br0`) → ein echtes Gerät (z. B. EliteBook 1)
       per Netzwerkstart → Agent startet wie vorher
+
+### 9. Virtuelle Maschinen im Tool (I-001 Auftrag 2)
+Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stick). Netzwerkstart eingeschaltet.
+- [ ] Geräteliste: Ordner „Virtuelle Maschinen“ erscheint; Rechtsklick darauf → nur „Neue virtuelle Maschine …“ und
+      „Inventar exportieren …“; Ordner lässt sich nicht umbenennen, löschen oder verschieben, ein echtes Gerät lässt
+      sich nicht hineinziehen
+- [ ] Extras → Neue virtuelle Maschine … → VM-Klein → Erstellen → Gerätefenster öffnet, Zustand „VM aus“
+- [ ] Einschalten und Agent starten → nach etwa 30 s grüner Punkt, Status „läuft – Agent verbunden“, Übersicht zeigt
+      Okula VM-Klein, keine zweite Zeile in „Neu / nicht einsortiert“
+- [ ] Disk-Image erstellen (leere Disk) bzw. nach einer Installation; danach Herunterfahren-Symbol → VM aus
+- [ ] Einschalten → startet ohne Agent von der Disk (leere Disk: UEFI-Setup-Menü bzw. „kein Betriebssystem“)
+- [ ] Bildschirm → eigenes Fenster; nochmals klicken → Fenster öffnet neu; Ctrl+Alt gibt Maus und Tastatur frei
+- [ ] Hardware ändern … (VM aus): RAM 6 GB, Disk 80 GB → Verlauf zeigt die Änderung; Verkleinern nicht möglich
+- [ ] **Windows 11 in VM-Win11:** Neue VM VM-Win11 → zuerst Bildschirm → Von ISO starten … → Windows-11-ISO → im Fenster
+      schnell eine Taste („Press any key to boot from CD“) → Windows installieren (ohne Key, „nicht aktiviert“);
+      Secure Boot und TPM erfüllt die VM (keine Meldung „PC erfüllt die Anforderungen nicht“)
+- [ ] Danach in Windows: Gerätefenster → Netzwerk → „Beim nächsten Start den Agent laden“ → Windows neu starten →
+      Agent startet; nach dem Verbinden Agent-Symbol „Neu starten“ → Windows startet wieder (nicht der Agent)
+- [ ] Automatisierung an der VM: Image zurückspielen mit Neustart danach → Windows startet von der Disk
+- [ ] VM löschen … (aus) → rote Rückfrage → VM und Eintrag weg; `virsh -c qemu:///system vol-list okula` leer

@@ -98,6 +98,26 @@ class DeviceWindow(Gtk.Window):
         for b in reversed(power.values()):
             actions.pack_end(b, False, False, 0)
         root.pack_start(actions, False, False, 0)
+        # Virtuelle Maschine: Einschalten, Bildschirm, Ausschalten … über libvirt (ersetzt Wake-on-LAN)
+        self.vm_buttons: dict[str, Gtk.Button] = {}
+        if dev.is_vm:
+            bar = Gtk.Box(spacing=6)
+            title = Gtk.Label(xalign=0, margin_end=6)
+            title.set_markup("<b>Virtuelle Maschine</b>")
+            bar.pack_start(title, False, False, 0)
+            for entry in main.vm_actions(dev):
+                if entry is None or entry[0] in ("shutdown", "reboot"):   # Symbole oben rechts
+                    continue
+                key, label = entry[0], entry[1]
+                b = Gtk.Button(label=label)
+                b.connect("clicked", lambda _b, k=key: self._vm_action(k))
+                if key == "delete":
+                    b.get_style_context().add_class("destructive-action")
+                    bar.pack_end(b, False, False, 0)
+                else:
+                    bar.pack_start(b, False, False, 0)
+                self.vm_buttons[key] = b
+            root.pack_start(bar, False, False, 0)
 
         self.tabs = Gtk.Notebook()
         self.tabs.append_page(self._build_jobs(), Gtk.Label(label="Aufträge"))
@@ -135,6 +155,12 @@ class DeviceWindow(Gtk.Window):
         self.set_focus(self.tabs)  # Name nicht gleich markiert – Bearbeiten erst per Klick
         self.show_all()
         self.fit_overview()
+
+    def _vm_action(self, key: str) -> None:
+        for entry in self.main.vm_actions(self.dev):
+            if entry is not None and entry[0] == key:
+                entry[2]()
+                return
 
     # ---------- Aufbau ----------
 
@@ -308,6 +334,9 @@ class DeviceWindow(Gtk.Window):
             busy = self.main.device_status(dev)
             self.state.set_markup(f"<b>verbunden</b>  {GLib.markup_escape_text(agent.ip)}"
                                   + (f"  ·  {GLib.markup_escape_text(busy)}" if busy else ""))
+        elif dev.is_vm:
+            self.state.set_markup(f"<b>VM {GLib.markup_escape_text(self.main.vm_state_text(dev))}</b>  ·  Agent "
+                                  f"nicht verbunden  ·  zuletzt verbunden {devices.short_time(dev.last_seen) or '–'}")
         else:
             self.state.set_markup(f"<b>nicht verbunden</b>  ·  zuletzt verbunden "
                                   f"{devices.short_time(dev.last_seen) or '–'}")
@@ -315,6 +344,19 @@ class DeviceWindow(Gtk.Window):
         online = agent is not None and agent.control_port > 0
         for b in self.buttons.values():
             b.set_sensitive(online)
+        if dev.is_vm:
+            for entry in self.main.vm_actions(dev):
+                if entry is None:
+                    continue
+                key, _label, _h, why, tip = entry
+                button = self.vm_buttons.get(key)
+                if button is not None:
+                    button.set_sensitive(not why)
+                    button.set_tooltip_text(why or tip)
+            stop = self.main.vm_why(dev, "stop")
+            for action in ("poweroff", "reboot"):       # Symbole: mit Agent über den Agent, sonst libvirt
+                if action in self.buttons:
+                    self.buttons[action].set_sensitive(online or not stop)
 
     def _fill_overview(self) -> None:
         for child in self.info_grid.get_children():
@@ -347,6 +389,12 @@ class DeviceWindow(Gtk.Window):
                  ("Zuletzt verbunden", devices.short_time(dev.last_seen)),
                  ("Letzte IP", dev.last_ip), ("Inventar vom", devices.short_time(inv.get("collected", ""))),
                  ("Geräte-ID", f"{dev.id}  ({dev.key})")]
+        if dev.is_vm:
+            note = " · Inventar vorläufig aus dem Profil – das echte meldet der Agent beim ersten Start" \
+                if inv.get("provisional") else ""
+            profile = dev.vm.get("profile")
+            rows.insert(0, ("Virtuelle Maschine", f"{dev.vm.get('name', '')}" + (f" (Profil {profile})" if profile
+                                                                                else "") + note))
         for i, (k, v) in enumerate(rows):
             key = Gtk.Label(label=k, xalign=0, yalign=0)
             key.get_style_context().add_class("status-idle")
@@ -391,7 +439,13 @@ class DeviceWindow(Gtk.Window):
         sw.set_max_content_height(160)
         numbered_section(box, "", "Netzwerkkarten").pack_start(sw, False, False, 0)
 
-        wake = numbered_section(box, "", "Aus der Ferne einschalten", "Wake-on-LAN")
+        # Wake-on-LAN und „Netzwerkstart zuerst“: bei VMs ausgeblendet (libvirt, Reihenfolge fest)
+        self.remote_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, no_show_all=self.dev.is_vm)
+        box.pack_start(self.remote_box, False, False, 0)
+        wake = numbered_section(self.remote_box, "", "Aus der Ferne einschalten", "Wake-on-LAN")
+        sep = Gtk.Separator(margin_top=6, margin_bottom=6)
+        self.remote_box.pack_start(sep, False, False, 0)
+        self.remote_box.reorder_child(sep, 0)
         row = Gtk.Box(spacing=6)
         self.btn_wake = Gtk.Button(label="Einschalten")
         self.btn_wake.set_tooltip_text("Gerät per Wake-on-LAN einschalten – es startet wie gewohnt (z. B. Windows)")
@@ -407,7 +461,7 @@ class DeviceWindow(Gtk.Window):
                                     "Das Gerät muss im selben Netz wie der Server sein.")
         wake.pack_start(self.wake_text, False, False, 0)
 
-        first = numbered_section(box, "", "Netzwerkstart zuerst", "Startreihenfolge im Gerät")
+        first = numbered_section(self.remote_box, "", "Netzwerkstart zuerst", "Startreihenfolge im Gerät")
         row = Gtk.Box(spacing=8)
         self.netfirst_switch = Gtk.Switch(valign=Gtk.Align.CENTER)
         self.netfirst_switch.connect("notify::active", self._on_netfirst_switch)
@@ -428,6 +482,17 @@ class DeviceWindow(Gtk.Window):
             "Agent verbunden ist (UEFI). Ist der Server aus, dauert der Start etwas länger (Netzwerk-Wartezeit)."),
             False, False, 0)
 
+        if self.dev.is_vm:
+            section = numbered_section(box, "", "Virtuelle Maschine", "Einschalten über libvirt statt Wake-on-LAN")
+            section.pack_start(self._hint(
+                "Einschalten, Ausschalten und Bildschirm über die Knöpfe oben (oder Rechtsklick in der Geräteliste). "
+                "Die Startreihenfolge stellt das Tool selbst ein: normal von der Disk, nach „Einschalten und Agent "
+                "starten“ einmal über das Netzwerk (Agent). Bei laufender VM gilt das Häkchen unten für den nächsten "
+                "Neustart."),
+                False, False, 0)
+            self.vm_request = Gtk.CheckButton(label="Beim nächsten Start den Agent laden (danach wieder normal)")
+            self.vm_request.connect("toggled", self._on_request_toggled)
+            section.pack_start(self.vm_request, False, False, 0)
         # Ä-034: was die Netzwerkstart-Dienste von diesem Gerät gesehen haben (letzte 6 Stunden)
         log = numbered_section(box, "", "Netzwerkstart-Protokoll", "was der Server gesehen hat (letzte 6 Stunden)")
         row = Gtk.Box(spacing=8)
@@ -582,6 +647,9 @@ class DeviceWindow(Gtk.Window):
         self._netboot_updating = True
         self.netfirst_switch.set_active(self.dev.netfirst)
         self.request_check.set_active(self.dev.boot_request)
+        if getattr(self, "vm_request", None) is not None:
+            self.vm_request.set_active(self.dev.boot_request)
+            self.vm_request.set_sensitive(usable)
         self._netboot_updating = False
         bios = devices.bios_mode(self.dev)
         self.netfirst_switch.set_sensitive(usable and (connected or bios))

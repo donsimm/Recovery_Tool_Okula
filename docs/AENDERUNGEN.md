@@ -22,7 +22,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
 Erledigt 31.10. zusätzlich: I-007 ✔ (Image prüfen) → Ä-027 ✔ (Demo ohne NAS) → Ä-028 ✔ (Ein/Aus-Symbole) → Ä-029 ✔ (Legende) → Ä-030 ✔ (NAS-Leiste) → I-030 ✔ (Bandbreite) → Ä-031 ✔ (Tage hell/dunkel).
-Als Nächstes: **I-001 VMs** (in Arbeit, 4 Aufträge, [VM.md](VM.md)) – Auftrag 1 „VM-Grundlage“ ✔ 06.11., Nacharbeit 1b ✔ 06.11. (am Server `sudo ./install.sh` + Tests [TESTS.md](TESTS.md) Abschnitt 8), dann Prompt Auftrag 2 „VMs im Tool“. Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
+Als Nächstes: **I-001 VMs** (in Arbeit, 4 Aufträge, [VM.md](VM.md)) – Auftrag 1 „VM-Grundlage“ ✔ 06.11., Nacharbeit 1b ✔ 06.11., Auftrag 2 „VMs im Tool“ ✔ 06.11. (umgesetzt, Abnahme offen; am Server `git pull && sudo ./install.sh`, Tool neu starten, Tests [TESTS.md](TESTS.md) Abschnitt 9), dann Auftrag 3 „Hardware vom Gerät“. Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
 Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
 ## 🐞 Bugs
@@ -115,12 +115,29 @@ Gerätename = Name im Tool.
 - **VM-Legacy mit Intel e1000 statt Realtek rtl8139** (I-001 Auftrag 1b, 06.11.2026): rtl8139 hat in Windows 10/11
   keinen mitgelieferten Treiber; rtl8139 bleibt nur für Linux wählbar.
 - **Umsetzungsreihenfolge:** zuerst Agent (Fundament, ein neuer Stick reicht), dann Tool-Logik, zuletzt Oberfläche.
+- **VM-Startreihenfolge Disk → Netzwerk mit Umstellung zur Laufzeit** (I-001 Auftrag 2, 06.11.2026, Umsetzungs-Agent
+  nach Prüfung am Server; ersetzt den Prompt-Entscheid „fest Netzwerk → Disk“): OVMF startet nach grub-`exit`
+  (Startart „lokal“) nicht von der Disk. Das Tool stellt die laufende VM nach dem Verbinden des Agents auf Disk
+  zuerst um. Details [VM.md](VM.md).
 
 ## ✅ Erledigt – Änderungsprotokoll
 
 Neueste zuoberst.
 
 ### 06.11.2026
+- **I-001 Auftrag 2 – VMs im Tool** (Von: Dominik): Fester Ordner „Virtuelle Maschinen“ in der Geräteliste (keine
+  Unterordner, VMs nicht herausziehbar, echte Geräte nicht hinein), Zustand der VM in der Statusspalte (alle 5 s ein
+  `virsh list`). **Extras → Neue virtuelle Maschine …** bzw. Rechtsklick auf den Ordner: Profil, Name, Hardware,
+  Prüfung von Platz und RAM; legt VM und Geräteeintrag an (Identität = SMBIOS-UUID, Vor-Inventar mit Kabel-Karte,
+  Netzwerkstart sofort frei). Aktionen per Rechtsklick und im Gerätefenster: Einschalten, Einschalten und Agent
+  starten, Von ISO starten … (ISO-Bibliothek, CIFS ohne Umbesitzen), Bildschirm (virt-viewer), Herunterfahren /
+  Neu starten (ohne Agent über ACPI), Ausschalten …, Hardware ändern …, VM löschen …. Wake-on-LAN-Stellen schalten
+  VMs über libvirt ein; Reiter Netzwerk ohne Wake-on-LAN/„Netzwerkstart zuerst“ bei VMs. **Abweichung:**
+  Startreihenfolge Disk → Netzwerk mit Umstellung der laufenden VM (QEMU `bootindex`) statt fest Netzwerk → Disk –
+  OVMF zeigt nach grub-`exit` das Setup-Menü statt die Disk zu starten (am Server geprüft, Details [VM.md](VM.md)).
+  Hilfe: Kapitel „Virtuelle Maschinen“, Begriff „Virtuelle Maschine (VM)“, Verweise aus „Master-Image“, „Geräte
+  verwalten“, „Anzeigen im Fenster“. Neues Modul `vm_dialogs.py`, Tests `test_vm_devices.py` und Erweiterungen in
+  `test_vm.py`. Am Server Ende zu Ende geprüft ([TESTS.md](TESTS.md)). Kein neuer Agent-Stick.
 - **I-001 Auftrag 1b – VM-Nacharbeit** (Von: Projektleitung, Abnahme Auftrag 1): `install.sh` installiert
   `qemu-system-modules-spice` (ohne das Modul kein SPICE-Bildschirm). Disk der VM als Datei im Pool-Verzeichnis
   (`type="file"`) statt Pool-Volume – nur so legt libvirt die AppArmor-Freigabe an; Anlegen/Vergrössern/Löschen

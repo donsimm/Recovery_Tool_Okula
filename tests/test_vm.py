@@ -36,8 +36,7 @@ class ProfileXmlTest(unittest.TestCase):
 
     def test_no_virtio_anywhere(self):
         for p in vm.PROFILES.values():
-            for boot in ("normal", "pxe"):
-                self.assertNotIn("virtio", vm.domain_xml(vm.fill_identity(p), boot=boot))
+            self.assertNotIn("virtio", vm.domain_xml(vm.fill_identity(p)))
             self.assertNotIn("virtio", vm.domain_xml(vm.fill_identity(p), boot="iso", iso="/x.iso"))
             self.assertEqual(parse(p).find("devices/memballoon").get("model"), "none")
 
@@ -120,14 +119,22 @@ class ProfileXmlTest(unittest.TestCase):
         self.assertEqual(nic.find("source").get("bridge"), "br0")
         self.assertEqual(nic.find("mac").get("address"), p.nic.mac)
         self.assertEqual(nic.find("model").get("type"), "e1000e")
+        # gespeichert: Disk → Netzwerk; „agent“ nur für einen Start Netzwerk zuerst
         self.assertEqual((r.find("devices/disk/boot").get("order"), nic.find("boot").get("order")), ("1", "2"))
-        pxe = ET.fromstring(vm.domain_xml(p, boot="pxe"))
-        self.assertEqual((pxe.find("devices/disk/boot").get("order"),
-                          pxe.find("devices/interface/boot").get("order")), ("2", "1"))
+        self.assertEqual(nic.find("alias").get("name"), "ua-net0")         # fester Name für set_boot_runtime
+        agent = ET.fromstring(vm.domain_xml(p, boot="agent"))
+        self.assertEqual((agent.find("devices/interface/boot").get("order"),
+                          agent.find("devices/disk/boot").get("order")), ("1", "2"))
+        with self.assertRaises(vm.VmError):
+            vm.domain_xml(p, boot="pxe")                                   # alte Startart (Auftrag 1) entfallen
         iso = ET.fromstring(vm.domain_xml(p, boot="iso", iso="/srv/win11.iso"))
         cd = iso.find("devices/disk[@device='cdrom']")
         self.assertEqual((cd.find("source").get("file"), cd.find("boot").get("order")), ("/srv/win11.iso", "1"))
+        self.assertEqual((iso.find("devices/disk[@device='disk']/boot").get("order"),
+                          iso.find("devices/interface/boot").get("order")), ("2", "3"))
         self.assertIsNotNone(cd.find("readonly"))
+        label = cd.find("source/seclabel")                                 # NAS (CIFS): nicht umbesitzen
+        self.assertEqual((label.get("model"), label.get("relabel")), ("dac", "no"))
         self.assertEqual(r.find("devices/graphics").get("type"), "spice")
         self.assertEqual(r.find("devices/graphics/listen").get("address"), "127.0.0.1")
 
@@ -198,6 +205,7 @@ class FakeVirsh:
         self.calls: list[list[str]] = []
         self.started_xml: dict[str, str] = {}
         self.fail: dict[str, str] = {}
+        self.bootindex: dict[str, dict[str, int]] = {}
 
     def __call__(self, cmd, input_text=None):
         self.assertPrefix(cmd)
@@ -207,8 +215,11 @@ class FakeVirsh:
         if op in self.fail:
             return subprocess.CompletedProcess(cmd, 1, "", self.fail[op])
         out = ""
-        if op == "list":
+        if op == "list" and "--name" in args:
             out = "\n".join(self.domains) + "\n"
+        elif op == "list":
+            out = " Id   Name        State\n" + "-" * 30 + "\n" + "".join(
+                f" {'1' if self.states[n] == 'running' else '-'}    {n:<11} {self.states[n]}\n" for n in self.domains)
         elif op == "dumpxml":
             name = args[-1]
             if name not in self.domains:
@@ -230,6 +241,21 @@ class FakeVirsh:
         elif op == "start":
             self.states[args[1]] = "running"
             self.started_xml[args[1]] = self.domains[args[1]]
+        elif op == "reboot":
+            pass
+        elif op == "qemu-monitor-command":
+            import json
+            q = json.loads(args[2])
+            path, a = q["arguments"]["path"], q["arguments"]
+            boot = self.bootindex.setdefault(args[1], {"/machine/peripheral/ua-disk0": 2,
+                                                       "/machine/peripheral/ua-net0": 1})
+            if q["execute"] == "qom-get":
+                out = json.dumps({"return": boot[path]})
+            else:
+                if a["value"] in boot.values():
+                    return subprocess.CompletedProcess(cmd, 1, "", "error: The bootindex has already been used")
+                boot[path] = a["value"]
+                out = json.dumps({"return": {}})
         elif op in ("destroy", "shutdown"):
             self.states[args[1]] = "shut off"
         elif op == "undefine":
@@ -287,11 +313,18 @@ class ActionsTest(unittest.TestCase):
 
     def test_start_modes_once(self):
         self.v.create(vm.PROFILES["VM-Klein"])
-        self.v.start("VM-Klein", "pxe")
+        self.v.start("VM-Klein")
+        started = ET.fromstring(self.fake.started_xml["VM-Klein"])
+        self.assertEqual(started.find("devices/disk/boot").get("order"), "1")          # normal: Disk zuerst
+        self.assertEqual(self.v.states(), {"VM-Klein": "running"})
+        self.v.poweroff("VM-Klein")
+        self.v.start("VM-Klein", "agent")                                              # einmal Netzwerk zuerst
         started = ET.fromstring(self.fake.started_xml["VM-Klein"])
         self.assertEqual(started.find("devices/interface/boot").get("order"), "1")
-        after = ET.fromstring(self.fake.domains["VM-Klein"])              # nächster Start wieder normal
-        self.assertEqual(after.find("devices/disk/boot").get("order"), "1")
+        after = ET.fromstring(self.fake.domains["VM-Klein"])
+        self.assertEqual(after.find("devices/disk/boot").get("order"), "1")            # gespeichert wieder normal
+        self.v.reboot("VM-Klein")
+        self.assertIn(["reboot", "VM-Klein", "--mode", "acpi"], self.fake.calls)
         with self.assertRaisesRegex(vm.VmError, "läuft bereits"):
             self.v.start("VM-Klein")
         self.v.shutdown("VM-Klein")
@@ -300,13 +333,28 @@ class ActionsTest(unittest.TestCase):
             self.v.start("VM-Klein", "iso", iso.name)
             cd = ET.fromstring(self.fake.started_xml["VM-Klein"]).find("devices/disk[@device='cdrom']")
             self.assertEqual(cd.find("source").get("file"), iso.name)
-        self.assertIsNone(ET.fromstring(self.fake.domains["VM-Klein"]).find("devices/disk[@device='cdrom']"))
+        after = ET.fromstring(self.fake.domains["VM-Klein"])              # nächster Start wieder ohne CD
+        self.assertIsNone(after.find("devices/disk[@device='cdrom']"))
+        self.assertEqual(after.find("devices/disk/boot").get("order"), "1")
         self.v.poweroff("VM-Klein")
         self.assertIn(["destroy", "VM-Klein"], self.fake.calls)
         with self.assertRaisesRegex(vm.VmError, "ISO-Datei nicht gefunden"):
             self.v.start("VM-Klein", "iso", "/gibt/es/nicht.iso")
-        with self.assertRaises(vm.VmError):
-            self.v.start("VM-Klein", "usb")
+        for mode in ("usb", "pxe"):
+            with self.assertRaises(vm.VmError):
+                self.v.start("VM-Klein", mode)
+
+    def test_boot_order_of_running_vm(self):
+        self.v.create(vm.PROFILES["VM-Klein"])
+        self.assertFalse(self.v.set_boot_runtime("VM-Klein", False))                  # aus: nichts zu tun
+        self.v.start("VM-Klein", "agent")
+        self.assertTrue(self.v.set_boot_runtime("VM-Klein", False))                   # Agent verbunden → Disk zuerst
+        boot = self.fake.bootindex["VM-Klein"]
+        self.assertLess(boot["/machine/peripheral/ua-disk0"], boot["/machine/peripheral/ua-net0"])
+        self.assertTrue(self.v.set_boot_runtime("VM-Klein", True))                    # Agent vormerken → Netzwerk
+        self.assertLess(boot["/machine/peripheral/ua-net0"], boot["/machine/peripheral/ua-disk0"])
+        self.assertTrue(self.v.set_boot_runtime("VM-Klein", True))                    # doppelt: keine gleiche Nummer
+        self.assertEqual(len(set(boot.values())), 2)
 
     def test_delete_with_disk(self):
         self.v.create(vm.PROFILES["VM-Win11"])
@@ -348,6 +396,55 @@ class ActionsTest(unittest.TestCase):
             raise FileNotFoundError("virsh")
         with self.assertRaisesRegex(vm.VmError, "virsh nicht gefunden"):
             vm.Virsh(run=missing).list()
+
+
+class HelpersTest(unittest.TestCase):
+    def test_unique_name(self):
+        self.assertEqual(vm.unique_name("VM-Klein", []), "VM-Klein")
+        self.assertEqual(vm.unique_name("VM-Klein", ["vm-klein", "VM-Klein-2"]), "VM-Klein-3")
+
+    def test_pre_inventory_like_agent(self):
+        p = vm.fill_identity(vm.PROFILES["VM-Win11"], rng=random.Random(3))
+        inv = vm.pre_inventory(p)
+        d = inv["dmi"]
+        self.assertEqual((d["sys_vendor"], d["product_name"], d["product_serial"], d["product_uuid"]),
+                         ("Okula", "VM-Win11", p.smbios.serial, p.smbios.uuid.lower()))
+        self.assertEqual(d["chassis"], "Notebook")
+        self.assertEqual(inv["network"], [{"name": "eth0", "mac": p.nic.mac, "wireless": False, "driver": "e1000e"}])
+        disk = inv["disks"][0]
+        self.assertEqual((disk["name"], disk["transport"], disk["size"], disk["serial"]),
+                         ("nvme0n1", "nvme", 128 * 10**9, p.disk.serial))
+        self.assertEqual(inv["platform"], {"tpm": "2.0", "uefi": True, "secure_boot": True})
+        self.assertEqual((inv["memory"], inv["cpu"]["cores"]), (8 * 1024**3, 4))
+        self.assertTrue(inv["provisional"])
+        legacy = vm.pre_inventory(vm.fill_identity(vm.PROFILES["VM-Legacy"]))
+        self.assertEqual(legacy["platform"], {"tpm": "", "uefi": False, "secure_boot": None})
+        self.assertEqual((legacy["disks"][0]["name"], legacy["disks"][0]["model"]), ("sda", "Okula SATA HDD 80GB"))
+        with self.assertRaises(vm.VmError):
+            vm.pre_inventory(vm.profile("VM-Klein"))                       # ohne MAC/UUID
+
+    def test_resources(self):
+        p = vm.profile("VM-Win11")
+        gb = 10**9
+        self.assertEqual(vm.check_resources(p, 800 * gb, 32000, 28000), ([], []))
+        errors, _ = vm.check_resources(p, 10 * gb, 32000, 28000)
+        self.assertIn("mindestens 20 GB", errors[0])
+        errors, notes = vm.check_resources(p, 100 * gb, 32000, 28000)
+        self.assertEqual(errors, [])
+        self.assertIn("ganz gefüllt", notes[0])
+        errors, notes = vm.check_resources(p, 800 * gb, 32000, 9000)
+        self.assertIn("RAM frei", notes[0])
+        errors, _ = vm.check_resources(p, 800 * gb, 8000, 7000)
+        self.assertIn("zu viel", errors[0])
+        self.assertEqual(vm.ram_mb("MemTotal:       32000000 kB\nMemAvailable:   20480000 kB\n"), (31250, 20000))
+
+    def test_describe_and_viewer(self):
+        self.assertEqual(vm.describe(vm.PROFILES["VM-Legacy"]),
+                         "BIOS (Legacy) · i440FX · SATA-HDD 80 GB · Intel e1000 · 2 Kerne · 4 GB RAM")
+        self.assertEqual(vm.viewer_command("VM-Klein"),
+                         ["virt-viewer", "-c", "qemu:///system", "--wait", "--reconnect", "VM-Klein"])
+        self.assertEqual(set(vm.PROFILE_NOTES), set(vm.PROFILES))
+        self.assertEqual((vm.state_text("shut off"), vm.state_text("running")), ("aus", "läuft"))
 
 
 if __name__ == "__main__":
