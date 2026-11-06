@@ -80,6 +80,7 @@ bestätigt.
 - [ ] „Prüfen“ nach einem Windows-Update: Startreihenfolge noch richtig?
 
 ### 3. Master-Image (Anleitung: [MASTER-IMAGE.md](MASTER-IMAGE.md))
+Geht ohne echte Geräte mit VMs (Plan 06.11.): **Referenz = VM-Win11** neu **von ISO** installieren (Netzwerk der VM vorher trennen: `virsh -c qemu:///system domif-setlink VM-Win11 <vnetX> down`, vor dem Agent wieder `up`), in der Region-Seite Ctrl+Shift+F3 → Audit-Modus; nach Sysprep **nur „Einschalten und Agent starten“**; **Zielgerät = zweite VM** mit Profil VM-Win11 (z. B. `VM-Win11-B`). Die heutige VM-Win11 (Direktinstallation) taugt nicht als Referenz – Ersteinrichtung schon durchlaufen, Konto angelegt.
 - [ ] Referenzgerät: Audit-Modus (Ctrl+Shift+F3), Programme, BitLocker aus, `sysprep /generalize /oobe /shutdown`
 - [ ] Ohne Windows zu starten mit dem Agent-Stick „Disk-Image erstellen“
 - [ ] Rechtsklick → „Als Master-Image markieren“ → ★ Master in der Liste
