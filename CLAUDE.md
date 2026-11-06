@@ -1,6 +1,14 @@
 # Hinweise für Claude Code – Okula Recovery Tool
 
-Arbeitsbranch: `claude/blissful-goldberg-mo3xda` (einziger Branch). Sprache in Doku und Oberfläche: Deutsch (Schweiz, „ss“ statt „ß“).
+Arbeitsbranch: `claude/blissful-goldberg-mo3xda` (einziger Branch). Sprache in Chat, Doku und Oberfläche: Deutsch (Schweiz, „ss“ statt „ß“).
+
+## Sitzungsstart – immer zuerst
+
+1. **`docs/PROJEKTLEITUNG.md` lesen:** Rollen (Projektleitung oder Umsetzungs-Agent), Ablauf Brainstorming → Prompt,
+   Prompts in `docs/prompts/`.
+2. **Projektleitung ändert keinen Code des Tools** (`okula_recovery/`, `tests/`, `install.sh`, `packaging/`) – auch nicht
+   auf Zuruf; Code ändert nur ein Umsetzungs-Agent mit Prompt aus `docs/prompts/`. Im Zweifel nachfragen.
+3. Gearbeitet wird nur über GitHub; Dominik installiert von Hand auf dem Server. Statuszeile (`.claude/`) nie entfernen.
 
 ## Schreibstil (Oberfläche, Hilfe F1, Meldungen)
 
