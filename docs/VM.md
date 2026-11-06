@@ -2,7 +2,7 @@
 
 Stand: **in Arbeit** – Konzept mit Dominik festgelegt am 06.11.2026, Umsetzung in 4 Aufträgen
 (Prompts `docs/prompts/I-001-*.md`). Auftrag 1 „VM-Grundlage“ umgesetzt 06.11.2026, Nacharbeit 1b am selben Tag,
-Auftrag 2 „VMs im Tool“ (Oberfläche) ebenfalls am 06.11.2026.
+Auftrag 2 „VMs im Tool“ (Oberfläche) ebenfalls am 06.11.2026, Auftrag 3 „Digitaler Zwilling“ (mit Ä-036) am 06.11.2026.
 
 ## Ziel
 
@@ -71,7 +71,7 @@ Gerätefenster → **„VM mit dieser Hardware erstellen …“**. Quelle: das g
 | `disks`: Grösse, `transport` sata/nvme, Modell (120 GB SATA KINGSTON SH103S3120G) | ✔ Grösse genau, Anschluss genau, Modellname soweit QEMU es erlaubt |
 | Partitionstabelle `pttype` des Systemdisks (`dos`) | ✔ bestimmt die Firmware: `dos` → BIOS (Legacy), `gpt` → UEFI |
 | `platform`: TPM, Secure Boot | ✔ TPM 2.0 / Secure Boot, wenn das Gerät sie hat |
-| `network`: Treiber (r8169) | ~ ähnliches Modell: Intel → e1000e; Realtek → rtl8139 hat in Windows keinen Treiber, darum in Auftrag 3 klären (Vorschlag e1000); **MAC nie übernehmen** |
+| `network`: Treiber (r8169) | ~ immer Intel (Q35 → e1000e, i440FX → e1000), auch bei Realtek – rtl8139 hat in Windows keinen Treiber; **MAC nie übernehmen** |
 | Disk-Inhalt | ✔ optional letztes Image des Geräts einspielen (Standard an) |
 | `oem_key` | ✖ bewusst nicht (Lizenz gehört zum Gerät) |
 | SMART, Akku, Grafik, WLAN, Sound, Hersteller-BIOS-Einstellungen | ✖ nicht nachbildbar |
@@ -84,7 +84,7 @@ Nicht nachbildbar sind auch Eigenheiten echter Hersteller-Firmware (z. B. B-004,
 |---|---|---|---|
 | 1 | **VM-Grundlage** ✔ 06.11. (Nacharbeit 1b ✔ 06.11.) | `install.sh`: Pakete, Pool `okula`, Brücke `br0` (`okula-bridge`); `vm.py`: Hardware-Profil → libvirt-Konfiguration, Aktionen über virsh (als Benutzer, kein Root-Helfer nötig); Tests | `I-001-1-vm-grundlage.md`, `I-001-1b-vm-nacharbeit.md` |
 | 2 | **VMs im Tool** ✔ 06.11. | Ordner „Virtuelle Maschinen“, „Neue VM …“ mit Profilen, Starten (Normal / Mit Agent / Von ISO), Herunterfahren, Bildschirm, Netzwerkstart-Freigabe, Hardware ändern | `I-001-2-vms-im-tool.md` |
-| 3 | **Hardware vom Gerät** | „VM mit dieser Hardware erstellen …“, Identität abwandeln, letztes Image einspielen | folgt |
+| 3 | **Hardware vom Gerät** ✔ 06.11. | „VM mit dieser Hardware erstellen …“, Identität abwandeln, letztes Image einspielen; Ä-036 leere Disk | `I-001-3-digitaler-zwilling.md` |
 | 4 | **Snapshots** | Zustand sichern und zurückholen | folgt |
 
 Kein neuer Agent-Stick nötig (Agent unverändert).
@@ -129,3 +129,21 @@ Kein neuer Agent-Stick nötig (Agent unverändert).
 - **Bildschirm nach vorne holen:** unter Wayland nicht möglich – ein offenes virt-viewer-Fenster derselben VM wird
   geschlossen und neu geöffnet.
 - **Geräteeintrag Umbenennen** ändert nur den Namen im Tool, nicht den libvirt-Namen der VM.
+
+### Abweichungen und Grenzen aus Auftrag 3 (06.11.2026)
+
+- **RAM auf ganze GB aufgerundet** statt „auf MB“: Das Inventar meldet `MemTotal` ohne das Reservat der Firmware
+  (SHARKBAY mit 4 GB meldet 3,77 GB). Aufgerundet entspricht der Zwilling dem eingebauten Speicher.
+- **Gehäuse-Seriennummer** (`chassis_serial`) als eigenes Profilfeld; bisher übernahm die VM dafür die
+  System-Seriennummer (bleibt so, wenn leer).
+- **Zweiter Zwilling desselben Geräts:** UUID `0c1a0001-…`, `0c1a0002-…` (sonst lehnen libvirt und die Geräteliste die
+  doppelte UUID ab); Name `VM-<Gerät>-2`.
+- **Disk-Seriennummer** `VM` + die letzten 18 Zeichen des Originals (QEMU: höchstens 20).
+- **Ä-036 – leer:** zusätzlich gilt ein „VM von ISO gestartet“ im Verlauf als mögliche Installation (von ISO lässt
+  sich in der VM von Hand installieren, ohne dass das Tool es sieht).
+- **Image einspielen** braucht den eingeschalteten Netzwerkstart; sonst ist das Häkchen aus und ausgegraut mit Grund.
+- Am Server geprüft (ohne Oberfläche, mit `virsh`): Zwillinge aus den echten Inventaren von CompactPlayer 2
+  (SHARKBAY, BIOS/SATA) und IOVERSAL-1 (UEFI/NVMe) angelegt und gestartet – SMBIOS zeigt Hersteller/Modell des
+  Originals, Seriennummern `VM-…`, UUID `0c1a0000-…`, Disk-Seriennummer im QEMU-Gerät; `match()` findet das Original
+  nicht; danach gelöscht. Den ganzen Ablauf mit Image prüft Dominik im Tool ([TESTS.md](TESTS.md) Abschnitt 10) –
+  das Tool lief während der Umsetzung, eine zweite Instanz hätte mit Beacons und Netzwerkstart kollidiert.

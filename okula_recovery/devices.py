@@ -303,11 +303,12 @@ class DeviceStore:
             self.save(dev)
             return dev, new
 
-    def register_vm(self, name: str, inv: dict, profile: str = "") -> Device:
+    def register_vm(self, name: str, inv: dict, profile: str = "", twin_of: str = "") -> Device:
         """Geräteeintrag für eine neue VM im Ordner „Virtuelle Maschinen“ mit Vor-Inventar aus dem Profil.
         Identität = SMBIOS-UUID der VM (auch als Agent-ID): Der Agent meldet beim ersten Start genau diese UUID,
         darum erkennt match() den Eintrag wieder, und es entsteht kein zweites Gerät. Netzwerkstart ist frei,
-        „Netzwerkstart zuerst“ an (feste Startreihenfolge der VM)."""
+        „Netzwerkstart zuerst“ an (feste Startreihenfolge der VM). twin_of = Geräte-ID des Originals, wenn die VM
+        ein digitaler Zwilling ist (I-001 Auftrag 3)."""
         with self.lock:
             uuid = ((inv.get("dmi") or {}).get("product_uuid") or "").lower()
             if not uuid:
@@ -323,10 +324,11 @@ class DeviceStore:
                          agent_ids=[uuid], inventory=inv, netboot=True, netfirst=True,
                          macs=[nic["mac"].lower() for nic in inv.get("network") or [] if nic.get("mac")],
                          disk_serials=[d["serial"] for d in inv.get("disks") or [] if d.get("serial")],
-                         vm={"name": name, "profile": profile}, folder=VM_FOLDER)
+                         vm={"name": name, "profile": profile, **({"twin_of": twin_of} if twin_of else {})},
+                         folder=VM_FOLDER)
             self.devices[dev.id] = dev
-            self.add_history(dev, "erfasst", "Virtuelle Maschine angelegt" + (f" (Profil {profile})" if profile
-                                                                                else ""), save=False)
+            what = f" (Profil {profile})" if profile else " (Zwilling)" if twin_of else ""
+            self.add_history(dev, "erfasst", "Virtuelle Maschine angelegt" + what, save=False)
             self.save(dev)
             return dev
 

@@ -237,6 +237,8 @@ Doppelklick auf ein Gerät öffnet sein Fenster:
 •  Oben die Knöpfe: Disk-Image erstellen, Image zurückspielen, OS installieren, Backup erstellen,
     Ordner senden, Inventar neu einlesen; rechts die Symbole <i>Neu starten</i> (Pfeil im Ein/Aus-Zeichen)
     und <i>Herunterfahren</i> (Ein/Aus-Zeichen).
+•  Oben rechts <i>VM mit dieser Hardware erstellen …</i>: virtuelle Maschine mit der Hardware des Geräts
+    (Kapitel <i>Virtuelle Maschinen</i>, Abschnitt „Digitaler Zwilling“).
 •  <i>Aufträge</i>: was gerade läuft, mit Fortschritt und Log.
 •  <i>Übersicht</i>: Hersteller, Modell, Seriennummer, Starttasten, Windows 11, Garantie bis, Windows-Schlüssel.
 •  <i>Disks</i>: die Disks und ihr Zustand (SMART).
@@ -466,7 +468,12 @@ ein echter PC und startet den Agent über den Netzwerkstart – ohne Stick. Wozu
 Die Disk ist eine Datei auf der SSD des Servers und wächst mit dem belegten Platz.
 
 <b>Starten und Bedienen</b> – Rechtsklick auf die VM oder Knöpfe im Gerätefenster (Zeile <i>Virtuelle Maschine</i>):
-•  <i>Einschalten</i>: Die VM startet von ihrer Disk (z. B. Windows). Eine leere Disk meldet „kein Betriebssystem“.
+•  <i>Einschalten</i>: Die VM startet von ihrer Disk (z. B. Windows). Hatte die Disk noch nie ein System
+    (keine Partitionen, im Verlauf keine Installation und kein Zurückspielen), kommt zuerst eine Rückfrage:
+    ohne System startet die VM ins UEFI-Menü bzw. meldet „kein Betriebssystem“. Die Knöpfe:
+    <i>Einschalten und Agent starten</i> (Image zurückspielen oder OS installieren), <i>Von ISO starten …</i>
+    oder <i>Trotzdem einschalten</i>. Das UEFI-Menü bei leerer Disk ist normal und kein Fehler: VM mit
+    <i>Ausschalten …</i> ausschalten und mit Agent oder von ISO neu starten.
 •  <i>Einschalten und Agent starten</i>: Agent vormerken und einschalten. Die VM startet den Agent über den
     Netzwerkstart und erscheint mit grünem Punkt. Danach geht alles wie bei echten Geräten: Disk-Image,
     Image zurückspielen, Backup, Automatisierung. Dafür muss der Netzwerkstart eingeschaltet sein
@@ -491,6 +498,31 @@ nach <i>Einschalten und Agent starten</i> einmal über das Netzwerk. Sobald der 
 die Disk – ein Neustart danach (z. B. nach dem Zurückspielen) startet das System auf der Disk. Im Gerätefenster,
 Reiter <i>Netzwerk</i>, lässt sich der Agent auch für den nächsten Neustart einer laufenden VM vormerken.
 Wake-on-LAN und „Netzwerkstart zuerst“ gibt es bei VMs nicht.
+
+<b>Digitaler Zwilling – VM mit der Hardware eines Geräts</b>
+Wozu: ein Image auf „derselben“ Hardware testen, ohne das echte Gerät anzufassen.
+1.  Gerätefenster eines echten Geräts → <i>VM mit dieser Hardware erstellen …</i> (oben rechts), oder
+    Rechtsklick auf das Gerät. Ausgegraut, solange das Gerät noch kein Inventar hat (einmal mit dem Agent
+    verbinden). Nicht für VMs und das Demo-Gerät.
+2.  Die Vorschau zeigt <i>Gerät → VM</i>: <b>✔</b> genau übernommen, <b>~</b> angepasst, <b>✖</b> nicht
+    übernommen, darunter jede Abweichung als Hinweis. Der Name (<i>VM-</i> + Gerätename) lässt sich ändern.
+3.  <i>Letztes Image des Geräts einspielen</i> ist angehakt, das neueste Image vorgewählt (Master-Images
+    mit ★). Gibt es keins: „Kein Image dieses Geräts auf dem NAS“. Dafür muss der Netzwerkstart laufen.
+4.  <i>Erstellen</i>. Die VM steht im Ordner <i>Virtuelle Maschinen</i>. Mit Image läuft im Gerätefenster der
+    VM ein Auftrag (Reiter <i>Aufträge</i>): einschalten und Agent starten (höchstens 5 Minuten warten),
+    Image zurückspielen (vorher geprüft, ohne Anpassen), danach herunterfahren. Danach startet
+    <i>Einschalten</i> das System des Images. Bei einem Fehler bleibt die VM bestehen.
+Übernommen werden Hersteller, Modell, Version, SKU, Familie, Mainboard, BIOS (Hersteller, Version, Datum),
+Prozessor-Name und Anzahl Kerne, Arbeitsspeicher, Disk (Grösse, Anschluss SATA/NVMe, Modellname bei SATA),
+Firmware (Partitionstabelle GPT → UEFI, MBR → BIOS), Secure Boot und TPM. Angepasst: Kerne höchstens
+Server-Kerne − 2, Arbeitsspeicher höchstens freier RAM des Servers − 4 GB, Netzwerkkarte immer Intel (Treiber
+in Windows), Gehäusetyp nur im Profil, NVMe-Modellname bleibt „QEMU NVMe Ctrl“. Die Leistung ist die der
+Server-CPU. Nicht übernommen: Windows-Schlüssel (Windows bleibt „nicht aktiviert“), Akku, WLAN, Grafik, Sound,
+SMART und Einstellungen des Hersteller-BIOS.
+<b>Abgewandelte Identität:</b> Seriennummern bekommen <i>VM-</i> vorne (z. B. VM-5CG1234XYZ), die System-UUID
+beginnt mit <i>0c1a</i>, die Disk-Seriennummer mit <i>VM</i>, die MAC ist eigene. So hält das Tool Zwilling und
+Gerät auseinander und führt sie nie zusammen. In der Übersicht der VM steht <i>Zwilling von</i> mit dem Gerät
+(anklickbar); im Verlauf beider steht der Eintrag. Ein neues Image aktualisiert den Zwilling nicht von selbst.
 
 <b>Grenzen</b>
 •  Kein echtes Hersteller-BIOS: Eigenheiten echter Geräte (z. B. Einstellungen im HP- oder Lenovo-BIOS)

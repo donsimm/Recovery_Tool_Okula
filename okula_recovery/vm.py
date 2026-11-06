@@ -31,6 +31,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass, field, fields
 from typing import Callable
 
+from okula_recovery import devices, textnorm
 from okula_recovery.inventory import CHASSIS
 
 URI = "qemu:///system"
@@ -112,6 +113,7 @@ class Smbios:
     # Typ 3 – Gehäuse (Typ-Nummer nach SMBIOS: 3 Desktop, 10 Notebook)
     chassis_vendor: str = "Okula"
     chassis_type: int = 3
+    chassis_serial: str = ""          # leer = Seriennummer des Systems (Typ 1)
 
 
 @dataclass
@@ -262,7 +264,8 @@ def domain_xml(p: VmProfile, boot: str = "normal", iso: str = "") -> str:
                                  "serial": s.serial, "uuid": s.uuid, "sku": s.sku, "family": s.family})
     _entries(sysinfo, "baseBoard", {"manufacturer": s.board_vendor, "product": s.board_product,
                                     "version": s.board_version, "serial": s.board_serial})
-    _entries(sysinfo, "chassis", {"manufacturer": s.chassis_vendor, "version": s.version, "serial": s.serial})
+    _entries(sysinfo, "chassis", {"manufacturer": s.chassis_vendor, "version": s.version,
+                                  "serial": s.chassis_serial or s.serial})
 
     os_el = _sub(dom, "os", **({"firmware": "efi"} if p.firmware.startswith("uefi") else {}))
     _sub(os_el, "type", "hvm", arch="x86_64", machine="q35" if q35 else "pc")
@@ -413,7 +416,7 @@ def pre_inventory(p: VmProfile, collected: str = "") -> dict:
            "product_family": s.family, "board_vendor": s.board_vendor, "board_name": s.board_product,
            "board_serial": s.board_serial, "bios_vendor": s.bios_vendor, "bios_version": s.bios_version,
            "bios_date": s.bios_date, "chassis_type": str(s.chassis_type), "chassis_vendor": s.chassis_vendor,
-           "chassis_serial": s.serial, "chassis": CHASSIS.get(str(s.chassis_type), "")}
+           "chassis_serial": s.chassis_serial or s.serial, "chassis": CHASSIS.get(str(s.chassis_type), "")}
     nvme = p.disk.bus == "nvme"
     disk = {"name": disk_name(p), "path": f"/dev/{disk_name(p)}", "size": p.disk.size_gb * 10**9,
             "model": "QEMU NVMe Ctrl" if nvme else p.disk.model, "serial": p.disk.serial,
@@ -449,6 +452,295 @@ PROFILE_NOTES = {
     "VM-Legacy": "Älteres Gerät mit BIOS – BIOS-Netzwerkstart, Windows 10, alte Hardware",
     "VM-Klein": "Gerät mit kleiner Disk – Zurückspielen auf kleinere Disk, Linux",
 }
+
+
+# ---------- Digitaler Zwilling: Hardware von einem Gerät übernehmen (I-001 Auftrag 3) ----------
+
+TWIN_UUID_PREFIX = "0c1a0000"    # ersetzt die ersten 8 Hex-Stellen der System-UUID (Kennzeichen „Zwilling“)
+SMBIOS_MAX = 64                  # Länge der SMBIOS-Texte (Seriennummern) in der VM
+SERVER_CORES_FREE = 2            # so viele Kerne bleiben dem Server
+TWIN_RAM_RESERVE_MB = 4096       # so viel RAM bleibt dem Server beim Zwilling frei
+BIOS_DATE_RE = re.compile(r"^\d{2}/\d{2}/(\d{2}|\d{4})$")   # libvirt verlangt MM/DD/YY bzw. MM/DD/YYYY
+# Ergebnis-Zeichen der Vorschau: genau übernommen, angepasst, nicht übernommen
+EXACT, ADAPTED, SKIPPED = "✔", "~", "✖"
+
+
+@dataclass
+class ServerInfo:
+    """Was der Server für einen Zwilling hergibt (in der Oberfläche aus os.cpu_count() und ram_mb())."""
+    cores: int = 8
+    ram_free_mb: int = 16384
+    taken_names: tuple = ()      # VM- und Gerätenamen, die es schon gibt
+    taken_uuids: tuple = ()      # UUIDs (klein geschrieben), die es schon gibt
+
+
+def system_disk(inv: dict) -> dict:
+    """Disk mit installiertem System (inventory.systems[].disk), sonst die erste Disk ({} ohne Disk)."""
+    disks = (inv or {}).get("disks") or []
+    for s in (inv or {}).get("systems") or []:
+        for d in disks:
+            if s.get("disk") and d.get("name") == s.get("disk"):
+                return d
+    return disks[0] if disks else {}
+
+
+def wired_nic(inv: dict) -> dict:
+    nics = (inv or {}).get("network") or []
+    return next((n for n in nics if not n.get("wireless")), nics[0] if nics else {})
+
+
+def nic_vendor(driver: str) -> str:
+    """Hersteller der echten Netzwerkkarte aus dem Linux-Treiber (für die Vorschau)."""
+    d = (driver or "").lower()
+    if d.startswith(("r81", "rtl", "8139")):
+        return "Realtek"
+    if d.startswith(("e1000", "igb", "igc", "ixgb", "ice", "i40e")):
+        return "Intel"
+    if d.startswith(("tg3", "bnx")):
+        return "Broadcom"
+    if d.startswith(("atl", "alx")):
+        return "Qualcomm Atheros"
+    return ""
+
+
+def twin_name(device_name: str, taken=()) -> str:
+    """„VM-<Gerätename>“ mit erlaubten Zeichen (NAME_RE), höchstens 48 Zeichen, eindeutig."""
+    base = re.sub(r"[^A-Za-z0-9._-]+", "-", textnorm.to_ascii(device_name or "")).strip("-._")
+    base = re.sub(r"-{2,}", "-", base)
+    name = ("VM-" + base if base else "VM-Zwilling")[:44].rstrip("-._")
+    return unique_name(name, taken)
+
+
+def _twin_serial(value: str, prefix: str = "VM-", limit: int = SMBIOS_MAX) -> str:
+    """Seriennummer mit Kennzeichen; Platzhalter ab Werk → "" (wird wie bei neuen VMs erzeugt)."""
+    if devices.placeholder_serial((value or "").strip()):
+        return ""
+    v = re.sub(r"\s+", "", value)
+    return (prefix + v)[:limit] if not devices.placeholder_serial(v) else ""
+
+
+def _twin_uuid(value: str, taken=()) -> str:
+    """Erste 8 Hex-Stellen → 0c1a0000 (Rest gleich). Gibt es die schon (zweiter Zwilling), 0c1a0001 … .
+    Platzhalter oder ungültig → "" (wird neu erzeugt)."""
+    if devices.placeholder_uuid(value or ""):
+        return ""
+    try:
+        rest = str(uuidlib.UUID(value.strip()))[8:]
+    except (ValueError, AttributeError):
+        return ""
+    taken = {t.lower() for t in taken} | {value.strip().lower()}
+    for n in range(0x10000):
+        candidate = f"{TWIN_UUID_PREFIX[:4]}{n:04x}{rest}"
+        if candidate not in taken:
+            return candidate
+    return ""
+
+
+def _disk_serial(value: str) -> str:
+    v = re.sub(r"[^A-Za-z0-9_.-]+", "", value or "")
+    if devices.placeholder_serial((value or "").strip()) or devices.placeholder_serial(v):
+        return ""
+    return "VM" + v[-18:]                     # QEMU: höchstens 20 Zeichen; das Ende unterscheidet Disks meist
+
+
+def _gb_text(mb: int) -> str:
+    gb = mb / 1024
+    return f"{gb:.0f} GB" if abs(gb - round(gb)) < 0.05 else f"{gb:.1f} GB"
+
+
+def profile_from_inventory(inv: dict, server: ServerInfo, device_name: str = "") -> tuple[VmProfile, list[str]]:
+    """VM-Profil mit der Hardware eines Geräts (digitaler Zwilling) und Hinweise zu jeder Abweichung.
+    Übernahme laut docs/VM.md „Hardware von einem Gerät übernehmen“. Identität abgewandelt (VM-…, UUID 0c1a…,
+    Disk-Seriennummer VM…), MAC immer neu – sonst führt das Tool VM und Gerät zusammen. Kein GTK, kein virsh."""
+    inv = inv or {}
+    d = inv.get("dmi") or {}
+    plat = inv.get("platform") or {}
+    notes: list[str] = []
+    disk = system_disk(inv)
+
+    # Firmware aus der Partitionstabelle der Systemdisk (so ist das System installiert)
+    pttype = (disk.get("pttype") or "").lower()
+    uefi = pttype == "gpt" if pttype in ("gpt", "dos") else bool(plat.get("uefi"))
+    if not pttype:
+        notes.append("Disk ohne Partitionstabelle – Firmware wie beim Gerät gestartet ("
+                     + ("UEFI" if uefi else "BIOS") + ")")
+    firmware = ("uefi-sb" if plat.get("secure_boot") else "uefi") if uefi else "bios"
+    chipset = "q35" if uefi else "i440fx"
+    tpm_dev = str(plat.get("tpm") or "")
+    tpm = bool(tpm_dev)
+    if tpm and tpm_dev != "2.0":
+        notes.append(f"TPM {tpm_dev} → TPM 2.0 (QEMU bildet nur 2.0 nach)")
+
+    # Disk
+    size = int(disk.get("size") or 0)
+    size_gb = max(1, -(-size // 10**9)) if size else 64
+    if not size:
+        notes.append("Disk-Grösse unbekannt – 64 GB")
+    bus = "nvme" if (disk.get("transport") or "").lower() == "nvme" else "sata"
+    if disk and (disk.get("transport") or "").lower() not in ("nvme", "sata", ""):
+        notes.append(f"Disk-Anschluss {disk.get('transport')} → SATA")
+    model = re.sub(r"\s+", " ", disk.get("model") or "").strip()
+    if len(model) > 40:
+        notes.append("Modellname der Disk auf 40 Zeichen gekürzt")
+        model = model[:40].rstrip()
+    if bus == "nvme" and model:
+        notes.append(f"Modellname der NVMe-Disk bleibt „QEMU NVMe Ctrl“ (statt {model})")
+    rpm = int(disk.get("rpm") or disk.get("rotation_rate") or 0)
+    disk_spec = DiskSpec(bus=bus, size_gb=size_gb, model=model, serial=_disk_serial(disk.get("serial") or ""),
+                         rpm=rpm if bus == "sata" and rpm > 1 else 0)
+
+    # CPU: Name und Anzahl wie im Gerät, höchstens Server-Kerne − 2
+    c = inv.get("cpu") or {}
+    cores = max(1, int(c.get("cores") or 0) or 2)
+    threads_total = max(cores, int(c.get("threads") or 0) or cores)
+    per_core = max(1, threads_total // cores)
+    limit = max(1, int(server.cores or 1) - SERVER_CORES_FREE)
+    if cores * per_core > limit:
+        old = f"{cores} Kerne / {cores * per_core} Threads"
+        if per_core > limit:
+            per_core = 1
+        cores = max(1, limit // per_core)
+        notes.append(f"Prozessor {old} → {cores} Kerne / {cores * per_core} Threads (Server)")
+    cpu_name = re.sub(r"\s+", " ", c.get("model") or "").strip()
+
+    # RAM: wie im Gerät (Inventar = Arbeitsspeicher ohne Reservat → auf ganze GB), höchstens freier RAM − 4 GB
+    mem = int(inv.get("memory") or 0)
+    ram = max(1024, -(-mem // 2**30) * 1024) if mem else 4096
+    if not mem:
+        notes.append("Arbeitsspeicher unbekannt – 4 GB")
+    cap = (int(server.ram_free_mb or 0) - TWIN_RAM_RESERVE_MB) // 512 * 512
+    if server.ram_free_mb and ram > cap:
+        new = max(1024, cap)
+        notes.append(f"RAM {_gb_text(ram)} → {_gb_text(new)} (Server)")
+        ram = new
+
+    # Netzwerkkarte: immer Intel (Treiber in Windows), MAC immer eigene
+    nic_model = "e1000e" if chipset == "q35" else "e1000"
+    real = wired_nic(inv)
+    driver = real.get("driver") or ""
+    if driver and driver != nic_model:
+        vendor = nic_vendor(driver)
+        notes.append(f"Netzwerkkarte {(vendor + ' ') if vendor else ''}{driver} → Intel {nic_model}")
+    notes.append("MAC-Adresse neu (eigene MAC der VM)")
+
+    # SMBIOS genau, Identität abgewandelt; fehlende Werte leer (keine Okula-Vorgaben)
+    def text(key: str) -> str:
+        return re.sub(r"\s+", " ", str(d.get(key) or "")).strip()[:SMBIOS_MAX]
+
+    bios_date = text("bios_date")
+    if bios_date and not BIOS_DATE_RE.match(bios_date):
+        notes.append(f"BIOS-Datum „{bios_date}“ nicht übernehmbar (Format MM/TT/JJJJ)")
+        bios_date = ""
+    try:
+        chassis_type = int(d.get("chassis_type") or 0)
+    except (TypeError, ValueError):
+        chassis_type = 0
+    chassis_type = chassis_type if 1 <= chassis_type <= 36 else 2          # 2 = „Unknown“ nach SMBIOS
+    if d.get("chassis") or d.get("chassis_type"):
+        notes.append("Gehäusetyp nur im Profil (in der VM nicht einstellbar)")
+    serial = _twin_serial(d.get("product_serial") or "")
+    uid = _twin_uuid(d.get("product_uuid") or "", server.taken_uuids)
+    if not serial:
+        notes.append("Seriennummer des Geräts fehlt oder ist ein Platzhalter – neue erzeugt")
+    if not uid:
+        notes.append("System-UUID des Geräts fehlt oder ist ein Platzhalter – neue erzeugt")
+    smbios = Smbios(bios_vendor=text("bios_vendor"), bios_version=text("bios_version"), bios_date=bios_date,
+                    manufacturer=text("sys_vendor"), product=text("product_name"), version=text("product_version"),
+                    sku=text("product_sku"), family=text("product_family"), serial=serial, uuid=uid,
+                    board_vendor=text("board_vendor"), board_product=text("board_name"),
+                    board_version=text("board_version"), board_serial=_twin_serial(d.get("board_serial") or ""),
+                    chassis_vendor=text("chassis_vendor"), chassis_type=chassis_type,
+                    chassis_serial=_twin_serial(d.get("chassis_serial") or ""))
+    if smbios.serial and not smbios.board_serial:
+        smbios.board_serial = smbios.serial + "-B"     # sonst erzeugt fill_identity eine eigene
+    if inv.get("oem_key"):
+        notes.append("OEM-Key nicht übernommen – Windows bleibt „nicht aktiviert“")
+
+    p = VmProfile(name=twin_name(device_name or " ".join(x for x in (text("sys_vendor"), text("product_name"))
+                                                         if x), server.taken_names),
+                  firmware=firmware, tpm=tpm, chipset=chipset, disk=disk_spec,
+                  nic=NicSpec(model=nic_model), cpu=CpuSpec(cores=cores, threads=per_core, name=cpu_name),
+                  ram_mb=ram, smbios=smbios)
+    p.validate()
+    return p, notes
+
+
+def twin_rows(inv: dict, p: VmProfile) -> list[tuple[str, str, str, str]]:
+    """Vorschau Gerät → VM: (Merkmal, Gerät, VM, Zeichen ✔ ~ ✖) laut Tabelle in docs/VM.md."""
+    inv = inv or {}
+    d, plat, c = inv.get("dmi") or {}, inv.get("platform") or {}, inv.get("cpu") or {}
+    s = p.smbios
+    rows: list[tuple[str, str, str, str]] = []
+
+    def join(*parts) -> str:
+        return " ".join(str(x) for x in parts if x)
+
+    def same(label: str, dev: str, vmv: str) -> None:
+        rows.append((label, dev or "–", vmv or "–", EXACT if dev == vmv else ADAPTED))
+
+    same("Hersteller / Modell", join(d.get("sys_vendor"), d.get("product_name")), join(s.manufacturer, s.product))
+    same("Version / SKU / Familie", " · ".join(x for x in (d.get("product_version"), d.get("product_sku"),
+                                                           d.get("product_family")) if x),
+         " · ".join(x for x in (s.version, s.sku, s.family) if x))
+    same("Mainboard", join(d.get("board_vendor"), d.get("board_name")), join(s.board_vendor, s.board_product))
+    same("BIOS", join(d.get("bios_vendor"), d.get("bios_version"), d.get("bios_date")),
+         join(s.bios_vendor, s.bios_version, s.bios_date))
+    rows.append(("Gehäusetyp", d.get("chassis") or "–", (CHASSIS.get(str(s.chassis_type), "") or "–")
+                 + " (nur im Profil)", ADAPTED))
+    rows.append(("Seriennummer", d.get("product_serial") or "–", s.serial or "neu", ADAPTED))
+    rows.append(("System-UUID", d.get("product_uuid") or "–", s.uuid or "neu", ADAPTED))
+    disk = system_disk(inv)
+    pt = (disk.get("pttype") or "").lower()
+    dev_fw = {"gpt": "UEFI (GPT)", "dos": "BIOS (MBR)"}.get(pt, "UEFI" if plat.get("uefi") else "BIOS")
+    if plat.get("secure_boot"):
+        dev_fw += " · Secure Boot"
+    vm_fw = {"uefi-sb": "UEFI · Secure Boot", "uefi": "UEFI", "bios": "BIOS (Legacy)"}[p.firmware]
+    rows.append(("Firmware", dev_fw, vm_fw + (" · Q35" if p.chipset == "q35" else " · i440FX"), EXACT))
+    tpm = str(plat.get("tpm") or "")
+    rows.append(("TPM", tpm or "keins", "2.0" if p.tpm else "keins", EXACT if (tpm or "keins") ==
+                 ("2.0" if p.tpm else "keins") else ADAPTED))
+    dev_cpu = f"{c.get('model', '')} ({c.get('cores', '?')} Kerne / {c.get('threads', '?')} Threads)" if c else "–"
+    vm_threads = p.cpu.cores * p.cpu.threads
+    vm_cpu = f"{p.cpu.name} ({p.cpu.cores} Kerne / {vm_threads} Threads)"
+    exact = c and int(c.get("cores") or 0) == p.cpu.cores and int(c.get("threads") or 0) == vm_threads
+    rows.append(("Prozessor", dev_cpu, vm_cpu + " · Leistung der Server-CPU", EXACT if exact else ADAPTED))
+    mem = int(inv.get("memory") or 0)
+    rows.append(("Arbeitsspeicher", _gb_text(mem // 2**20) if mem else "–", _gb_text(p.ram_mb),
+                 EXACT if mem and -(-mem // 2**30) * 1024 == p.ram_mb else ADAPTED))
+    dev_disk = join(f"{int(disk.get('size') or 0) / 10**9:.0f} GB" if disk.get("size") else "",
+                    (disk.get("transport") or "").upper(), disk.get("model")) if disk else "–"
+    vm_disk = join(f"{p.disk.size_gb} GB", p.disk.bus.upper(),
+                   "QEMU NVMe Ctrl" if p.disk.bus == "nvme" else p.disk.model)
+    rows.append(("Disk", dev_disk, vm_disk, EXACT if p.disk.bus == "sata" and
+                 (disk.get("model") or "").strip() == p.disk.model else ADAPTED))
+    rows.append(("Disk-Seriennummer", disk.get("serial") or "–", p.disk.serial or "neu", ADAPTED))
+    nic = wired_nic(inv)
+    vendor = nic_vendor(nic.get("driver", ""))
+    rows.append(("Netzwerkkarte", join(vendor, nic.get("driver")) or "–",
+                 f"Intel {p.nic.model} · eigene MAC", ADAPTED))
+    rows.append(("Windows-Schlüssel (OEM)", "vorhanden" if inv.get("oem_key") else "keiner",
+                 "nicht übernommen – Windows „nicht aktiviert“", SKIPPED))
+    rows.append(("Akku, WLAN, Grafik, Sound, SMART", "", "nicht nachbildbar", SKIPPED))
+    return rows
+
+
+# Verlaufseinträge, nach denen auf der Disk einer VM ein System sein kann (Ä-036)
+SYSTEM_KINDS = ("install", "linux", "restore", "auto")
+
+
+def blank_disk(inv: dict, history: list[dict]) -> bool:
+    """Ä-036: Hatte die VM noch nie ein System? Ja, wenn keine Disk im Inventar Partitionen bzw. eine
+    Partitionstabelle hat und im Verlauf weder eine Installation noch ein Zurückspielen noch ein Start von ISO
+    steht (von ISO lässt sich in der VM von Hand installieren)."""
+    disks = (inv or {}).get("disks") or []
+    if any(d.get("partitions") or d.get("pttype") for d in disks):
+        return False
+    for h in history or []:
+        if h.get("kind") in SYSTEM_KINDS and h.get("ok") is not False:
+            return False
+        if h.get("kind") == "vm" and (h.get("text") or "").startswith("VM von ISO gestartet"):
+            return False
+    return True
 
 
 def free_disk(path: str = POOL_DIR) -> int:

@@ -16,13 +16,13 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 1 | 0 | 0 |
-| 🔧 Änderungen | 8 | 0 | 0 |
+| 🔧 Änderungen | 7 | 0 | 0 |
 | 💡 Ideen | 20 | 1 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
 Erledigt 31.10. zusätzlich: I-007 ✔ (Image prüfen) → Ä-027 ✔ (Demo ohne NAS) → Ä-028 ✔ (Ein/Aus-Symbole) → Ä-029 ✔ (Legende) → Ä-030 ✔ (NAS-Leiste) → I-030 ✔ (Bandbreite) → Ä-031 ✔ (Tage hell/dunkel).
-Als Nächstes: **I-001 VMs** (in Arbeit, 4 Aufträge, [VM.md](VM.md)) – Auftrag 1 „VM-Grundlage“ ✔ 06.11., Nacharbeit 1b ✔ 06.11., Auftrag 2 „VMs im Tool“ ✔ 06.11. (umgesetzt, Abnahme offen; am Server `git pull && sudo ./install.sh`, Tool neu starten, Tests [TESTS.md](TESTS.md) Abschnitt 9), dann Auftrag 3 „Hardware vom Gerät“. Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
+Als Nächstes: **I-001 VMs** (in Arbeit, 4 Aufträge, [VM.md](VM.md)) – Auftrag 1 „VM-Grundlage“ ✔ 06.11., Nacharbeit 1b ✔ 06.11., Auftrag 2 „VMs im Tool“ ✔ 06.11., Auftrag 3 „Digitaler Zwilling“ mit Ä-036 ✔ 06.11. (umgesetzt, Abnahme offen; am Server `git pull && sudo ./install.sh`, Tool neu starten, Tests [TESTS.md](TESTS.md) Abschnitte 9 und 10), dann Auftrag 4 „Snapshots“. Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
 Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
 ## 🐞 Bugs
@@ -42,7 +42,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 | Ä-007 | 🔴 | offen | Claude | **Bestätigung vor dem Löschen:** Wird der Schalter eingeschaltet, während das Gerät verbunden ist, startet die Automatisierung ohne Rückfrage nach 30 s und löscht die Disk (`ui.save_automation` → `consider`). Nötig: rote Zusammenfassung „Disk Samsung 256 GB von HP-PC-07 wird gelöscht, Master ‚Win11 Büro‘, neuer Name …, Backup: nein“ mit Knopf „Löschen und neu aufsetzen“ | 31.10. (Laien-Test) |
 | Ä-010 | 🟡 | offen | Claude | **Vorabprüfung mit Ampel statt Fehler mitten im Lauf:** Image passt auf die Disk, UEFI/BIOS-Modus passt zum Master, BitLocker auf der Zieldisk (dann ist kein Datei-Backup möglich), Agent-Stick aktuell, Windows-Edition des Masters passt zum Key (Pro/Home). Anzeige: „✔ Bereit“ bzw. „⚠ Achtung: …“ | 31.10. (Laien-Test) |
 | Ä-012 | 🟡 | offen | Claude | **Einfache Sprache im Reiter Automatisierung:** „Zieldisk“ → „Festplatte, die gelöscht wird“; Sysprep, Master und Content-Projekte mit einem „?“ pro Abschnitt erklären. Gerätenamen wie „DESKTOP-8F3K2LQ“ markieren und zum Umbenennen auffordern; optional Namensschema pro Vorlage (z. B. `KUNDE-001` fortlaufend) | 31.10. (Laien-Test) |
-| Ä-036 | 🟡 | offen | Dominik/Claude | **VM mit leerer Disk: Rückfrage statt UEFI-Menü:** „Einschalten“ einer VM, auf deren Disk noch nie ein System installiert wurde, endet heute im UEFI-Setup-Menü (Disk leer → Netzwerkstart „lokal“ → OVMF-Setup; Grenze aus I-001 Auftrag 2). Stattdessen fragen: „Die Disk ist leer – Agent starten oder von ISO starten?“ (Knöpfe *Einschalten und Agent starten*, *Von ISO starten …*, *Trotzdem einschalten*). Leer = laut Vor-Inventar/Agent keine Partition bzw. noch kein Image zurückgespielt und kein OS installiert. Hilfe-Kapitel „Virtuelle Maschinen“: Hinweis, dass das UEFI-Menü bei leerer Disk normal ist und wie es weitergeht. Umsetzen zusammen mit I-001 Auftrag 3 | 06.11. |
 
 ## 💡 Ideen
 
@@ -120,12 +119,32 @@ Gerätename = Name im Tool.
   nach Prüfung am Server; ersetzt den Prompt-Entscheid „fest Netzwerk → Disk“): OVMF startet nach grub-`exit`
   (Startart „lokal“) nicht von der Disk. Das Tool stellt die laufende VM nach dem Verbinden des Agents auf Disk
   zuerst um. Details [VM.md](VM.md).
+- **Digitaler Zwilling: Netzwerkkarte immer Intel** (Projektleitung, 06.11.2026, I-001 Auftrag 3): Q35 → e1000e,
+  i440FX → e1000, auch wenn das Gerät eine Realtek-Karte hat; die echte Karte steht in der Vorschau. Zweiter Zwilling
+  desselben Geräts bekommt UUID `0c1a0001-…` usw. (Umsetzungs-Agent).
 
 ## ✅ Erledigt – Änderungsprotokoll
 
 Neueste zuoberst.
 
 ### 06.11.2026
+- **I-001 Auftrag 3 – Digitaler Zwilling** (Von: Dominik): **„VM mit dieser Hardware erstellen …“** im Gerätefenster
+  (oben rechts) und im Rechtsklick auf ein Gerät (nicht für VMs/DEMO-PC, ohne Inventar ausgegraut).
+  `vm.profile_from_inventory`: Firmware aus der Partitionstabelle der Systemdisk, Secure Boot/TPM, Disk (Grösse,
+  SATA/NVMe, Modell), CPU-Name und Kerne (≤ Server-Kerne − 2), RAM (≤ frei − 4 GB), SMBIOS genau; Identität
+  abgewandelt (`VM-`-Seriennummern, UUID `0c1a0000-…`, Disk-Seriennummer `VM…`, eigene MAC), Netzwerkkarte immer
+  Intel, OEM-Key nie. Vorschau *Gerät → VM* mit ✔/~/✖ und Hinweisen, Name änderbar, Platz/RAM-Prüfung, Häkchen
+  „Letztes Image des Geräts einspielen“ (Standard an, Master mit ★). Mit Image ein Auftrag auf der VM: Einschalten
+  und Agent starten → bis 5 min warten → Zurückspielen mit Prüfung, ohne Anpassen → Herunterfahren; Fehler: Meldung,
+  VM bleibt. Merkmal `vm.twin_of`, Verlauf bei beiden, Zeile „Zwilling von“ (anklickbar) in der Übersicht der VM.
+  **Abweichungen** (Details [VM.md](VM.md)): RAM auf ganze GB aufgerundet (Inventar = MemTotal), zweiter Zwilling
+  `0c1a0001-…`, neues Profilfeld `chassis_serial`. Hilfe: Abschnitt „Digitaler Zwilling“ im Kapitel „Virtuelle
+  Maschinen“, neuer Knopf im Kapitel „Gerät verbinden“ (Gerätefenster). Tests `tests/test_vm_twin.py`. Am Server mit
+  `virsh` geprüft; Ablauf mit Image offen ([TESTS.md](TESTS.md) Abschnitt 10). Kein neuer Agent-Stick.
+- **Ä-036 – VM mit leerer Disk: Rückfrage statt UEFI-Menü** (Von: Dominik/Claude, gemeldet 06.11.): „Einschalten“
+  einer VM, deren Disk noch nie ein System hatte (keine Partitionen, im Verlauf keine Installation, kein Zurückspielen,
+  kein Start von ISO), fragt: *Einschalten und Agent starten*, *Von ISO starten …*, *Trotzdem einschalten*. Gilt für
+  alle VMs. Hilfe-Kapitel „Virtuelle Maschinen“ ergänzt. Prüfung am Server: [TESTS.md](TESTS.md) Abschnitt 9.
 - **I-001 Auftrag 2 – VMs im Tool** (Von: Dominik): Fester Ordner „Virtuelle Maschinen“ in der Geräteliste (keine
   Unterordner, VMs nicht herausziehbar, echte Geräte nicht hinein), Zustand der VM in der Statusspalte (alle 5 s ein
   `virsh list`). **Extras → Neue virtuelle Maschine …** bzw. Rechtsklick auf den Ordner: Profil, Name, Hardware,

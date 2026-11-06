@@ -7,7 +7,7 @@ import copy
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gtk  # noqa: E402
+from gi.repository import GLib, Gtk, Pango  # noqa: E402
 
 from okula_recovery import nas, oslib, vm  # noqa: E402
 
@@ -281,3 +281,142 @@ class IsoDialog(Gtk.Dialog):
     def path(self) -> str:
         model, it = self.view.get_selection().get_selected()
         return model[it][3] if it is not None else ""
+
+
+SIGN_COLORS = {vm.EXACT: "#2e7d32", vm.ADAPTED: "#6d5200", vm.SKIPPED: RED}
+
+
+class TwinDialog(Gtk.Dialog):
+    """„VM mit dieser Hardware erstellen …“: Vorschau Gerät → VM, Hinweise, Name, Platz/RAM, letztes Image.
+    images: [{path, name, mtime, master, size}] des Geräts, neuestes zuerst. run() → OK, danach values()."""
+
+    def __init__(self, parent: Gtk.Window, device_name: str, inv: dict, p: vm.VmProfile, notes: list[str],
+                 taken: list[str], existing: list[vm.VmProfile], free_bytes: int, ram: tuple[int, int],
+                 images: list[dict], no_image_reason: str = ""):
+        super().__init__(title=f"VM mit dieser Hardware erstellen – {device_name}", transient_for=parent,
+                         modal=True)
+        self.set_default_size(820, 640)
+        self.p, self.taken, self.existing, self.free, self.ram = p, taken, existing, free_bytes, ram
+        self.images, self.notes = images, notes
+        self.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
+        self.ok = self.add_button("Erstellen", Gtk.ResponseType.OK)
+        self.ok.get_style_context().add_class("suggested-action")
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=14)
+        box.pack_start(_hint(f"Digitaler Zwilling von „{device_name}“: eine VM mit derselben Hardware-Beschreibung "
+                             "zum Testen von Images, ohne das Gerät anzufassen. Seriennummern und UUID sind "
+                             "abgewandelt (VM-…), die MAC ist eigene – das Tool hält VM und Gerät auseinander. "
+                             "Windows in der VM bleibt „nicht aktiviert“."), False, False, 0)
+        store = Gtk.ListStore(str, str, str, str)
+        esc = GLib.markup_escape_text
+        for label, dev_value, vm_value, sign in vm.twin_rows(inv, p):
+            store.append([f'<span foreground="{SIGN_COLORS[sign]}"><b>{sign}</b></span>', esc(label),
+                          esc(dev_value), esc(vm_value)])
+        view = Gtk.TreeView(model=store)
+        for i, title in enumerate(("", "Merkmal", "Gerät", "VM")):
+            cell = Gtk.CellRendererText()
+            if i >= 2:
+                cell.set_property("wrap-mode", Pango.WrapMode.WORD_CHAR)
+                cell.set_property("wrap-width", 280)
+            col = Gtk.TreeViewColumn(title, cell, markup=i)
+            col.set_resizable(i > 0)
+            view.append_column(col)
+        view.set_tooltip_text("✔ genau übernommen · ~ angepasst · ✖ nicht übernommen")
+        sw = Gtk.ScrolledWindow(vexpand=True)
+        sw.add(view)
+        box.pack_start(sw, True, True, 0)
+        legend = Gtk.Label(xalign=0)
+        legend.set_markup(f'<small><span foreground="{SIGN_COLORS[vm.EXACT]}"><b>✔</b></span> genau übernommen   '
+                          f'<span foreground="{SIGN_COLORS[vm.ADAPTED]}"><b>~</b></span> angepasst   '
+                          f'<span foreground="{SIGN_COLORS[vm.SKIPPED]}"><b>✖</b></span> nicht übernommen</small>')
+        box.pack_start(legend, False, False, 0)
+
+        row = Gtk.Box(spacing=8)
+        row.pack_start(Gtk.Label(label="Name", xalign=0), False, False, 0)
+        self.name = Gtk.Entry(text=p.name, width_chars=34, activates_default=True)
+        self.name.set_tooltip_text("Buchstaben, Ziffern, Punkt, Unterstrich und Bindestrich – höchstens 48 Zeichen")
+        self.name.connect("changed", lambda _e: self._check())
+        row.pack_start(self.name, False, False, 0)
+        box.pack_start(row, False, False, 0)
+
+        self.use_image = Gtk.CheckButton(label="Letztes Image des Geräts einspielen")
+        self.use_image.set_tooltip_text("VM einschalten, Agent per Netzwerkstart starten, Image zurückspielen "
+                                        "(mit Prüfung vorher, ohne Anpassen) und VM danach herunterfahren")
+        self.image_combo = Gtk.ComboBoxText()
+        for i, img in enumerate(images):
+            when = img["mtime"].strftime("%d.%m.%Y %H:%M") if img.get("mtime") else ""
+            self.image_combo.append(str(i), ("★ " if img.get("master") else "") + f"{img['name']} – {when}")
+        self.image_hint = _hint()
+        if images and not no_image_reason:
+            self.use_image.set_active(True)
+            self.image_combo.set_active(0)
+        else:
+            self.use_image.set_active(False)
+            self.use_image.set_sensitive(False)
+            self.image_combo.set_sensitive(False)
+            self.image_hint.set_text(no_image_reason or "Kein Image dieses Geräts auf dem NAS")
+        self.use_image.connect("toggled", lambda _b: self._check())
+        self.image_combo.connect("changed", lambda _c: self._check())
+        img_row = Gtk.Box(spacing=8)
+        img_row.pack_start(self.use_image, False, False, 0)
+        img_row.pack_start(self.image_combo, True, True, 0)
+        box.pack_start(img_row, False, False, 0)
+        box.pack_start(self.image_hint, False, False, 0)
+        self.check = Gtk.Label(xalign=0, wrap=True, max_width_chars=90)
+        box.pack_start(self.check, False, False, 0)
+        self.get_content_area().add(box)
+        self.set_default_response(Gtk.ResponseType.OK)
+        self._check()
+        self.show_all()
+
+    def image(self) -> dict | None:
+        if not self.use_image.get_active():
+            return None
+        idx = self.image_combo.get_active_id()
+        return self.images[int(idx)] if idx is not None else None
+
+    def values(self) -> tuple[vm.VmProfile, dict | None]:
+        p = copy.deepcopy(self.p)
+        p.name = self.name.get_text().strip()
+        return p, self.image()
+
+    def _check(self) -> None:
+        p, img = self.values()
+        errors, notes = vm.check_resources(p, self.free, *self.ram, planned=self.existing)
+        notes = list(self.notes) + notes
+        if not vm.NAME_RE.match(p.name):
+            errors.insert(0, "Name: Buchstaben, Ziffern, . _ - (ohne Leerzeichen, höchstens 48 Zeichen)")
+        elif p.name.lower() in {t.lower() for t in self.taken}:
+            errors.insert(0, f"Eine VM bzw. ein Gerät „{p.name}“ gibt es schon")
+        self.image_combo.set_sensitive(self.use_image.get_active())
+        if self.use_image.get_active() and img is None:
+            errors.append("Image wählen")
+        elif img is not None and img.get("size", 0) > p.disk.size_gb * 10**9:
+            errors.append(f"Das Image ({img['size'] / 10**9:.0f} GB) ist grösser als die Disk der VM "
+                          f"({p.disk.size_gb} GB) – stammt es von einer anderen Disk des Geräts?")
+        free = f"{self.free / 10**9:.0f} GB frei auf dem Server · RAM {self.ram[1] / 1024:.1f} von " \
+               f"{self.ram[0] / 1024:.0f} GB frei"
+        self.check.set_markup(_notes_markup(errors, notes) + ("\n" if errors or notes else "") +
+                              f'<span foreground="{GREY}">{GLib.markup_escape_text(free)}</span>')
+        self.ok.set_sensitive(not errors)
+
+
+# Antworten der Rückfrage „Disk ist leer“ (Ä-036)
+BLANK_AGENT, BLANK_ISO, BLANK_ANYWAY = 1, 2, 3
+
+
+def ask_blank_disk(parent: Gtk.Window, name: str) -> int:
+    """Ä-036: VM ohne System einschalten? → BLANK_AGENT | BLANK_ISO | BLANK_ANYWAY, 0 = Abbrechen."""
+    dlg = Gtk.MessageDialog(transient_for=parent, modal=True, message_type=Gtk.MessageType.QUESTION,
+                            buttons=Gtk.ButtonsType.NONE, text=f"Die Disk von {name} ist leer")
+    dlg.format_secondary_text(f"Die Disk von {name} ist leer – ohne System startet die VM ins UEFI-Menü bzw. meldet "
+                              "„kein Betriebssystem“.\n\nMit dem Agent lässt sich ein Image zurückspielen oder ein "
+                              "Betriebssystem installieren; von einer ISO startet z. B. die Windows-Installation.")
+    dlg.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
+    dlg.add_button("Trotzdem einschalten", BLANK_ANYWAY)
+    dlg.add_button("Von ISO starten …", BLANK_ISO)
+    agent = dlg.add_button("Einschalten und Agent starten", BLANK_AGENT)
+    agent.get_style_context().add_class("suggested-action")
+    dlg.set_default_response(BLANK_AGENT)
+    answer = dlg.run()
+    dlg.destroy()
+    return answer if answer in (BLANK_AGENT, BLANK_ISO, BLANK_ANYWAY) else 0

@@ -12,7 +12,8 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
-from okula_recovery import archive, bootkeys, devices, imagecheck, jobs, nas, pxelog, warranty, win11  # noqa: E402
+from okula_recovery import (archive, bootkeys, demostore, devices, imagecheck, jobs, nas, pxelog,  # noqa: E402
+                            warranty, win11)
 from okula_recovery.bios_tab import BiosTab  # noqa: E402
 from okula_recovery.hw_tab import HwTab  # noqa: E402
 from okula_recovery.automation_tab import AutomationTab  # noqa: E402
@@ -51,6 +52,22 @@ def platform_text(p: dict | None) -> str:
     sb = {True: " · Secure Boot an", False: " · Secure Boot aus"}.get(p.get("secure_boot"), "")
     return f"{tpm} · {boot}{sb if p.get('uefi') else ''}"
 
+def device_images(root, dev: devices.Device) -> list:
+    """Disk-Images eines Geräts auf dem NAS (Metadaten source.device_id bzw. agent_id), neuestes zuerst.
+    Für den Reiter Images und „VM mit dieser Hardware erstellen …“; läuft im Hintergrund (liest das NAS)."""
+    mine = []
+    for img in archive.scan(root).all_images():
+        if img.kind != "Disk-Image":
+            continue
+        try:
+            src = json.loads((img.path / nas.OKULA_META).read_text()).get("source") or {}
+        except (OSError, ValueError):
+            continue
+        if src.get("device_id") == dev.id or (src.get("agent_id") and src["agent_id"] in dev.agent_ids):
+            mine.append(img)
+    return sorted(mine, key=lambda i: i.mtime, reverse=True)
+
+
 class DeviceWindow(Gtk.Window):
     def __init__(self, main: "MainWindow", dev: devices.Device):
         super().__init__(title=f"Gerät – {dev.name}")
@@ -73,6 +90,12 @@ class DeviceWindow(Gtk.Window):
         head.pack_start(self.name, False, False, 0)
         self.state = Gtk.Label(xalign=0)
         head.pack_start(self.state, True, True, 0)
+        # Digitaler Zwilling (I-001 Auftrag 3): nicht für VMs und das Demo-Gerät
+        self.btn_twin = None
+        if not dev.is_vm and not demostore.is_demo_device(dev):
+            self.btn_twin = Gtk.Button(label="VM mit dieser Hardware erstellen …")
+            self.btn_twin.connect("clicked", lambda _b: main.vm_twin(self.dev))
+            head.pack_end(self.btn_twin, False, False, 0)
         root.pack_start(head, False, False, 0)
         self.summary = Gtk.Label(xalign=0, selectable=True, wrap=True)
         root.pack_start(self.summary, False, False, 0)
@@ -344,6 +367,11 @@ class DeviceWindow(Gtk.Window):
         online = agent is not None and agent.control_port > 0
         for b in self.buttons.values():
             b.set_sensitive(online)
+        if self.btn_twin is not None:
+            why = self.main.twin_why(dev)
+            self.btn_twin.set_sensitive(not why)
+            self.btn_twin.set_tooltip_text(why or "Virtuelle Maschine mit Hersteller, Modell, BIOS, CPU, RAM, Disk und "
+                                                  "Firmware dieses Geräts anlegen – auf Wunsch mit dem letzten Image")
         if dev.is_vm:
             for entry in self.main.vm_actions(dev):
                 if entry is None:
@@ -364,6 +392,7 @@ class DeviceWindow(Gtk.Window):
         inv, dev = self.dev.inventory, self.dev
         d, cpu = inv.get("dmi") or {}, inv.get("cpu") or {}
         systems = inv.get("systems") or []
+        original = None             # VM als Zwilling: Originalgerät (Zeile „Zwilling von“)
         rows = [("Betriebssystem", "\n".join(f"{s['name']}  ({s.get('disk', '')}/{s.get('partition', '')})"
                                               for s in systems) or "nicht erkannt"),
                 ("Computername", ", ".join(s["hostname"] for s in systems if s.get("hostname")) or "–"),
@@ -395,10 +424,18 @@ class DeviceWindow(Gtk.Window):
             profile = dev.vm.get("profile")
             rows.insert(0, ("Virtuelle Maschine", f"{dev.vm.get('name', '')}" + (f" (Profil {profile})" if profile
                                                                                 else "") + note))
+            original = self.main.store.devices.get(dev.vm.get("twin_of", ""))
+            if dev.vm.get("twin_of"):
+                rows.insert(1, ("Zwilling von", original.name if original else "Gerät gelöscht"))
         for i, (k, v) in enumerate(rows):
             key = Gtk.Label(label=k, xalign=0, yalign=0)
             key.get_style_context().add_class("status-idle")
             val = Gtk.Label(label=v or "–", xalign=0, selectable=True, wrap=True)
+            if k == "Zwilling von" and dev.is_vm and original is not None:     # anklickbar → Gerät öffnen
+                val = Gtk.Label(xalign=0)
+                val.set_markup(f'<a href="geraet">{GLib.markup_escape_text(original.name)}</a>')
+                val.set_tooltip_text("Gerätefenster des Originals öffnen")
+                val.connect("activate-link", lambda _l, _u, o=original: (self.main.open_device(o), True)[1])
             self.info_grid.attach(key, 0, i, 1, 1)
             self.info_grid.attach(val, 1, i, 1, 1)
         self._key_row(len(rows))
@@ -799,17 +836,7 @@ class DeviceWindow(Gtk.Window):
         dev = self.dev
 
         def work():
-            mine = []
-            for img in archive.scan(root).all_images():
-                if img.kind != "Disk-Image":
-                    continue
-                try:
-                    src = json.loads((img.path / nas.OKULA_META).read_text()).get("source") or {}
-                except (OSError, ValueError):
-                    continue
-                if src.get("device_id") == dev.id or (src.get("agent_id") and src["agent_id"] in dev.agent_ids):
-                    mine.append(img)
-            return mine, root
+            return device_images(root, dev), root
 
         run_async(work, self._on_images)
 

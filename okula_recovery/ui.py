@@ -25,7 +25,7 @@ from okula_recovery.inventory_dialog import InventoryExportDialog  # noqa: E402
 from okula_recovery.imagecheck_dialog import CheckWindow  # noqa: E402
 from okula_recovery.backup_dialogs import (BackupDetailsDialog, BackupDialog, RestoreFilesDialog,  # noqa: E402
                                            edit_note)
-from okula_recovery.device_window import DeviceWindow  # noqa: E402
+from okula_recovery.device_window import DeviceWindow, device_images  # noqa: E402
 from okula_recovery.copy_dialog import CopyDialog  # noqa: E402
 from okula_recovery.help_window import HelpWindow  # noqa: E402
 from okula_recovery.settings_dialogs import ExportDialog, import_settings  # noqa: E402
@@ -33,7 +33,8 @@ from okula_recovery.pxe_dialog import PxeDialog  # noqa: E402
 from okula_recovery.stick_dialog import helper_subcommand, run_helper  # noqa: E402
 from okula_recovery.loadbar import LoadBar  # noqa: E402
 from okula_recovery.usb_dialogs import CloneDialog, FormatDialog  # noqa: E402
-from okula_recovery.vm_dialogs import HardwareDialog, IsoDialog, NewVmDialog  # noqa: E402
+from okula_recovery.vm_dialogs import (BLANK_AGENT, BLANK_ANYWAY, BLANK_ISO, HardwareDialog, IsoDialog,  # noqa: E402
+                                       NewVmDialog, TwinDialog, ask_blank_disk)
 from okula_recovery.image_dialog import ImageDialog  # noqa: E402
 from okula_recovery.nas_dialog import NasDialog  # noqa: E402
 from okula_recovery.os_dialogs import (BootStickDialog, InstallDialog, IsoDetailsDialog, UploadDialog,  # noqa: E402
@@ -53,6 +54,7 @@ OS_ICONS = {"windows": "okula-os-windows", "linux": "okula-os-linux", "other": "
 
 # Gerät gilt als getrennt, wenn so lange kein Beacon seines Agents kam
 AGENT_TIMEOUT = 15
+TWIN_AGENT_TIMEOUT = 300   # Zwilling bestücken: so lange auf den Agent in der VM warten (s)
 VM_POLL = 5  # Sekunden zwischen den Zustandsabfragen der VMs (ein virsh-Aufruf für alle)
 VM_OFF = ("shut off", "crashed")
 VM_ON = ("running", "paused", "in shutdown", "idle", "blocked", "pmsuspended")
@@ -2262,6 +2264,12 @@ class MainWindow(Gtk.ApplicationWindow):
                 add("Nach „Neu / nicht einsortiert“", lambda: self._device_op(
                     lambda: self.store.move_device(dev, ""), "Nach „Neu / nicht einsortiert“ verschoben"))
             add("Zusammenführen mit …", lambda: self.on_merge_device(dev), len(self.store.devices) > 1)
+            if not demostore.is_demo_device(dev):
+                why = self.twin_why(dev)
+                item = Gtk.MenuItem(label="VM mit dieser Hardware erstellen …", sensitive=not why)
+                item.set_tooltip_text(why or "Virtuelle Maschine mit der Hardware dieses Geräts (digitaler Zwilling)")
+                item.connect("activate", lambda _i: self.vm_twin(dev))
+                menu.append(item)
             add("Aus der Liste löschen …", lambda: self.on_delete_device_entry(None), agent is None)
             menu.append(Gtk.SeparatorMenuItem())
         add("Neuer Ordner …", lambda: self.on_new_device_folder(None))
@@ -2559,6 +2567,163 @@ class MainWindow(Gtk.ApplicationWindow):
                     "Gerätefenster")
         self.open_device(dev)
 
+    # ---------- Digitaler Zwilling (I-001 Auftrag 3) ----------
+
+    def twin_why(self, dev: devices.Device) -> str:
+        """Warum „VM mit dieser Hardware erstellen …“ nicht geht ("" = möglich)."""
+        if dev.is_vm:
+            return "Nicht für virtuelle Maschinen"
+        if demostore.is_demo_device(dev):
+            return "Nicht für das Demo-Gerät"
+        if not (dev.inventory.get("disks") and dev.inventory.get("dmi")):
+            return "Kein Inventar mit Disks – Gerät einmal mit dem Agent verbinden (bzw. „Inventar neu einlesen“)"
+        if not vm.available():
+            return "libvirt fehlt – sudo ./install.sh am Server ausführen"
+        return ""
+
+    def vm_twin(self, src: devices.Device) -> None:
+        """Gerätefenster bzw. Rechtsklick → „VM mit dieser Hardware erstellen …“: Vorschau, dann anlegen und auf
+        Wunsch das letzte Image einspielen."""
+        parent = self._parent_for(src)
+        why = self.twin_why(src)
+        if why:
+            confirm_error(parent, why)
+            return
+        root = self.root_for(src)
+        known_uuids = tuple(d.key[5:] for d in self.store.devices.values() if d.key.startswith("uuid:"))
+        ready, reason = self.netboot_ready()
+
+        def work():
+            taken = self.virsh.names()
+            existing = [v["profile"] for v in self.virsh.list()]
+            images = []
+            for img in device_images(root, src) if root is not None else []:
+                try:
+                    meta = agentclient.load_image(img.path)
+                except agentclient.AgentError:
+                    continue
+                images.append({"path": str(img.path), "name": img.name, "mtime": img.mtime, "master": img.master,
+                               "size": int((meta.get("disk") or {}).get("size") or 0)})
+            uuids = known_uuids + tuple(p.smbios.uuid.lower() for p in existing)
+            return taken, existing, vm.free_disk(), vm.ram_mb(), images, uuids
+
+        def ask(result) -> None:
+            taken, existing, free, ram, images, uuids = result
+            taken = taken + [d.name for d in self.store.devices.values()]
+            server = vm.ServerInfo(cores=os.cpu_count() or 8, ram_free_mb=ram[1], taken_names=tuple(taken),
+                                   taken_uuids=uuids)
+            try:
+                p, notes = vm.profile_from_inventory(src.inventory, server, src.name)
+            except vm.VmError as e:
+                confirm_error(parent, f"Aus dem Inventar von „{src.name}“ lässt sich keine VM bilden: {e}")
+                return
+            no_image = "" if images else ("NAS ist nicht verbunden – kein Image einspielbar" if root is None
+                                          else "Kein Image dieses Geräts auf dem NAS")
+            if images and not ready:
+                no_image = f"Image einspielen braucht den Netzwerkstart: {reason}"
+            dlg = TwinDialog(parent, src.name, src.inventory, p, notes, taken, existing, free, ram, images, no_image)
+            ok = dlg.run() == Gtk.ResponseType.OK
+            p, image = dlg.values()
+            dlg.destroy()
+            if not ok:
+                return
+            self.status(f"Zwilling „{p.name}“ von {src.name} wird angelegt …")
+            self._vm_task(lambda: self.virsh.create(p), after=lambda full: self._twin_created(full, src, image),
+                          parent=parent)
+
+        self._vm_task(work, after=ask, parent=parent)
+
+    def _twin_created(self, p: vm.VmProfile, src: devices.Device, image: dict | None) -> None:
+        dev = self.store.register_vm(p.name, vm.pre_inventory(p, devices.now()), twin_of=src.id)
+        self.store.add_history(dev, "vm", f"Zwilling von {src.name}" + (f" (Image {image['name']})" if image
+                                                                         else " (ohne Image)"))
+        self.store.add_history(src, "vm", f"Zwilling {p.name} erstellt")
+        self.sync_netboot()               # VM-MAC sofort freischalten
+        self._dev_expand_after = devices.VM_FOLDER
+        self.refresh_devices()
+        if src.id in self.device_windows:
+            self.device_windows[src.id].refresh()
+        self.status(f"Zwilling „{p.name}“ angelegt ({vm.describe(p)})")
+        win = self.open_device(dev)
+        if image:
+            self._twin_restore(dev, p, image)
+            win.show_jobs()
+
+    def _twin_restore(self, dev: devices.Device, p: vm.VmProfile, image: dict) -> None:
+        """Zwilling bestücken: Einschalten und Agent starten → auf den Agent warten (höchstens 5 min) →
+        Image zurückspielen (Prüfung vorher, ohne Anpassen) → herunterfahren. Ein Auftrag im Reiter Aufträge;
+        bei einem Fehler bleibt die VM bestehen."""
+        name, key, expected = dev.vm["name"], self.key, f"/dev/{vm.disk_name(p)}"
+        what = f"Zurückspielen {image['name']} → {expected}"
+        dev.boot_request = True
+        self.store.save(dev)
+        self.store.add_history(dev, "notiz", "Agent beim nächsten Start angefordert")
+        self.netboot_changed()
+
+        def work(job: jobs.Job, jm: jobs.JobManager) -> str:
+            restoring = False           # ab dem Zurückspielen schreibt _after_job den Verlauf
+            try:
+                jm.log(job, "Schritt 1/3: VM wird eingeschaltet, der Agent startet per Netzwerkstart")
+                jm.progress(job, 0.0, "VM wird eingeschaltet", "Agent starten (1/3)", 0.0)
+                self.virsh.start(name, "agent")
+                t0 = time.monotonic()
+                while True:
+                    agent = self.online_agent(dev)
+                    if agent is not None and agent.control_port:
+                        break
+                    if job.cancel.is_set():
+                        raise agentclient.AgentError("abgebrochen")
+                    waited = time.monotonic() - t0
+                    if waited > TWIN_AGENT_TIMEOUT:
+                        raise agentclient.AgentError(
+                            f"Der Agent hat sich nach {TWIN_AGENT_TIMEOUT // 60} min nicht gemeldet – Bildschirm der "
+                            "VM ansehen und Netzwerkstart prüfen (Tools → Netzwerkstart (PXE) …)")
+                    jm.progress(job, 0.05 * waited / TWIN_AGENT_TIMEOUT, f"Agent wird erwartet … {waited:.0f} s",
+                                "Agent starten (1/3)", waited / TWIN_AGENT_TIMEOUT)
+                    time.sleep(2)
+                jm.log(job, f"Agent verbunden ({agent.ip}). Schritt 2/3: Image wird zurückgespielt")
+                disks = agentclient.get_info(agent.ip, key, agent.control_port).get("disks") or []
+                target = next((d["path"] for d in disks if d.get("path") == expected), "") or \
+                    (disks[0]["path"] if len(disks) == 1 else "")
+                if not target:
+                    raise agentclient.AgentError(f"Disk {expected} der VM nicht gefunden")
+
+                def after(job_, path, error) -> None:
+                    if error is None:
+                        jm.log(job_, "Schritt 3/3: VM wird heruntergefahren")
+                    GLib.idle_add(self._after_job, dev.id, job_, f"Zurückspielen {image['name']} → {target}", path,
+                                  error, True)
+
+                restoring = True
+                jobs.restore_work(agent.ip, key, agent.control_port, image["path"], target, None, True, after)(job, jm)
+            except Exception as e:
+                GLib.idle_add(self._twin_failed, dev, str(e), job.cancel.is_set(), not restoring)
+                raise
+            return f"Zwilling bestückt – Image {image['name']} auf {target}, VM wird heruntergefahren"
+
+        def begin() -> None:
+            try:
+                self.jobs.start(dev.id, "restore", expected, f"Zwilling: {what}", work)
+            except agentclient.AgentError as e:
+                confirm_error(self._parent_for(dev), str(e))
+
+        self.sync_netboot(after=begin)      # erst einschalten, wenn „einmal Agent“ beim Netzwerkstart gilt
+
+    def _twin_failed(self, dev: devices.Device, message: str, cancelled: bool, history: bool) -> bool:
+        self.vm_poll()
+        if cancelled:
+            return False
+        if history:
+            self.store.add_history(dev, "vm", f"Zwilling: Image nicht eingespielt – {message}", ok=False)
+        self.status(f"{dev.name}: Image nicht eingespielt – {message}")
+        confirm_error(self._parent_for(dev), f"Zwilling „{dev.name}“: Image nicht eingespielt.\n\n{message}\n\n"
+                                             "Die VM bleibt bestehen. Das Image lässt sich später mit „Einschalten und "
+                                             "Agent starten“ und „Image zurückspielen …“ einspielen.")
+        win = self.device_windows.get(dev.id)
+        if win:
+            win.refresh()
+        return False
+
     def vm_start(self, dev: devices.Device, mode: str) -> None:
         """mode: normal (ohne Auftrag von der Disk), agent (einmal den Agent per Netzwerkstart), iso."""
         parent = self._parent_for(dev)
@@ -2567,6 +2732,11 @@ class MainWindow(Gtk.ApplicationWindow):
             confirm_error(parent, why)
             return
         name = dev.vm["name"]
+        if mode == "normal" and vm.blank_disk(dev.inventory, dev.history):     # Ä-036: noch nie ein System
+            answer = ask_blank_disk(parent, dev.name)
+            if not answer:
+                return
+            mode = {BLANK_AGENT: "agent", BLANK_ISO: "iso", BLANK_ANYWAY: "normal"}[answer]
         need = int(dev.inventory.get("memory") or 0) // 2**20
         _total, free = vm.ram_mb()
         if need and free and need > free - vm.RAM_RESERVE_MB and not confirm(

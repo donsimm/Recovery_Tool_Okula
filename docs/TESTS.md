@@ -31,6 +31,7 @@ bestätigt.
 | VM-Grundlage (I-001 1b): `Virsh.create/start/set_profile/poweroff/delete` für VM-Win11, VM-Legacy, VM-Klein am Server | A | 06.11., Bildschirm in einer Testkopie auf VNC (SPICE-Modul noch nicht installiert); Screenshots: UEFI TianoCore mit „UEFI QEMU NVMe Ctrl …“ bzw. „UEFI Okula SATA SSD 64GB …“, SeaBIOS mit iPXE auf Intel 82540EM und DHCP-Adresse aus dem LAN; danach keine VM, Pool leer |
 | VMs im Tool (I-001 2), Prüfung durch den Agenten | A | 06.11., neue Version mit echter Geräteliste, NAS und Netzwerkstart (Dialoge im Skript bestätigt): VM-Klein angelegt (Eintrag im Ordner, MAC sofort in der Freigabeliste) → Einschalten und Agent starten → Agent nach 30 s verbunden, Inventar Okula VM-Klein, kein zweites Gerät → laufende VM auf Disk zuerst umgestellt → Disk-Image aufs NAS → Herunterfahren über den Agent → Einschalten startet von der Disk (Test-Disk mit grub) → Bildschirm öffnet, zweites Öffnen ersetzt das Fenster → Ausschalten → VM löschen: Pool leer, Freigabeliste wie vorher, Test-Image entfernt. Startart „lokal“: SeaBIOS startet von der Disk, OVMF zeigt das Setup-Menü (darum Disk → Netzwerk, siehe [VM.md](VM.md)). Von ISO starten (Debian-Netinst vom NAS) in VM-Win11 und VM-Legacy, ISO nicht umbesessen |
 | VM-Grundlage nach `sudo ./install.sh` (I-001 1 + 1b) | R | 06.11.: Brücke `br0` mit gleicher IP 192.168.110.199, Internet ok, `virsh` ohne sudo, Pool `okula` aktiv, Standardnetz aus, SPICE-Paket installiert, PXE-Konfiguration `interface=br0`; mit dem echten Code alle drei Profile erstellt/gestartet/gelöscht; virt-viewer-Fenster VM-Win11: „Start PXE over IPv4“, Secure Boot **Enabled** (Dominik); VM-Legacy iPXE mit Intel 82540EM |
+| Digitaler Zwilling (I-001 3), Prüfung durch den Agenten | A | 06.11., ohne Oberfläche mit dem echten Code: `profile_from_inventory` aus den Inventaren von CompactPlayer 2 (OEM SHARKBAY, MBR → BIOS/i440FX, SATA 121 GB KINGSTON, Realtek → e1000) und IOVERSAL-1 (GPT → UEFI/Q35, NVMe 1001 GB, 8 → 6 Kerne, RAM gekürzt) → `Virsh.create` + Start: läuft, SMBIOS OEM/SHARKBAY bzw. ASRock, Seriennummern `VM-…`, UUID `0c1a0000-…`, Disk-Seriennummer `VM…` im QEMU-Gerät, NVMe-Gerät vorhanden; `DeviceStore.match()` findet das Original nicht; danach gelöscht, nur VM-Klein und VM-Win11 übrig. Ablauf mit Image im Tool: offen (Abschnitt 10) |
 | install.sh auf neuem Debian 13 | R | |
 | USB klonen / formatieren | A | |
 | Einstellungen exportieren / importieren (inkl. Vorlagen) | A | |
@@ -184,4 +185,25 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stic
       Agent startet; nach dem Verbinden Agent-Symbol „Neu starten“ → Windows startet wieder (nicht der Agent) – ✔ 06.11. (VM-Win11)
 - [ ] Automatisierung an der VM: Image zurückspielen mit Neustart danach → Windows startet von der Disk
 - [ ] VM löschen … (aus) → rote Rückfrage → VM und Eintrag weg; `virsh -c qemu:///system vol-list okula` leer
-- [ ] Ä-036 (nach Umsetzung): neue VM ohne System → Einschalten → Rückfrage „Die Disk ist leer …“ statt UEFI-Setup-Menü
+- [ ] Ä-036: neue VM ohne System → Einschalten → Rückfrage „Die Disk von … ist leer …“ mit *Einschalten und Agent
+      starten*, *Von ISO starten …*, *Trotzdem einschalten*; nach einer Installation bzw. einem Zurückspielen keine
+      Rückfrage mehr
+
+### 10. Digitaler Zwilling (I-001 Auftrag 3)
+Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stick). Netzwerkstart eingeschaltet, NAS
+verbunden. Am Server ohne Oberfläche geprüft: Zwillinge aus CompactPlayer 2 und IOVERSAL-1 angelegt, gestartet,
+SMBIOS mit `VM-…`, kein Treffer auf das Original, gelöscht (06.11., Agent).
+- [ ] Gerätefenster **CompactPlayer 1** (hat ein Image auf dem NAS: „CompactPlayer TEST – 2026-10-27_1217_sda“) →
+      oben rechts *VM mit dieser Hardware erstellen …* → Vorschau: Hersteller/Modell OEM SHARKBAY ✔, Firmware
+      BIOS bzw. UEFI je nach Partitionstabelle, Netzwerkkarte ~ Intel, Windows-Schlüssel ✖; Häkchen *Letztes Image des
+      Geräts einspielen* an, neuestes Image gewählt → Erstellen
+- [ ] Gerätefenster der VM öffnet, Reiter Aufträge: Agent starten (1/3) → Agent nach etwa 30 s verbunden → Image
+      prüfen / Zurückspielen → VM fährt herunter; Verlauf der VM „Zwilling von CompactPlayer 1 (Image …)“, beim
+      Original „Zwilling VM-CompactPlayer-1 erstellt“
+- [ ] Danach *Einschalten* (keine Rückfrage „Disk leer“) und *Bildschirm* → Windows des Images startet
+- [ ] Inventar der VM (nach dem nächsten Agent-Start): Hersteller/Modell wie das Original, Seriennummer `VM-…`, UUID
+      `0c1a…`; Übersicht zeigt „Zwilling von CompactPlayer 1“ (Klick öffnet das Gerät); **Original unverändert, keine
+      Zusammenführung**, keine neue Zeile unter „Neu / nicht einsortiert“
+- [ ] Gerät ohne Image (z. B. CompactPlayer 2): Häkchen aus und ausgegraut, „Kein Image dieses Geräts auf dem NAS“
+- [ ] Rechtsklick auf ein Gerät → *VM mit dieser Hardware erstellen …*; bei VMs und beim DEMO-PC nicht vorhanden
+- [ ] Danach Zwilling löschen (*VM löschen …*); Images auf dem NAS bleiben
