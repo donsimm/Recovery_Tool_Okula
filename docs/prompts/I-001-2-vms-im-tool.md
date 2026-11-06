@@ -1,6 +1,6 @@
 # I-001 Auftrag 2 – VMs im Tool (Ordner, Neue VM, Starten, Bildschirm)
 
-Status: Entwurf · erstellt 06.11.2026 von der Projektleitung · Freigabe: offen
+Status: freigegeben · erstellt 06.11.2026 von der Projektleitung · Freigabe: Dominik 06.11.
 
 ## Rolle und Einstieg
 

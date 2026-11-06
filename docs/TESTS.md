@@ -29,6 +29,7 @@ bestätigt.
 | Serverlast (CPU/RAM/LAN), CPU-Fix (84 % → 0,3 %) | A, R | |
 | Netzwerkstart (PXE) – Agent ohne Stick, nur freigeschaltete Geräte | A, R | QEMU: UEFI Secure Boot und BIOS; fremde MAC bekommt keine Antwort |
 | VM-Grundlage (I-001 1b): `Virsh.create/start/set_profile/poweroff/delete` für VM-Win11, VM-Legacy, VM-Klein am Server | A | 06.11., Bildschirm in einer Testkopie auf VNC (SPICE-Modul noch nicht installiert); Screenshots: UEFI TianoCore mit „UEFI QEMU NVMe Ctrl …“ bzw. „UEFI Okula SATA SSD 64GB …“, SeaBIOS mit iPXE auf Intel 82540EM und DHCP-Adresse aus dem LAN; danach keine VM, Pool leer |
+| VM-Grundlage nach `sudo ./install.sh` (I-001 1 + 1b) | R | 06.11.: Brücke `br0` mit gleicher IP 192.168.110.199, Internet ok, `virsh` ohne sudo, Pool `okula` aktiv, Standardnetz aus, SPICE-Paket installiert, PXE-Konfiguration `interface=br0`; mit dem echten Code alle drei Profile erstellt/gestartet/gelöscht; virt-viewer-Fenster VM-Win11: „Start PXE over IPv4“, Secure Boot **Enabled** (Dominik); VM-Legacy iPXE mit Intel 82540EM |
 | install.sh auf neuem Debian 13 | R | |
 | USB klonen / formatieren | A | |
 | Einstellungen exportieren / importieren (inkl. Vorlagen) | A | |
@@ -152,31 +153,8 @@ bestätigt.
 - [ ] Export auf altem/neuem Server: Vorlagen und „höchstens gleichzeitig“ kommen mit
 
 ### 8. Virtuelle Maschinen – Grundlage (I-001 Aufträge 1 und 1b)
-Alles **am Server selbst** ausführen (nicht per SSH): Beim Einrichten der Brücke ist der Server kurz offline.
-- [ ] `cd ~/recovery_tool_okula && git pull && sudo ./install.sh` → Abschnitte „Pakete für virtuelle Maschinen“,
-      „Virtuelle Maschinen (libvirt)“ und „Netzwerkbrücke für virtuelle Maschinen“ ohne Fehler; letzte Zeile der Brücke
-      „Netzwerkbrücke br0 aktiv: 192.168.110.199/24 (gleiche Adresse)“ (oder „!!! … NICHT eingerichtet“ – dann
-      Ausgabe notieren)
-- [ ] `ip -br a` → `br0` hat **dieselbe IP** wie vorher `eno2` (192.168.110.199), `eno2` ohne IPv4;
-      `nmcli connection show` → `okula-br0` und `okula-br0-port` aktiv, „Wired connection 1“ inaktiv
-- [ ] Internet (`ping -c 2 debian.org`), NAS im Tool erreichbar, Tool startet, Geräte erscheinen (Beacons/Ping-Scan)
-- [ ] Server neu starten → `br0` kommt wieder mit derselben IP
-- [ ] Ab- und wieder anmelden → `virsh -c qemu:///system list --all` **ohne sudo** läuft (leere Liste);
-      `virsh -c qemu:///system pool-list` zeigt `okula` aktiv/Autostart; `virsh -c qemu:///system net-list --all`
-      zeigt `default` inaktiv, kein Autostart
-- [ ] Nach `sudo ./install.sh` mit Auftrag 1b: `dpkg -l qemu-system-modules-spice` → installiert (`ii`)
-- [ ] Netzwerkstart eingeschaltet → `grep interface /etc/okula-recovery/pxe-dnsmasq.conf` zeigt `interface=br0`;
-      ein echtes Gerät (z. B. EliteBook 1) per Netzwerkstart → Agent startet wie vorher
-- [ ] Probe-VM (VM-Klein, UEFI) erstellen und starten:
-      `cd /opt/okula-recovery && python3 -c "from okula_recovery import vm; v = vm.Virsh(); p = v.create(vm.profile('VM-Klein'), name='Probe'); print(p.nic.mac); v.start('Probe')"`
-      → VM startet ohne Fehler (kein „spice graphics are not supported“, kein „Permission denied“ auf die Disk)
-- [ ] Nach `sudo ./install.sh`: `virt-viewer -c qemu:///system Probe` öffnet den Bildschirm im eigenen Fenster →
-      UEFI (TianoCore) mit „UEFI Okula SATA SSD 64GB …“, danach Netzwerkstart-Versuch „Start PXE over IPv4“
-      (Anfrage geht über br0 ins LAN; ohne Freigabe der MAC keine Antwort – richtig so)
-- [ ] Probe-VM löschen: `cd /opt/okula-recovery && python3 -c "from okula_recovery import vm; v = vm.Virsh(); v.poweroff('Probe'); v.delete('Probe')"`
-      → `virsh -c qemu:///system list --all` leer, `ls /var/lib/libvirt/images/okula` leer
-- [ ] **NVMe und Secure Boot** (VM-Win11, ungetestete Technik `qemu:override`): wie oben mit `vm.profile('VM-Win11')` und
-      `name='Probe11'` → VM startet (sonst Fehlermeldung notieren!); in virt-viewer Esc → Device Manager → Secure Boot
-      Configuration: „Current Secure Boot State: Enabled“; Boot Manager zeigt „UEFI QEMU NVMe Ctrl …“; danach löschen
-- [ ] VM-Legacy (BIOS) ebenso als `Probe-L` → SeaBIOS-Meldung, Netzwerkstart-Versuch mit Intel-Karte (iPXE meldet
-      „82540em“ und eine LAN-Adresse per DHCP); löschen
+Installation, Brücke, libvirt und Probe-VMs am 06.11. geprüft (siehe „Bereits geprüft“). Noch offen:
+- [ ] NAS im Tool erreichbar und Geräte erscheinen (Beacons/Ping-Scan) – jetzt über `br0`
+- [ ] Server neu starten → `br0` kommt wieder mit derselben IP (`ip -br a`), Tool und NAS laufen
+- [ ] Netzwerkstart eingeschaltet (Konfiguration zeigt schon `interface=br0`) → ein echtes Gerät (z. B. EliteBook 1)
+      per Netzwerkstart → Agent startet wie vorher
