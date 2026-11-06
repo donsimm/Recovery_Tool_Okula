@@ -1,6 +1,6 @@
 # I-001 Auftrag 3 – Digitaler Zwilling (VM mit der Hardware eines Geräts) + Ä-036
 
-Status: freigegeben · erstellt 06.11.2026 von der Projektleitung · Freigabe: Dominik 06.11.
+Status: umgesetzt (Commit 3e7182f) · erstellt 06.11.2026 von der Projektleitung · Freigabe: Dominik 06.11.
 
 ## Rolle und Einstieg
 
