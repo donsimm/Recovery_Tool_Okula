@@ -1,48 +1,86 @@
-# Virtuelle Maschine (VM) im Tool – Idee
+# Virtuelle Maschinen (VM) im Tool – Konzept (I-001)
 
-Stand: **Idee** (30.10.2026), noch nicht programmiert. Dominik kommt darauf zurück.
+Stand: **in Arbeit** – Konzept mit Dominik festgelegt am 06.11.2026, Umsetzung in 4 Aufträgen
+(Prompts `docs/prompts/I-001-*.md`). Noch nichts programmiert.
 
-Ziel: Auf dem Server eine echte virtuelle Maschine betreiben, um ISOs und Images zu installieren, zu testen und zu
-ändern – und daraus wieder Images zu erstellen (z. B. das Master-Image ohne echtes Referenzgerät).
+## Ziel
 
-## Wie es funktionieren würde
+2–3 virtuelle Maschinen auf dem Server, in der Geräteliste im eigenen Ordner **„Virtuelle Maschinen“**. Zweck:
 
-- **QEMU/KVM** auf dem Server (Debian-Pakete `qemu-system-x86`, `ovmf`, `swtpm`). Die virtuelle Festplatte ist eine
-  Datei (qcow2) auf der SSD des Servers und wächst nur mit dem belegten Platz.
-- Die VM steht in der Geräteliste wie ein Gerät (z. B. „VM-Test“) mit drei Knöpfen:
-  - **Von ISO starten:** ISO vom NAS wählen (Windows, Ubuntu …) und installieren; der Bildschirm der VM erscheint
-    in einem eigenen Fenster.
-  - **Mit Agent starten:** wie mit dem Agent-Stick, nur mit einer Agent-ISO (oder Netzwerkstart). Danach geht alles
-    wie bei einem echten Gerät: Disk-Image erstellen, zurückspielen, Backup, Ordner senden, Automatisierung.
-  - **Normal starten:** das installierte Windows/Linux testen oder ändern.
-- **Windows 11:** Secure Boot (OVMF) und TPM 2.0 (swtpm) in der VM vorhanden.
+1. **Master-Image bauen** ohne Referenzgerät: ISO installieren → einrichten → Sysprep → Disk-Image → Master
+   ([MASTER-IMAGE.md](MASTER-IMAGE.md)).
+2. **Images testen**, bevor sie auf echte Geräte gehen: zurückspielen, starten, prüfen.
+3. **Testlabor** für neue Funktionen (Agent, Netzwerkstart, Automatisierung) – zuerst an der VM, dann am echten Gerät.
 
-## Typische Abläufe
+## Entscheide (Dominik, 06.11.2026)
 
-1. **Master-Image erstellen:** ISO in der VM installieren → Programme einrichten → Sysprep → „Mit Agent starten“
-   → Disk-Image erstellen → als Master markieren (siehe [MASTER-IMAGE.md](MASTER-IMAGE.md)).
-2. **Image testen:** vorhandenes Image (auch Clonezilla) in die VM zurückspielen und starten.
-3. **Image ändern:** Image in die VM → Updates/Programme → neues Image.
+- **Netzwerk:** VMs sind **im LAN sichtbar** wie echte PCs (Netzwerkbrücke `br0` auf der Netzwerkkarte des Servers).
+- **Bildschirm** der VM in einem **eigenen Fenster** (virt-viewer), nicht eingebettet.
+- **Windows „nicht aktiviert“** genügt; kein Key in den VMs, der OEM-Key eines Geräts wird nie übernommen.
+- **Drei Profile** als Vorlage (unten); zusätzlich **Hardware eines echten Geräts übernehmen** („bestücken“).
+- **Identität der Zwillings-VM:** Seriennummer und UUID vom Original **mit Kennzeichen abgewandelt**
+  (z. B. `VM-5CG4…`, UUID mit geänderten Stellen); MAC immer eigene. Sonst würde das Tool VM und Gerät
+  automatisch zusammenführen (Entscheid „Zusammenführen nur bei sicherer Identität“).
+- **Beim Bestücken** das letzte Image des Geräts einspielen – Häkchen, Standard an („digitaler Zwilling“).
+- **Brücke `br0`** legt `install.sh` an; diese Installation am Server selbst ausführen (bei einem Fehler ist der
+  Server kurz offline).
 
-## Voraussetzungen am Server
+## Server (Stand 06.11.2026)
 
-- CPU mit Virtualisierung (Intel VT-x / AMD-V), im BIOS eingeschaltet. Läuft der RecoveryPC selbst als VM:
-  „nested virtualization“ nötig.
-- RAM: Windows-11-VM mindestens 8 GB → Server besser 16 GB oder mehr.
-- SSD: etwa 64–128 GB frei pro VM (auf dem NAS wäre die VM-Festplatte zu langsam).
+Intel i7-9700K (8 Kerne, VT-x, `/dev/kvm` vorhanden) · 31 GB RAM · NVMe 1 TB, 830 GB frei · Netzwerk `eno2` per
+DHCP, verwaltet von NetworkManager („Wired connection 1“). QEMU/libvirt noch nicht installiert.
+→ 2 VMs gleichzeitig problemlos, 3 gleichzeitig mit kleinen Profilen.
 
-## Worauf achten
+## Technik
 
-- **Standard-Hardware nachbilden** (SATA-Disk, Intel-Netzwerkkarte e1000e), keine virtio-Treiber – sonst läuft ein
-  Image aus der VM auf echten Geräten nicht.
-- Auf andere Hardware übertragbar ist ein VM-Image nur **mit Sysprep** (Master-Image).
-- **Lizenz:** Windows in der VM braucht zum Aktivieren einen eigenen Key; für die Image-Erstellung reicht meist
-  „nicht aktiviert“.
-- **Aufwand:** mittel bis gross. Vorhanden: Agent läuft in QEMU (getestet beim Netzwerkstart), Image-Funktionen;
-  neu wäre u. a. eine Agent-ISO (statt Stick), VM-Verwaltung im Tool und das VM-Fenster.
+- **QEMU/KVM mit libvirt** (`qemu-system-x86`, `libvirt-daemon-system`, `ovmf`, `swtpm`, `virt-viewer`).
+  VMs laufen als Systemdienst weiter, auch wenn das Tool geschlossen ist (verträgt sich mit Ä-001 im Papierkorb:
+  Aufträge laufen weiterhin im Tool, nur die VM selbst im Dienst).
+- Virtuelle Disk = qcow2-Datei auf der Server-SSD (wächst mit dem belegten Platz), nicht auf dem NAS.
+- **Agent in der VM über Netzwerkstart** (kein Stick, keine Agent-ISO): Das Tool schaltet die MAC jeder VM
+  automatisch frei. Danach ist die VM ein Gerät wie jedes andere (Gerätefenster, Images, Backup, Automatisierung).
+- Neustart/Herunterfahren/Einschalten über libvirt statt Wake-on-LAN.
+- **Nur Standard-Hardware** nachbilden (SATA/NVMe, Intel e1000e bzw. Realtek rtl8139), keine virtio-Treiber –
+  sonst läuft ein Image aus der VM auf echten Geräten nicht. Übertragbar auf andere Hardware nur mit Sysprep.
 
-## Offene Fragen
+## Profile (Vorlagen)
 
-1. Hardware des RecoveryPC: CPU, RAM, freier SSD-Platz?
-2. VM im LAN sichtbar oder abgeschottet (nur Verbindung zum Server)?
-3. Eine VM oder mehrere (z. B. Windows 10 und Windows 11 parallel)?
+| VM | Nachgebildet | Firmware | Chipsatz | Disk | Netzwerk | CPU / RAM | Testet vor allem |
+|---|---|---|---|---|---|---|---|
+| **VM-Win11** | moderner Business-Laptop | UEFI + Secure Boot + TPM 2.0 | Q35 | NVMe 128 GB | Intel e1000e | 4 / 8 GB | Master bauen, Windows 11, Automatisierung |
+| **VM-Legacy** | älteres Gerät | BIOS (Legacy, SeaBIOS) | i440FX | SATA-HDD 80 GB | Realtek rtl8139 | 2 / 4 GB | BIOS-Netzwerkstart, Windows 10, alte Hardware |
+| **VM-Klein** | Gerät mit kleiner Disk | UEFI ohne Secure Boot | Q35 | SATA-SSD 64 GB | Intel e1000e | 2 / 4 GB | Zurückspielen auf kleinere Disk (Ä-002), Linux |
+
+Jede VM lässt sich nachträglich ändern; weitere VMs mit eigenem Profil sind möglich.
+
+## Hardware von einem Gerät übernehmen
+
+Gerätefenster → **„VM mit dieser Hardware erstellen …“**. Quelle: das gespeicherte Inventar des Geräts
+(Beispiel aus einem echten Inventar in Klammern).
+
+| Inventar | Übernahme in die VM |
+|---|---|
+| `dmi`: Hersteller, Modell, Version, SKU, Familie, Board, BIOS-Hersteller/-Version/-Datum, Gehäusetyp (OEM SHARKBAY, AMI 4.6.5) | ✔ genau (SMBIOS Typ 0/1/2/3) |
+| Seriennummern, `product_uuid` | ⚠ abgewandelt mit Kennzeichen (siehe Entscheide) |
+| `cpu`: Name, Kerne, Threads (i5-4200U, 2/4) | ✔ Name und Anzahl (begrenzt auf den Server); Leistung = Server-CPU |
+| `memory` (4 GB) | ✔, begrenzt durch freien RAM des Servers |
+| `disks`: Grösse, `transport` sata/nvme, Modell (120 GB SATA KINGSTON SH103S3120G) | ✔ Grösse genau, Anschluss genau, Modellname soweit QEMU es erlaubt |
+| Partitionstabelle `pttype` des Systemdisks (`dos`) | ✔ bestimmt die Firmware: `dos` → BIOS (Legacy), `gpt` → UEFI |
+| `platform`: TPM, Secure Boot | ✔ TPM 2.0 / Secure Boot, wenn das Gerät sie hat |
+| `network`: Treiber (r8169) | ~ ähnliches Modell: Realtek → rtl8139, Intel → e1000e; **MAC nie übernehmen** |
+| Disk-Inhalt | ✔ optional letztes Image des Geräts einspielen (Standard an) |
+| `oem_key` | ✖ bewusst nicht (Lizenz gehört zum Gerät) |
+| SMART, Akku, Grafik, WLAN, Sound, Hersteller-BIOS-Einstellungen | ✖ nicht nachbildbar |
+
+Nicht nachbildbar sind auch Eigenheiten echter Hersteller-Firmware (z. B. B-004, HP-UEFI ohne Netzwerkstart).
+
+## Umsetzung in 4 Aufträgen
+
+| # | Auftrag | Inhalt | Prompt |
+|---|---|---|---|
+| 1 | **VM-Grundlage** | `install.sh`: Pakete, Brücke `br0`; Root-Helfer `okula-vm`; Hardware-Profil → libvirt-Konfiguration; Tests | `I-001-1-vm-grundlage.md` |
+| 2 | **VMs im Tool** | Ordner „Virtuelle Maschinen“, „Neue VM …“ mit Profilen, Starten (Normal / Mit Agent / Von ISO), Herunterfahren, Bildschirm, Netzwerkstart-Freigabe | folgt |
+| 3 | **Hardware vom Gerät** | „VM mit dieser Hardware erstellen …“, Identität abwandeln, letztes Image einspielen | folgt |
+| 4 | **Snapshots** | Zustand sichern und zurückholen | folgt |
+
+Kein neuer Agent-Stick nötig (Agent unverändert).

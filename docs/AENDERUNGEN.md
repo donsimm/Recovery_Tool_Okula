@@ -17,12 +17,12 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 |---|---|---|---|
 | 🐞 Bugs | 1 | 0 | 0 |
 | 🔧 Änderungen | 7 | 0 | 0 |
-| 💡 Ideen | 21 | 0 | 0 |
+| 💡 Ideen | 20 | 1 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
 Erledigt 31.10. zusätzlich: I-007 ✔ (Image prüfen) → Ä-027 ✔ (Demo ohne NAS) → Ä-028 ✔ (Ein/Aus-Symbole) → Ä-029 ✔ (Legende) → Ä-030 ✔ (NAS-Leiste) → I-030 ✔ (Bandbreite) → Ä-031 ✔ (Tage hell/dunkel).
-Als Nächstes: Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
+Als Nächstes: **I-001 VMs** (in Arbeit, 4 Aufträge, [VM.md](VM.md)) – Auftrag 1 „VM-Grundlage“. Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
 Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
 ## 🐞 Bugs
@@ -47,7 +47,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 
 | ID | Prio | Status | Von | Beschreibung |
 |---|---|---|---|---|
-| I-001 | ⚪ | offen | Dominik | **Virtuelle Maschine (VM) im Tool:** ISOs/Images in einer VM auf dem Server installieren, testen, ändern und wieder Images erstellen. Details und offene Fragen: [VM.md](VM.md) |
+| I-001 | 🟡 | in Arbeit | Dominik | **Virtuelle Maschinen im Tool:** 2–3 VMs (QEMU/KVM, libvirt) im Ordner „Virtuelle Maschinen“ der Geräteliste – Master bauen, Images testen, Testlabor. 3 Profile (Win11/UEFI+TPM, Legacy-BIOS, kleine Disk) und „VM mit dieser Hardware erstellen …“ aus dem Inventar eines Geräts (digitaler Zwilling). Konzept, Entscheide und 4 Aufträge: [VM.md](VM.md) (06.11.) |
 | I-003 | ⚪ | offen | früher | **Nicht generalisierte 1:1-Images anpassen:** Gerätename per Registry (Offline-Hive `SYSTEM`: ComputerName/Hostname), Windows-Key per Skript beim ersten Start (`slmgr /ipk`). Achtung: gleiche SID und Gerätekennung auf mehreren Geräten → nur für Einzelplätze ohne Domäne geeignet. Wieder aufgenommen 31.10.2026 |
 | I-004 | 🟡 | offen | Dominik | **Webinterface für den Fernzugriff:** Geräteübersicht und Gerätereiter im Browser (HTTPS, Anmeldung, über VPN); pro Gerät „Im Webinterface sichtbar“ (Reiter Netzwerk). Offen: nur anschauen oder auch Aktionen, Benutzer/Rechte, LAN oder VPN. Details: [WEBINTERFACE.md](WEBINTERFACE.md) |
 | I-005 | 🔴 | offen | Claude | **Aufbewahrungsregeln:** Pro Gerät die letzten N Images bzw. Backups behalten, ältere automatisch löschen; Master-Images sind geschützt. Vor jedem Auftrag den Platz prüfen (belegte Blöcke + Reserve), sonst gar nicht erst starten |
@@ -109,6 +109,9 @@ Gerätename = Name im Tool.
   und zum Löschen angeboten, nicht automatisch gelöscht.
 - **Bandbreite nur im Tool begrenzt (I-030):** Der Agent bleibt unverändert (kein neuer Stick); eine Grenze für
   alle Aufträge zusammen statt je Auftrag. NAS-Zugriffe des Servers werden nicht begrenzt.
+- **VMs (I-001, Entscheid Dominik 06.11.2026):** im LAN sichtbar (Brücke `br0`, von `install.sh` angelegt – am Server
+  installieren), Bildschirm im eigenen Fenster, Windows „nicht aktiviert“, OEM-Key nie übernehmen. Zwillings-VM:
+  Seriennummer/UUID abgewandelt mit Kennzeichen, eigene MAC, letztes Image einspielen (Standard an). Details [VM.md](VM.md).
 - **Umsetzungsreihenfolge:** zuerst Agent (Fundament, ein neuer Stick reicht), dann Tool-Logik, zuletzt Oberfläche.
 
 ## ✅ Erledigt – Änderungsprotokoll
