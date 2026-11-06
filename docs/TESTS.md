@@ -179,3 +179,4 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stic
       Agent startet; nach dem Verbinden Agent-Symbol „Neu starten“ → Windows startet wieder (nicht der Agent)
 - [ ] Automatisierung an der VM: Image zurückspielen mit Neustart danach → Windows startet von der Disk
 - [ ] VM löschen … (aus) → rote Rückfrage → VM und Eintrag weg; `virsh -c qemu:///system vol-list okula` leer
+- [ ] Ä-036 (nach Umsetzung): neue VM ohne System → Einschalten → Rückfrage „Die Disk ist leer …“ statt UEFI-Setup-Menü

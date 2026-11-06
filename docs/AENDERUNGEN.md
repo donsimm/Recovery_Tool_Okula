@@ -16,7 +16,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 1 | 0 | 0 |
-| 🔧 Änderungen | 7 | 0 | 0 |
+| 🔧 Änderungen | 8 | 0 | 0 |
 | 💡 Ideen | 20 | 1 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
@@ -42,6 +42,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 | Ä-007 | 🔴 | offen | Claude | **Bestätigung vor dem Löschen:** Wird der Schalter eingeschaltet, während das Gerät verbunden ist, startet die Automatisierung ohne Rückfrage nach 30 s und löscht die Disk (`ui.save_automation` → `consider`). Nötig: rote Zusammenfassung „Disk Samsung 256 GB von HP-PC-07 wird gelöscht, Master ‚Win11 Büro‘, neuer Name …, Backup: nein“ mit Knopf „Löschen und neu aufsetzen“ | 31.10. (Laien-Test) |
 | Ä-010 | 🟡 | offen | Claude | **Vorabprüfung mit Ampel statt Fehler mitten im Lauf:** Image passt auf die Disk, UEFI/BIOS-Modus passt zum Master, BitLocker auf der Zieldisk (dann ist kein Datei-Backup möglich), Agent-Stick aktuell, Windows-Edition des Masters passt zum Key (Pro/Home). Anzeige: „✔ Bereit“ bzw. „⚠ Achtung: …“ | 31.10. (Laien-Test) |
 | Ä-012 | 🟡 | offen | Claude | **Einfache Sprache im Reiter Automatisierung:** „Zieldisk“ → „Festplatte, die gelöscht wird“; Sysprep, Master und Content-Projekte mit einem „?“ pro Abschnitt erklären. Gerätenamen wie „DESKTOP-8F3K2LQ“ markieren und zum Umbenennen auffordern; optional Namensschema pro Vorlage (z. B. `KUNDE-001` fortlaufend) | 31.10. (Laien-Test) |
+| Ä-036 | 🟡 | offen | Dominik/Claude | **VM mit leerer Disk: Rückfrage statt UEFI-Menü:** „Einschalten“ einer VM, auf deren Disk noch nie ein System installiert wurde, endet heute im UEFI-Setup-Menü (Disk leer → Netzwerkstart „lokal“ → OVMF-Setup; Grenze aus I-001 Auftrag 2). Stattdessen fragen: „Die Disk ist leer – Agent starten oder von ISO starten?“ (Knöpfe *Einschalten und Agent starten*, *Von ISO starten …*, *Trotzdem einschalten*). Leer = laut Vor-Inventar/Agent keine Partition bzw. noch kein Image zurückgespielt und kein OS installiert. Hilfe-Kapitel „Virtuelle Maschinen“: Hinweis, dass das UEFI-Menü bei leerer Disk normal ist und wie es weitergeht. Umsetzen zusammen mit I-001 Auftrag 3 | 06.11. |
 
 ## 💡 Ideen
 
