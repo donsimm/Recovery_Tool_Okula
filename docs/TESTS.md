@@ -28,6 +28,7 @@ bestätigt.
 | Datei-Backup erstellen / zurückspielen, Notiz, Löschen | A, R | |
 | Serverlast (CPU/RAM/LAN), CPU-Fix (84 % → 0,3 %) | A, R | |
 | Netzwerkstart (PXE) – Agent ohne Stick, nur freigeschaltete Geräte | A, R | QEMU: UEFI Secure Boot und BIOS; fremde MAC bekommt keine Antwort |
+| VM-Grundlage (I-001 1b): `Virsh.create/start/set_profile/poweroff/delete` für VM-Win11, VM-Legacy, VM-Klein am Server | A | 06.11., Bildschirm in einer Testkopie auf VNC (SPICE-Modul noch nicht installiert); Screenshots: UEFI TianoCore mit „UEFI QEMU NVMe Ctrl …“ bzw. „UEFI Okula SATA SSD 64GB …“, SeaBIOS mit iPXE auf Intel 82540EM und DHCP-Adresse aus dem LAN; danach keine VM, Pool leer |
 | install.sh auf neuem Debian 13 | R | |
 | USB klonen / formatieren | A | |
 | Einstellungen exportieren / importieren (inkl. Vorlagen) | A | |
@@ -150,7 +151,7 @@ bestätigt.
 - [ ] Gerätename mit Umlaut/Unterstrich (z. B. „Büro_PC_01“) bei OS installieren → Hinweis zeigt Name auf dem Gerät
 - [ ] Export auf altem/neuem Server: Vorlagen und „höchstens gleichzeitig“ kommen mit
 
-### 8. Virtuelle Maschinen – Grundlage (I-001 Auftrag 1)
+### 8. Virtuelle Maschinen – Grundlage (I-001 Aufträge 1 und 1b)
 Alles **am Server selbst** ausführen (nicht per SSH): Beim Einrichten der Brücke ist der Server kurz offline.
 - [ ] `cd ~/recovery_tool_okula && git pull && sudo ./install.sh` → Abschnitte „Pakete für virtuelle Maschinen“,
       „Virtuelle Maschinen (libvirt)“ und „Netzwerkbrücke für virtuelle Maschinen“ ohne Fehler; letzte Zeile der Brücke
@@ -163,15 +164,19 @@ Alles **am Server selbst** ausführen (nicht per SSH): Beim Einrichten der Brüc
 - [ ] Ab- und wieder anmelden → `virsh -c qemu:///system list --all` **ohne sudo** läuft (leere Liste);
       `virsh -c qemu:///system pool-list` zeigt `okula` aktiv/Autostart; `virsh -c qemu:///system net-list --all`
       zeigt `default` inaktiv, kein Autostart
+- [ ] Nach `sudo ./install.sh` mit Auftrag 1b: `dpkg -l qemu-system-modules-spice` → installiert (`ii`)
 - [ ] Netzwerkstart eingeschaltet → `grep interface /etc/okula-recovery/pxe-dnsmasq.conf` zeigt `interface=br0`;
       ein echtes Gerät (z. B. EliteBook 1) per Netzwerkstart → Agent startet wie vorher
 - [ ] Probe-VM (VM-Klein, UEFI) erstellen und starten:
       `cd /opt/okula-recovery && python3 -c "from okula_recovery import vm; v = vm.Virsh(); p = v.create(vm.profile('VM-Klein'), name='Probe'); print(p.nic.mac); v.start('Probe')"`
-      → `virt-viewer -c qemu:///system Probe` zeigt das UEFI (TianoCore), danach Netzwerkstart-Versuch „Start PXE
-      over IPv4“ (Anfrage geht über br0 ins LAN; ohne Freigabe der MAC keine Antwort – richtig so)
+      → VM startet ohne Fehler (kein „spice graphics are not supported“, kein „Permission denied“ auf die Disk)
+- [ ] Nach `sudo ./install.sh`: `virt-viewer -c qemu:///system Probe` öffnet den Bildschirm im eigenen Fenster →
+      UEFI (TianoCore) mit „UEFI Okula SATA SSD 64GB …“, danach Netzwerkstart-Versuch „Start PXE over IPv4“
+      (Anfrage geht über br0 ins LAN; ohne Freigabe der MAC keine Antwort – richtig so)
 - [ ] Probe-VM löschen: `cd /opt/okula-recovery && python3 -c "from okula_recovery import vm; v = vm.Virsh(); v.poweroff('Probe'); v.delete('Probe')"`
       → `virsh -c qemu:///system list --all` leer, `ls /var/lib/libvirt/images/okula` leer
 - [ ] **NVMe und Secure Boot** (VM-Win11, ungetestete Technik `qemu:override`): wie oben mit `vm.profile('VM-Win11')` und
       `name='Probe11'` → VM startet (sonst Fehlermeldung notieren!); in virt-viewer Esc → Device Manager → Secure Boot
       Configuration: „Current Secure Boot State: Enabled“; Boot Manager zeigt „UEFI QEMU NVMe Ctrl …“; danach löschen
-- [ ] VM-Legacy (BIOS) ebenso als `Probe-L` → SeaBIOS-Meldung, Netzwerkstart-Versuch mit Realtek-Karte („iPXE“/„PXE“); löschen
+- [ ] VM-Legacy (BIOS) ebenso als `Probe-L` → SeaBIOS-Meldung, Netzwerkstart-Versuch mit Intel-Karte (iPXE meldet
+      „82540em“ und eine LAN-Adresse per DHCP); löschen

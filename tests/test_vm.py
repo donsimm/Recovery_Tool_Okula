@@ -27,7 +27,7 @@ class ProfileXmlTest(unittest.TestCase):
         self.assertEqual((w.firmware, w.tpm, w.chipset, w.disk.bus, w.disk.size_gb, w.nic.model, w.cpu.cores,
                           w.ram_mb), ("uefi-sb", True, "q35", "nvme", 128, "e1000e", 4, 8192))
         self.assertEqual((l.firmware, l.tpm, l.chipset, l.disk.bus, l.disk.size_gb, l.disk.rpm, l.nic.model,
-                          l.cpu.cores, l.ram_mb), ("bios", False, "i440fx", "sata", 80, 7200, "rtl8139", 2, 4096))
+                          l.cpu.cores, l.ram_mb), ("bios", False, "i440fx", "sata", 80, 7200, "e1000", 2, 4096))
         self.assertEqual((k.firmware, k.tpm, k.chipset, k.disk.bus, k.disk.size_gb, k.disk.rpm, k.nic.model,
                           k.cpu.cores, k.ram_mb), ("uefi", False, "q35", "sata", 64, 0, "e1000e", 2, 4096))
         for p in vm.PROFILES.values():
@@ -67,7 +67,7 @@ class ProfileXmlTest(unittest.TestCase):
         meta = vm.profile_from_xml(ET.tostring(r, encoding="unicode"))
         self.assertEqual((meta.disk.bus, meta.disk.size_gb), ("nvme", 128))
 
-    def test_legacy_bios_i440fx_sata_hdd_rtl8139(self):
+    def test_legacy_bios_i440fx_sata_hdd_e1000(self):
         r = parse(vm.PROFILES["VM-Legacy"])
         self.assertIsNone(r.find("os").get("firmware"))            # SeaBIOS
         self.assertIsNone(r.find("os/firmware"))
@@ -76,8 +76,31 @@ class ProfileXmlTest(unittest.TestCase):
         target = r.find("devices/disk/target")
         self.assertEqual((target.get("bus"), target.get("rotation_rate")), ("sata", "7200"))
         self.assertEqual(r.find("devices/disk/product").text, "Okula SATA HDD 80GB")
-        self.assertEqual(r.find("devices/interface/model").get("type"), "rtl8139")
+        self.assertEqual(r.find("devices/interface/model").get("type"), "e1000")     # Treiber in Windows
         self.assertIsNone(r.find(f"{Q}override"))
+
+    def test_disk_as_file_in_pool_dir(self):
+        # Pool-Volume (type="volume") bekommt keine AppArmor-Freigabe → Datei im Pool-Verzeichnis
+        for p in vm.PROFILES.values():
+            xml = vm.domain_xml(vm.fill_identity(p))
+            disk = ET.fromstring(xml).find("devices/disk[@device='disk']")
+            self.assertEqual(disk.get("type"), "file")
+            self.assertEqual(disk.find("source").attrib,
+                             {"file": f"/var/lib/libvirt/images/okula/{p.name}.qcow2"})
+            self.assertEqual(disk.find("driver").get("type"), "qcow2")
+            self.assertEqual(disk.find("alias").get("name"), "ua-disk0")
+            self.assertNotIn("pool=", xml)
+            self.assertNotIn('type="volume"', xml)
+
+    def test_nic_models(self):
+        self.assertEqual(vm.NIC_MODELS, ("e1000e", "e1000", "rtl8139"))
+        p = vm.profile("VM-Klein")
+        p.nic.model = "rtl8139"                         # bleibt erlaubt (Linux)
+        p.validate()
+
+    def test_install_has_spice_module(self):
+        install = (Path(__file__).resolve().parent.parent / "install.sh").read_text()
+        self.assertIn("qemu-system-modules-spice", install)
 
     def test_klein_uefi_without_secure_boot(self):
         r = parse(vm.PROFILES["VM-Klein"])
@@ -313,6 +336,13 @@ class ActionsTest(unittest.TestCase):
             self.v.list()
         with self.assertRaisesRegex(vm.VmError, "VM nicht gefunden"):
             vm.Virsh(run=FakeVirsh()).get_profile("weg")
+        msg = vm.Virsh._message("start", "error: Failed to start domain 'X'\nerror: internal error: qemu "
+                                "unexpectedly closed the monitor: Could not open "
+                                "'/var/lib/libvirt/images/okula/X.qcow2': Permission denied")
+        self.assertIn("Disk-Datei der VM nicht lesbar", msg)
+        msg = vm.Virsh._message("define", "error: unsupported configuration: spice graphics are not "
+                                "supported with this QEMU")
+        self.assertIn("SPICE", msg)
 
         def missing(cmd, input_text=None):
             raise FileNotFoundError("virsh")

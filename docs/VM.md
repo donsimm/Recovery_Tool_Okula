@@ -1,7 +1,7 @@
 # Virtuelle Maschinen (VM) im Tool – Konzept (I-001)
 
 Stand: **in Arbeit** – Konzept mit Dominik festgelegt am 06.11.2026, Umsetzung in 4 Aufträgen
-(Prompts `docs/prompts/I-001-*.md`). Auftrag 1 „VM-Grundlage“ umgesetzt 06.11.2026 (noch ohne Oberfläche).
+(Prompts `docs/prompts/I-001-*.md`). Auftrag 1 „VM-Grundlage“ umgesetzt 06.11.2026, Nacharbeit 1b am selben Tag (noch ohne Oberfläche).
 
 ## Ziel
 
@@ -24,6 +24,9 @@ Stand: **in Arbeit** – Konzept mit Dominik festgelegt am 06.11.2026, Umsetzung
 - **Beim Bestücken** das letzte Image des Geräts einspielen – Häkchen, Standard an („digitaler Zwilling“).
 - **Brücke `br0`** legt `install.sh` an; diese Installation am Server selbst ausführen (bei einem Fehler ist der
   Server kurz offline).
+- **VM-Legacy mit Intel e1000 statt Realtek rtl8139** (Auftrag 1b, 06.11.2026): Für rtl8139 bringt Windows 10/11
+  keinen Treiber mit, die VM wäre unter Windows ohne Netzwerk. e1000 (Intel 82540EM) hat einen Treiber in Windows
+  und wird auch vom iPXE der SeaBIOS-Firmware unterstützt. rtl8139 bleibt wählbar (nur für Linux sinnvoll).
 
 ## Server (Stand 06.11.2026)
 
@@ -40,7 +43,7 @@ DHCP, verwaltet von NetworkManager („Wired connection 1“). QEMU/libvirt noch
 - **Agent in der VM über Netzwerkstart** (kein Stick, keine Agent-ISO): Das Tool schaltet die MAC jeder VM
   automatisch frei. Danach ist die VM ein Gerät wie jedes andere (Gerätefenster, Images, Backup, Automatisierung).
 - Neustart/Herunterfahren/Einschalten über libvirt statt Wake-on-LAN.
-- **Nur Standard-Hardware** nachbilden (SATA/NVMe, Intel e1000e bzw. Realtek rtl8139), keine virtio-Treiber –
+- **Nur Standard-Hardware** nachbilden (SATA/NVMe, Intel e1000e/e1000, Realtek rtl8139 nur für Linux), keine virtio-Treiber –
   sonst läuft ein Image aus der VM auf echten Geräten nicht. Übertragbar auf andere Hardware nur mit Sysprep.
 
 ## Profile (Vorlagen)
@@ -48,7 +51,7 @@ DHCP, verwaltet von NetworkManager („Wired connection 1“). QEMU/libvirt noch
 | VM | Nachgebildet | Firmware | Chipsatz | Disk | Netzwerk | CPU / RAM | Testet vor allem |
 |---|---|---|---|---|---|---|---|
 | **VM-Win11** | moderner Business-Laptop | UEFI + Secure Boot + TPM 2.0 | Q35 | NVMe 128 GB | Intel e1000e | 4 / 8 GB | Master bauen, Windows 11, Automatisierung |
-| **VM-Legacy** | älteres Gerät | BIOS (Legacy, SeaBIOS) | i440FX | SATA-HDD 80 GB | Realtek rtl8139 | 2 / 4 GB | BIOS-Netzwerkstart, Windows 10, alte Hardware |
+| **VM-Legacy** | älteres Gerät | BIOS (Legacy, SeaBIOS) | i440FX | SATA-HDD 80 GB | Intel e1000 | 2 / 4 GB | BIOS-Netzwerkstart, Windows 10, alte Hardware |
 | **VM-Klein** | Gerät mit kleiner Disk | UEFI ohne Secure Boot | Q35 | SATA-SSD 64 GB | Intel e1000e | 2 / 4 GB | Zurückspielen auf kleinere Disk (Ä-002), Linux |
 
 Jede VM lässt sich nachträglich ändern; weitere VMs mit eigenem Profil sind möglich.
@@ -67,7 +70,7 @@ Gerätefenster → **„VM mit dieser Hardware erstellen …“**. Quelle: das g
 | `disks`: Grösse, `transport` sata/nvme, Modell (120 GB SATA KINGSTON SH103S3120G) | ✔ Grösse genau, Anschluss genau, Modellname soweit QEMU es erlaubt |
 | Partitionstabelle `pttype` des Systemdisks (`dos`) | ✔ bestimmt die Firmware: `dos` → BIOS (Legacy), `gpt` → UEFI |
 | `platform`: TPM, Secure Boot | ✔ TPM 2.0 / Secure Boot, wenn das Gerät sie hat |
-| `network`: Treiber (r8169) | ~ ähnliches Modell: Realtek → rtl8139, Intel → e1000e; **MAC nie übernehmen** |
+| `network`: Treiber (r8169) | ~ ähnliches Modell: Intel → e1000e; Realtek → rtl8139 hat in Windows keinen Treiber, darum in Auftrag 3 klären (Vorschlag e1000); **MAC nie übernehmen** |
 | Disk-Inhalt | ✔ optional letztes Image des Geräts einspielen (Standard an) |
 | `oem_key` | ✖ bewusst nicht (Lizenz gehört zum Gerät) |
 | SMART, Akku, Grafik, WLAN, Sound, Hersteller-BIOS-Einstellungen | ✖ nicht nachbildbar |
@@ -78,7 +81,7 @@ Nicht nachbildbar sind auch Eigenheiten echter Hersteller-Firmware (z. B. B-004,
 
 | # | Auftrag | Inhalt | Prompt |
 |---|---|---|---|
-| 1 | **VM-Grundlage** ✔ 06.11. | `install.sh`: Pakete, Pool `okula`, Brücke `br0` (`okula-bridge`); `vm.py`: Hardware-Profil → libvirt-Konfiguration, Aktionen über virsh (als Benutzer, kein Root-Helfer nötig); Tests | `I-001-1-vm-grundlage.md` |
+| 1 | **VM-Grundlage** ✔ 06.11. (Nacharbeit 1b ✔ 06.11.) | `install.sh`: Pakete, Pool `okula`, Brücke `br0` (`okula-bridge`); `vm.py`: Hardware-Profil → libvirt-Konfiguration, Aktionen über virsh (als Benutzer, kein Root-Helfer nötig); Tests | `I-001-1-vm-grundlage.md`, `I-001-1b-vm-nacharbeit.md` |
 | 2 | **VMs im Tool** | Ordner „Virtuelle Maschinen“, „Neue VM …“ mit Profilen, Starten (Normal / Mit Agent / Von ISO), Herunterfahren, Bildschirm, Netzwerkstart-Freigabe | folgt |
 | 3 | **Hardware vom Gerät** | „VM mit dieser Hardware erstellen …“, Identität abwandeln, letztes Image einspielen | folgt |
 | 4 | **Snapshots** | Zustand sichern und zurückholen | folgt |
@@ -88,8 +91,7 @@ Kein neuer Agent-Stick nötig (Agent unverändert).
 ### Abweichungen und Grenzen aus Auftrag 1 (06.11.2026)
 
 - **NVMe:** libvirt 11.3 (Debian 13) hat den Disk-Bus `nvme` erst ab 11.5. Lösung: SATA-Disk, per `qemu:override` zum
-  QEMU-Gerät `nvme` umgebaut. Am realen Server noch nicht gestartet (Test in [TESTS.md](TESTS.md), Abschnitt 8).
-  Klappt das nicht, Rückfall auf SATA für VM-Win11 oder warten auf libvirt ≥ 11.5.
+  QEMU-Gerät `nvme` umgebaut. Am Server geprüft (06.11.): UEFI zeigt „UEFI QEMU NVMe Ctrl <Seriennummer>“.
 - **Modellname der NVMe-Disk:** QEMU 10.0 kennt dafür keine Einstellung → bleibt „QEMU NVMe Ctrl“. SATA-Disks
   bekommen den Modellnamen (`<product>`).
 - **CPU-Name:** per `-global host-x86_64-cpu.model-id` (`qemu:commandline`); in den drei Profilen leer = Server-CPU.
@@ -99,3 +101,15 @@ Kein neuer Agent-Stick nötig (Agent unverändert).
   VM behält die geänderte Reihenfolge (bei ISO z. B. erneut „Press any key to boot from CD“), erst nach dem Ausschalten
   ist sie wieder normal.
 - Kein Root-Helfer `okula-vm`: Der Benutzer steuert libvirt über die Gruppe `libvirt` direkt.
+
+### Abweichungen und Grenzen aus Auftrag 1b (06.11.2026)
+
+- **Disk als Datei statt Pool-Volume:** In der VM steht die Disk als `<disk type="file">` mit
+  `/var/lib/libvirt/images/okula/<Name>.qcow2`. Bei `<disk type="volume">` legt virt-aa-helper keine AppArmor-Freigabe
+  für die Datei an – der Start bricht mit „Could not open …: Permission denied“ ab. Angelegt, vergrössert und gelöscht
+  wird die Datei weiterhin über den Pool `okula` (`vol-create-as`, `vol-resize`, `vol-delete`), Rechte und Grösse
+  verwaltet libvirt.
+- **SPICE-Bildschirm braucht `qemu-system-modules-spice`:** Das Paket ist nur „Empfiehlt“ von `qemu-system-x86`;
+  `install.sh` installiert ohne Empfehlungen und nennt es darum ausdrücklich. Ohne es meldet `virsh define`
+  „spice graphics are not supported with this QEMU“ (im Tool: „Bildschirm (SPICE) fehlt – sudo ./install.sh …“).
+- **Netzwerkkarte VM-Legacy:** Intel e1000 statt Realtek rtl8139 (siehe Entscheide).

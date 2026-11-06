@@ -37,9 +37,11 @@ apt-get install -y --no-install-recommends \
     python3-reportlab
 
 # Virtuelle Maschinen (I-001): QEMU/KVM, libvirt, UEFI-Firmware, TPM-Emulator, Bildschirmfenster
+# (qemu-system-modules-spice ist nur „Empfiehlt“ von qemu-system-x86 – ohne es kein SPICE-Bildschirm)
 echo "==> Pakete für virtuelle Maschinen"
 apt-get install -y --no-install-recommends \
-    qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients ovmf swtpm swtpm-tools virt-viewer
+    qemu-system-x86 qemu-system-modules-spice qemu-utils libvirt-daemon-system libvirt-clients \
+    ovmf swtpm swtpm-tools virt-viewer
 
 # Formatieren: weitere Dateisysteme. Sichtbar installieren (Btrfs/XFS bauen das initramfs neu, das dauert);
 # fehlt ein Paket in den Quellen, einzeln weiter – das bricht die Installation nicht ab.

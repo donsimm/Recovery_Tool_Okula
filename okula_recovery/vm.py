@@ -1,14 +1,17 @@
 """Virtuelle Maschinen (I-001): Hardware-Profil → libvirt-VM, Aktionen über virsh (ohne GTK).
 
 Konzept und Profile: docs/VM.md. Grundsätze:
-- Nur Standard-Hardware (SATA/NVMe, Intel e1000e, Realtek rtl8139), keine virtio-Geräte – ein Image aus der VM
+- Nur Standard-Hardware (SATA/NVMe, Intel e1000e/e1000, Realtek rtl8139), keine virtio-Geräte – ein Image aus der VM
   soll auf echten Geräten laufen.
 - Netzwerk über die Brücke br0 (okula-bridge), VMs sind im LAN sichtbar; Agent über den Netzwerkstart.
 - virsh -c qemu:///system als Benutzer (Gruppe libvirt), Disks als qcow2 im Speicherpool „okula“.
+  In der VM steht die Disk als Datei (type="file"), nicht als Pool-Volume: Nur für Dateien legt virt-aa-helper
+  die AppArmor-Freigabe an, sonst bricht der Start mit „Permission denied“ ab. Angelegt, vergrössert und
+  gelöscht wird sie weiterhin über den Pool (vol-create-as/vol-resize/vol-delete).
 - Das Profil liegt als JSON in den Metadaten der VM; damit lässt es sich später wieder lesen und ändern.
 
 libvirt in Debian 13 ist 11.3: Der Disk-Bus „nvme“ kommt erst mit 11.5. Eine NVMe-Disk wird darum als SATA-Disk
-definiert (libvirt verwaltet Datei, Rechte und AppArmor) und per <qemu:override> zum QEMU-Gerät „nvme“ umgebaut.
+definiert (libvirt verwaltet Rechte und AppArmor) und per <qemu:override> zum QEMU-Gerät „nvme“ umgebaut.
 QEMU 10.0 kennt für NVMe keinen Modellnamen – dort bleibt „QEMU NVMe Ctrl“. Der CPU-Name wird per -global gesetzt.
 Gehäusetyp (SMBIOS Typ 3) lässt sich weder in libvirt noch in QEMU setzen; er steht nur im Profil.
 """
@@ -40,7 +43,9 @@ MAC_RE = re.compile(r"^52:54:00(:[0-9a-f]{2}){3}$")
 FIRMWARES = ("uefi-sb", "uefi", "bios")
 CHIPSETS = ("q35", "i440fx")
 DISK_BUSES = ("nvme", "sata")
-NIC_MODELS = ("e1000e", "rtl8139")
+# e1000e (Intel 82574L) und e1000 (Intel 82540EM): Treiber in Windows enthalten.
+# rtl8139: in Windows 10/11 ohne mitgelieferten Treiber – nur für Linux sinnvoll.
+NIC_MODELS = ("e1000e", "e1000", "rtl8139")
 START_MODES = ("normal", "pxe", "iso")
 
 ET.register_namespace("qemu", QEMU_NS)
@@ -64,7 +69,7 @@ class DiskSpec:
 
 @dataclass
 class NicSpec:
-    model: str = "e1000e"      # e1000e | rtl8139
+    model: str = "e1000e"      # e1000e | e1000 | rtl8139
     mac: str = ""              # leer = beim Erstellen erzeugen (52:54:00:…)
 
 
@@ -152,7 +157,7 @@ def _profile(name, firmware, tpm, chipset, bus, size, model, rpm, nic, cores, ra
 # Vorlagen laut docs/VM.md
 PROFILES: dict[str, VmProfile] = {p.name: p for p in (
     _profile("VM-Win11", "uefi-sb", True, "q35", "nvme", 128, "Okula NVMe SSD 128GB", 0, "e1000e", 4, 8, 10),
-    _profile("VM-Legacy", "bios", False, "i440fx", "sata", 80, "Okula SATA HDD 80GB", 7200, "rtl8139", 2, 4, 3),
+    _profile("VM-Legacy", "bios", False, "i440fx", "sata", 80, "Okula SATA HDD 80GB", 7200, "e1000", 2, 4, 3),
     _profile("VM-Klein", "uefi", False, "q35", "sata", 64, "Okula SATA SSD 64GB", 0, "e1000e", 2, 4, 3),
 )}
 
@@ -280,9 +285,9 @@ def domain_xml(p: VmProfile, boot: str = "normal", iso: str = "") -> str:
 
     order = {"normal": (1, 2, 0), "pxe": (2, 1, 0), "iso": (2, 3, 1)}[boot]   # Disk, Netzwerk, CD
     dev = _sub(dom, "devices")
-    disk = _sub(dev, "disk", type="volume", device="disk")
+    disk = _sub(dev, "disk", type="file", device="disk")        # Datei statt Pool-Volume: AppArmor (siehe oben)
     _sub(disk, "driver", name="qemu", type="qcow2", discard="unmap")
-    _sub(disk, "source", pool=POOL, volume=volume_name(p.name))
+    _sub(disk, "source", file=volume_path(p.name))
     target = {"dev": "sda", "bus": "sata"}
     if p.disk.bus == "sata":
         target["rotation_rate"] = str(p.disk.rpm or 1)       # 1 = SSD
@@ -368,6 +373,11 @@ def volume_name(name: str) -> str:
     return f"{name}.qcow2"
 
 
+def volume_path(name: str) -> str:
+    """Pfad der Disk-Datei im Pool-Verzeichnis (so steht sie in der VM)."""
+    return os.path.join(POOL_DIR, volume_name(name))
+
+
 # ---------- virsh ----------
 
 Run = Callable[[list[str], "str | None"], subprocess.CompletedProcess]
@@ -375,6 +385,8 @@ Run = Callable[[list[str], "str | None"], subprocess.CompletedProcess]
 _HINTS = (
     ("failed to connect to the hypervisor", "libvirt nicht erreichbar – installiert (sudo ./install.sh) und nach "
                                             "der Installation einmal ab- und wieder angemeldet?"),
+    ("spice graphics are not supported", "Bildschirm (SPICE) fehlt – sudo ./install.sh erneut ausführen"),
+    ("could not open '" + POOL_DIR, "Disk-Datei der VM nicht lesbar – sudo ./install.sh erneut ausführen"),
     ("permission denied", "Keine Berechtigung für libvirt – nach der Installation einmal ab- und wieder anmelden"),
     ("storage pool not found", f"Speicherpool „{POOL}“ fehlt – sudo ./install.sh erneut ausführen"),
     ("cannot get interface mtu on 'br0'", "Netzwerkbrücke br0 fehlt – sudo ./install.sh am Server ausführen"),

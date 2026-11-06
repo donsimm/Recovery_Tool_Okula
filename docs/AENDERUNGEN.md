@@ -22,7 +22,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
 Erledigt 31.10. zusätzlich: I-007 ✔ (Image prüfen) → Ä-027 ✔ (Demo ohne NAS) → Ä-028 ✔ (Ein/Aus-Symbole) → Ä-029 ✔ (Legende) → Ä-030 ✔ (NAS-Leiste) → I-030 ✔ (Bandbreite) → Ä-031 ✔ (Tage hell/dunkel).
-Als Nächstes: **I-001 VMs** (in Arbeit, 4 Aufträge, [VM.md](VM.md)) – Auftrag 1 „VM-Grundlage“ ✔ 06.11. (am Server `sudo ./install.sh` + Tests [TESTS.md](TESTS.md) Abschnitt 8), dann Prompt Auftrag 2 „VMs im Tool“. Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
+Als Nächstes: **I-001 VMs** (in Arbeit, 4 Aufträge, [VM.md](VM.md)) – Auftrag 1 „VM-Grundlage“ ✔ 06.11., Nacharbeit 1b ✔ 06.11. (am Server `sudo ./install.sh` + Tests [TESTS.md](TESTS.md) Abschnitt 8), dann Prompt Auftrag 2 „VMs im Tool“. Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
 Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
 ## 🐞 Bugs
@@ -112,6 +112,8 @@ Gerätename = Name im Tool.
 - **VMs (I-001, Entscheid Dominik 06.11.2026):** im LAN sichtbar (Brücke `br0`, von `install.sh` angelegt – am Server
   installieren), Bildschirm im eigenen Fenster, Windows „nicht aktiviert“, OEM-Key nie übernehmen. Zwillings-VM:
   Seriennummer/UUID abgewandelt mit Kennzeichen, eigene MAC, letztes Image einspielen (Standard an). Details [VM.md](VM.md).
+- **VM-Legacy mit Intel e1000 statt Realtek rtl8139** (I-001 Auftrag 1b, 06.11.2026): rtl8139 hat in Windows 10/11
+  keinen mitgelieferten Treiber; rtl8139 bleibt nur für Linux wählbar.
 - **Umsetzungsreihenfolge:** zuerst Agent (Fundament, ein neuer Stick reicht), dann Tool-Logik, zuletzt Oberfläche.
 
 ## ✅ Erledigt – Änderungsprotokoll
@@ -119,6 +121,12 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 06.11.2026
+- **I-001 Auftrag 1b – VM-Nacharbeit** (Von: Projektleitung, Abnahme Auftrag 1): `install.sh` installiert
+  `qemu-system-modules-spice` (ohne das Modul kein SPICE-Bildschirm). Disk der VM als Datei im Pool-Verzeichnis
+  (`type="file"`) statt Pool-Volume – nur so legt libvirt die AppArmor-Freigabe an; Anlegen/Vergrössern/Löschen
+  weiterhin über den Pool `okula`. VM-Legacy mit Intel e1000 statt Realtek rtl8139 (Windows-Treiber); rtl8139 bleibt
+  wählbar. Verständliche Meldungen bei fehlendem SPICE und nicht lesbarer Disk-Datei. Am Server alle drei Profile
+  erstellt, gestartet, ausgeschaltet und gelöscht (Bildschirm per VNC-Testkopie). Kein neuer Agent-Stick.
 - **I-001 Auftrag 1 – VM-Grundlage** (Von: Dominik): `install.sh` installiert QEMU/KVM, libvirt, OVMF, swtpm und
   virt-viewer, nimmt den Benutzer in die Gruppe `libvirt` auf, legt den Speicherpool `okula` an und schaltet das
   libvirt-Standardnetz ab. Netzwerkbrücke `br0` per `okula-bridge` (NetworkManager, gleiche MAC und IP wie `eno2`,
