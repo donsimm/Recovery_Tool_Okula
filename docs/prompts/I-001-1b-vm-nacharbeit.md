@@ -1,6 +1,6 @@
 # I-001 Auftrag 1b – Nacharbeit VM-Grundlage (Bildschirm, Disk-Zugriff, Netzwerkkarte)
 
-Status: freigegeben · erstellt 06.11.2026 von der Projektleitung · Freigabe: Dominik 06.11.
+Status: umgesetzt (Commit 2ecc04f) · erstellt 06.11.2026 von der Projektleitung · Freigabe: Dominik 06.11.
 
 ## Rolle und Einstieg
 
