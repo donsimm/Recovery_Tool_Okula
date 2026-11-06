@@ -1,6 +1,6 @@
 # I-001 Auftrag 4 – Snapshots der VMs
 
-Status: umgesetzt (Commit 2dadd10) · erstellt 06.11.2026 von der Projektleitung · Freigabe: Dominik 06.11.
+Status: abgenommen 06.11. (Commit 2dadd10) – Ablauf im Tool noch zu testen (TESTS.md Abschnitt 11) · erstellt 06.11.2026 von der Projektleitung · Freigabe: Dominik 06.11.
 
 ## Rolle und Einstieg
 

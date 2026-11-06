@@ -51,6 +51,17 @@ Der Projektleitung ist es auch dann nicht erlaubt, den App-Code anzufassen, wenn
    `docs/prompts/<ID>-…md` nachtragen und Dominik die Update-Schritte für den Server nennen
    (`git pull && sudo ./install.sh`, neuer Agent-Stick ja/nein, Tests am realen System aus `docs/TESTS.md`).
 
+## Arbeitsweise mit Dominik (Erfahrung)
+
+- Empfehlungen geben statt nur Optionen aufzählen; Fragen gesammelt und kurz stellen.
+- **Tests meldet Dominik im Chat** („Abschnitt 9 Punkt 3 ok …“); die Projektleitung hakt in `docs/TESTS.md` ab
+  (`- [x] … – ✔ TT.MM.`) und trägt Fehler als Bug ein. Die Kästchen in GitHub-Dateien sind nicht klickbar.
+- Dominik testet gern gesammelt später und implementiert zuerst weiter – offene Prüfungen in der Übergabe festhalten.
+- **Abnahme:** Diff lesen, alle Tests laufen lassen, und wo möglich selbst am Server prüfen (ohne sudo, nur
+  Probe-Objekte, danach aufräumen; z. B. Probe-VMs mit `virsh`, Bildschirm per `virsh screenshot`). Das ist kein
+  App-Code und darum erlaubt – Dominiks eigene VMs/Geräte dabei nicht anfassen.
+- **Während ein Agent arbeitet** (gleicher Ordner): nichts committen, Entwürfe erst nach seinem Push.
+
 ## Übergabe an die nächste Sitzung (nur Projektleitung)
 
 Ab **80–85 % Kontext** (Hinweis vom Hook bzw. „📋 Übergabe fällig“ in der Statuszeile) oder auf Wunsch von Dominik:
