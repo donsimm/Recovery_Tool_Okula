@@ -165,14 +165,18 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stic
 - [ ] Geräteliste: Ordner „Virtuelle Maschinen“ erscheint; Rechtsklick darauf → nur „Neue virtuelle Maschine …“ und
       „Inventar exportieren …“; Ordner lässt sich nicht umbenennen, löschen oder verschieben, ein echtes Gerät lässt
       sich nicht hineinziehen
-- [ ] Extras → Neue virtuelle Maschine … → VM-Klein → Erstellen → Gerätefenster öffnet, Zustand „VM aus“
-- [ ] Einschalten und Agent starten → nach etwa 30 s grüner Punkt, Status „läuft – Agent verbunden“, Übersicht zeigt
-      Okula VM-Klein, keine zweite Zeile in „Neu / nicht einsortiert“
+- [x] Extras → Neue virtuelle Maschine … → VM-Klein → Erstellen → Gerätefenster öffnet, Zustand „VM aus“ – ✔ 06.11. (VM-Klein und VM-Win11)
+- [x] Einschalten und Agent starten → nach etwa 30 s grüner Punkt, Status „läuft – Agent verbunden“, Übersicht zeigt
+      Okula VM-Klein, keine zweite Zeile in „Neu / nicht einsortiert“ – ✔ 06.11. (VM-Klein, „Neu / nicht einsortiert (0)“)
 - [ ] Disk-Image erstellen (leere Disk) bzw. nach einer Installation; danach Herunterfahren-Symbol → VM aus
-- [ ] Einschalten → startet ohne Agent von der Disk (leere Disk: UEFI-Setup-Menü bzw. „kein Betriebssystem“)
-- [ ] Bildschirm → eigenes Fenster; nochmals klicken → Fenster öffnet neu; Ctrl+Alt gibt Maus und Tastatur frei
+- [x] Einschalten → startet ohne Agent von der Disk (leere Disk: UEFI-Setup-Menü bzw. „kein Betriebssystem“) – ✔ 06.11.
+      (VM-Win11 mit leerer Disk: UEFI-Setup-Menü – verständlicher machen: Ä-036)
+- [ ] Bildschirm → eigenes Fenster (✔ 06.11. erstes Öffnen); nochmals klicken → Fenster öffnet neu; Ctrl+Alt gibt Maus und Tastatur frei
 - [ ] Hardware ändern … (VM aus): RAM 6 GB, Disk 80 GB → Verlauf zeigt die Änderung; Verkleinern nicht möglich
-- [ ] **Windows 11 in VM-Win11:** Neue VM VM-Win11 → zuerst Bildschirm → Von ISO starten … → Windows-11-ISO → im Fenster
+- [x] **Windows 11 in VM-Win11 per „OS installieren …“** (Direktinstallation über den Agent) – ✔ 06.11.: Installation
+      ohne Key durchgelaufen, nach dem Neustart startet Windows von der Disk (nicht wieder der Agent), keine Meldung zu
+      Secure Boot/TPM
+- [ ] **Windows 11 in VM-Win11 von ISO:** Neue VM VM-Win11 → zuerst Bildschirm → Von ISO starten … → Windows-11-ISO → im Fenster
       schnell eine Taste („Press any key to boot from CD“) → Windows installieren (ohne Key, „nicht aktiviert“);
       Secure Boot und TPM erfüllt die VM (keine Meldung „PC erfüllt die Anforderungen nicht“)
 - [ ] Danach in Windows: Gerätefenster → Netzwerk → „Beim nächsten Start den Agent laden“ → Windows neu starten →
