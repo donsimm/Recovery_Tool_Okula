@@ -2,5 +2,18 @@
   "statusLine": {
     "type": "command",
     "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/statusline.sh\""
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/uebergabe-hinweis.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
   }
 }

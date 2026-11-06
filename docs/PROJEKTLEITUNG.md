@@ -14,6 +14,8 @@ und wie aus einer Idee ein umgesetztes Feature wird.
   entfernt. Drei Zeilen: Verbrauch (Kontext, 5 h / 7 Tage mit Reset-Zeit, Kosten, Dauer), Sitzung (Modell,
   Denkstufe, Cache), Repo und Projektstand (Branch, ✎ ↑ ↓, 🐞 🔧 💡 offen, 📥 neue Notizen, Prompts).
   Neue Spalten oder Status in `AENDERUNGEN.md`, `EINGANG.md` oder `docs/prompts/` → Skript mitprüfen.
+- **Übergabe ab 80 % Kontext** (nur Projektleitung): Hook `.claude/hooks/uebergabe-hinweis.sh` erinnert einmal pro
+  Sitzung, die Statuszeile zeigt „📋 Übergabe fällig“ – Ablauf siehe unten.
 
 ## Zwei Rollen
 
@@ -49,6 +51,33 @@ Der Projektleitung ist es auch dann nicht erlaubt, den App-Code anzufassen, wenn
    `docs/prompts/<ID>-…md` nachtragen und Dominik die Update-Schritte für den Server nennen
    (`git pull && sudo ./install.sh`, neuer Agent-Stick ja/nein, Tests am realen System aus `docs/TESTS.md`).
 
+## Übergabe an die nächste Sitzung (nur Projektleitung)
+
+Ab **80–85 % Kontext** (Hinweis vom Hook bzw. „📋 Übergabe fällig“ in der Statuszeile) oder auf Wunsch von Dominik:
+zuerst die laufende Frage abschliessen, dann die Übergabe vorschlagen. Mit Dominiks OK `docs/UEBERGABE.md`
+**neu schreiben** (ersetzt die vorige; ältere Stände in `git log -p docs/UEBERGABE.md`), committen, pushen und eine
+neue Sitzung empfehlen. Die neue Sitzung liest die Datei direkt nach diesem Dokument.
+
+Inhalt, knapp und konkret (keine Wiederholung dessen, was schon in `AENDERUNGEN.md` steht – dorthin verweisen):
+
+```
+# Übergabe – <TT.MM.JJJJ HH:MM>
+
+## Stand
+- woran gearbeitet wurde, was fertig ist (mit Commit), was halb fertig ist
+
+## Offen und als Nächstes
+- nächster konkreter Schritt zuerst; offene Fragen an Dominik; Prompts mit Status
+
+## Entscheide dieser Sitzung
+- Entscheid (Dominik, Datum) – auch in AENDERUNGEN.md „📌 Entscheidungen“ eingetragen? ja/nein
+
+## Learnings
+- was über Dominiks Arbeitsweise, das Projekt oder die Umgebung gelernt wurde
+  (Beispiel: „Projektleitung ändert keinen App-Code – auch nicht bei ‚Fenster dunkel‘“)
+- Dauerhaftes zusätzlich in dieses Dokument oder CLAUDE.md übernehmen, damit es nicht nur in der Übergabe steht
+```
+
 ## Prompts – Status
 
 Jede Prompt-Datei trägt oben eine Zeile `Status:` mit einem der Werte **Entwurf**, **freigegeben**,
@@ -64,4 +93,5 @@ Jede Prompt-Datei trägt oben eine Zeile `Status:` mit einem der Werte **Entwurf
 | `docs/TESTS.md` | Tests am realen System (offen / geprüft) |
 | `docs/TECHNIK.md` | Technik und Details aller Funktionen |
 | `docs/prompts/` | Prompts für Umsetzungs-Agenten, `VORLAGE.md` als Muster |
+| `docs/UEBERGABE.md` | Übergabe der letzten Projektleitungs-Sitzung (Stand, Offenes, Entscheide, Learnings) |
 | `okula_recovery/help_window.py` | Hilfe im Tool (F1) |

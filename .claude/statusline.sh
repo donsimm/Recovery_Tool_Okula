@@ -4,9 +4,16 @@
 #   2. Sitzung:   Modell, Denkstufe, Thinking, Name, Version, Cache
 #   3. Repo:      Branch, ungespeicherte Dateien, ↑ nicht gepusht / ↓ auf GitHub neuer (Stand letzter Pull),
 #                 Projektstand aus docs/ (offene Bugs/Änderungen/Ideen, Notizen im Eingang, Prompts)
-# Nur lesend und ohne Netzwerk – läuft bei jeder Aktualisierung der Statuszeile.
+# Ohne Netzwerk, liest nur – ausser dem Kontextstand je Sitzung für den Übergabe-Hook
+# (.claude/hooks/uebergabe-hinweis.sh). Läuft bei jeder Aktualisierung der Statuszeile.
 export LC_NUMERIC=C
 input=$(cat)
+
+sid=$(jq -r '.session_id // empty' <<<"$input")
+if [[ "$sid" =~ ^[A-Za-z0-9_-]+$ ]]; then
+  sd="${XDG_RUNTIME_DIR:-/tmp}/okula-claude-$(id -u)"
+  mkdir -p -m 700 "$sd" 2>/dev/null && jq -r '.context_window.used_percentage // 0' <<<"$input" > "$sd/$sid.ctx" 2>/dev/null
+fi
 
 IFS=$'\t' read -r ctx s5 s5r d7 d7r cost dur api add del model effort think sname ver warm hit dir < <(
   jq -r '[
@@ -39,6 +46,7 @@ mins() {
 f=$(awk -v p="$ctx" 'BEGIN{print int(p/10+.5)}'); bar=""
 for i in 1 2 3 4 5 6 7 8 9 10; do if (( i <= f )); then bar+="█"; else bar+="░"; fi; done
 l1="$bar $(pct "$ctx")"
+(( $(printf '%.0f' "$ctx") >= 80 )) && l1+=" ${YEL}📋 Übergabe fällig${R}"
 l1+=" │ 5h $(pct "$s5")"
 [ "$s5r" != "-" ] && l1+=" ${DIM}bis $(date -d "@$s5r" +%H:%M)${R}"
 l1+=" · 7d $(pct "$d7")"
