@@ -1,7 +1,7 @@
 # Virtuelle Maschinen (VM) im Tool – Konzept (I-001)
 
 Stand: **in Arbeit** – Konzept mit Dominik festgelegt am 06.11.2026, Umsetzung in 4 Aufträgen
-(Prompts `docs/prompts/I-001-*.md`). Noch nichts programmiert.
+(Prompts `docs/prompts/I-001-*.md`). Auftrag 1 „VM-Grundlage“ umgesetzt 06.11.2026 (noch ohne Oberfläche).
 
 ## Ziel
 
@@ -78,9 +78,24 @@ Nicht nachbildbar sind auch Eigenheiten echter Hersteller-Firmware (z. B. B-004,
 
 | # | Auftrag | Inhalt | Prompt |
 |---|---|---|---|
-| 1 | **VM-Grundlage** | `install.sh`: Pakete, Brücke `br0`; Root-Helfer `okula-vm`; Hardware-Profil → libvirt-Konfiguration; Tests | `I-001-1-vm-grundlage.md` |
+| 1 | **VM-Grundlage** ✔ 06.11. | `install.sh`: Pakete, Pool `okula`, Brücke `br0` (`okula-bridge`); `vm.py`: Hardware-Profil → libvirt-Konfiguration, Aktionen über virsh (als Benutzer, kein Root-Helfer nötig); Tests | `I-001-1-vm-grundlage.md` |
 | 2 | **VMs im Tool** | Ordner „Virtuelle Maschinen“, „Neue VM …“ mit Profilen, Starten (Normal / Mit Agent / Von ISO), Herunterfahren, Bildschirm, Netzwerkstart-Freigabe | folgt |
 | 3 | **Hardware vom Gerät** | „VM mit dieser Hardware erstellen …“, Identität abwandeln, letztes Image einspielen | folgt |
 | 4 | **Snapshots** | Zustand sichern und zurückholen | folgt |
 
 Kein neuer Agent-Stick nötig (Agent unverändert).
+
+### Abweichungen und Grenzen aus Auftrag 1 (06.11.2026)
+
+- **NVMe:** libvirt 11.3 (Debian 13) hat den Disk-Bus `nvme` erst ab 11.5. Lösung: SATA-Disk, per `qemu:override` zum
+  QEMU-Gerät `nvme` umgebaut. Am realen Server noch nicht gestartet (Test in [TESTS.md](TESTS.md), Abschnitt 8).
+  Klappt das nicht, Rückfall auf SATA für VM-Win11 oder warten auf libvirt ≥ 11.5.
+- **Modellname der NVMe-Disk:** QEMU 10.0 kennt dafür keine Einstellung → bleibt „QEMU NVMe Ctrl“. SATA-Disks
+  bekommen den Modellnamen (`<product>`).
+- **CPU-Name:** per `-global host-x86_64-cpu.model-id` (`qemu:commandline`); in den drei Profilen leer = Server-CPU.
+  Wird erst mit Auftrag 3 (Hardware vom Gerät) genutzt.
+- **Gehäusetyp** (SMBIOS Typ 3, z. B. Notebook) lässt sich in libvirt/QEMU nicht setzen – steht nur im Profil.
+- **Einmal-Start** „Netzwerkstart zuerst“ bzw. „Von ISO“: gilt für das Einschalten; ein Neustart *innerhalb* der laufenden
+  VM behält die geänderte Reihenfolge (bei ISO z. B. erneut „Press any key to boot from CD“), erst nach dem Ausschalten
+  ist sie wieder normal.
+- Kein Root-Helfer `okula-vm`: Der Benutzer steuert libvirt über die Gruppe `libvirt` direkt.

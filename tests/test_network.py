@@ -29,6 +29,12 @@ class ParseTest(unittest.TestCase):
         })
 
 
+    def test_bridge_br0(self):
+        # Nach dem Einrichten der Brücke (I-001) hat br0 die Adresse, eno2 keine IPv4 mehr
+        out = "5: br0    inet 192.168.110.199/24 brd 192.168.110.255 scope global dynamic noprefixroute br0\n"
+        self.assertEqual([str(i) for i in network.parse_ip_addr(out)], ["192.168.110.199/24"])
+
+
 class ScanTest(unittest.TestCase):
     def test_scan_uses_ping_and_skips_own_ip(self):
         orig = (network.ping, network.resolve_name, network.neighbours, network.local_interfaces)

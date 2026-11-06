@@ -4,6 +4,9 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+WorkingDirectory=/opt/okula-recovery
+# Netzwerkkarte neu ermitteln (z. B. nach dem Einrichten der Brücke br0); Fehler hier verhindern den Start nicht
+ExecStartPre=-/usr/bin/python3 -m okula_recovery.pxe refresh
 ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file=/etc/okula-recovery/pxe-dnsmasq.conf
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure

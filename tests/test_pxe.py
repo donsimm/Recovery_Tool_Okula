@@ -217,5 +217,43 @@ class PrepareTest(unittest.TestCase):
             self.assertEqual(pxe.read_allowed(base), set())
 
 
+class InterfaceChangeTest(unittest.TestCase):
+    """Nach dem Einrichten der Brücke br0 hängt die Server-IP nicht mehr an eno2 (I-001)."""
+
+    IP_BEFORE = "2: eno2    inet 192.168.110.199/24 brd 192.168.110.255 scope global dynamic eno2\n"
+    IP_AFTER = ("2: eno2    inet6 fe80::1/64 scope link\n"
+                "5: br0    inet 192.168.110.199/24 brd 192.168.110.255 scope global dynamic br0\n")
+
+    def ip(self, out):
+        return mock.patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0, out, ""))
+
+    def test_conf_rewritten_for_bridge(self):
+        with tempfile.TemporaryDirectory() as d:
+            base, conf = Path(d), Path(d) / "pxe-dnsmasq.conf"
+            (base / "bind").write_text("192.168.110.199\n")
+            with self.ip(self.IP_BEFORE):
+                iface, net = pxe.interface_for("192.168.110.199")
+                conf.write_text(pxe.dnsmasq_conf(iface, net.network, base))
+                self.assertFalse(pxe.refresh_conf(base, conf))           # unverändert → nichts schreiben
+            self.assertIn("interface=eno2\n", conf.read_text())
+            with self.ip(self.IP_AFTER):
+                self.assertEqual(pxe.interface_for("192.168.110.199")[0], "br0")
+                self.assertTrue(pxe.refresh_conf(base, conf))
+                self.assertFalse(pxe.refresh_conf(base, conf))
+            text = conf.read_text()
+            self.assertIn("interface=br0\n", text)
+            self.assertNotIn("eno2", text)
+            self.assertIn("dhcp-range=192.168.110.0,proxy,255.255.255.0\n", text)
+
+    def test_nothing_without_prepared_conf(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertFalse(pxe.refresh_conf(Path(d), Path(d) / "fehlt.conf"))
+
+    def test_service_refreshes_before_start(self):
+        unit = (Path(__file__).resolve().parent.parent / "packaging" / "okula-pxe.service").read_text()
+        self.assertIn("ExecStartPre=-/usr/bin/python3 -m okula_recovery.pxe refresh", unit)
+        self.assertIn("WorkingDirectory=/opt/okula-recovery", unit)
+
+
 if __name__ == "__main__":
     unittest.main()

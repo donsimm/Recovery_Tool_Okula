@@ -149,3 +149,29 @@ bestätigt.
 - [ ] Ä-011: Gerätefenster → Übersicht → „Starttasten“ stimmt für eure Geräte (HP, Dell, Lenovo …); Tabelle im Stick-Dialog sichtbar
 - [ ] Gerätename mit Umlaut/Unterstrich (z. B. „Büro_PC_01“) bei OS installieren → Hinweis zeigt Name auf dem Gerät
 - [ ] Export auf altem/neuem Server: Vorlagen und „höchstens gleichzeitig“ kommen mit
+
+### 8. Virtuelle Maschinen – Grundlage (I-001 Auftrag 1)
+Alles **am Server selbst** ausführen (nicht per SSH): Beim Einrichten der Brücke ist der Server kurz offline.
+- [ ] `cd ~/recovery_tool_okula && git pull && sudo ./install.sh` → Abschnitte „Pakete für virtuelle Maschinen“,
+      „Virtuelle Maschinen (libvirt)“ und „Netzwerkbrücke für virtuelle Maschinen“ ohne Fehler; letzte Zeile der Brücke
+      „Netzwerkbrücke br0 aktiv: 192.168.110.199/24 (gleiche Adresse)“ (oder „!!! … NICHT eingerichtet“ – dann
+      Ausgabe notieren)
+- [ ] `ip -br a` → `br0` hat **dieselbe IP** wie vorher `eno2` (192.168.110.199), `eno2` ohne IPv4;
+      `nmcli connection show` → `okula-br0` und `okula-br0-port` aktiv, „Wired connection 1“ inaktiv
+- [ ] Internet (`ping -c 2 debian.org`), NAS im Tool erreichbar, Tool startet, Geräte erscheinen (Beacons/Ping-Scan)
+- [ ] Server neu starten → `br0` kommt wieder mit derselben IP
+- [ ] Ab- und wieder anmelden → `virsh -c qemu:///system list --all` **ohne sudo** läuft (leere Liste);
+      `virsh -c qemu:///system pool-list` zeigt `okula` aktiv/Autostart; `virsh -c qemu:///system net-list --all`
+      zeigt `default` inaktiv, kein Autostart
+- [ ] Netzwerkstart eingeschaltet → `grep interface /etc/okula-recovery/pxe-dnsmasq.conf` zeigt `interface=br0`;
+      ein echtes Gerät (z. B. EliteBook 1) per Netzwerkstart → Agent startet wie vorher
+- [ ] Probe-VM (VM-Klein, UEFI) erstellen und starten:
+      `cd /opt/okula-recovery && python3 -c "from okula_recovery import vm; v = vm.Virsh(); p = v.create(vm.profile('VM-Klein'), name='Probe'); print(p.nic.mac); v.start('Probe')"`
+      → `virt-viewer -c qemu:///system Probe` zeigt das UEFI (TianoCore), danach Netzwerkstart-Versuch „Start PXE
+      over IPv4“ (Anfrage geht über br0 ins LAN; ohne Freigabe der MAC keine Antwort – richtig so)
+- [ ] Probe-VM löschen: `cd /opt/okula-recovery && python3 -c "from okula_recovery import vm; v = vm.Virsh(); v.poweroff('Probe'); v.delete('Probe')"`
+      → `virsh -c qemu:///system list --all` leer, `ls /var/lib/libvirt/images/okula` leer
+- [ ] **NVMe und Secure Boot** (VM-Win11, ungetestete Technik `qemu:override`): wie oben mit `vm.profile('VM-Win11')` und
+      `name='Probe11'` → VM startet (sonst Fehlermeldung notieren!); in virt-viewer Esc → Device Manager → Secure Boot
+      Configuration: „Current Secure Boot State: Enabled“; Boot Manager zeigt „UEFI QEMU NVMe Ctrl …“; danach löschen
+- [ ] VM-Legacy (BIOS) ebenso als `Probe-L` → SeaBIOS-Meldung, Netzwerkstart-Versuch mit Realtek-Karte („iPXE“/„PXE“); löschen

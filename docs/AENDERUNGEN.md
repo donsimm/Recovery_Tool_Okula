@@ -22,7 +22,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
 Erledigt 31.10. zusätzlich: I-007 ✔ (Image prüfen) → Ä-027 ✔ (Demo ohne NAS) → Ä-028 ✔ (Ein/Aus-Symbole) → Ä-029 ✔ (Legende) → Ä-030 ✔ (NAS-Leiste) → I-030 ✔ (Bandbreite) → Ä-031 ✔ (Tage hell/dunkel).
-Als Nächstes: **I-001 VMs** (in Arbeit, 4 Aufträge, [VM.md](VM.md)) – Auftrag 1 „VM-Grundlage“. Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
+Als Nächstes: **I-001 VMs** (in Arbeit, 4 Aufträge, [VM.md](VM.md)) – Auftrag 1 „VM-Grundlage“ ✔ 06.11. (am Server `sudo ./install.sh` + Tests [TESTS.md](TESTS.md) Abschnitt 8), dann Prompt Auftrag 2 „VMs im Tool“. Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
 Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
 ## 🐞 Bugs
@@ -117,6 +117,16 @@ Gerätename = Name im Tool.
 ## ✅ Erledigt – Änderungsprotokoll
 
 Neueste zuoberst.
+
+### 06.11.2026
+- **I-001 Auftrag 1 – VM-Grundlage** (Von: Dominik): `install.sh` installiert QEMU/KVM, libvirt, OVMF, swtpm und
+  virt-viewer, nimmt den Benutzer in die Gruppe `libvirt` auf, legt den Speicherpool `okula` an und schaltet das
+  libvirt-Standardnetz ab. Netzwerkbrücke `br0` per `okula-bridge` (NetworkManager, gleiche MAC und IP wie `eno2`,
+  Rückfall nach 45 s, `--no-bridge`). Netzwerkstart schreibt seine dnsmasq-Konfiguration vor jedem Dienststart neu,
+  wenn die Schnittstelle wechselt (`eno2` → `br0`). Neues Modul `vm.py`: Profile VM-Win11/-Legacy/-Klein, libvirt-XML
+  ohne virtio, NVMe per `qemu:override` (libvirt 11.3 hat den Bus noch nicht), Aktionen über virsh. Noch keine
+  Oberfläche, kein neuer Agent-Stick. Abweichungen in [VM.md](VM.md). Tests `test_vm.py`, `test_bridge.py`,
+  `InterfaceChangeTest`.
 
 ### 05.11.2026
 - **B-006 BIOS-Reiter: unlesbare Einträge beim HP EliteBook 850 G1** (Von: Dominik): `hp-bioscfg` liefert auf dem

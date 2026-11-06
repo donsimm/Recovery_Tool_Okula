@@ -1,0 +1,4 @@
+#!/bin/sh
+# Netzwerkbrücke br0 für die virtuellen Maschinen (setup | status | remove). Läuft nur aus install.sh (root).
+cd /opt/okula-recovery || exit 1
+exec /usr/bin/python3 -m okula_recovery.bridge "$@"

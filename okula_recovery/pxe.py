@@ -473,6 +473,25 @@ def start(server: str, emit: Emit, base: Path = PXE_DIR) -> None:
     emit("INFO", f"Netzwerkstart aktiv auf {iface} ({net.network}) – nur für freigeschaltete Geräte")
 
 
+def refresh_conf(base: Path = PXE_DIR, conf: Path | None = None) -> bool:
+    """dnsmasq-Konfiguration neu schreiben, wenn die Server-IP inzwischen an einer anderen Schnittstelle hängt
+    (z. B. eno2 → br0 nach dem Einrichten der Netzwerkbrücke). True = geändert. Läuft vor jedem Start des Dienstes."""
+    conf = conf or DNSMASQ_CONF
+    server = ""
+    try:
+        server = (base / "bind").read_text().strip()
+    except OSError:
+        server = read_state(base).get("server", "")
+    if not server or not conf.exists():
+        return False
+    iface, net = interface_for(server)
+    text = dnsmasq_conf(iface, net.network, base)
+    if conf.read_text() == text:
+        return False
+    conf.write_text(text)
+    return True
+
+
 def stop(emit: Emit) -> None:
     _run(["systemctl", "disable", "--now", *UNITS])
     emit("INFO", "Netzwerkstart ausgeschaltet")
@@ -497,6 +516,7 @@ def main(argv: list[str]) -> int:
     sp.add_parser("stop")
     sp.add_parser("allow")
     sp.add_parser("log")    # Protokoll der Dienste für das Tool (Ä-034)
+    sp.add_parser("refresh")  # vom systemd-Dienst vor dem Start: Schnittstelle neu ermitteln (br0, I-001)
     v = sp.add_parser("serve")  # vom systemd-Dienst
     v.add_argument("--bind", default="")
     args = ap.parse_args(argv)
@@ -529,6 +549,9 @@ def main(argv: list[str]) -> int:
         elif args.cmd == "allow":
             allow(parse_allow(sys.stdin.read().splitlines()), emit)
             emit("DONE", "Freigabeliste aktualisiert")
+        elif args.cmd == "refresh":
+            if refresh_conf():
+                emit("INFO", "Netzwerkstart: Konfiguration für geänderte Netzwerkkarte neu geschrieben")
         elif args.cmd == "log":
             from okula_recovery import pxelog
             pxelog.helper_main(emit, read_modes())
