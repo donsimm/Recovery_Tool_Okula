@@ -69,7 +69,7 @@ Der Projektleitung ist es auch dann nicht erlaubt, den App-Code anzufassen, wenn
 
 ## Übergabe an die nächste Sitzung (nur Projektleitung)
 
-Ab **80–85 % Kontext** (Hinweis vom Hook bzw. „📋 Übergabe fällig“ in der Statuszeile) oder auf Wunsch von Dominik:
+Ab **80–85 % Kontext (von 400k Arbeitsgrenze, nie Auto-Compact – Dominik 10.11.)** (Hinweis vom Hook bzw. „📋 Übergabe fällig“ in der Statuszeile) oder auf Wunsch von Dominik:
 zuerst die laufende Frage abschliessen, dann die Übergabe vorschlagen. Mit Dominiks OK `docs/UEBERGABE.md`
 **neu schreiben** (ersetzt die vorige; ältere Stände in `git log -p docs/UEBERGABE.md`), committen, pushen und eine
 neue Sitzung empfehlen. Die neue Sitzung liest die Datei direkt nach diesem Dokument.

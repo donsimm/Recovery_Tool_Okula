@@ -6,18 +6,19 @@
 #                 Projektstand aus docs/ (offene Bugs/Änderungen/Ideen, Notizen im Eingang, Prompts)
 # Ohne Netzwerk, liest nur – ausser dem Kontextstand je Sitzung für den Übergabe-Hook
 # (.claude/hooks/uebergabe-hinweis.sh). Läuft bei jeder Aktualisierung der Statuszeile.
+# Kontext in % von 400k (Arbeitsgrenze, Dominik 10.11.: nie Auto-Compact) – auch wenn das Modell 1M kann.
 export LC_NUMERIC=C
 input=$(cat)
 
 sid=$(jq -r '.session_id // empty' <<<"$input")
 if [[ "$sid" =~ ^[A-Za-z0-9_-]+$ ]]; then
   sd="${XDG_RUNTIME_DIR:-/tmp}/okula-claude-$(id -u)"
-  mkdir -p -m 700 "$sd" 2>/dev/null && jq -r '.context_window.used_percentage // 0' <<<"$input" > "$sd/$sid.ctx" 2>/dev/null
+  mkdir -p -m 700 "$sd" 2>/dev/null && jq -r '((.context_window.used_percentage // 0) * ((.context_window.context_window_size // 400000) / 400000) | if . > 100 then 100 else . end)' <<<"$input" > "$sd/$sid.ctx" 2>/dev/null
 fi
 
 IFS=$'\t' read -r ctx s5 s5r d7 d7r cost dur api add del model effort think sname ver warm hit dir < <(
   jq -r '[
-    (.context_window.used_percentage // 0),
+    ((.context_window.used_percentage // 0) * ((.context_window.context_window_size // 400000) / 400000) | if . > 100 then 100 else . end),
     (.rate_limits.five_hour.used_percentage // ""), (.rate_limits.five_hour.resets_at // ""),
     (.rate_limits.seven_day.used_percentage // ""), (.rate_limits.seven_day.resets_at // ""),
     (.cost.total_cost_usd // ""), (.cost.total_duration_ms // ""), (.cost.total_api_duration_ms // ""),
