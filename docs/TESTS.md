@@ -116,7 +116,7 @@ Geht ohne echte Geräte mit VMs (Plan 06.11.): **Referenz = VM-Win11** neu **von
 - [ ] Nach 3 Tagen: Häkchen wieder an (oder Option aus → bleibt aus)
 - [ ] **Rückfrage (Ä-007), Gerät verbunden:** Häkchen *Auto* setzen → rote Zusammenfassung (Disk, Image, Gerätename,
       Backup, Abschluss, „in 3 Tagen wieder aktiv“) mit Knopf „Löschen und neu aufsetzen“; *Abbrechen* → Häkchen
-      bleibt aus, kein Countdown, kein Verlaufseintrag; bestätigen → Countdown 30 s – teilweise ✔ 10.11. (Okuli, Probe-VM über den Schalter im Reiter: Zusammenfassung vollständig, „Löschen und neu aufsetzen“, Abbrechen vorgewählt → aus, kein Verlaufseintrag. Offen: Häkchen *Auto* in der Liste (per Bedienungshilfe nicht auslösbar) und „bestätigen → Countdown“)
+      bleibt aus, kein Countdown, kein Verlaufseintrag; bestätigen → Countdown 30 s – teilweise ✔ 10.11. (Okuli, Probe-VM über den Schalter im Reiter: Zusammenfassung vollständig, „Löschen und neu aufsetzen“, Abbrechen vorgewählt → aus, kein Verlaufseintrag. Häkchen *Auto* in der Liste ✔ Dominik 10.11. an Probe-VM, nicht verbunden: Rückfrage mit „Einschalten“, Abbrechen → leer, kein Verlaufseintrag. Offen: „bestätigen → Countdown“)
 - [x] **Rückfrage, Gerät nicht verbunden:** Knopf „Einschalten“ und Satz „Beim nächsten Verbinden wird die Disk gelöscht.“ – ✔ 10.11. (Okuli: Einschalten → Verlauf „Automatisierung eingeschaltet“, Ausschalten ohne Rückfrage)
 - [x] **Rückfrage im Reiter:** Schalter *Automatisierung* ein → gleiche Rückfrage; *Abbrechen* → Schalter wieder aus;
       Ausschalten und andere Änderungen bei eingeschalteter Automatisierung ohne Rückfrage – ✔ 10.11. (Okuli; „andere Änderungen“ nicht einzeln geprüft)
