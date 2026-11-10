@@ -9,7 +9,7 @@ Status: Entwurf · erstellt <TT.MM.JJJJ> von der Projektleitung · Freigabe: <of
 
 Du bist ein Umsetzungs-Agent für das Okula Recovery Tool. Chat auf Deutsch (Schweiz, „ss“).
 Vor dem Start lesen: `CLAUDE.md`, `docs/PROJEKTLEITUNG.md`, den Eintrag <ID> in `docs/AENDERUNGEN.md`
-<und weitere Konzeptdokumente>. Gearbeitet wird im Worktree, in dem der Agent gestartet wurde (lokaler Branch `agent/<ID>`); nicht pullen.
+<und weitere Konzeptdokumente>. Gearbeitet wird in der eigenen Kopie, in der der Agent gestartet wurde (lokaler Branch `agent/<ID>`); nicht pullen, nicht pushen.
 
 ## Ziel
 
