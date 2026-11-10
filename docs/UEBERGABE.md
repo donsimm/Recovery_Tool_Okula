@@ -20,7 +20,7 @@ Probe-VMs gelöscht), Tool läuft mit Stand Ä-038.
 - Neu aufgenommen: **B-009** ⚪ (4 Tests rot ohne `/usr/sbin` im PATH, 1 Test braucht root), **I-035** ⚪ (Hinweis,
   wenn VM-Disk grösser als freier Platz), **I-036** ⚪ (Hardware-Fehler MCE/WHEA im Tool anzeigen).
 - **Okuli-Cockpit** (`~/okuli-cockpit`, a4debe0): veraltete Sitzung „Okuli“ verdrängte die aktive → behoben, Dienst neu
-  gestartet. Cockpit-Repo hat **keinen GitHub-Remote** (nur lokal).
+  gestartet. Cockpit-Repo seit 10.11. privat auf github.com/donsimm/okuli-cockpit.
 
 ## Offen und als Nächstes
 
@@ -32,7 +32,6 @@ Probe-VMs gelöscht), Tool läuft mit Stand Ä-038.
    - weiterhin offen: Abschnitte 2, 3, 5, 7, 9–11 laut TESTS.md
 2. Nächstes Thema laut Vorschlag: **I-005/I-006** (Aufbewahrung, zweite Kopie) brainstormen; kleine Kandidaten:
    **B-009** (Tests mit vollem Pfad/sbin), **B-008** (Projektübersicht dunkel).
-3. Offene Frage an Dominik: Cockpit-Repo auf GitHub sichern (Remote einrichten)?
 4. Dominik empfehlen (noch nicht erledigt?): `/config` → Auto-compact aus.
 
 ## Entscheide dieser Sitzung (in AENDERUNGEN.md „📌 Entscheidungen“: ja)
