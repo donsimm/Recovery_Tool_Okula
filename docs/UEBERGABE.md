@@ -1,77 +1,55 @@
-# Übergabe – 06.11.2026, Nachmittag
+# Übergabe – 10.11.2026, ca. 10:35
 
-Sitzung „projektleitung recovery tool“ (erste Projektleitungs-Sitzung). Nächste Sitzung: zuerst `CLAUDE.md`,
-`docs/PROJEKTLEITUNG.md`, dann diese Datei, dann `docs/EINGANG.md` (heute leer) – und Dominik den Stand kurz nennen.
+Sitzung „Okuli“ (Projektleitung heisst jetzt **Okuli**). Nächste Sitzung: `CLAUDE.md` → `docs/PROJEKTLEITUNG.md` →
+diese Datei → `docs/EINGANG.md` (leer) → `~/okuli/UEBERGABE.md` (Leitstand) → Dominik den Stand nennen.
 
 ## Stand
 
-- **Arbeitsweise eingerichtet:** Projektleitung (diese Rolle) brainstormt mit Dominik, schreibt Prompts nach
-  `docs/prompts/VORLAGE.md`, Umsetzungs-Agenten setzen um, Projektleitung nimmt ab. Gearbeitet wird **lokal auf dem
-  Server** (`~/recovery_tool_okula`, Hostname `Recovery-Tool-Server`), gepusht mit `gh` (Konto donsimm, Git-Name nur im
-  Repo: Dominik Simmen). Repo heisst jetzt `github.com/donsimm/Recovery_Tool_Okula`.
-- **Claude-Code-Einstellungen im Repo:** Statuszeile (3 Zeilen, `.claude/statusline.sh`) und Übergabe-Hook ab 80 %
-  Kontext (`.claude/hooks/uebergabe-hinweis.sh`). In `~/.claude/settings.json`: Auto-Modus als Standard, eigene
-  Statuszeile (wird vom Projekt überschrieben).
-- **I-001 Virtuelle Maschinen – alle 4 Aufträge umgesetzt** (Konzept und Abweichungen: `docs/VM.md`):
-
-  | Auftrag | Commit | Abnahme |
-  |---|---|---|
-  | 1 VM-Grundlage (Pakete, Brücke `br0`, `vm.py`) | 8d1e851 | ✔ inkl. Probe-VMs am Server |
-  | 1b Nacharbeit (SPICE-Paket, Disk als Datei/AppArmor, e1000) | 2ecc04f | ✔ inkl. virt-viewer, Secure Boot Enabled |
-  | 2 VMs im Tool (Ordner, Neue VM, Starten, Bildschirm, Hardware ändern) | 450dfa9 | ✔ |
-  | 3 Digitaler Zwilling + Ä-036 leere Disk | 3e7182f | ✔ (Ablauf mit Image im Tool noch ungetestet) |
-  | 4 Snapshots (externe qcow2-Overlays, „Vorher Snapshot“) | 2dadd10 | ✔ Code/Tests; Ablauf im Tool ungetestet |
-
-- **Am Server installiert:** Stand bis Auftrag 2 (+ 1b). **Auftrag 3 und 4 noch nicht installiert.**
-- **VMs am Server:** `VM-Win11` (ausgeschaltet; Windows 11 per „OS installieren …“ = Direktinstallation, taugt **nicht**
-  als Master-Referenz). `VM-Klein` wurde am 06.11. um 13:20 **über das Tool gelöscht** (laut Geräteablage; vermutlich
-  Dominiks Test „VM löschen“ – **bei Dominik bestätigen**).
-- **Tests:** 455 Tests, immer dieselben **4 roten** (`test_imaging` ConsoleAndPowerTest.test_image_shows_progress_on_console,
-  EndToEndTest.test_full_image, EndToEndTest.test_failure_leaves_no_partial; `test_jobs`
-  ParallelJobsTest.test_two_disks_in_parallel_same_disk_refused) – auch auf dem unveränderten Stand vom Morgen.
+- **Neue Arbeitsweise (alles in `~/okuli/agenten/REGELN.md` und `PROJEKTLEITUNG.md`):** Okuli startet Agenten selbst mit
+  `~/.claude/agenten/agent.sh` (run_in_background), Agenten laufen als Benutzer **`okuli-agent`** (kein sudo, kein
+  Zugriff auf /home/dominik) in eigener Kopie auf Branch `agent/<ID>`; Ergebnis mit `~/.claude/agenten/holen.sh`,
+  prüfen, `--ff-only`, pushen, `holen.sh … --aufraeumen`. **Okuli hat volles sudo** (`/etc/sudoers.d/okuli`).
+  Agenten: Shell-Befehle einzeln (kein `&&`), keine Hintergrundprozesse; Server-/GUI-Prüfungen macht Okuli.
+- **I-034 Projektübersicht** (0910836) abgenommen, installiert, am Server getestet (TESTS.md 12, 6 Punkte ✔).
+- **Ä-037 VM-Disk beim Zurückspielen vergrössern + VM-Win11 256 GB** (55ed0dd) abgenommen, **von Okuli installiert**
+  (`sudo ./install.sh`, Tool von Dominik neu gestartet), am Server getestet mit Probe-VM (TESTS.md 13, 5 Punkte ✔; 9: 2 ✔).
+- **Neue Bugs:** B-007 🔴 (Ä-002 liest belegte Blöcke falsch → „Anpassen möglich“ bei 1-TB-Image), B-008 ⚪
+  (Projektübersicht dunkel: Auswahlfelder unlesbar). Befund zu Ä-010: BIOS/MBR-Image ohne Warnung auf UEFI-VM.
+- **VM-Win11 hat Dominik selbst gelöscht** (09:32). Am Server gibt es derzeit **keine VMs**.
+- **Okuli-Cockpit** (eigenes Projekt `~/okuli-cockpit`, siehe `~/okuli/PROJEKTE.md`): läuft als Dienst, Link im LAN
+  mit Schlüssel (`~/okuli-cockpit/link.sh`).
+- **Kontext-Arbeitsgrenze 400k** (Dominik: nie Auto-Compact): Statuszeilen und Übergabe-Hinweis rechnen in % von 400k.
 
 ## Offen und als Nächstes
 
-1. **Dominik installiert Auftrag 3 + 4:** `cd ~/recovery_tool_okula && git pull && sudo ./install.sh`, Tool neu starten
-   (kein neuer Agent-Stick).
-2. **Tests am Server (Dominik will sie gesammelt später machen, meldet Ergebnisse im Chat; Projektleitung hakt in
-   `docs/TESTS.md` ab):**
-   - Abschnitt **8**: NAS/Geräte über `br0`, Server-Neustart (br0 gleiche IP), Netzwerkstart eines echten Geräts.
-   - Abschnitt **9**: Disk-Image von VM-Win11, Bildschirm zweites Öffnen, Hardware ändern, Von ISO, Automatisierung, VM löschen.
-   - Abschnitt **10**: Zwilling von **CompactPlayer 1** (hat ein Image auf dem NAS) mit Image einspielen.
-   - Abschnitt **11**: Snapshots im Tool.
-   - Abschnitt **3**: Master-Image mit VMs (Plan steht dort): VM-Win11 **neu von ISO**, Netzwerk der VM trennen,
-     Ctrl+Shift+F3 → Audit-Modus, **Snapshot „vor Sysprep“**, Sysprep, nur „Einschalten und Agent starten“, Image,
-     als Master markieren, auf zweite VM (`VM-Win11-B`) mit „Danach anpassen“.
-3. **Die 4 roten Tests** als Bug aufnehmen (Vorschlag der Projektleitung vom Morgen, noch **nicht eingetragen**) und
-   per Agent klären lassen: Umgebung des Servers oder echter Fehler? Solange sie rot sind, fallen neue Fehler weniger auf.
-4. **Nächstes Feature:** Vorschlag Ä-007 (Bestätigung vor dem Löschen bei der Automatisierung) – Brainstorming noch
-   nicht begonnen. Reihenfolge-Vorschlag siehe Kurzübersicht in `AENDERUNGEN.md`.
-5. Prompt `I-001-4-snapshots.md`: Status nach den Tests von „abgenommen“ bestätigen (Code ist abgenommen).
+1. **B-007 starten, sobald das 5h-Limit zurückgesetzt ist (12:50; stand 97 %):** Prompt `docs/prompts/B-007-shrink-belegt.md`
+   (freigegeben, Status B-007 „in Arbeit“), Auftragsdatei z. B.:
+   `printf 'B-007 belegte Blöcke im partclone-Kopf\n\nLies docs/prompts/B-007-shrink-belegt.md und setze ihn um. Nicht pullen, nicht pushen, nur lokal committen. Shell-Befehle einzeln ausführen.\n' > <scratchpad>/b007.md`
+   `~/.claude/agenten/agent.sh umsetzen ~/recovery_tool_okula <scratchpad>/b007.md - "Bash(python3 -m unittest:*),Bash(python3 -c:*)" opus medium B-007`
+   Abnahme: Tests; echter Kopf `/mnt/okula-nas/Archiv/XX Test Images/2026-10-29_1133_nvme0n1/nvme0n1p4.ntfs.pcl.zst`
+   (`zstd -dc … | head -c 200`, `shrink.parse_pcl_header`) muss ~397 GB belegt ergeben; dann `sudo ./install.sh`,
+   Dominik Tool neu starten lassen, TESTS.md eintragen.
+2. Tests, die Okuli noch selbst machen kann (Tool über AT-SPI, vorher bei Dominik fragen – er hat für 10.11. „bitte
+   testen“ freigegeben): Abschnitt 11 (Snapshots), Rest von 12 und 13, Teile von 9/10. Hilfsskript:
+   `/tmp/claude-1000/…/scratchpad/ui.py` ist weg nach Neustart – Muster: `gi.repository.Atspi`, App
+   `ch.okula.RecoveryTool`, Knöpfe per `get_action_iface().do_action(0)`; Probe-VMs nur mit eigenem Namen, Netzwerk
+   der VM bei fremden Images mit `virsh domif-setlink <vm> <mac> down --config` trennen.
+3. Danach: Ä-007 (Bestätigung vor dem Löschen) brainstormen; die 4 roten Tests als Bug aufnehmen.
+4. Dominik empfehlen: in `/config` „Auto-compact“ ausschalten (zusätzliche Sicherheit zur 400k-Grenze).
 
-## Entscheide dieser Sitzung
+## Entscheide dieser Sitzung (alle in AENDERUNGEN.md bzw. PROJEKTLEITUNG.md / ~/okuli eingetragen: ja)
 
-Alle in `docs/AENDERUNGEN.md` „📌 Entscheidungen“ bzw. `docs/VM.md` eingetragen: ja.
-- VMs im LAN (Brücke `br0`), Bildschirm eigenes Fenster, Windows „nicht aktiviert“, OEM-Key nie übernehmen.
-- 3 Profile VM-Win11 / VM-Legacy (e1000 statt rtl8139) / VM-Klein; Zwilling: Identität abgewandelt (`VM-…`, UUID
-  `0c1a…`, eigene MAC, Disk-Seriennummer), letztes Image einspielen (Standard an), Netzwerkkarte immer Intel.
-- „Neue virtuelle Maschine …“ unter Extras + Rechtsklick; Hardware ändern in Auftrag 2; Ordner „Virtuelle Maschinen“ fest.
-- Snapshots von Hand nur ausgeschaltet, „Vorher Snapshot“ Standard an, unbegrenzt mit Warnung < 50 GB.
-- Startreihenfolge VMs: Disk → Netzwerk, Tool stellt nach Agent-Verbindung um (Agent-Abweichung; OVMF startet nach
-  grub-`exit` nicht von der Disk).
+- Projektleitung heisst Okuli; Leitstand-Repo `~/okuli` (privat, github.com/donsimm/okuli).
+- Okuli startet Agenten selbst; Agenten als `okuli-agent` ohne sudo; Okuli volles sudo und darf installieren.
+- Tool-Tests: Okuli darf im laufenden Tool klicken, vorher fragen.
+- Projektübersicht im Tool (Firefox, 127.0.0.1); Ä-037 so wie umgesetzt; Kontextgrenze 400k.
 
 ## Learnings
 
-- **Projektleitung ändert keinen App-Code** – auch nicht bei harmlos klingenden Wünschen („Fenster immer im Darkmode“
-  wurde fälschlich in der App umgesetzt; Dominik: „ich möchte nicht das du was an der app änderst!!“). Steht in `CLAUDE.md`.
-- **Agenten committen nur eigene Dateien** – ein Agent hat einen Prompt-Entwurf der Projektleitung mitcommittet. Steht
-  in `VORLAGE.md` und in jedem Prompt.
-- **Dominik will Empfehlungen statt Optionen**, kurze gesammelte Fragen (AskUserQuestion), Chat auf Deutsch; Tests
-  lieber gesammelt später, Implementieren zuerst.
-- **Abnahme selbst am Server prüfen lohnt sich:** Probe-VMs (anlegen/starten/`virsh screenshot`/löschen) fanden
-  fehlendes SPICE-Paket und AppArmor-Sperre, bevor Dominik testete. Eigene Vermutungen dabei prüfen: „`<product>` bei
-  SATA geht nicht“ war falsch, „rtl8139 ohne Windows-Treiber“ richtig.
-- **Server-Eigenheiten:** `sudo` nur mit Passwort (Installation macht Dominik); Journal nicht lesbar (Benutzer nicht in
-  `adm`) – Netzwerkstart-Protokoll über das Tool; `virsh -c qemu:///system` geht ohne sudo; `pkill -f <muster>` trifft
-  die eigene Shell → `pgrep -x`/`kill` verwenden; Bildschirme der VMs mit `virsh screenshot` + GdkPixbuf → PNG ansehen.
-- **Zwei Sitzungen im selben Ordner:** Während ein Agent arbeitet, nichts committen; Entwürfe erst nach seinem Push.
+- Dominik will, dass Okuli selbst startet, installiert und testet – Fragen kurz, Empfehlung zuerst.
+- `claude setup-token` braucht ein echtes Terminal (nicht `!`). Token liegt in `/home/okuli-agent/.claude-token`.
+- Agenten mit `dontAsk` scheitern an verketteten Befehlen und Hintergrundprozessen → in der Rolle verboten.
+- Laufende Bash-Skripte nie in place überschreiben (atomar ersetzen), sonst bricht ein laufender `agent.sh`.
+- Firefox im Headless-Modus macht den Screenshot vor dem Nachladen → WebKit-Offscreen mit Wartezeit
+  (`WEBKIT_DISABLE_COMPOSITING_MODE=1`); Firefox-Adresse aus `sessionstore-backups/recovery.jsonlz4` (mozlz4).
+- 5h-Limit im Blick behalten (Cockpit „KI“): heute ~13 $ für 7 Agentenläufe, Limit bei 97 % um 10:30.
