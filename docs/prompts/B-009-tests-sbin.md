@@ -1,6 +1,6 @@
 # B-009 – Tests grün auch als normaler Benutzer (sbin-Pfad, Root-Test)
 
-Status: umgesetzt (Commit 3ef6bd7) · erstellt 10.11.2026 von der Projektleitung · Freigabe: Dominik 10.11.
+Status: abgenommen (Commit 3ef6bd7) · Abnahme Okuli 10.11.: Diff, Agent-Importe vollständig, 526 Tests grün mit und ohne sbin im PATH · erstellt 10.11.2026 von der Projektleitung · Freigabe: Dominik 10.11.
 
 ## Rolle und Einstieg
 

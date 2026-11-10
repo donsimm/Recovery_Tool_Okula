@@ -1,6 +1,6 @@
 # B-008 – Projektübersicht im Dunkelmodus: Auswahlfelder lesbar
 
-Status: umgesetzt (Commit 496a935) · erstellt 10.11.2026 von der Projektleitung · Freigabe: Dominik 10.11.
+Status: abgenommen (Commit 8d4d914) · Abnahme Okuli 10.11.: Diff, Tests grün, Firefox-Foto dunkel; Prüfung aufgeklappt offen (TESTS.md 12) · erstellt 10.11.2026 von der Projektleitung · Freigabe: Dominik 10.11.
 
 ## Rolle und Einstieg
 
