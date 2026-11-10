@@ -185,7 +185,7 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stic
 - [x] Danach in Windows: Gerätefenster → Netzwerk → „Beim nächsten Start den Agent laden“ → Windows neu starten →
       Agent startet; nach dem Verbinden Agent-Symbol „Neu starten“ → Windows startet wieder (nicht der Agent) – ✔ 06.11. (VM-Win11)
 - [ ] Automatisierung an der VM: Image zurückspielen mit Neustart danach → Windows startet von der Disk
-- [ ] VM löschen … (aus) → rote Rückfrage → VM und Eintrag weg; `virsh -c qemu:///system vol-list okula` leer
+- [x] VM löschen … (aus) → rote Rückfrage → VM und Eintrag weg; `virsh -c qemu:///system vol-list okula` leer – ✔ 10.11. (Okuli: Probe-VM: Rückfrage, VM, Dateien und Eintrag weg)
 - [ ] Ä-036: neue VM ohne System → Einschalten → Rückfrage „Die Disk von … ist leer …“ mit *Einschalten und Agent
       starten*, *Von ISO starten …*, *Trotzdem einschalten*; nach einer Installation bzw. einem Zurückspielen keine
       Rückfrage mehr
@@ -233,42 +233,42 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stic
       unverändert (VM startet wie vorher), Verlauf „… gelöscht“; Zeit für den ältesten Snapshot einer Windows-VM notieren
 - [ ] *Hardware ändern …* mit Snapshots: Disk ausgegraut mit Grund „zuerst Snapshots löschen“; RAM ändern geht
 - [ ] Platzwarnung unter der Liste erscheint unter 50 GB frei (nur zur Kenntnis, schwer herbeizuführen)
-- [ ] *VM löschen …* einer VM mit Snapshots → `virsh -c qemu:///system vol-list okula` ohne Dateien dieser VM
+- [x] *VM löschen …* einer VM mit Snapshots → `virsh -c qemu:///system vol-list okula` ohne Dateien dieser VM – ✔ 10.11. (Okuli: Probe-VM mit 1 Snapshot: keine Dateien übrig)
 - [ ] **Master-Ablauf** ([MASTER-IMAGE.md](MASTER-IMAGE.md)): Windows in der VM einrichten → herunterfahren →
       Snapshot **„vor Sysprep“** → Sysprep → Einschalten und Agent starten → Disk-Image → zurück zu „vor Sysprep“ →
       Windows startet wieder im eingerichteten Zustand (nicht in der Ersteinrichtung)
 
 ### 12. Projektübersicht (I-034)
 Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stick).
-- [ ] Extras → Projektübersicht … → Firefox öffnet „Projektübersicht – Okula Recovery Tool“; zweiter Aufruf öffnet
-      dieselbe Adresse (gleicher Port)
-- [ ] Alle offenen Tests (Vorbereitung, Abschnitte 2–12) sind da; ✔ ok / ✖ Fehler und Kommentar → „gespeichert“;
-      nach „Neu laden“ und nach Neustart des Tools noch da; `ls -l ~/.local/share/okula-recovery/` → Datei `-rw-------`
-- [ ] Bugs, Änderungen, Ideen mit ID, Prio, Text; Kommentar, Prio-Wunsch und Status-Wunsch speichern → „Prio 🟡 → Wunsch 🔴“
+- [x] Extras → Projektübersicht … → Firefox öffnet „Projektübersicht – Okula Recovery Tool“; zweiter Aufruf öffnet
+      dieselbe Adresse (gleicher Port) – ✔ 10.11. (Okuli: Menü per Bedienungshilfe, Firefox geöffnet, zweiter Aufruf gleicher Port 39995)
+- [x] Alle offenen Tests (Vorbereitung, Abschnitte 2–12) sind da; ✔ ok / ✖ Fehler und Kommentar → „gespeichert“;
+      nach „Neu laden“ und nach Neustart des Tools noch da; `ls -l ~/.local/share/okula-recovery/` → Datei `-rw-------` – ✔ 10.11. (Okuli: über die Schnittstelle: 14 Gruppen inkl. 13, ok+Kommentar gespeichert, nach Neuladen da, Datei 0600; Neustart des Tools nicht geprüft)
+- [x] Bugs, Änderungen, Ideen mit ID, Prio, Text; Kommentar, Prio-Wunsch und Status-Wunsch speichern → „Prio 🟡 → Wunsch 🔴“ – ✔ 10.11. (Okuli: Prio- und Status-Wunsch gespeichert (Schnittstelle))
 - [ ] Offene Punkte (Übergabe) und Prompts mit Status sichtbar und kommentierbar
-- [ ] Neue Notiz anlegen, ändern, löschen
+- [x] Neue Notiz anlegen, ändern, löschen – ✔ 10.11. (Okuli: anlegen, ändern, löschen (Schnittstelle))
 - [ ] Übersicht oben mit Zählern; Suche und alle Filter wirken; Filter bleiben nach Neuladen der Seite
 - [ ] In einer Kopie von TESTS.md einen Testtext ändern (Projektordner in den Einstellungen auf die Kopie) →
       alte Rückmeldung unter „Rückmeldungen ohne Eintrag“
-- [ ] In der JSON-Datei bei einem Eintrag `"uebernommen": "2026-11-10"` setzen → „Neu laden“: grau, „übernommen 10.11.“;
-      erneute Änderung → wieder neu
-- [ ] Adresse ohne Token (`http://127.0.0.1:<port>/`) → 403; von einem anderen Rechner `http://<server-ip>:<port>/…` → keine Verbindung
+- [x] In der JSON-Datei bei einem Eintrag `"uebernommen": "2026-11-10"` setzen → „Neu laden“: grau, „übernommen 10.11.“;
+      erneute Änderung → wieder neu – ✔ 10.11. (Okuli: übernommen sichtbar, erneute Änderung → wieder neu)
+- [x] Adresse ohne Token (`http://127.0.0.1:<port>/`) → 403; von einem anderen Rechner `http://<server-ip>:<port>/…` → keine Verbindung – ✔ 10.11. (Okuli: 403 ohne Token, Server nur auf 127.0.0.1)
 - [ ] Menü → Einstellungen … → Projektordner (Repo) auf einen nicht vorhandenen Ordner → Seite zeigt Hinweis statt Fehler; danach wieder leeren
 
 ### 13. VM-Disk beim Zurückspielen vergrössern (Ä-037)
 Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stick). Zum Testen eine Probe-VM mit
 128 GB (*Neue virtuelle Maschine …*, VM-Win11, Disk auf 128 GB stellen) und ein Image einer 256- oder 512-GB-Disk.
-- [ ] VM mit Agent, *Image zurückspielen …* mit dem grossen Image → unter dem Prüftext zwei Optionsfelder, „VM-Disk
+- [x] VM mit Agent, *Image zurückspielen …* mit dem grossen Image → unter dem Prüftext zwei Optionsfelder, „VM-Disk
       auf <N> GB vergrössern und zurückspielen“ vorgewählt (N = Quelldisk aufgerundet), Tooltip mit dem Ablauf;
-      „Image an die kleinere Disk anpassen“ wählbar, wenn die Daten passen (sonst grau mit Grund)
-- [ ] Vergrössern starten → ein Auftrag „VM-Disk vergrössern und zurückspielen …“ mit den Schritten „VM wird
+      „Image an die kleinere Disk anpassen“ wählbar, wenn die Daten passen (sonst grau mit Grund) – ✔ 10.11. (Okuli: Probe-VM VM-Klein 64 GB + CompactPlayer 120 GB: beide Wege, Vergrössern auf 121 GB vorgewählt, Tooltip)
+- [x] Vergrössern starten → ein Auftrag „VM-Disk vergrössern und zurückspielen …“ mit den Schritten „VM wird
       heruntergefahren (1/4)“, „Disk wird vergrössert (2/4)“, „Agent wird gestartet (3/4)“, „Zurückspielen (4/4)“;
       danach `virsh -c qemu:///system vol-info --pool okula <VM>.qcow2` → Kapazität N GB, Image zurückgespielt,
-      Windows startet; Verlauf „VM-Disk von 128 GB auf N GB vergrössert“
-- [ ] „Vorher Snapshot“ angehakt → Snapshot im Reiter *Snapshots* entsteht **nach** dem Vergrössern (Log „Snapshot
-      vorher wird erstellt (nach dem Vergrössern)“), Auftrag läuft durch
-- [ ] VM mit Snapshots → Vergrössern grau, Prüftext und Tooltip „Die VM hat Snapshots – zuerst im Reiter
-      „Snapshots“ löschen …“; Anpassen weiter wählbar, wenn die Daten passen
+      Windows startet; Verlauf „VM-Disk von 128 GB auf N GB vergrössert“ – ✔ 10.11. (Okuli: Auftrag mit 4 Schritten in ~4 min, Disk 121 000 000 000 Byte, Verlauf „von 64 GB auf 121 GB“. Windows-Start nicht prüfbar: Image ist BIOS/MBR, VM-Klein UEFI)
+- [x] „Vorher Snapshot“ angehakt → Snapshot im Reiter *Snapshots* entsteht **nach** dem Vergrössern (Log „Snapshot
+      vorher wird erstellt (nach dem Vergrössern)“), Auftrag läuft durch – ✔ 10.11. (Okuli: Snapshot „vor Zurückspielen“ nach dem Vergrössern, Auftrag durch)
+- [x] VM mit Snapshots → Vergrössern grau, Prüftext und Tooltip „Die VM hat Snapshots – zuerst im Reiter
+      „Snapshots“ löschen …“; Anpassen weiter wählbar, wenn die Daten passen – ✔ 10.11. (Okuli: L15 512 GB: Vergrössern grau mit Grund, Anpassen vorgewählt)
 - [ ] Zu wenig Platz im Pool (z. B. Image grösser als frei – sonst nur am Prüftext prüfbar) → Vergrössern grau mit
       Zahlen „frei … GB, nötig … GB“
 - [ ] Beide Wege nicht möglich → *Zurückspielen* bleibt gesperrt, Prüftext „Zurückspielen nicht möglich.“
@@ -277,4 +277,4 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stic
 - [ ] Abbrechen während „Agent wird gestartet (3/4)“ → Auftrag abgebrochen, nichts zurückgespielt, Disk bleibt
       vergrössert (Log), Verlauf „… abgebrochen“
 - [ ] Echtes Gerät mit kleinerer Zieldisk → Dialog wie bisher (Häkchen „Für diese Disk anpassen“, keine Optionsfelder)
-- [ ] Neue VM mit Profil VM-Win11 → 256 GB, Modell „Okula NVMe SSD 256GB“; bestehende VMs unverändert
+- [x] Neue VM mit Profil VM-Win11 → 256 GB, Modell „Okula NVMe SSD 256GB“; bestehende VMs unverändert – ✔ 10.11. (Okuli: Dialog zeigt NVMe-SSD 256 GB)
