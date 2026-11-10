@@ -1,6 +1,6 @@
 # Ä-038 – Agent-Stick: Meldung „fertig, jetzt abziehen“ und Prüfung am Schluss
 
-Status: Entwurf · erstellt 10.11.2026 von Okuli (Projektleitung) · Freigabe: offen
+Status: freigegeben · erstellt 10.11.2026 von Okuli (Projektleitung) · Freigabe: Dominik 10.11.
 
 ## Rolle und Einstieg
 

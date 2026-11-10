@@ -16,7 +16,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 3 | 0 | 0 |
-| 🔧 Änderungen | 7 | 0 | 0 |
+| 🔧 Änderungen | 6 | 1 | 0 |
 | 💡 Ideen | 22 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
@@ -43,7 +43,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): ~~Ä-007~~ ✔ → **I-005/I-006** (Aufb
 | Ä-006 | 🔴 | offen | Claude | **Assistent „Neues Gerät einrichten“:** Sobald ein unbekanntes Gerät auftaucht, fragt ein Hinweis: „Neues Gerät gefunden: HP EliteBook 840 – jetzt einrichten?“. Danach Schritt für Schritt: Name → Ordner/Kunde → Vorlage oder Master-Image → „Sind noch Daten drauf?“ (Ja = Backup) → Zusammenfassung → Start. Heute muss man selbst wissen: Gerät suchen, Doppelklick, Reiter, 5 Abschnitte, Schalter | 31.10. (Laien-Test) |
 | Ä-010 | 🟡 | offen | Claude | **Vorabprüfung mit Ampel statt Fehler mitten im Lauf:** Image passt auf die Disk, UEFI/BIOS-Modus passt zum Master, BitLocker auf der Zieldisk (dann ist kein Datei-Backup möglich), Agent-Stick aktuell, Windows-Edition des Masters passt zum Key (Pro/Home). Befund 10.11.: BIOS/MBR-Image (CompactPlayer) liess sich ohne Warnung auf eine UEFI-VM spielen und startet dort nicht. Anzeige: „✔ Bereit“ bzw. „⚠ Achtung: …“ | 31.10. (Laien-Test) |
 | Ä-012 | 🟡 | offen | Claude | **Einfache Sprache im Reiter Automatisierung:** „Zieldisk“ → „Festplatte, die gelöscht wird“; Sysprep, Master und Content-Projekte mit einem „?“ pro Abschnitt erklären. Gerätenamen wie „DESKTOP-8F3K2LQ“ markieren und zum Umbenennen auffordern; optional Namensschema pro Vorlage (z. B. `KUNDE-001` fortlaufend) | 31.10. (Laien-Test) |
-| Ä-038 | 🟡 | offen | Dominik/Okuli | **Agent-Stick: Meldung „fertig, jetzt abziehen“ und Prüfung am Schluss:** Heute zeigt das Ende des Stick-Baus nur der Balken („Stick bereit“ bzw. „Fehlgeschlagen“ + Log) – leicht zu übersehen. Befund 10.11. (B-010): Stick 24 s nach dem Start abgezogen, keine auffällige Meldung, `okula-agent.squashfs` 0 Byte → Start am Gerät scheitert spät in der BusyBox-Shell. Gewünscht (Dominik): Popup „Stick fertig – jetzt abziehen“. Dazu: vor „fertig“ die Dateien auf dem Stick prüfen (Agent-Teil > 0 Byte und gültiger Squashfs-Kopf, Grösse filesystem.squashfs wie im ISO); bei Fehler rotes Popup mit Grund und „Stick neu erstellen“; Abziehen während des Baus klar melden | 10.11. |
+| Ä-038 | 🟡 | in Arbeit | Dominik/Okuli | **Agent-Stick: Meldung „fertig, jetzt abziehen“ und Prüfung am Schluss:** Heute zeigt das Ende des Stick-Baus nur der Balken („Stick bereit“ bzw. „Fehlgeschlagen“ + Log) – leicht zu übersehen. Befund 10.11. (B-010): Stick 24 s nach dem Start abgezogen, keine auffällige Meldung, `okula-agent.squashfs` 0 Byte → Start am Gerät scheitert spät in der BusyBox-Shell. Gewünscht (Dominik): Popup „Stick fertig – jetzt abziehen“. Dazu: vor „fertig“ die Dateien auf dem Stick prüfen (Agent-Teil > 0 Byte und gültiger Squashfs-Kopf, Grösse filesystem.squashfs wie im ISO); bei Fehler rotes Popup mit Grund und „Stick neu erstellen“; Abziehen während des Baus klar melden | 10.11. |
 
 ## 💡 Ideen
 
