@@ -293,7 +293,7 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stic
 - [ ] *Menü → Agent-USB-Stick erstellen …* → während des Baus steht unter dem Balken fett „Stick erst abziehen, wenn
       „Stick fertig“ erscheint.“; im Log „Stick wird geprüft“ kurz vor dem Ende; danach Fenster „Agent-Stick fertig“,
       Text „Der Stick kann jetzt abgezogen werden.“, Knopf „OK“; Balken „Stick bereit“, Hinweis verschwunden;
-      Stick startet am Gerät
+      Stick startet am Gerät – teilweise ✔ 10.11. (Okuli: Hinweis fett während des Baus, Popup „Agent-Stick fertig“ mit OK, Balken 100 %, Hinweis danach weg; am Server nachgeprüft: okula-agent.squashfs 3,4 MB, gültiger Kopf. Offen: Log-Zeile „Stick wird geprüft“ (Log per Bedienungshilfe nicht lesbar), Start am Gerät)
 - [ ] Stick während des Baus abziehen (z. B. bei „Live-System wird kopiert“) → rotes Fenster „Stick nicht fertig“
       mit „Stick wurde während des Schreibens abgezogen – Stick neu erstellen.“ und „Stick nicht verwenden – neu
       erstellen.“, Knopf „Schliessen“; Balken „Fehlgeschlagen“, Log bleibt
