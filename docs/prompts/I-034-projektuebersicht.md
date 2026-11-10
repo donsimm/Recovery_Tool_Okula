@@ -1,6 +1,6 @@
 # I-034 – Projektübersicht im Tool
 
-Status: freigegeben · erstellt 10.11.2026 von der Projektleitung · Freigabe: Dominik 10.11.
+Status: umgesetzt (Commit 0910836) · erstellt 10.11.2026 von der Projektleitung · Freigabe: Dominik 10.11.
 
 ## Rolle und Einstieg
 
