@@ -1,6 +1,6 @@
 # I-034 – Projektübersicht im Tool
 
-Status: umgesetzt (Commit 0910836) · erstellt 10.11.2026 von der Projektleitung · Freigabe: Dominik 10.11.
+Status: abgenommen 10.11. (Commit 0910836) – Menü und Firefox-Aufruf am Server noch zu testen (TESTS.md Abschnitt 12) · erstellt 10.11.2026 von der Projektleitung · Freigabe: Dominik 10.11.
 
 ## Rolle und Einstieg
 
