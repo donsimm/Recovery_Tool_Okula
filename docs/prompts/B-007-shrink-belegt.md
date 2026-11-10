@@ -1,6 +1,6 @@
 # B-007 – Anpassen an kleinere Disk: belegte Blöcke richtig lesen
 
-Status: umgesetzt (Commit abf61f8) · erstellt 10.11.2026 von Okuli (Projektleitung) · Freigabe: Dominik 10.11.
+Status: abgenommen (Commit abf61f8) · Abnahme Okuli 10.11.: Tests, echter Kopf p4 ergibt 397,7 GB belegt
 
 ## Rolle und Einstieg
 
