@@ -17,7 +17,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 |---|---|---|---|
 | 🐞 Bugs | 1 | 0 | 0 |
 | 🔧 Änderungen | 7 | 0 | 0 |
-| 💡 Ideen | 20 | 0 | 0 |
+| 💡 Ideen | 21 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
@@ -67,6 +67,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 | I-026 | ⚪ | offen | Claude | **Hardware-Änderungen erkennen:** RAM, Disk oder Seriennummer anders als beim letzten Mal → Hinweis im Verlauf (Diebstahl, Tausch, Defekt) |
 | I-027 | ⚪ | offen | Claude | **Neu aufsetzen direkt am Gerät:** Auf dem Agent-Bildschirm ein Menü „Mit Master neu aufsetzen“, geschützt mit PIN, damit Techniker vor Ort das Tool nicht brauchen (Acronis: user-initiated deployment) |
 | I-029 | ⚪ | offen | Claude | **Intel vPro/AMT:** Gerät ein- und ausschalten, ins BIOS starten und den Bildschirm sehen, auch ohne Agent und bei abgestürztem OS (MeshCentral) |
+| I-034 | 🔴 | offen | Dominik | **Projektübersicht im Tool (Extras → Projektübersicht …):** interaktive Webseite (lokal, Firefox) mit allen offenen Tests aus TESTS.md (abhaken, Kommentar), allen Bugs/Änderungen/Ideen aus AENDERUNGEN.md (Kommentar, Prio-/Status-Wunsch), offenen Punkten aus UEBERGABE.md und Prompts mit Status; Kopf mit Zählern, Suche/Filter, Feld „Neue Notiz“. Liest live aus dem Repo, Rückmeldungen in `~/.local/share/okula-recovery/projekt-rueckmeldungen.json`; die Projektleitung übernimmt sie auf Zuruf in die Doku. Prompt: [I-034-projektuebersicht.md](prompts/I-034-projektuebersicht.md) | 10.11. |
 
 Umgesetzte Ideen: Windows-Master-Image mit Sysprep ([MASTER-IMAGE.md](MASTER-IMAGE.md)), Ordner an Geräte senden
 ([ORDNER-SENDEN.md](ORDNER-SENDEN.md)), Automatisierung ([AUTOMATISIERUNG.md](AUTOMATISIERUNG.md)),
@@ -74,6 +75,7 @@ Gerätename = Name im Tool.
 
 ## 📌 Entscheidungen
 
+- **Projektübersicht (I-034) im Tool, nicht auf claude.ai** (Entscheid Dominik 10.11.2026): Daten live aus dem Repo (`~/recovery_tool_okula/docs`), Anzeige in Firefox über einen Webserver nur auf 127.0.0.1, Rückmeldungen in einer Datei ausserhalb von Git; die Projektleitung trägt sie auf Zuruf („neue Daten“) in TESTS.md/AENDERUNGEN.md ein und markiert sie als übernommen.
 - **„Nach 3 Tagen wieder einschalten“ bleibt standardmässig an** (Automatisierung; Entscheid Dominik 31.10.2026).
 - **Netzwerkstart nur für freigeschaltete Geräte:** Nur Geräte, die schon mit dem Agent-Stick liefen und
   freigeschaltet sind, bekommen eine PXE-Antwort. Andere Rechner im Netz bleiben unberührt, IP-Adressen vergibt

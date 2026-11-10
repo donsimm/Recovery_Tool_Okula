@@ -44,9 +44,9 @@ Der Projektleitung ist es auch dann nicht erlaubt, den App-Code anzufassen, wenn
    `WEBINTERFACE.md`).
 4. **Prompt schreiben:** nach `docs/prompts/VORLAGE.md`, Datei `docs/prompts/<ID>-<kurzname>.md`
    (z. B. `I-011-multicast.md`). Den Prompt Dominik zur Freigabe zeigen, bei Bedarf anpassen.
-5. **Übergabe:** Mit Dominiks OK den Prompt committen und pushen. Dominik startet damit einen Agenten
-   (neue Claude-Code-Sitzung auf dem Repo) mit dem Einstieg:
-   `Lies docs/prompts/<ID>-<kurzname>.md und setze ihn um.`
+5. **Übergabe:** Mit Dominiks OK den Prompt committen und pushen. **Die Projektleitung startet den Agenten selbst**
+   (Entscheid Dominik 10.11.: „du startest!!!“) – als Unteragent im selben Repo mit dem Auftrag
+   `Lies docs/prompts/<ID>-<kurzname>.md und setze ihn um.` Solange er arbeitet, nichts committen.
 6. **Abnahme:** Nach dem Push des Agenten den Commit prüfen (Diff, Tests, Hilfe, Doku), den Status in
    `docs/prompts/<ID>-…md` nachtragen und Dominik die Update-Schritte für den Server nennen
    (`git pull && sudo ./install.sh`, neuer Agent-Stick ja/nein, Tests am realen System aus `docs/TESTS.md`).
