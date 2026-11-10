@@ -53,6 +53,27 @@ class UnitTest(unittest.TestCase):
         with self.assertRaises(shrink.ShrinkError):
             shrink.parse_pcl_header(b"kein image")
 
+    @staticmethod
+    def pcl02(device_size, total, used, used_bitmap, block=4096):
+        head = (b"partclone-image\0" + b"0.3.27".ljust(14, b"\0") + b"0002" + b"\xde\xc0" +
+                b"NTFS".ljust(16, b"\0"))
+        return head + b"".join(n.to_bytes(8, "little") for n in (device_size, total, used, used_bitmap)) + \
+            block.to_bytes(4, "little")
+
+    def test_pcl_header_used_bitmap(self):
+        # B-007: echter Kopf nvme0n1p4 (1-TB-Image) – usedblocks = 0, belegte Blöcke im Feld danach
+        info = shrink.parse_pcl_header(self.pcl02(999559266304, 244033023, 0, 97088142))
+        self.assertEqual(info["used"], 97088142 * 4096)
+        self.assertEqual(info["used_blocks"], 97088142)
+        info = shrink.parse_pcl_header(self.pcl02(523239424, 127743, 0, 97926))
+        self.assertEqual(info["used"], 97926 * 4096)
+        # gesetztes usedblocks bleibt massgebend
+        self.assertEqual(shrink.parse_pcl_header(self.pcl02(314572800, 76800, 21786, 99))["used"], 21786 * 4096)
+        for bad in ((0, 0), (0, 244033024), (244033024, 5)):
+            with self.subTest(bad=bad), \
+                    self.assertRaisesRegex(shrink.ShrinkError, "Belegter Platz im Image nicht lesbar"):
+                shrink.parse_pcl_header(self.pcl02(999559266304, 244033023, *bad))
+
     def test_reserve_and_tmp(self):
         self.assertEqual(shrink.reserve_for(100), 1024**3)
         self.assertEqual(shrink.reserve_for(100 * 1024**3), 10 * 1024**3)

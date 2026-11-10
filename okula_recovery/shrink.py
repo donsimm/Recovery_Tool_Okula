@@ -56,7 +56,14 @@ def parse_pcl_header(data: bytes) -> dict:
         raise ShrinkError("Kein partclone-Image")
     version = data[30:34].decode("ascii", "replace")
     if version == "0002":
-        device_size, total, used, _ubm, block = struct.unpack_from("<QQQQI", data, 52)
+        device_size, total, used, used_bitmap, block = struct.unpack_from("<QQQQI", data, 52)
+        if used == 0 or used > total:
+            # B-007: partclone schreibt bei grossen Images usedblocks = 0; die belegten Blöcke stehen dann im Feld
+            # danach (used_bitmap). Nie 0 annehmen – lieber ablehnen als ein falsches „Anpassen möglich“.
+            if used == 0 and 0 < used_bitmap <= total:
+                used = used_bitmap
+            else:
+                raise ShrinkError("Belegter Platz im Image nicht lesbar – Anpassen nicht möglich")
     elif version == "0001":
         block, device_size, total, used = struct.unpack_from("<IQQQ", data, 52)
     else:

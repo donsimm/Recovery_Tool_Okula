@@ -15,14 +15,14 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
-| 🐞 Bugs | 2 | 1 | 0 |
+| 🐞 Bugs | 2 | 0 | 0 |
 | 🔧 Änderungen | 7 | 0 | 0 |
 | 💡 Ideen | 20 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
 Erledigt 31.10. zusätzlich: I-007 ✔ (Image prüfen) → Ä-027 ✔ (Demo ohne NAS) → Ä-028 ✔ (Ein/Aus-Symbole) → Ä-029 ✔ (Legende) → Ä-030 ✔ (NAS-Leiste) → I-030 ✔ (Bandbreite) → Ä-031 ✔ (Tage hell/dunkel).
-Als Nächstes: **Ä-037 VM-Disk beim Zurückspielen vergrössern erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 13). **I-034 Projektübersicht erledigt** ✔ 10.11. (Extras → Projektübersicht …; am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 12). **I-001 VMs erledigt** ✔ 06.11. (alle 4 Aufträge, [VM.md](VM.md)) – Auftrag 3 „Digitaler Zwilling“ und Auftrag 4 „Snapshots“ umgesetzt und am Server installiert (Dominik 10.11.); Tests [TESTS.md](TESTS.md) Abschnitte 9, 10 und 11 (inkl. Master-Ablauf mit Snapshot „vor Sysprep“). Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 3 (Master-Image mit VMs), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
+Als Nächstes: **B-007 belegte Blöcke im partclone-Kopf erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Test [TESTS.md](TESTS.md) Abschnitt 13). **Ä-037 VM-Disk beim Zurückspielen vergrössern erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 13). **I-034 Projektübersicht erledigt** ✔ 10.11. (Extras → Projektübersicht …; am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 12). **I-001 VMs erledigt** ✔ 06.11. (alle 4 Aufträge, [VM.md](VM.md)) – Auftrag 3 „Digitaler Zwilling“ und Auftrag 4 „Snapshots“ umgesetzt und am Server installiert (Dominik 10.11.); Tests [TESTS.md](TESTS.md) Abschnitte 9, 10 und 11 (inkl. Master-Ablauf mit Snapshot „vor Sysprep“). Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 3 (Master-Image mit VMs), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
 Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
 ## 🐞 Bugs
@@ -30,7 +30,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
 | B-004 | 🔴 | offen | Dominik | **HP EliteBook 850 G1 in „UEFI Native (Without CSM)“: Agent-Stick wird nicht angezeigt, Netzwerkstart (UEFI IPv4) scheitert – im Tool kein Hinweis.** Stick: MBR + FAT32 (Typ 0x0c) mit Debian-shim; PXE: Proxy-DHCP mit `pxe-prompt`/`pxe-service` BC_EFI/X86-64_EFI. Befund 05.11. (BIOS-Fotos): Secure Boot aus, Fast Boot aus, USB device boot an; **„PXE Internal IPV4 NIC boot“ aus** (nur „PXE Internal NIC boot“ = Legacy an) → im UEFI-Modus gibt es keinen Netzwerkstart; F9 zeigt nur „Boot From EFI File“ – auch der Stick fehlt. Nächster Test: IPV4 NIC boot an; Stick über „Boot From EFI File“ → EFI/boot/bootx64.efi starten (liest die Firmware die FAT-Partition?). BIOS-Vergleich 05.11.: einziger lesbarer Unterschied die **BIOS-Version** – EliteBook 2 (geht nicht) L71 **01.49** (2020), EliteBook 1 (geht) L71 **01.11** (2014); Einstellungen über Linux nicht lesbar (B-006) | 05.11. |
-| B-007 | 🔴 | in Arbeit | Okuli | **Anpassen an kleinere Disk (Ä-002) rechnet mit „belegt 0 GB“ und meldet fälschlich „möglich“:** partclone-Kopf Format 0002 hat bei grossen Images `usedblocks = 0`, die belegten Blöcke stehen im Feld danach (`used_bitmap`). `shrink.parse_pcl_header` liest nur `usedblocks`. Befund 10.11. am 1-TB-Image `Archiv/XX Test Images/2026-10-29_1133_nvme0n1` (p4 NTFS: Kopf `(999559266304, 244033023, 0, 97088142, 4096)` → real ~397 GB belegt): Dialog zeigt „nvme0n1p4: belegt 0.0 GB … Anpassen: möglich“ für 64 GB. Folge: Anpassen startet und scheitert spät (oder schlimmer). Lösung: bei 0 auf das 4. Feld zurückfallen bzw. Bitmap zählen; Test mit echtem Kopf | 10.11. |
 | B-008 | ⚪ | offen | Okuli | **Projektübersicht im Dunkelmodus: Auswahlfelder kaum lesbar** (Art der neuen Notiz „Idee“, Filter „Priorität: alle“ – hellgrau auf weiss). Befund 10.11. per Bildschirmfoto | 10.11. |
 
 ## 🔧 Änderungen / Verbesserungen
@@ -136,6 +135,14 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 10.11.2026
+- **B-007 – Anpassen an kleinere Disk: belegte Blöcke im partclone-Kopf richtig lesen** (Von: Okuli, gemeldet
+  10.11.): partclone-Kopf Format 0002 hat bei grossen Images `usedblocks = 0`; `shrink.parse_pcl_header` las nur dieses
+  Feld → „belegt 0.0 GB … Anpassen: möglich“ beim 1-TB-Image. Jetzt: bei `usedblocks = 0` gilt das Feld danach
+  (`used_bitmap`, wenn > 0 und ≤ `totalblock`); beide 0 oder unplausibel (auch `usedblocks` > `totalblock`) →
+  „Belegter Platz im Image nicht lesbar – Anpassen nicht möglich“. Format 0001 unverändert. Ä-002-Prüfung (`plan`) und
+  Ä-037-Platzprüfung (`used_bytes`) nutzen denselben Weg; `used_bytes` fällt bei unlesbarem Kopf wie bisher auf die
+  Grösse der Image-Datei zurück. Tests mit nachgebauten echten Köpfen (`tests/test_shrink.py`). Kein neuer Agent-Stick;
+  am Server `git pull && sudo ./install.sh`, Tool neu starten. Test: [TESTS.md](TESTS.md) Abschnitt 13.
 - **Ä-037 – VM-Disk beim Zurückspielen vergrössern** (Von: Dominik): Ist die Disk einer VM kleiner als die Quelldisk
   des Images, zeigt *Image zurückspielen …* zwei Optionsfelder: „VM-Disk auf <N> GB vergrössern und zurückspielen“
   (Standard, N = Quelldisk aufgerundet auf ganze GB) und „Image an die kleinere Disk anpassen“ (Ä-002, nur wenn die
