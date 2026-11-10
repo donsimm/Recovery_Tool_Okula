@@ -501,6 +501,7 @@ Links das verbundene Gerät wählen (grüne LED) bzw. im Gerätefenster **„Dis
 - **Datenfluss:** Der Agent liest die Disk nur und streamt über **TCP 47812** (TLS 1.3 mit PSK) zum Tool. Das Tool prüft die SHA256-Summen und schreibt aufs eingehängte NAS. Der Agent bekommt keine NAS-Zugangsdaten.
 - **Abbruch und Fehler:** Während der Arbeit heisst der Ordner `….partial`. Bei Abbruch oder Fehler löscht das Tool ihn wieder, und in der Image-Liste erscheinen nur vollständige Images.
 - **Schlüssel:** Das Tool erzeugt beim ersten Stick `~/.config/okula-recovery/agent.key` und bettet ihn in jeden Stick ein. Ein Stick von einem anderen Tool wird abgewiesen. Wer den Stick hat, hat auch den Schlüssel, deshalb die Sticks wie Admin-Werkzeug aufbewahren.
+- **Werkzeugsuche:** sfdisk, partclone, wipefs … liegen in `/usr/sbin`, das bei Debian nicht im PATH normaler Benutzer steht. `okula_recovery/systools.py` (`find_tool`, `resolve`) sucht deshalb zuerst im PATH und danach in `/usr/local/sbin`, `/usr/sbin` und `/sbin`; Imaging und Clonezilla-Prüfung starten die Programme mit vollem Pfad (B-009).
 - **partclone auf dem Stick:** `partclone` und `zstd` fehlen im Debian-Live-Image. Das Tool lädt sie beim Erstellen des Sticks mit `apt-get download` aus den Paketquellen des Servers (gleiche Debian-Version) und legt nur die fehlenden Pakete in den Agent-Layer. Dafür braucht der Server Internetzugang.
 
 Tipp für Windows: Vorher vollständig herunterfahren (Shift-Taste gedrückt halten + „Herunterfahren“), sonst meldet partclone ein „inkonsistentes“ NTFS (Schnellstart/Ruhezustand).
@@ -802,3 +803,6 @@ Neue oder geänderte Funktionen bekommen im selben Commit das passende Kapitel i
 ```bash
 python3 -m unittest discover -s tests -t .
 ```
+
+Die Tests laufen auch als normaler Benutzer ohne `/usr/sbin` im PATH; Tests mit Loop-Devices oder echtem partclone
+(Log fest in `/var/log/partclone.log`) brauchen root und werden sonst mit Grund übersprungen.

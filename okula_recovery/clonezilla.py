@@ -17,12 +17,13 @@ from __future__ import annotations
 
 import os
 import re
-import shutil
 import subprocess
 import threading
 import time
 from pathlib import Path
 from typing import Callable
+
+from okula_recovery.systools import find_tool
 
 COMPRESSION = {"gz": "gzip", "zst": "zstd", "bz2": "bzip2", "xz": "xz", "lzma": "xz", "lz4": "lz4",
                "lzo": "lzop", "uncomp": ""}
@@ -34,14 +35,6 @@ PART_RE = re.compile(r"^(?P<part>[A-Za-z0-9_-]+?)\.(?P<fs>[a-z0-9+]+)-ptcl-img\.
 OLD_FORMAT_RE = re.compile(r"^[A-Za-z0-9_-]+\.[a-z0-9+]+-img(\.|$)")
 
 Progress = Callable[[dict], None]
-
-# Debian-Benutzer haben /usr/sbin nicht im PATH; partclone liegt dort
-SBIN_DIRS = ("/usr/local/sbin", "/usr/sbin", "/sbin")
-
-
-def find_tool(name: str) -> str | None:
-    path = os.pathsep.join([os.environ.get("PATH", ""), *SBIN_DIRS])
-    return shutil.which(name, path=path)
 
 
 class ClonezillaError(Exception):

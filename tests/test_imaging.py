@@ -1,7 +1,6 @@
 import hashlib
 import json
 import os
-import shutil
 import socket
 import subprocess
 import tempfile
@@ -11,7 +10,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from okula_recovery import agent, agentclient, imaging, wire
+from okula_recovery import agent, agentclient, imaging, systools, wire
+from okula_recovery.systools import find_tool, resolve
 
 LSBLK = json.dumps({"blockdevices": [
     {"name": "sda", "path": "/dev/sda", "size": 512110190592, "type": "disk", "fstype": None, "model": "SSD 860 ",
@@ -40,7 +40,7 @@ class PlanTest(unittest.TestCase):
 
     def test_plan(self):
         disk = imaging.parse_disks(LSBLK)[0]
-        with mock.patch.object(imaging.shutil, "which", lambda name: f"/usr/sbin/{name}"):
+        with mock.patch.object(imaging, "find_tool", lambda name: f"/usr/sbin/{name}"):
             plan = imaging.make_plan(disk, compress=True)
         files = [s["file"] for s in plan]
         self.assertEqual(files, ["sda.sfdisk", "sda-head.img", "sda-tail.img",
@@ -52,16 +52,59 @@ class PlanTest(unittest.TestCase):
 
     def test_plan_requires_partclone(self):
         disk = imaging.parse_disks(LSBLK)[0]
-        with mock.patch.object(imaging.shutil, "which", lambda name: None):
+        with mock.patch.object(imaging, "find_tool", lambda name: None):
             with self.assertRaises(imaging.ImagingError):
                 imaging.make_plan(disk, compress=False)
 
     def test_plan_refuses_mounted(self):
         disk = imaging.parse_disks(LSBLK)[0]
         disk["partitions"][2]["mounted"] = True
-        with mock.patch.object(imaging.shutil, "which", lambda name: name):
+        with mock.patch.object(imaging, "find_tool", lambda name: name):
             with self.assertRaises(imaging.ImagingError):
                 imaging.make_plan(disk, compress=False)
+
+
+class FindToolTest(unittest.TestCase):
+    """B-009: Werkzeuge in sbin-Ordnern auch ohne sbin im PATH finden (normaler Benutzer)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        self.sbin, self.bin = root / "sbin", root / "bin"
+        self.sbin.mkdir()
+        self.bin.mkdir()
+        self.tool = self.sbin / "okula-testtool"
+        self.tool.write_text("#!/bin/sh\necho gefunden\n")
+        self.tool.chmod(0o755)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_found_in_sbin_without_path(self):
+        with mock.patch.dict(os.environ, {"PATH": str(self.bin)}), \
+                mock.patch.object(systools, "SBIN_DIRS", (str(self.sbin),)):
+            self.assertEqual(find_tool("okula-testtool"), str(self.tool))
+            argv = resolve(["okula-testtool", "-x"])
+            self.assertEqual(argv, [str(self.tool), "-x"])
+            self.assertEqual(subprocess.run(argv[:1], capture_output=True, text=True).stdout, "gefunden\n")
+            self.assertIsNone(find_tool("gibt-es-nicht"))
+            self.assertEqual(resolve(["gibt-es-nicht", "-x"]), ["gibt-es-nicht", "-x"])
+
+    def test_path_comes_first(self):
+        first = self.bin / "okula-testtool"
+        first.write_text("#!/bin/sh\n")
+        first.chmod(0o755)
+        with mock.patch.dict(os.environ, {"PATH": str(self.bin)}), \
+                mock.patch.object(systools, "SBIN_DIRS", (str(self.sbin),)):
+            self.assertEqual(find_tool("okula-testtool"), str(first))
+
+    def test_imaging_uses_search(self):
+        with mock.patch.dict(os.environ, {"PATH": str(self.bin)}), \
+                mock.patch.object(systools, "SBIN_DIRS", (str(self.sbin),)):
+            for name in ("partclone.dd", "zstd", "sfdisk"):
+                (self.sbin / name).write_text("#!/bin/sh\n")
+                (self.sbin / name).chmod(0o755)
+            self.assertEqual(imaging.tool_status(), {"partclone": True, "zstd": True, "sfdisk": True})
 
 
 class EndToEndTest(unittest.TestCase):
@@ -90,7 +133,7 @@ class EndToEndTest(unittest.TestCase):
                           "uuid": "u", "parttype": "", "mounted": False}]}
         self.patches = [
             mock.patch.object(imaging, "list_disks", lambda: [self.disk]),
-            mock.patch.object(imaging.shutil, "which", lambda name: None if name == "zstd" else name),
+            mock.patch.object(imaging, "find_tool", lambda name: None if name == "zstd" else name),
             mock.patch.object(imaging, "partition_command",
                               lambda p: None if p["fstype"] == "swap" else ("dd.img", ["cat", p["path"]])),
             mock.patch.object(agent, "log", lambda *a, **k: None),
@@ -166,8 +209,15 @@ class EndToEndTest(unittest.TestCase):
         self.assertEqual(list((self.nas / "images" / "x").iterdir()), [])
 
 
-@unittest.skipUnless(shutil.which("partclone.extfs") and shutil.which("zstd") and shutil.which("mkfs.ext4"),
+def partclone_log_writable() -> bool:
+    """partclone schreibt sein Log fest nach /var/log/partclone.log – als normaler Benutzer meist nicht erlaubt."""
+    log = Path("/var/log/partclone.log")
+    return os.access(log, os.W_OK) if log.exists() else os.access(log.parent, os.W_OK)
+
+
+@unittest.skipUnless(find_tool("partclone.extfs") and find_tool("zstd") and find_tool("mkfs.ext4"),
                      "partclone/zstd/mkfs.ext4 fehlen")
+@unittest.skipUnless(partclone_log_writable(), "/var/log/partclone.log nicht beschreibbar (Test braucht root)")
 class RealPartcloneTest(unittest.TestCase):
     """Echte Pipeline partclone.extfs | zstd über TLS, danach Restore und Vergleich."""
 
@@ -181,7 +231,7 @@ class RealPartcloneTest(unittest.TestCase):
             part = root / "sda1.img"
             with open(part, "wb") as f:
                 f.truncate(64 * 1024 * 1024)
-            subprocess.run(["mkfs.ext4", "-q", "-F", "-d", str(content), str(part)], check=True)
+            subprocess.run(resolve(["mkfs.ext4", "-q", "-F", "-d", str(content), str(part)]), check=True)
             disk = {"name": "sda", "path": str(part), "size": part.stat().st_size, "model": "", "serial": "",
                     "transport": "", "pttype": "", "fstype": "",
                     "partitions": [{"name": "sda1", "path": str(part), "size": part.stat().st_size,
@@ -208,8 +258,8 @@ class RealPartcloneTest(unittest.TestCase):
             restored = root / "restored.img"
             with open(restored, "wb") as f:
                 f.truncate(part.stat().st_size)
-            zstd = subprocess.Popen(["zstd", "-d", "-c", str(image)], stdout=subprocess.PIPE)
-            r = subprocess.run(["partclone.extfs", "-r", "-s", "-", "-O", str(restored), "-q"],
+            zstd = subprocess.Popen(resolve(["zstd", "-d", "-c", str(image)]), stdout=subprocess.PIPE)
+            r = subprocess.run(resolve(["partclone.extfs", "-r", "-s", "-", "-O", str(restored), "-q"]),
                                stdin=zstd.stdout, capture_output=True)
             zstd.stdout.close()
             zstd.wait()

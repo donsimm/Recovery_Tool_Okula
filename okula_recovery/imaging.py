@@ -16,13 +16,13 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import subprocess
 import threading
 import time
 from typing import Callable, Iterator
 
 from okula_recovery import wire
+from okula_recovery.systools import find_tool, resolve
 
 LIVE_MEDIUM = "/run/live/medium"
 STICK_DATA = "/run/okula-data"  # Datenpartition des Restore-Sticks
@@ -97,7 +97,7 @@ def fill_fstypes(disks: list[dict]) -> list[dict]:
             if part["fstype"]:
                 continue
             try:
-                r = subprocess.run(["blkid", "-p", "-o", "export", part["path"]], capture_output=True, text=True,
+                r = subprocess.run(resolve(["blkid", "-p", "-o", "export", part["path"]]), capture_output=True, text=True,
                                    timeout=10)
             except (OSError, subprocess.TimeoutExpired):
                 continue
@@ -110,14 +110,14 @@ def fill_fstypes(disks: list[dict]) -> list[dict]:
 
 
 def list_disks() -> list[dict]:
-    out = subprocess.run(["lsblk", "-J", "-b", "-o", LSBLK_COLUMNS],
+    out = subprocess.run(resolve(["lsblk", "-J", "-b", "-o", LSBLK_COLUMNS]),
                          capture_output=True, text=True, timeout=15).stdout
     return fill_fstypes(parse_disks(out))
 
 
 def tool_status() -> dict:
-    return {"partclone": bool(shutil.which("partclone.dd")), "zstd": bool(shutil.which("zstd")),
-            "sfdisk": bool(shutil.which("sfdisk"))}
+    return {"partclone": bool(find_tool("partclone.dd")), "zstd": bool(find_tool("zstd")),
+            "sfdisk": bool(find_tool("sfdisk"))}
 
 
 def partition_command(part: dict) -> tuple[str, list[str]] | None:
@@ -126,14 +126,15 @@ def partition_command(part: dict) -> tuple[str, list[str]] | None:
     if fs == "swap":
         return None
     variant = PARTCLONE.get(fs)
-    if variant and shutil.which(f"partclone.{variant}"):
+    if variant and find_tool(f"partclone.{variant}"):
+        # Programmname ohne Pfad: das Tool liest daraus die Variante; voller Pfad erst beim Start (_run_pipe)
         return f"{fs}.pcl", [f"partclone.{variant}", "-c", "-s", part["path"], "-o", "-"]
     # unbekannt, verschlüsselt (BitLocker/LUKS), LVM …: Rohkopie aller Blöcke
     return "dd.img", ["partclone.dd", "-s", part["path"], "-o", "-"]
 
 
 def make_plan(disk: dict, compress: bool) -> list[dict]:
-    if not shutil.which("partclone.dd"):
+    if not find_tool("partclone.dd"):
         raise ImagingError("partclone fehlt auf dem Agent-Stick – Stick mit aktuellem Tool neu erstellen")
     mounted = [p["path"] for p in disk["partitions"] if p["mounted"]]
     if mounted:
@@ -211,7 +212,7 @@ def _run_pipe(cmds: list[list[str]]):
     procs = []
     stdin = None
     for i, argv in enumerate(cmds):
-        p = subprocess.Popen(argv, stdin=stdin, stdout=subprocess.PIPE,
+        p = subprocess.Popen(resolve(argv), stdin=stdin, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE if i == 0 else subprocess.DEVNULL)
         if stdin is not None:
             stdin.close()  # nur der nächste Prozess hält die Pipe
@@ -225,7 +226,7 @@ def stream_disk_image(sock, disk_path: str, log: Callable[[str], None] = print,
     disk = {d["path"]: d for d in list_disks()}.get(disk_path)
     if disk is None:
         raise ImagingError(f"Disk {disk_path} nicht gefunden")
-    compress = bool(shutil.which("zstd"))
+    compress = bool(find_tool("zstd"))
     plan = make_plan(disk, compress)
     wire.send_json(sock, {"type": "begin", "disk": disk, "plan": plan, "compression": "zstd" if compress else ""})
     total = sum(s["size"] for s in plan if s["kind"] == "pipe") or 1
@@ -239,7 +240,7 @@ def stream_disk_image(sock, disk_path: str, log: Callable[[str], None] = print,
         if step["kind"] == "range":
             _send_file(sock, name, _read_range(step["path"], step["offset"], step["length"]), {}, lambda n: {})
         elif step["kind"] == "command":
-            r = subprocess.run(step["cmd"], capture_output=True, timeout=60)
+            r = subprocess.run(resolve(step["cmd"]), capture_output=True, timeout=60)
             if r.returncode != 0:
                 if step.get("optional"):
                     continue
@@ -336,7 +337,7 @@ def decompressor(step: dict) -> list[str] | None:
         return None
     if comp not in DECOMPRESS:
         raise ImagingError(f"Unbekannte Kompression: {comp}")
-    if comp == "gzip" and shutil.which("pigz"):
+    if comp == "gzip" and find_tool("pigz"):
         return ["pigz", "-d", "-c"]  # parallel, deutlich schneller
     return DECOMPRESS[comp]
 
@@ -355,7 +356,7 @@ def restore_command(step: dict, device: str) -> list[list[str]]:
 
 
 def _run_checked(cmd: list[str], input: str | None = None) -> None:
-    r = subprocess.run(cmd, input=input, capture_output=True, text=True, timeout=120)
+    r = subprocess.run(resolve(cmd), input=input, capture_output=True, text=True, timeout=120)
     if r.returncode != 0:
         raise ImagingError(f"{' '.join(cmd)}: {(r.stderr or r.stdout).strip()}")
 
@@ -378,7 +379,7 @@ def check_restore(target: dict, source: dict, steps: list[dict]) -> None:
         raise ImagingError(f"Zieldisk zu klein: {target['size'] / 1000**3:.1f} GB < "
                            f"{int(source['size']) / 1000**3:.1f} GB")
     needed = {c[0] for s in steps if s["kind"] in ("pcl", "dd") for c in restore_command(s, "/dev/null")}
-    missing = sorted(t for t in needed if not shutil.which(t))
+    missing = sorted(t for t in needed if not find_tool(t))
     if missing:
         raise ImagingError(f"Werkzeuge fehlen auf dem Agent-Stick: {', '.join(missing)}")
 
@@ -386,7 +387,7 @@ def check_restore(target: dict, source: dict, steps: list[dict]) -> None:
 def write_partition_table(target: dict, source: dict, dump: str, head: bytes) -> None:
     disk = target["path"]
     for p in target["partitions"]:
-        subprocess.run(["wipefs", "-a", "-q", p["path"]], capture_output=True)
+        subprocess.run(resolve(["wipefs", "-a", "-q", p["path"]]), capture_output=True)
     _run_checked(["wipefs", "-a", "-q", disk])
     if not dump:
         return  # Dateisystem direkt auf der Disk, keine Tabelle
@@ -403,8 +404,8 @@ def write_partition_table(target: dict, source: dict, dump: str, head: bytes) ->
             f.write(head[gap_from:min(first, len(head))])
         f.flush()
         os.fsync(f.fileno())
-    subprocess.run(["partx", "-u", disk], capture_output=True)
-    subprocess.run(["udevadm", "settle"], capture_output=True)
+    subprocess.run(resolve(["partx", "-u", disk]), capture_output=True)
+    subprocess.run(resolve(["udevadm", "settle"]), capture_output=True)
 
 
 def _frames(sock, expected: dict):
@@ -440,7 +441,7 @@ def _pipe_into(cmds: list[list[str]], chunks, expected: dict,
     stdin = subprocess.PIPE
     for i, argv in enumerate(cmds):
         last = i == len(cmds) - 1
-        p = subprocess.Popen(argv, stdin=stdin, stdout=subprocess.DEVNULL if last else subprocess.PIPE,
+        p = subprocess.Popen(resolve(argv), stdin=stdin, stdout=subprocess.DEVNULL if last else subprocess.PIPE,
                              stderr=subprocess.PIPE if last else subprocess.DEVNULL)
         if i > 0:
             procs[-1].stdout.close()
@@ -508,7 +509,7 @@ def finish_target(steps: list[dict], devices: dict[str, str]) -> None:
                 cmd += ["-U", s["uuid"]]
             if s.get("label"):
                 cmd += ["-L", s["label"]]
-            subprocess.run(cmd + [devices[s["part"]]], capture_output=True)
+            subprocess.run(resolve(cmd + [devices[s["part"]]]), capture_output=True)
     subprocess.run(["sync"])
 
 

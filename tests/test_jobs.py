@@ -32,7 +32,7 @@ class ParallelJobsTest(unittest.TestCase):
         self.key = bytes(range(32))
         self.patches = [
             mock.patch.object(imaging, "list_disks", lambda: self.disks),
-            mock.patch.object(imaging.shutil, "which", lambda n: None if n == "zstd" else n),
+            mock.patch.object(imaging, "find_tool", lambda n: None if n == "zstd" else n),
             # langsam lesen (pv-artig), damit sich beide Aufträge überlappen
             mock.patch.object(imaging, "partition_command",
                               lambda p: ("dd.img", ["sh", "-c", f"sleep 1; cat '{p['path']}'"])),

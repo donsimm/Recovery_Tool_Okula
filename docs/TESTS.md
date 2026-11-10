@@ -69,7 +69,8 @@ bestätigt.
 ## Offen – am realen System testen
 
 ### 1. Fixes von heute
-- (alle geprüft)
+- [ ] **B-009** (Werkzeugsuche in `imaging.py`): Disk-Image erstellen und zurückspielen funktioniert wie bisher –
+  mit bestehendem Agent-Stick und, falls neu erstellt, mit neuem Stick (enthält `systools.py`).
 
 ### 2. Netzwerk (Reiter „Netzwerk“ im Gerätefenster)
 - [ ] Ä-034: `git pull && sudo ./install.sh` (HTTP-Dienst neu); EliteBook F9 → Netzwerk → im Gerätefenster → Netzwerk → „Netzwerkstart-Protokoll“: Anfrage (UEFI/BIOS), Antwort, Bootlader … bzw. roter Grund; ohne Netzwerkkabel → „keine Netzwerkstart-Anfrage“
