@@ -277,5 +277,5 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stic
 - [ ] Abbrechen während „Agent wird gestartet (3/4)“ → Auftrag abgebrochen, nichts zurückgespielt, Disk bleibt
       vergrössert (Log), Verlauf „… abgebrochen“
 - [ ] Echtes Gerät mit kleinerer Zieldisk → Dialog wie bisher (Häkchen „Für diese Disk anpassen“, keine Optionsfelder)
-- [ ] B-007: 1-TB-Image `2026-10-29_1133_nvme0n1` auf VM mit 64 GB → Anpassen: nicht möglich (belegt ~397 GB)
+- [x] B-007: 1-TB-Image `2026-10-29_1133_nvme0n1` auf VM mit 64 GB → Anpassen: nicht möglich (belegt ~397 GB) – ✔ 10.11. (Okuli: Probe-VM VM-Klein 64 GB, Prüftext „Anpassen: nicht möglich – … auf nvme0n1p4 sind 397.7 GB belegt, mit Reserve 437.4 GB nötig …“; Vergrössern auf 1001 GB möglich, nicht gestartet; Probe-VM gelöscht)
 - [x] Neue VM mit Profil VM-Win11 → 256 GB, Modell „Okula NVMe SSD 256GB“; bestehende VMs unverändert – ✔ 10.11. (Okuli: Dialog zeigt NVMe-SSD 256 GB)
