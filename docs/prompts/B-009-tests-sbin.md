@@ -1,6 +1,6 @@
 # B-009 – Tests grün auch als normaler Benutzer (sbin-Pfad, Root-Test)
 
-Status: freigegeben · erstellt 10.11.2026 von der Projektleitung · Freigabe: Dominik 10.11.
+Status: umgesetzt (Commit 3ef6bd7) · erstellt 10.11.2026 von der Projektleitung · Freigabe: Dominik 10.11.
 
 ## Rolle und Einstieg
 
