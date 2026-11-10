@@ -1,6 +1,6 @@
 # Ä-038 – Agent-Stick: Meldung „fertig, jetzt abziehen“ und Prüfung am Schluss
 
-Status: umgesetzt (Commit ca975e5) · erstellt 10.11.2026 von Okuli (Projektleitung) · Freigabe: Dominik 10.11.
+Status: abgenommen (Commit ca975e5) · Abnahme Okuli 10.11.: Diff, Tests, Hilfe
 
 ## Rolle und Einstieg
 
