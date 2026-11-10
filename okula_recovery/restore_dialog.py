@@ -13,7 +13,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
 from okula_recovery import (agentclient, archive, clonezilla, demostore, devices, discovery, imagecheck,  # noqa: E402
-                            nas, winunattend)
+                            nas, vm, winunattend)
 
 
 def _gb(n: int) -> str:
@@ -23,12 +23,16 @@ def _gb(n: int) -> str:
 class RestoreDialog(Gtk.Dialog):
     def __init__(self, parent: Gtk.Window, agent: discovery.AgentInfo, nas_root: str,
                  start_job: Callable[..., None], preselect: str | None = None,
-                 device_name: str = "", device: devices.Device | None = None):
-        """start_job(image, quelldisk, zieldisk, prüfen, herunterfahren, bezeichnung, anpassen, snapshot=…) startet
-        den Auftrag (snapshot: nur VMs, Häkchen „Vorher Snapshot“);
-        anpassen = {"swiss", "account"} oder None."""
+                 device_name: str = "", device: devices.Device | None = None,
+                 vm_info: Callable[[], dict] | None = None):
+        """start_job(image, quelldisk, zieldisk, prüfen, herunterfahren, bezeichnung, anpassen, adapt,
+        snapshot=…, grow_gb=…) startet den Auftrag (snapshot: nur VMs, Häkchen „Vorher Snapshot“;
+        grow_gb: nur VMs, Disk der VM vorher auf so viele GB vergrössern – Ä-037);
+        anpassen = {"swiss", "account"} oder None.
+        vm_info (nur VMs): {"snapshots", "pool_free"} – läuft im Hintergrund."""
         super().__init__(title="Image zurückspielen", transient_for=parent, modal=True)
         self.start_job = start_job
+        self.vm_info = vm_info if device is not None and device.is_vm else None
         self.set_default_size(820, 640)
         self.agent = agent
         self.nas_root = nas_root
@@ -101,7 +105,8 @@ class RestoreDialog(Gtk.Dialog):
         self.snapshot = Gtk.CheckButton(label="Vorher Snapshot", active=is_vm, no_show_all=not is_vm)
         self.snapshot.set_tooltip_text("Direkt vor dem Start einen Snapshot der Disk der VM erstellen (Reiter "
                                        "„Snapshots“) – damit lässt sich der Stand davor in Sekunden zurückholen. "
-                                       "Schlägt der Snapshot fehl, startet der Auftrag nicht.")
+                                       "Schlägt der Snapshot fehl, startet der Auftrag nicht. Wird die VM-Disk "
+                                       "vorher vergrössert, entsteht der Snapshot erst danach.")
         grid.attach(self.snapshot, 0, row, 2, 1)
         row += 1
         # Master-Image: danach Gerätename, Windows-Schlüssel (und Region/Konto) setzen
@@ -129,6 +134,20 @@ class RestoreDialog(Gtk.Dialog):
         self.adapt.connect("toggled", lambda _c: self._update())
         grid.attach(self.adapt, 0, row, 2, 1)
         self._shrink_checked: dict = {}   # (Image, Disk-Grösse) → Plan-Zeilen oder Fehlertext
+        row += 1
+        # Ä-037: Disk einer VM zu klein → VM-Disk vergrössern (Standard) oder Image anpassen
+        self.way_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, no_show_all=True)
+        self.way_grow = Gtk.RadioButton(label="VM-Disk vergrössern und zurückspielen")
+        self.way_adapt = Gtk.RadioButton.new_with_label_from_widget(self.way_grow,
+                                                                    "Image an die kleinere Disk anpassen")
+        for button in (self.way_grow, self.way_adapt):
+            button.connect("toggled", lambda b: b.get_active() and self._update())
+            self.way_box.pack_start(button, False, False, 0)
+            button.show()
+        grid.attach(self.way_box, 0, row, 2, 1)
+        self._grow_checked: dict = {}     # (Image, Disk-Grösse) → {"snapshots", "pool_free", "image_used"} / Text
+        self._ways: vm.RestoreWays | None = None
+        self._ways_for = None             # für welche Auswahl der Standardweg gesetzt ist
         row += 1
         self.confirm_label = Gtk.Label(xalign=0)
         grid.attach(self.confirm_label, 0, row, 1, 1)
@@ -260,9 +279,13 @@ class RestoreDialog(Gtk.Dialog):
             self.confirm_label.set_markup(f"Bestätigung: <b>{GLib.markup_escape_text(disk['name'])}</b> eintippen")
         ok = False
         self.adapt.set_visible(False)
+        self.way_box.set_visible(False)
+        self._ways = None
         if meta and disk:
             need = int(meta["disk_info"].get("size") or 0)
-            if disk["size"] < need:
+            if disk["size"] < need and self.vm_info is not None:
+                ok = self._vm_smaller(meta, disk, need)
+            elif disk["size"] < need:
                 ok = self._smaller_disk(meta, disk, need)
             elif any(p["mounted"] for p in disk["partitions"]):
                 self.check.set_markup("<b>Eine Partition der Zieldisk ist eingehängt.</b>")
@@ -273,14 +296,13 @@ class RestoreDialog(Gtk.Dialog):
         typed = disk is not None and self.confirm.get_text().strip() == disk["name"]
         self.btn_start.set_sensitive(ok and typed)
 
-    def _smaller_disk(self, meta: dict, disk: dict, need: int) -> bool:
-        """Zieldisk kleiner: prüfen (im Hintergrund), ob sich das Image anpassen lässt, und das anbieten."""
+    def _shrink_state(self, meta: dict, disk: dict):
+        """Ä-002-Prüfung „lässt sich anpassen“ (im Hintergrund): None = gestartet, "…" = läuft,
+        Text = geht nicht (Grund), Liste = Plan-Zeilen."""
         key = (meta["path"], meta.get("disk"), disk["size"])
         result = self._shrink_checked.get(key)
-        intro = f"<b>Zieldisk kleiner als das Image:</b> {_gb(disk['size'])} &lt; {_gb(need)}. "
         if result is None:
             self._shrink_checked[key] = "…"
-            self.check.set_markup(intro + "Wird geprüft, ob sich das Image anpassen lässt …")
 
             def work():
                 from okula_recovery import shrink
@@ -293,8 +315,83 @@ class RestoreDialog(Gtk.Dialog):
                 GLib.idle_add(self._shrink_result, key, res)
 
             threading.Thread(target=work, daemon=True).start()
-            return False
-        if result == "…":
+        return result
+
+    def _grow_state(self, meta: dict, disk: dict):
+        """Ä-037: Snapshots der VM, Platz im Pool, belegte Daten des Images (im Hintergrund). None = gestartet,
+        "…" = läuft, Text = Prüfung fehlgeschlagen, dict = Werte für vm.restore_ways."""
+        key = (meta["path"], meta.get("disk"), disk["size"])
+        result = self._grow_checked.get(key)
+        if result is None:
+            self._grow_checked[key] = "…"
+            info = self.vm_info
+
+            def work():
+                from okula_recovery import shrink
+                try:
+                    res = dict(info())
+                    res["image_used"] = shrink.used_bytes(meta["path"], meta.get("disk"))
+                except Exception as e:  # libvirt oder NAS nicht erreichbar
+                    res = f"Prüfung fehlgeschlagen: {e}"
+                GLib.idle_add(self._grow_result, key, res)
+
+            threading.Thread(target=work, daemon=True).start()
+        return result
+
+    def _grow_result(self, key, result) -> bool:
+        self._grow_checked[key] = result
+        self._update()
+        return False
+
+    def _vm_smaller(self, meta: dict, disk: dict, need: int) -> bool:
+        """Ä-037: Disk der VM kleiner als die Quelldisk – Wahl „VM-Disk vergrössern“ (Standard) oder
+        „Image anpassen“ (Ä-002); ausgegraute Wege mit Grund im Tooltip und im Prüftext."""
+        adapt = self._shrink_state(meta, disk)
+        grow = self._grow_state(meta, disk)
+        ways = vm.restore_ways(need, None if grow in (None, "…") else grow,
+                               None if adapt in (None, "…") else adapt)
+        self._ways = ways
+        n = ways.grow_gb
+        self.way_grow.set_label(f"VM-Disk auf {n} GB vergrössern und zurückspielen")
+        self.way_grow.set_sensitive(ways.grow_ok)
+        self.way_grow.set_tooltip_text(
+            f"Die VM wird heruntergefahren, die Disk auf {n} GB vergrössert, die VM mit dem Agent neu gestartet und "
+            "das Image danach unverändert (1:1) zurückgespielt – alles in einem Auftrag." if ways.grow_ok
+            else "Wird geprüft …" if ways.grow_why == ways.PENDING else ways.grow_why)
+        self.way_adapt.set_sensitive(ways.adapt_ok)
+        self.way_adapt.set_tooltip_text(
+            "Ein neues, an die kleinere Disk angepasstes Image wird erstellt (Original bleibt) und zurückgespielt."
+            if ways.adapt_ok else "Wird geprüft …" if ways.adapt_why == ways.PENDING else ways.adapt_why)
+        key = (meta["path"], meta.get("disk"), disk["size"])
+        if not ways.pending and self._ways_for != key:
+            self._ways_for = key
+            if ways.default() == "adapt":
+                self.way_adapt.set_active(True)
+            elif ways.default() == "grow":
+                self.way_grow.set_active(True)
+
+        def state(why: str, ok_text: str) -> str:
+            if why == ways.PENDING:
+                return "wird geprüft …"
+            return ok_text if not why else "nicht möglich – " + GLib.markup_escape_text(why)
+
+        lines = [f"<b>Disk der VM kleiner als das Image:</b> {_gb(disk['size'])} &lt; {_gb(need)}.",
+                 "• Vergrössern: " + state(ways.grow_why, f"möglich – Disk wird auf {n} GB vergrössert, das Image "
+                                                          "unverändert zurückgespielt"),
+                 "• Anpassen: " + state(ways.adapt_why, "möglich:")]
+        lines += ["   – " + GLib.markup_escape_text(x) for x in ways.adapt_lines]
+        if not ways.pending and not ways.grow_ok and not ways.adapt_ok:
+            lines.append("<b>Zurückspielen nicht möglich.</b>")
+        self.check.set_markup("\n".join(lines))
+        self.way_box.set_visible(True)
+        return ways.allowed("grow" if self.way_grow.get_active() else "adapt")
+
+    def _smaller_disk(self, meta: dict, disk: dict, need: int) -> bool:
+        """Zieldisk kleiner: prüfen (im Hintergrund), ob sich das Image anpassen lässt, und das anbieten."""
+        result = self._shrink_state(meta, disk)
+        intro = f"<b>Zieldisk kleiner als das Image:</b> {_gb(disk['size'])} &lt; {_gb(need)}. "
+        if result is None or result == "…":
+            self.check.set_markup(intro + "Wird geprüft, ob sich das Image anpassen lässt …")
             return False
         if isinstance(result, str):
             self.check.set_markup(intro + "Anpassen geht nicht: " + GLib.markup_escape_text(result))
@@ -325,9 +422,16 @@ class RestoreDialog(Gtk.Dialog):
             custom = {"swiss": self.custom_swiss.get_active(), "account": self.custom_account.get_text().strip()} \
                 if self.custom.get_active() else None
             adapt = self.disks[target]["size"] if self.adapt.get_visible() and self.adapt.get_active() else None
+            grow = None
+            if self.way_box.get_visible() and self._ways is not None:     # Ä-037: Disk der VM zu klein
+                if self.way_grow.get_active():
+                    grow = self._ways.grow_gb
+                else:
+                    adapt = self.disks[target]["size"]
+            kwargs = {"grow_gb": grow} if grow else {}
             self.start_job(chosen["path"], chosen["disk"], target, self.verify.get_active(),
                            self.shutdown.get_active(), label, custom, adapt,
-                           snapshot=self.snapshot.get_visible() and self.snapshot.get_active())
+                           snapshot=self.snapshot.get_visible() and self.snapshot.get_active(), **kwargs)
         except Exception as e:
             self.append_log(f"Nicht gestartet: {e}")
             return

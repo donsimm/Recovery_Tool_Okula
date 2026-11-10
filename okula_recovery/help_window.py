@@ -365,7 +365,8 @@ Damit kommt ein Gerät auf den Stand des Images zurück.
     •  <i>Maschine danach herunterfahren</i>: danach den Stick abziehen und das Gerät einschalten.
     •  Nur bei VMs: <i>Vorher Snapshot</i> (Standard an) – direkt vor dem Zurückspielen entsteht ein Snapshot
         der Disk, damit lässt sich der Stand davor in Sekunden zurückholen (Kapitel <i>Virtuelle Maschinen</i>).
-        Schlägt der Snapshot fehl, startet das Zurückspielen nicht.
+        Schlägt der Snapshot fehl, startet das Zurückspielen nicht. Wird die VM-Disk vorher vergrössert,
+        entsteht der Snapshot erst danach (Abschnitt „Disk der VM zu klein“ unten).
 6.  Zur Bestätigung den Namen der Zieldisk eintippen (zum Beispiel „sda“ oder „nvme0n1“).
 7.  Auf <i>Zurückspielen</i> klicken.
 
@@ -377,6 +378,21 @@ Zum Beispiel 256 statt 512 GB: Das Tool prüft, ob die Daten passen.
 Dann <i>Für diese Disk anpassen</i> anhaken: Das Tool erstellt daraus ein neues, kleineres Image.
 Das Original bleibt unverändert. Das dauert etwas länger.
 Nicht möglich bei verschlüsselten Disks (BitLocker) – dort fehlt die Option.
+
+<b>Disk der VM zu klein</b>
+Bei einer virtuellen Maschine gibt es zwei Wege, als Optionsfelder unter dem Prüftext:
+•  <i>VM-Disk auf … GB vergrössern und zurückspielen</i> (vorgewählt): Die Disk der VM wird auf die Grösse der
+    Quelldisk des Images gebracht (auf ganze GB aufgerundet), das Image danach unverändert zurückgespielt.
+    Alles läuft als ein Auftrag im Reiter <i>Aufträge</i>: VM wird heruntergefahren (1/4), Disk wird vergrössert
+    (2/4), Agent wird gestartet (3/4), Zurückspielen (4/4). <i>Vorher Snapshot</i> entsteht dabei erst nach dem
+    Vergrössern. Im Verlauf steht z. B. „VM-Disk von 128 GB auf 512 GB vergrössert“.
+•  <i>Image an die kleinere Disk anpassen</i>: wie oben bei <b>Zieldisk kleiner als das Image</b> – nur wählbar,
+    wenn die Daten passen.
+Ausgegraut ist ein Weg mit Grund im Prüftext und im Tooltip. Vergrössern geht nicht, solange die VM
+Snapshots hat (zuerst im Reiter <i>Snapshots</i> löschen) oder wenn auf dem Server zu wenig Platz frei ist
+(belegte Daten des Images plus 10 % Reserve, mindestens 10 GB). Die Disk-Datei der VM ist dünn: Vergrössern
+belegt erst Platz, wenn geschrieben wird. Bricht der Auftrag vor dem Zurückspielen ab, bleibt die Disk
+vergrössert, die Daten darauf sind unverändert. Gehen beide Wege nicht, bleibt <i>Zurückspielen</i> gesperrt.
 
 <b>Gut zu wissen:</b>
 •  Zeigte die letzte Prüfung „beschädigt“, steht im Dialog ein roter Hinweis. Zurückspielen geht trotzdem.
@@ -456,8 +472,9 @@ ein echter PC und startet den Agent über den Netzwerkstart – ohne Stick. Wozu
 •  <b>Ausprobieren</b> von Agent, Netzwerkstart und Automatisierung, bevor ein echtes Gerät dran ist.
 
 <b>Drei Profile (Vorlagen)</b>
-•  <b>VM-Win11</b>: moderner Business-Laptop – UEFI mit Secure Boot und TPM 2.0, NVMe 128 GB, Intel e1000e,
-    4 Kerne, 8 GB RAM. Für Master-Image, Windows 11, Automatisierung.
+•  <b>VM-Win11</b>: moderner Business-Laptop – UEFI mit Secure Boot und TPM 2.0, NVMe 256 GB, Intel e1000e,
+    4 Kerne, 8 GB RAM. Für Master-Image, Windows 11, Automatisierung. (VMs, die vor dieser Version mit
+    128 GB angelegt wurden, behalten ihre Grösse.)
 •  <b>VM-Legacy</b>: älteres Gerät – BIOS (Legacy), SATA-HDD 80 GB, Intel e1000, 2 Kerne, 4 GB RAM.
     Für BIOS-Netzwerkstart, Windows 10, alte Hardware.
 •  <b>VM-Klein</b>: Gerät mit kleiner Disk – UEFI ohne Secure Boot, SATA-SSD 64 GB, Intel e1000e, 2 Kerne,
@@ -494,6 +511,8 @@ Die Disk ist eine Datei auf der SSD des Servers und wächst mit dem belegten Pla
 •  <i>Hardware ändern …</i> (nur ausgeschaltet): Arbeitsspeicher, Kerne, Disk vergrössern (nie verkleinern),
     Netzwerkkarte. Firmware und Disk-Anschluss nur mit Warnung – ein installiertes System startet danach
     evtl. nicht mehr. Hat die VM Snapshots, ist <i>Disk</i> gesperrt: zuerst die Snapshots löschen.
+    Ist die Disk für ein Image zu klein, vergrössert <i>Image zurückspielen …</i> sie auf Wunsch selbst
+    (Kapitel <i>Image zurückspielen</i>, Abschnitt „Disk der VM zu klein“).
 •  <i>VM löschen …</i> (nur ausgeschaltet): VM, Disk, alle Snapshots und Geräteeintrag werden gelöscht;
     Images und Backups auf dem NAS bleiben.
 In der Geräteliste steht der Zustand: <i>aus</i>, <i>läuft</i> oder <i>läuft – Agent verbunden</i>

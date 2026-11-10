@@ -182,7 +182,7 @@ def _profile(name, firmware, tpm, chipset, bus, size, model, rpm, nic, cores, ra
 
 # Vorlagen laut docs/VM.md
 PROFILES: dict[str, VmProfile] = {p.name: p for p in (
-    _profile("VM-Win11", "uefi-sb", True, "q35", "nvme", 128, "Okula NVMe SSD 128GB", 0, "e1000e", 4, 8, 10),
+    _profile("VM-Win11", "uefi-sb", True, "q35", "nvme", 256, "Okula NVMe SSD 256GB", 0, "e1000e", 4, 8, 10),
     _profile("VM-Legacy", "bios", False, "i440fx", "sata", 80, "Okula SATA HDD 80GB", 7200, "e1000", 2, 4, 3),
     _profile("VM-Klein", "uefi", False, "q35", "sata", 64, "Okula SATA SSD 64GB", 0, "e1000e", 2, 4, 3),
 )}
@@ -565,6 +565,94 @@ PROFILE_NOTES = {
     "VM-Legacy": "Älteres Gerät mit BIOS – BIOS-Netzwerkstart, Windows 10, alte Hardware",
     "VM-Klein": "Gerät mit kleiner Disk – Zurückspielen auf kleinere Disk, Linux",
 }
+
+
+# ---------- VM-Disk beim Zurückspielen vergrössern (Ä-037) ----------
+
+GB = 10**9
+GROW_RESERVE_MIN = 10 * GB          # Reserve im Pool beim Vergrössern: 10 % der Image-Daten, mindestens 10 GB
+SNAPSHOTS_BLOCK_GROW = ("Die VM hat Snapshots – zuerst im Reiter „Snapshots“ löschen, dann lässt sich die Disk "
+                        "vergrössern.")
+GROW_STEPS = ("VM wird heruntergefahren (1/4)", "Disk wird vergrössert (2/4)", "Agent wird gestartet (3/4)",
+              "Zurückspielen (4/4)")
+SHUTDOWN_TIMEOUT = 60               # so lange auf das saubere Herunterfahren warten, dann hart ausschalten (s)
+
+
+def grow_size_gb(need: int) -> int:
+    """Neue Grösse der VM-Disk: Grösse der Quelldisk (Byte), aufgerundet auf ganze GB (dezimal wie DiskSpec)."""
+    return max(1, -(-int(need) // GB))
+
+
+def grow_reserve(used: int) -> int:
+    return max(GROW_RESERVE_MIN, int(used) // 10)
+
+
+def grow_why(snapshots: int, pool_free: int, image_used: int) -> str:
+    """Grund, warum sich die VM-Disk nicht vergrössern lässt ("" = geht). Die Disk-Datei ist dünn (qcow2):
+    Platz braucht nur, was das Zurückspielen schreibt – die belegten Daten des Images plus Reserve."""
+    if snapshots:
+        return SNAPSHOTS_BLOCK_GROW
+    need = int(image_used) + grow_reserve(image_used)
+    if pool_free < need:
+        return (f"Zu wenig Platz auf dem Server (Pool „{POOL}“): frei {pool_free / GB:.0f} GB, nötig "
+                f"{need / GB:.0f} GB (Daten im Image {image_used / GB:.0f} GB + Reserve "
+                f"{grow_reserve(image_used) / GB:.0f} GB).")
+    return ""
+
+
+@dataclass
+class RestoreWays:
+    """Disk der VM kleiner als die Quelldisk des Images: welche Wege gehen, und warum nicht.
+    *_why: "" = möglich, sonst Grund; PENDING = Prüfung läuft noch."""
+    grow_gb: int
+    grow_why: str
+    adapt_why: str
+    adapt_lines: list[str] = field(default_factory=list)
+
+    PENDING = "…"
+
+    @property
+    def grow_ok(self) -> bool:
+        return not self.grow_why
+
+    @property
+    def adapt_ok(self) -> bool:
+        return not self.adapt_why
+
+    @property
+    def pending(self) -> bool:
+        return self.PENDING in (self.grow_why, self.adapt_why)
+
+    def default(self) -> str:
+        """Vorgewählter Weg: Vergrössern (Image 1:1), sonst Anpassen, sonst keiner ("")."""
+        return "grow" if self.grow_ok else "adapt" if self.adapt_ok else ""
+
+    def allowed(self, way: str) -> bool:
+        return (way == "grow" and self.grow_ok) or (way == "adapt" and self.adapt_ok)
+
+
+def restore_ways(need: int, grow_info: dict | str | None, adapt: list[str] | str | None) -> RestoreWays:
+    """need = Grösse der Quelldisk (Byte). grow_info = {"snapshots", "pool_free", "image_used"} (Byte),
+    Fehlertext oder None (wird noch geprüft). adapt = Ergebnis der Ä-002-Prüfung: Plan-Zeilen, Fehlertext oder
+    None (wird noch geprüft)."""
+    if grow_info is None:
+        grow = RestoreWays.PENDING
+    elif isinstance(grow_info, str):
+        grow = grow_info
+    else:
+        grow = grow_why(int(grow_info.get("snapshots") or 0), int(grow_info.get("pool_free") or 0),
+                        int(grow_info.get("image_used") or 0))
+    if adapt is None or adapt == RestoreWays.PENDING:
+        adapt_why, lines = RestoreWays.PENDING, []
+    elif isinstance(adapt, str):
+        adapt_why, lines = adapt, []
+    else:
+        adapt_why, lines = "", list(adapt)
+    return RestoreWays(grow_size_gb(need), grow, adapt_why, lines)
+
+
+def grow_history(old_gb: int, new_gb: int) -> str:
+    return f"VM-Disk von {old_gb} GB auf {new_gb} GB vergrössert"
 
 
 # ---------- Digitaler Zwilling: Hardware von einem Gerät übernehmen (I-001 Auftrag 3) ----------
@@ -1172,6 +1260,50 @@ class Virsh:
             self.virsh("vol-resize", "--pool", POOL, os.path.basename(disk), str(p.disk.size_gb * 10**9))
         self._define(xml)
         return p
+
+    # --- VM-Disk beim Zurückspielen vergrössern (Ä-037) ---
+
+    def pool_free(self) -> int:
+        """Freier Platz im Pool „okula“ (Byte, pool-info); nicht lesbar → freier Platz im Pool-Ordner."""
+        out = self.virsh("pool-info", POOL, "--bytes", check=False)
+        m = re.search(r"^Available:\s*(\d+)", out or "", re.M)
+        return int(m.group(1)) if m else free_disk()
+
+    def snapshot_count(self, name: str) -> int:
+        return len(self._layout(name)[1].items)
+
+    def power_down(self, name: str, timeout: float = SHUTDOWN_TIMEOUT,
+                   cancelled: Callable[[], bool] = lambda: False, step: float = 2.0) -> str:
+        """VM ausschalten: zuerst sauber (ACPI), nach timeout Sekunden hart. Rückgabe: "off" (war schon aus),
+        "clean" oder "hard". Abbruch → VmError."""
+        if self.state(name) == "shut off":
+            return "off"
+        self.virsh("shutdown", name, "--mode", "acpi", check=False)
+        waited = 0.0
+        while waited < timeout:
+            if cancelled():
+                raise VmError("abgebrochen")
+            self._sleep(step)
+            waited += step
+            if self.state(name) == "shut off":
+                return "clean"
+        self.virsh("destroy", name, check=False)
+        for _ in range(10):
+            if self.state(name) == "shut off":
+                return "hard"
+            self._sleep(1)
+        raise VmError("VM lässt sich nicht ausschalten")
+
+    def grow_disk(self, name: str, size_gb: int) -> tuple[int, int]:
+        """Disk der ausgeschalteten VM auf size_gb vergrössern (Profil sonst unverändert, Modellname bleibt).
+        Rückgabe (alte, neue Grösse in GB); schon gross genug → nichts geändert."""
+        p = self.get_profile(name)
+        old = p.disk.size_gb
+        if old >= size_gb:
+            return old, old
+        p.disk.size_gb = int(size_gb)
+        self.set_profile(name, p)
+        return old, int(size_gb)
 
     # --- Snapshots (I-001 Auftrag 4) ---
 

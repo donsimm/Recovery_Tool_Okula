@@ -254,3 +254,27 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stic
       erneute Änderung → wieder neu
 - [ ] Adresse ohne Token (`http://127.0.0.1:<port>/`) → 403; von einem anderen Rechner `http://<server-ip>:<port>/…` → keine Verbindung
 - [ ] Menü → Einstellungen … → Projektordner (Repo) auf einen nicht vorhandenen Ordner → Seite zeigt Hinweis statt Fehler; danach wieder leeren
+
+### 13. VM-Disk beim Zurückspielen vergrössern (Ä-037)
+Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stick). Zum Testen eine Probe-VM mit
+128 GB (*Neue virtuelle Maschine …*, VM-Win11, Disk auf 128 GB stellen) und ein Image einer 256- oder 512-GB-Disk.
+- [ ] VM mit Agent, *Image zurückspielen …* mit dem grossen Image → unter dem Prüftext zwei Optionsfelder, „VM-Disk
+      auf <N> GB vergrössern und zurückspielen“ vorgewählt (N = Quelldisk aufgerundet), Tooltip mit dem Ablauf;
+      „Image an die kleinere Disk anpassen“ wählbar, wenn die Daten passen (sonst grau mit Grund)
+- [ ] Vergrössern starten → ein Auftrag „VM-Disk vergrössern und zurückspielen …“ mit den Schritten „VM wird
+      heruntergefahren (1/4)“, „Disk wird vergrössert (2/4)“, „Agent wird gestartet (3/4)“, „Zurückspielen (4/4)“;
+      danach `virsh -c qemu:///system vol-info --pool okula <VM>.qcow2` → Kapazität N GB, Image zurückgespielt,
+      Windows startet; Verlauf „VM-Disk von 128 GB auf N GB vergrössert“
+- [ ] „Vorher Snapshot“ angehakt → Snapshot im Reiter *Snapshots* entsteht **nach** dem Vergrössern (Log „Snapshot
+      vorher wird erstellt (nach dem Vergrössern)“), Auftrag läuft durch
+- [ ] VM mit Snapshots → Vergrössern grau, Prüftext und Tooltip „Die VM hat Snapshots – zuerst im Reiter
+      „Snapshots“ löschen …“; Anpassen weiter wählbar, wenn die Daten passen
+- [ ] Zu wenig Platz im Pool (z. B. Image grösser als frei – sonst nur am Prüftext prüfbar) → Vergrössern grau mit
+      Zahlen „frei … GB, nötig … GB“
+- [ ] Beide Wege nicht möglich → *Zurückspielen* bleibt gesperrt, Prüftext „Zurückspielen nicht möglich.“
+- [ ] Windows in der VM reagiert nicht auf das Herunterfahren (Agent ohne ACPI) → nach 60 s hart ausgeschaltet,
+      Log „VM hat nicht reagiert – hart ausgeschaltet“
+- [ ] Abbrechen während „Agent wird gestartet (3/4)“ → Auftrag abgebrochen, nichts zurückgespielt, Disk bleibt
+      vergrössert (Log), Verlauf „… abgebrochen“
+- [ ] Echtes Gerät mit kleinerer Zieldisk → Dialog wie bisher (Häkchen „Für diese Disk anpassen“, keine Optionsfelder)
+- [ ] Neue VM mit Profil VM-Win11 → 256 GB, Modell „Okula NVMe SSD 256GB“; bestehende VMs unverändert

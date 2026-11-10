@@ -52,7 +52,7 @@ DHCP, verwaltet von NetworkManager („Wired connection 1“). QEMU/libvirt noch
 
 | VM | Nachgebildet | Firmware | Chipsatz | Disk | Netzwerk | CPU / RAM | Testet vor allem |
 |---|---|---|---|---|---|---|---|
-| **VM-Win11** | moderner Business-Laptop | UEFI + Secure Boot + TPM 2.0 | Q35 | NVMe 128 GB | Intel e1000e | 4 / 8 GB | Master bauen, Windows 11, Automatisierung |
+| **VM-Win11** | moderner Business-Laptop | UEFI + Secure Boot + TPM 2.0 | Q35 | NVMe 256 GB (bis 10.11.2026: 128 GB, Ä-037) | Intel e1000e | 4 / 8 GB | Master bauen, Windows 11, Automatisierung |
 | **VM-Legacy** | älteres Gerät | BIOS (Legacy, SeaBIOS) | i440FX | SATA-HDD 80 GB | Intel e1000 | 2 / 4 GB | BIOS-Netzwerkstart, Windows 10, alte Hardware |
 | **VM-Klein** | Gerät mit kleiner Disk | UEFI ohne Secure Boot | Q35 | SATA-SSD 64 GB | Intel e1000e | 2 / 4 GB | Zurückspielen auf kleinere Disk (Ä-002), Linux |
 
@@ -227,3 +227,34 @@ Darum verwaltet das Tool die Snapshots selbst (`vm.py`, ohne libvirt-Snapshot-Me
   Snapshot → RAM ändern (geht), Disk vergrössern (gesperrt) → ältesten und letzten Snapshot löschen (Inhalt bleibt,
   Datei weg) → Start → VM löschen: keine Datei übrig, keine Hilfs-VM. Den Ablauf im Tool prüft Dominik
   ([TESTS.md](TESTS.md) Abschnitt 11).
+
+## VM-Disk beim Zurückspielen vergrössern (Ä-037, 10.11.2026)
+
+Viele Images (Lenovo L15 256/512 GB, Samsung 970 EVO 1 TB) passen nicht auf eine VM mit 128 GB. Ist die Disk der VM
+kleiner als die Quelldisk des Images, bietet *Image zurückspielen …* zwei Wege an (Entscheid Dominik 10.11.):
+
+- **VM-Disk auf <N> GB vergrössern und zurückspielen** (Standard): N = Grösse der Quelldisk, aufgerundet auf ganze GB.
+  Ein Auftrag: VM herunterfahren (ACPI, nach 60 s hart) → Disk vergrössern (wie *Hardware ändern …*, `vol-resize`) →
+  Einschalten und Agent starten → ggf. „Vorher Snapshot“ (erst jetzt – ein Snapshot vorher würde das Vergrössern
+  sperren) → Zurückspielen. Das Image bleibt 1:1, kein Umbau.
+- **Image an die kleinere Disk anpassen** (Ä-002, [KLEINERE-DISK.md](KLEINERE-DISK.md)), wenn die Daten passen.
+
+Vergrössern geht nicht mit Snapshots oder wenn im Pool `okula` weniger frei ist als die belegten Daten des Images plus
+10 % Reserve (mind. 10 GB). Die qcow2-Datei ist dünn: Vergrössern selbst belegt nichts, erst das Zurückspielen
+schreibt. Bricht der Auftrag vor dem Zurückspielen ab, bleibt die Disk vergrössert (Daten unverändert); verkleinern
+lässt sie sich nicht. Kein Vergrössern im laufenden Betrieb (`blockresize`), keine Änderung am Agent.
+
+Profil **VM-Win11 seit Ä-037 mit 256 GB** („Okula NVMe SSD 256GB“); bestehende VMs behalten ihre Grösse.
+Technik: [TECHNIK.md](TECHNIK.md), Abschnitt „VM-Disk beim Zurückspielen vergrössern“. Prüfung: [TESTS.md](TESTS.md)
+Abschnitt 13.
+
+### Abweichungen und Grenzen (Ä-037)
+
+- **Grösse der Zieldisk nach dem Vergrössern** wird gegen N GB geprüft (nicht gegen die genaue Quelldisk) – N ist
+  aufgerundet und damit mindestens so gross.
+- **Fehler beim „Vorher Snapshot“** (nach dem Vergrössern): Auftrag rot, nichts zurückgespielt; der Text lautet wie
+  beim normalen Zurückspielen „Snapshot vorher fehlgeschlagen – Auftrag nicht gestartet: …“.
+- **Platzprüfung** nutzt die belegten Daten aus dem partclone-Kopf jeder Partition (wie Ä-002); bei Rohkopien die
+  ganze Partition. Gelesen wird nur der Kopf, im Hintergrund des Dialogs.
+- Die Zahl im Verlauf („von 128 GB auf 513 GB“) ist die aufgerundete Quelldisk, z. B. 513 GB für eine 512-GB-SSD
+  (512,1 GB).

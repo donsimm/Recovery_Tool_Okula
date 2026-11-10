@@ -25,7 +25,8 @@ class ProfileXmlTest(unittest.TestCase):
         self.assertEqual(list(vm.PROFILES), ["VM-Win11", "VM-Legacy", "VM-Klein"])
         w, l, k = (vm.PROFILES[n] for n in vm.PROFILES)
         self.assertEqual((w.firmware, w.tpm, w.chipset, w.disk.bus, w.disk.size_gb, w.nic.model, w.cpu.cores,
-                          w.ram_mb), ("uefi-sb", True, "q35", "nvme", 128, "e1000e", 4, 8192))
+                          w.ram_mb), ("uefi-sb", True, "q35", "nvme", 256, "e1000e", 4, 8192))
+        self.assertEqual(w.disk.model, "Okula NVMe SSD 256GB")                       # Ä-037
         self.assertEqual((l.firmware, l.tpm, l.chipset, l.disk.bus, l.disk.size_gb, l.disk.rpm, l.nic.model,
                           l.cpu.cores, l.ram_mb), ("bios", False, "i440fx", "sata", 80, 7200, "e1000", 2, 4096))
         self.assertEqual((k.firmware, k.tpm, k.chipset, k.disk.bus, k.disk.size_gb, k.disk.rpm, k.nic.model,
@@ -64,7 +65,7 @@ class ProfileXmlTest(unittest.TestCase):
         self.assertEqual(r.find("devices/disk/alias").get("name"), "ua-disk0")
         self.assertIsNone(r.find("devices/disk/product"))
         meta = vm.profile_from_xml(ET.tostring(r, encoding="unicode"))
-        self.assertEqual((meta.disk.bus, meta.disk.size_gb), ("nvme", 128))
+        self.assertEqual((meta.disk.bus, meta.disk.size_gb), ("nvme", 256))
 
     def test_legacy_bios_i440fx_sata_hdd_e1000(self):
         r = parse(vm.PROFILES["VM-Legacy"])
@@ -276,7 +277,7 @@ class ActionsTest(unittest.TestCase):
 
     def test_create_list_state(self):
         p = self.v.create(vm.PROFILES["VM-Win11"])
-        self.assertIn(["vol-create-as", "okula", "VM-Win11.qcow2", str(128 * 10**9), "--format", "qcow2"],
+        self.assertIn(["vol-create-as", "okula", "VM-Win11.qcow2", str(256 * 10**9), "--format", "qcow2"],
                       self.fake.calls)
         self.assertRegex(p.nic.mac, r"^52:54:00")
         self.assertFalse(vm.PROFILES["VM-Win11"].nic.mac)                  # Vorlage unverändert
@@ -413,7 +414,7 @@ class HelpersTest(unittest.TestCase):
         self.assertEqual(inv["network"], [{"name": "eth0", "mac": p.nic.mac, "wireless": False, "driver": "e1000e"}])
         disk = inv["disks"][0]
         self.assertEqual((disk["name"], disk["transport"], disk["size"], disk["serial"]),
-                         ("nvme0n1", "nvme", 128 * 10**9, p.disk.serial))
+                         ("nvme0n1", "nvme", 256 * 10**9, p.disk.serial))
         self.assertEqual(inv["platform"], {"tpm": "2.0", "uefi": True, "secure_boot": True})
         self.assertEqual((inv["memory"], inv["cpu"]["cores"]), (8 * 1024**3, 4))
         self.assertTrue(inv["provisional"])

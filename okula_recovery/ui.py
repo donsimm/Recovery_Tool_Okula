@@ -3571,7 +3571,17 @@ class MainWindow(Gtk.ApplicationWindow):
                 preselect = model[it][self.C_PATH]
 
         def start(image, source_disk, target, verify, shutdown, label, custom=None, adapt=None,
-                  snapshot=False) -> None:
+                  snapshot=False, grow_gb=None) -> None:
+            customize = None
+            if custom is not None:
+                from okula_recovery import linuxsetup, winunattend
+                customize = {"unattend": winunattend.master_unattend(dev.name, dev.windows_key[0], custom["swiss"],
+                                                                     custom["account"]),
+                             "hostname": linuxsetup.hostname(dev.name)}
+            if grow_gb and dev.is_vm:           # Ä-037: Snapshot erst nach dem Vergrössern (im Auftrag)
+                self._grow_restore(dev, image, source_disk, target, verify, shutdown, label, customize, grow_gb,
+                                   snapshot)
+                return
             if snapshot and dev.is_vm:           # Häkchen „Vorher Snapshot“; Fehler → Dialog meldet, kein Auftrag
                 self.vm_auto_snapshot(dev, "Zurückspielen")
 
@@ -3579,19 +3589,83 @@ class MainWindow(Gtk.ApplicationWindow):
                 GLib.idle_add(self._after_job, dev.id, job, f"Zurückspielen {label} → {target}", path, error,
                               shutdown)
 
-            customize = None
-            if custom is not None:
-                from okula_recovery import linuxsetup, winunattend
-                customize = {"unattend": winunattend.master_unattend(dev.name, dev.windows_key[0], custom["swiss"],
-                                                                     custom["account"]),
-                             "hostname": linuxsetup.hostname(dev.name)}
             work = jobs.restore_work(agent.ip, self.key, agent.control_port, image, target, source_disk, verify,
                                      after, customize,
                                      {"target_size": adapt, "nas_root": root} if adapt else None)
             self.jobs.start(dev.id, "restore", target, f"Zurückspielen {label} → {target}", work)
             self.open_device(dev).show_jobs()
 
-        RestoreDialog(parent, agent, root, start_job=start, preselect=preselect, device_name=dev.name, device=dev)
+        vm_info = None
+        if dev.is_vm:
+            name = dev.vm["name"]
+            vm_info = lambda: {"snapshots": self.virsh.snapshot_count(name),   # noqa: E731
+                               "pool_free": self.virsh.pool_free()}
+        RestoreDialog(parent, agent, root, start_job=start, preselect=preselect, device_name=dev.name, device=dev,
+                      vm_info=vm_info)
+
+    def _grow_restore(self, dev: devices.Device, image: str, source_disk: str | None, target: str, verify: bool,
+                      shutdown: bool, label: str, customize: dict | None, grow_gb: int, snapshot: bool) -> None:
+        """Ä-037: Ein Auftrag „VM-Disk vergrössern und zurückspielen“ – VM herunterfahren → Disk vergrössern →
+        Einschalten und Agent starten → ggf. Snapshot → Zurückspielen (Ablauf in jobs.grow_restore_work)."""
+        name, key = dev.vm["name"], self.key
+        what = f"VM-Disk vergrössern und zurückspielen {label} → {target}"
+        if not dev.netboot:
+            self.store.update(dev, netboot=True)
+            self.store.add_history(dev, "notiz", "Netzwerkstart erlaubt")
+        dev.boot_request = True
+        self.store.save(dev)
+        self.store.add_history(dev, "notiz", "Agent beim nächsten Start angefordert")
+        self.netboot_changed()
+
+        def restore(agent):
+            def after(job_, path, error) -> None:
+                GLib.idle_add(self._after_job, dev.id, job_, f"Zurückspielen {label} → {target}", path, error,
+                              shutdown)
+            return jobs.restore_work(agent.ip, key, agent.control_port, image, target, source_disk, verify, after,
+                                     customize)
+
+        def grown(old: int, new: int) -> None:
+            GLib.idle_add(self._vm_disk_grown, dev, old, new)
+
+        def failed(message: str, cancelled: bool) -> None:
+            GLib.idle_add(self._grow_failed, dev, what, message, cancelled)
+
+        work = jobs.grow_restore_work(
+            self.virsh, name, grow_gb, target, find_agent=lambda: self.online_agent(dev),
+            get_disks=lambda a: agentclient.get_info(a.ip, key, a.control_port).get("disks") or [],
+            restore=restore, snapshot=(lambda: self.vm_auto_snapshot(dev, "Zurückspielen")) if snapshot else None,
+            grown=grown, failed=failed, agent_timeout=TWIN_AGENT_TIMEOUT)
+
+        def begin() -> None:
+            try:
+                self.jobs.start(dev.id, "restore", target, what, work)
+            except agentclient.AgentError as e:
+                confirm_error(self._parent_for(dev), str(e))
+                return
+            self.open_device(dev).show_jobs()
+
+        self.sync_netboot(after=begin)      # erst einschalten, wenn „einmal Agent“ beim Netzwerkstart gilt
+
+    def _vm_disk_grown(self, dev: devices.Device, old: int, new: int) -> bool:
+        self.store.add_history(dev, "vm", vm.grow_history(old, new))
+        self.status(f"{dev.name}: {vm.grow_history(old, new)}")
+        self.vm_poll()
+        win = self.device_windows.get(dev.id)
+        if win:
+            win.refresh()
+        return False
+
+    def _grow_failed(self, dev: devices.Device, what: str, message: str, cancelled: bool) -> bool:
+        self.vm_poll()
+        self.store.add_history(dev, "restore", f"{what} " + ("abgebrochen" if cancelled
+                                                              else f"fehlgeschlagen: {message} – nichts zurückgespielt"),
+                               ok=False)
+        if not cancelled:
+            self.status(f"{dev.name}: nichts zurückgespielt – {message}")
+        win = self.device_windows.get(dev.id)
+        if win:
+            win.refresh()
+        return False
 
     def start_install(self, dev: devices.Device, preselect: str | None = None) -> None:
         """Betriebssystem direkt aufs Gerät installieren (Medium aus „Betriebssysteme“ auf dem NAS)."""

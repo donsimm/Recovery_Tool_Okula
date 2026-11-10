@@ -320,6 +320,110 @@ def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source
     return work
 
 
+class _StepProgress:
+    """Fortschritt eines eingebetteten Auftrags als ein Schritt des äusseren („Zurückspielen (4/4) · …“)."""
+
+    def __init__(self, jm: "JobManager", step: str):
+        self.jm, self.step = jm, step
+
+    def log(self, job: Job, line: str) -> None:
+        self.jm.log(job, line)
+
+    def progress(self, job: Job, fraction: float, detail: str, phase: str = "", phase_fraction: float = 0.0) -> None:
+        self.jm.progress(job, fraction, detail, self.step + (f" · {phase}" if phase else ""), phase_fraction)
+
+
+def grow_restore_work(virsh, name: str, grow_gb: int, target: str,
+                      find_agent: Callable[[], "object | None"],
+                      get_disks: Callable[[object], list[dict]],
+                      restore: Callable[[object], Callable[[Job, "JobManager"], str]],
+                      snapshot: Callable[[], None] | None = None,
+                      grown: Callable[[int, int], None] = lambda old, new: None,
+                      failed: Callable[[str, bool], None] = lambda message, cancelled: None,
+                      agent_timeout: float = 300, clock: Callable[[], float] = time.monotonic,
+                      sleep: Callable[[float], None] = time.sleep):
+    """Ä-037 „VM-Disk vergrössern und zurückspielen“ in einem Auftrag:
+    1. VM herunterfahren (sauber, nach 60 s hart) – 2. Disk auf grow_gb vergrössern (Virsh.grow_disk) –
+    3. einschalten mit Agent (Netzwerkstart), auf einen *neuen* Agent warten (last_seen nach dem Einschalten),
+       prüfen, dass die Zieldisk jetzt gross genug ist – „Vorher Snapshot“ erst jetzt (sonst sperrt er das
+       Vergrössern) – 4. restore(agent) = restore_work mit dem neuen Agent.
+    Fehler in 1–3 → failed(Grund, abgebrochen), nichts zurückgespielt; eine vergrösserte Disk bleibt so."""
+    from okula_recovery import vm
+
+    steps = vm.GROW_STEPS
+
+    def work(job: Job, jm: JobManager) -> str:
+        restoring = False
+        sizes = (0, 0)
+
+        def check_cancel() -> None:
+            if job.cancel.is_set():
+                raise agentclient.AgentError("abgebrochen")
+
+        try:
+            jm.log(job, f"Schritt 1/4: VM wird heruntergefahren (sauber, nach {vm.SHUTDOWN_TIMEOUT} s hart)")
+            jm.progress(job, 0.0, "VM wird heruntergefahren", steps[0], 0.0)
+            how = virsh.power_down(name, cancelled=job.cancel.is_set)
+            jm.log(job, {"off": "VM war bereits ausgeschaltet", "clean": "VM ist heruntergefahren",
+                         "hard": "VM hat nicht reagiert – hart ausgeschaltet"}.get(how, how))
+            check_cancel()
+
+            jm.log(job, f"Schritt 2/4: Disk wird auf {grow_gb} GB vergrössert")
+            jm.progress(job, 0.0, f"Disk → {grow_gb} GB", steps[1], 0.0)
+            sizes = virsh.grow_disk(name, grow_gb)
+            if sizes[1] > sizes[0]:
+                jm.log(job, vm.grow_history(*sizes) + " (Daten unverändert)")
+                grown(*sizes)
+            else:
+                jm.log(job, f"Disk ist schon {sizes[0]} GB gross – nichts zu vergrössern")
+            check_cancel()
+
+            jm.log(job, "Schritt 3/4: VM wird eingeschaltet, der Agent startet per Netzwerkstart")
+            jm.progress(job, 0.0, "VM wird eingeschaltet", steps[2], 0.0)
+            t0 = clock()
+            virsh.start(name, "agent")
+            while True:
+                agent = find_agent()
+                if agent is not None and getattr(agent, "control_port", 0) and \
+                        getattr(agent, "last_seen", 0.0) >= t0:
+                    break
+                check_cancel()
+                waited = clock() - t0
+                if waited > agent_timeout:
+                    raise agentclient.AgentError(
+                        f"Der Agent hat sich nach {agent_timeout / 60:.0f} min nicht gemeldet – Bildschirm der VM "
+                        "ansehen und Netzwerkstart prüfen (Tools → Netzwerkstart (PXE) …)")
+                jm.progress(job, 0.0, f"Agent wird erwartet … {waited:.0f} s", steps[2], waited / agent_timeout)
+                sleep(2)
+            disk = next((d for d in get_disks(agent) if d.get("path") == target), None)
+            if disk is None:
+                raise agentclient.AgentError(f"Zieldisk {target} in der VM nicht gefunden")
+            size = int(disk.get("size") or 0)
+            if size < grow_gb * 10**9:
+                raise agentclient.AgentError(f"Zieldisk {target} ist nach dem Vergrössern {size / 1e9:.1f} GB "
+                                             f"gross – nötig {grow_gb} GB")
+            jm.log(job, f"Agent verbunden ({getattr(agent, 'ip', '?')}), Zieldisk {target}: {size / 1e9:.1f} GB")
+            check_cancel()
+            if snapshot is not None:
+                jm.log(job, "Snapshot vorher wird erstellt (nach dem Vergrössern)")
+                snapshot()
+
+            jm.log(job, "Schritt 4/4: Image wird zurückgespielt")
+            restoring = True
+            return restore(agent)(job, _StepProgress(jm, steps[3]))
+        except Exception as e:
+            if not restoring:
+                if sizes[1] > sizes[0]:
+                    jm.log(job, f"Nichts zurückgespielt. Die VM-Disk bleibt vergrössert ({sizes[1]} GB, Daten "
+                                "unverändert).")
+                else:
+                    jm.log(job, "Nichts zurückgespielt.")
+                failed(str(e), job.cancel.is_set())
+            raise
+
+    return work
+
+
 def install_work(ip: str, key: bytes, port: int, iso: str, index: int, opts, disk: str,
                  after: Callable[[Job, str | None, Exception | None], None]):
     """Windows-Direktinstallation: Übertragen (1/2), Teilen der install.wim (2/2, falls nötig)."""

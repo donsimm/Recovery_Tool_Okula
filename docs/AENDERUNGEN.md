@@ -16,13 +16,13 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 1 | 0 | 0 |
-| 🔧 Änderungen | 7 | 1 | 0 |
+| 🔧 Änderungen | 7 | 0 | 0 |
 | 💡 Ideen | 20 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
 Erledigt 31.10. zusätzlich: I-007 ✔ (Image prüfen) → Ä-027 ✔ (Demo ohne NAS) → Ä-028 ✔ (Ein/Aus-Symbole) → Ä-029 ✔ (Legende) → Ä-030 ✔ (NAS-Leiste) → I-030 ✔ (Bandbreite) → Ä-031 ✔ (Tage hell/dunkel).
-Als Nächstes: **I-034 Projektübersicht erledigt** ✔ 10.11. (Extras → Projektübersicht …; am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 12). **I-001 VMs erledigt** ✔ 06.11. (alle 4 Aufträge, [VM.md](VM.md)) – Auftrag 3 „Digitaler Zwilling“ und Auftrag 4 „Snapshots“ umgesetzt und am Server installiert (Dominik 10.11.); Tests [TESTS.md](TESTS.md) Abschnitte 9, 10 und 11 (inkl. Master-Ablauf mit Snapshot „vor Sysprep“). Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 3 (Master-Image mit VMs), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
+Als Nächstes: **Ä-037 VM-Disk beim Zurückspielen vergrössern erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 13). **I-034 Projektübersicht erledigt** ✔ 10.11. (Extras → Projektübersicht …; am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 12). **I-001 VMs erledigt** ✔ 06.11. (alle 4 Aufträge, [VM.md](VM.md)) – Auftrag 3 „Digitaler Zwilling“ und Auftrag 4 „Snapshots“ umgesetzt und am Server installiert (Dominik 10.11.); Tests [TESTS.md](TESTS.md) Abschnitte 9, 10 und 11 (inkl. Master-Ablauf mit Snapshot „vor Sysprep“). Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 3 (Master-Image mit VMs), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
 Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
 ## 🐞 Bugs
@@ -42,7 +42,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 | Ä-007 | 🔴 | offen | Claude | **Bestätigung vor dem Löschen:** Wird der Schalter eingeschaltet, während das Gerät verbunden ist, startet die Automatisierung ohne Rückfrage nach 30 s und löscht die Disk (`ui.save_automation` → `consider`). Nötig: rote Zusammenfassung „Disk Samsung 256 GB von HP-PC-07 wird gelöscht, Master ‚Win11 Büro‘, neuer Name …, Backup: nein“ mit Knopf „Löschen und neu aufsetzen“ | 31.10. (Laien-Test) |
 | Ä-010 | 🟡 | offen | Claude | **Vorabprüfung mit Ampel statt Fehler mitten im Lauf:** Image passt auf die Disk, UEFI/BIOS-Modus passt zum Master, BitLocker auf der Zieldisk (dann ist kein Datei-Backup möglich), Agent-Stick aktuell, Windows-Edition des Masters passt zum Key (Pro/Home). Anzeige: „✔ Bereit“ bzw. „⚠ Achtung: …“ | 31.10. (Laien-Test) |
 | Ä-012 | 🟡 | offen | Claude | **Einfache Sprache im Reiter Automatisierung:** „Zieldisk“ → „Festplatte, die gelöscht wird“; Sysprep, Master und Content-Projekte mit einem „?“ pro Abschnitt erklären. Gerätenamen wie „DESKTOP-8F3K2LQ“ markieren und zum Umbenennen auffordern; optional Namensschema pro Vorlage (z. B. `KUNDE-001` fortlaufend) | 31.10. (Laien-Test) |
-| Ä-037 | 🔴 | in Arbeit | Dominik | **VM-Disk beim Zurückspielen vergrössern:** Ist die Disk einer VM kleiner als die Quelldisk des Images, bietet *Image zurückspielen …* neben „Image anpassen“ (Ä-002) an: „VM-Disk auf <Originalgrösse> vergrössern und zurückspielen“ (Auftrag: VM aus → Disk vergrössern → Einschalten und Agent starten → ggf. Vorher Snapshot → Zurückspielen). Nicht möglich mit Snapshots oder zu wenig Platz im Pool. Dazu Profil **VM-Win11 neu 256 GB** statt 128 GB (dünne qcow2-Disk, kostet nichts). Auslöser: viele Images (L15 256/512 GB, 970 EVO 1 TB) passen nicht auf VM-Win11 (128 GB). Prompt: [Ä-037-vm-disk-vergroessern.md](prompts/Ä-037-vm-disk-vergroessern.md) | 10.11. |
 
 ## 💡 Ideen
 
@@ -135,6 +134,16 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 10.11.2026
+- **Ä-037 – VM-Disk beim Zurückspielen vergrössern** (Von: Dominik): Ist die Disk einer VM kleiner als die Quelldisk
+  des Images, zeigt *Image zurückspielen …* zwei Optionsfelder: „VM-Disk auf <N> GB vergrössern und zurückspielen“
+  (Standard, N = Quelldisk aufgerundet auf ganze GB) und „Image an die kleinere Disk anpassen“ (Ä-002, nur wenn die
+  Prüfung „lässt sich anpassen“ meldet). Vergrössern ausgegraut mit Grund bei Snapshots oder zu wenig Platz im Pool
+  `okula` (belegte Daten des Images + 10 %, mind. 10 GB). Ein Auftrag mit 4 Schritten: VM herunterfahren (sauber,
+  nach 60 s hart) → Disk vergrössern (`Virsh.set_profile`) → Einschalten und Agent starten (wartet auf einen *neuen*
+  Agent, prüft die Grösse der Zieldisk) → ggf. Vorher Snapshot (erst jetzt) → Zurückspielen. Verlauf „VM-Disk von
+  128 GB auf 513 GB vergrössert“. Profil **VM-Win11 jetzt 256 GB** („Okula NVMe SSD 256GB“); bestehende VMs bleiben.
+  Echte Geräte unverändert. Hilfe (Kapitel „Image zurückspielen“, „Virtuelle Maschinen“), Details
+  [TECHNIK.md](TECHNIK.md) und [VM.md](VM.md), Prüfung [TESTS.md](TESTS.md) Abschnitt 13. Kein neuer Agent-Stick.
 - **I-034 – Projektübersicht im Tool** (Von: Dominik): *Extras → Projektübersicht …* startet einen Webserver nur auf
   127.0.0.1 (freier Port, Token in der URL) und öffnet die Seite in Firefox. Liest bei jedem Laden `docs/` des Repos
   (TESTS.md offen + Vorbereitung, Bugs/Änderungen/Ideen, Kurzübersicht, Entscheidungen, Übergabe-Punkte, Prompts mit

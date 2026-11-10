@@ -98,6 +98,30 @@ def read_header(step: dict) -> dict:
     return parse_pcl_header(data)
 
 
+def used_bytes(image: str | Path, source_disk: str | None = None) -> int:
+    """Belegte Daten eines Images (Byte) – so viel schreibt das Zurückspielen (Ä-037: Platz für eine vergrösserte
+    VM-Disk). partclone: belegte Blöcke aus dem Kopf; Rohkopie: ganze Partition; sonst Grösse der Image-Dateien."""
+    try:
+        src = agentclient.image_source(Path(image), source_disk)
+    except agentclient.AgentError as e:
+        raise ShrinkError(str(e)) from None
+    sizes = {p.get("name"): int(p.get("size") or 0) for p in (src["source"].get("partitions") or [])}
+    total = len(src.get("head") or b"")
+    for step in src["steps"]:
+        if step.get("kind") == "swap":
+            continue
+        used = 0
+        if step.get("kind") == "pcl":
+            try:
+                used = int(read_header(step)["used"])
+            except (ShrinkError, OSError, IndexError, ValueError, struct.error):
+                used = 0
+        elif step.get("kind") == "dd":
+            used = sizes.get(step.get("part"), 0)
+        total += used or int(step.get("size") or 0)
+    return total
+
+
 # ---------- Partitionstabelle (sfdisk -d) ----------
 
 LINE_RE = re.compile(r"^(?P<node>\S+)\s*:\s*(?P<fields>.*)$")
