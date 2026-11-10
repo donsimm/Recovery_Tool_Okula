@@ -1,6 +1,6 @@
 # B-008 – Projektübersicht im Dunkelmodus: Auswahlfelder lesbar
 
-Status: freigegeben · erstellt 10.11.2026 von der Projektleitung · Freigabe: Dominik 10.11.
+Status: umgesetzt (Commit 496a935) · erstellt 10.11.2026 von der Projektleitung · Freigabe: Dominik 10.11.
 
 ## Rolle und Einstieg
 
