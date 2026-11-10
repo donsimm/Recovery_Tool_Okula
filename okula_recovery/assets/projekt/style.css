@@ -1,10 +1,12 @@
 :root {
+  color-scheme: light dark;
   --bg: #f5f6f8; --card: #ffffff; --text: #1d2125; --muted: #6b7280; --line: #dde1e6;
   --accent: #1f6feb; --ok: #2e7d32; --ok-bg: #e7f4e8; --err: #c62828; --err-bg: #fdecea;
   --warn-bg: #fff4cc; --warn: #6d5200; --code: #eef0f3; --done: #9aa0a6;
 }
 @media (prefers-color-scheme: dark) {
   :root {
+    color-scheme: dark;
     --bg: #15181c; --card: #1f2328; --text: #e6e8eb; --muted: #9aa3ad; --line: #343a42;
     --accent: #58a6ff; --ok: #66bb6a; --ok-bg: #1d3320; --err: #ef5350; --err-bg: #3a1d1d;
     --warn-bg: #3a3214; --warn: #f0d36b; --code: #2b3138; --done: #6b7280;
@@ -28,6 +30,17 @@ button { background: var(--card); border: 1px solid var(--line); border-radius: 
 button:hover { border-color: var(--accent); }
 select, input[type=search], textarea { background: var(--card); border: 1px solid var(--line); border-radius: 5px;
   padding: 3px 6px; }
+option, optgroup { background: var(--card); color: var(--text); }
+@media (prefers-color-scheme: dark) {
+  /* B-008: Formularelemente im Dunkelmodus lesbar (Hellmodus bleibt bei den Browser-Standards) */
+  ::placeholder { color: var(--muted); opacity: 1; }
+  button:disabled, select:disabled, input:disabled, textarea:disabled { color: var(--muted); border-color: var(--line);
+    cursor: default; }
+  button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 1px; }
+  input[type=checkbox] { accent-color: var(--accent); }
+  html { scrollbar-color: var(--line) var(--bg); }
+}
 textarea { width: 100%; resize: vertical; min-height: 2.2em; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
 .banner { border-radius: 8px; padding: 10px 14px; margin: 12px 0; background: var(--warn-bg); color: var(--warn); }

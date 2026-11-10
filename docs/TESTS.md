@@ -263,6 +263,8 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stic
       erneute Änderung → wieder neu – ✔ 10.11. (Okuli: übernommen sichtbar, erneute Änderung → wieder neu)
 - [x] Adresse ohne Token (`http://127.0.0.1:<port>/`) → 403; von einem anderen Rechner `http://<server-ip>:<port>/…` → keine Verbindung – ✔ 10.11. (Okuli: 403 ohne Token, Server nur auf 127.0.0.1)
 - [ ] Menü → Einstellungen … → Projektordner (Repo) auf einen nicht vorhandenen Ordner → Seite zeigt Hinweis statt Fehler; danach wieder leeren
+- [ ] Dunkelmodus (B-008): Art der Notiz und Filter Priorität lesbar, auch aufgeklappt; Suchfeld, Textfelder,
+      Platzhaltertext und Knöpfe dunkel mit heller Schrift; Hellmodus wie vorher
 
 ### 13. VM-Disk beim Zurückspielen vergrössern (Ä-037)
 Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stick). Zum Testen eine Probe-VM mit
