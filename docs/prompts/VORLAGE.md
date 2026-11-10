@@ -9,7 +9,7 @@ Status: Entwurf · erstellt <TT.MM.JJJJ> von der Projektleitung · Freigabe: <of
 
 Du bist ein Umsetzungs-Agent für das Okula Recovery Tool. Chat auf Deutsch (Schweiz, „ss“).
 Vor dem Start lesen: `CLAUDE.md`, `docs/PROJEKTLEITUNG.md`, den Eintrag <ID> in `docs/AENDERUNGEN.md`
-<und weitere Konzeptdokumente>. Arbeitsbranch `claude/blissful-goldberg-mo3xda`; vorher `git pull`.
+<und weitere Konzeptdokumente>. Gearbeitet wird im Worktree, in dem der Agent gestartet wurde (lokaler Branch `agent/<ID>`); nicht pullen.
 
 ## Ziel
 
@@ -52,9 +52,9 @@ Vor dem Start lesen: `CLAUDE.md`, `docs/PROJEKTLEITUNG.md`, den Eintrag <ID> in 
 
 ## Abschluss
 
-1. Ein Commit (oder wenige, sinnvoll getrennt) mit der ID im Titel, z. B. `<ID>: <Titel>`; pushen auf
-   `claude/blissful-goldberg-mo3xda`. **Nur eigene Dateien committen** (`git add <Pfade>`, nie `git add -A`/`.`):
-   Die Projektleitung arbeitet im selben Ordner, fremde Entwürfe (z. B. andere Dateien in `docs/prompts/`) bleiben liegen.
-2. In dieser Datei oben `Status: umgesetzt (Commit <hash>)` setzen (im selben Commit).
-3. Abschlussmeldung im Chat: was geändert wurde, Testergebnis, ob ein neuer Agent-Stick nötig ist, Schritte für
+1. Ein Commit (oder wenige, sinnvoll getrennt) mit der ID im Titel, z. B. `<ID>: <Titel>`, **nur lokal** auf dem
+   Branch `agent/<ID>` – **nicht pushen**, das macht Okuli nach der Abnahme. **Nur eigene Dateien committen**
+   (`git add <Pfade>`, nie `git add -A`/`.`).
+2. In dieser Datei oben `Status: umgesetzt (Commit <hash>)` setzen (eigener kleiner Commit danach ist ok).
+3. Abschlussmeldung: was geändert wurde, Commits, Testergebnis, ob ein neuer Agent-Stick nötig ist, Schritte für
    den Server (`git pull && sudo ./install.sh`), offene Punkte oder Abweichungen vom Prompt.

@@ -1,7 +1,8 @@
 # Projektleitung – Einstieg für jede neue Sitzung
 
 Dieses Dokument liest jede neue Claude-Sitzung zu Beginn (Verweis in `CLAUDE.md`). Es legt fest, wer was tut
-und wie aus einer Idee ein umgesetztes Feature wird.
+und wie aus einer Idee ein umgesetztes Feature wird. Die Projektleitung heisst **Okuli** (Name von Dominik, 10.11.);
+Okulis Leitstand über alle Projekte: `~/okuli` (privat, `github.com/donsimm/okuli`).
 
 ## Grundregeln
 
@@ -44,12 +45,15 @@ Der Projektleitung ist es auch dann nicht erlaubt, den App-Code anzufassen, wenn
    `WEBINTERFACE.md`).
 4. **Prompt schreiben:** nach `docs/prompts/VORLAGE.md`, Datei `docs/prompts/<ID>-<kurzname>.md`
    (z. B. `I-011-multicast.md`). Den Prompt Dominik zur Freigabe zeigen, bei Bedarf anpassen.
-5. **Übergabe:** Mit Dominiks OK den Prompt committen und pushen. **Die Projektleitung startet den Agenten selbst**
-   (Entscheid Dominik 10.11.: „du startest!!!“) – als Unteragent im selben Repo mit dem Auftrag
-   `Lies docs/prompts/<ID>-<kurzname>.md und setze ihn um.` Solange er arbeitet, nichts committen.
-6. **Abnahme:** Nach dem Push des Agenten den Commit prüfen (Diff, Tests, Hilfe, Doku), den Status in
-   `docs/prompts/<ID>-…md` nachtragen und Dominik die Update-Schritte für den Server nennen
-   (`git pull && sudo ./install.sh`, neuer Agent-Stick ja/nein, Tests am realen System aus `docs/TESTS.md`).
+5. **Übergabe an einen Agenten:** Mit Dominiks OK den Prompt committen und pushen. **Okuli startet den Agenten selbst**
+   (Entscheid Dominik 10.11.) als Hintergrund-Agent mit `~/.claude/agenten/agent.sh` (Regeln:
+   `~/okuli/agenten/REGELN.md`): Stufe `umsetzen`, Zusatz-Tools `"Bash(python3 -m unittest:*)"`, eigener Worktree
+   `~/agenten-arbeit/recovery-<ID>` auf lokalem Branch `agent/<ID>`. Auftrag: `Lies docs/prompts/<ID>-<kurzname>.md und
+   setze ihn um.` Der Agent pullt und pusht nicht, er committet nur lokal.
+6. **Abnahme:** JSON-Rückmeldung lesen, Commits prüfen (`git diff claude/blissful-goldberg-mo3xda...agent/<ID>`, Tests,
+   Hilfe, Doku), wo möglich am Server ausprobieren. Dann `git merge --ff-only agent/<ID>`, pushen, Worktree und
+   Branch löschen, den Status in `docs/prompts/<ID>-…md` nachtragen und Dominik die Update-Schritte für den Server
+   nennen (`git pull && sudo ./install.sh`, neuer Agent-Stick ja/nein, Tests am realen System aus `docs/TESTS.md`).
 
 ## Arbeitsweise mit Dominik (Erfahrung)
 
@@ -60,7 +64,8 @@ Der Projektleitung ist es auch dann nicht erlaubt, den App-Code anzufassen, wenn
 - **Abnahme:** Diff lesen, alle Tests laufen lassen, und wo möglich selbst am Server prüfen (ohne sudo, nur
   Probe-Objekte, danach aufräumen; z. B. Probe-VMs mit `virsh`, Bildschirm per `virsh screenshot`). Das ist kein
   App-Code und darum erlaubt – Dominiks eigene VMs/Geräte dabei nicht anfassen.
-- **Während ein Agent arbeitet** (gleicher Ordner): nichts committen, Entwürfe erst nach seinem Push.
+- **Während ein Agent arbeitet:** Er hat seinen eigenen Worktree; Okuli ändert in der Zeit keine Dateien, die der Agent
+  auch ändert (v. a. `docs/AENDERUNGEN.md`, `docs/TESTS.md`), damit `--ff-only` bzw. ein Rebase glatt geht.
 
 ## Übergabe an die nächste Sitzung (nur Projektleitung)
 
