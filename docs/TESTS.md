@@ -287,3 +287,17 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stic
 - [ ] Echtes Gerät mit kleinerer Zieldisk → Dialog wie bisher (Häkchen „Für diese Disk anpassen“, keine Optionsfelder)
 - [x] B-007: 1-TB-Image `2026-10-29_1133_nvme0n1` auf VM mit 64 GB → Anpassen: nicht möglich (belegt ~397 GB) – ✔ 10.11. (Okuli: Probe-VM VM-Klein 64 GB, Prüftext „Anpassen: nicht möglich – … auf nvme0n1p4 sind 397.7 GB belegt, mit Reserve 437.4 GB nötig …“; Vergrössern auf 1001 GB möglich, nicht gestartet; Probe-VM gelöscht)
 - [x] Neue VM mit Profil VM-Win11 → 256 GB, Modell „Okula NVMe SSD 256GB“; bestehende VMs unverändert – ✔ 10.11. (Okuli: Dialog zeigt NVMe-SSD 256 GB)
+
+### 14. Stick fertig und Prüfung am Schluss (Ä-038)
+Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stick nötig).
+- [ ] *Menü → Agent-USB-Stick erstellen …* → während des Baus steht unter dem Balken fett „Stick erst abziehen, wenn
+      „Stick fertig“ erscheint.“; im Log „Stick wird geprüft“ kurz vor dem Ende; danach Fenster „Agent-Stick fertig“,
+      Text „Der Stick kann jetzt abgezogen werden.“, Knopf „OK“; Balken „Stick bereit“, Hinweis verschwunden;
+      Stick startet am Gerät
+- [ ] Stick während des Baus abziehen (z. B. bei „Live-System wird kopiert“) → rotes Fenster „Stick nicht fertig“
+      mit „Stick wurde während des Schreibens abgezogen – Stick neu erstellen.“ und „Stick nicht verwenden – neu
+      erstellen.“, Knopf „Schliessen“; Balken „Fehlgeschlagen“, Log bleibt
+- [ ] *Restore-Stick aus Image …* → am Ende „Restore-Stick fertig“; Stick spielt das Image am Gerät zurück
+- [ ] *Boot-Stick aus ISO …* → am Ende „Boot-Stick fertig“ (bzw. rot „Stick nicht fertig“ bei Fehler)
+- [ ] Andere Fehlermeldungen „Aktion fehlgeschlagen“ (z. B. Wake-on-LAN bei einem Gerät ohne bekannte
+      Kabel-Netzwerkkarte) → Knopf heisst jetzt „Schliessen“

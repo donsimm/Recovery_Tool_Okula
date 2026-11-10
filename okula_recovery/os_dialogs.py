@@ -14,7 +14,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk, Pango  # noqa: E402
 
 from okula_recovery import isostick, nas, oslib, stick, win11, winunattend  # noqa: E402
-from okula_recovery.stick_dialog import iso_stick_command, run_helper  # noqa: E402
+from okula_recovery.stick_dialog import iso_stick_command, run_helper, show_stick_result  # noqa: E402
 from okula_recovery.uikit import confirm, scrolled  # noqa: E402
 
 MODE_LABELS = {
@@ -494,6 +494,7 @@ class BootStickDialog(Gtk.Dialog):
             if error:
                 self._log(f"Fehler: {error}")
         self.refresh_disks()
+        show_stick_result(self, ok, error, "Boot-Stick fertig")
         return False
 
 

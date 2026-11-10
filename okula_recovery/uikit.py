@@ -36,10 +36,26 @@ def rgba_hex(c: Gdk.RGBA) -> str:
     return "#{:02x}{:02x}{:02x}".format(*(round(v * 255) for v in (c.red, c.green, c.blue)))
 
 
-def confirm_error(parent: Gtk.Window, text: str) -> None:
+def confirm_error(parent: Gtk.Window, text: str, title: str = "Aktion fehlgeschlagen", red: bool = False) -> None:
+    """Fehlermeldung mit Knopf „Schliessen“. red: Text rot (z. B. „Stick nicht fertig“)."""
     dlg = Gtk.MessageDialog(transient_for=parent, modal=True, message_type=Gtk.MessageType.ERROR,
-                            buttons=Gtk.ButtonsType.CLOSE, text="Aktion fehlgeschlagen")
+                            buttons=Gtk.ButtonsType.NONE, text=title)
+    if red:
+        dlg.format_secondary_markup(f'<span foreground="#c62828">{GLib.markup_escape_text(text)}</span>')
+    else:
+        dlg.format_secondary_text(text)
+    dlg.add_button("Schliessen", Gtk.ResponseType.CLOSE)
+    dlg.run()
+    dlg.destroy()
+
+
+def info(parent: Gtk.Window, title: str, text: str, ok_label: str = "OK") -> None:
+    """Hinweis mit einem Knopf (z. B. „Agent-Stick fertig“)."""
+    dlg = Gtk.MessageDialog(transient_for=parent, modal=True, message_type=Gtk.MessageType.INFO,
+                            buttons=Gtk.ButtonsType.NONE, text=title)
     dlg.format_secondary_text(text)
+    dlg.add_button(ok_label, Gtk.ResponseType.OK)
+    dlg.set_default_response(Gtk.ResponseType.OK)
     dlg.run()
     dlg.destroy()
 

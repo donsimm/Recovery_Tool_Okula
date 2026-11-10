@@ -16,13 +16,13 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 3 | 0 | 0 |
-| 🔧 Änderungen | 6 | 1 | 0 |
+| 🔧 Änderungen | 6 | 0 | 0 |
 | 💡 Ideen | 22 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
 Erledigt 31.10. zusätzlich: I-007 ✔ (Image prüfen) → Ä-027 ✔ (Demo ohne NAS) → Ä-028 ✔ (Ein/Aus-Symbole) → Ä-029 ✔ (Legende) → Ä-030 ✔ (NAS-Leiste) → I-030 ✔ (Bandbreite) → Ä-031 ✔ (Tage hell/dunkel).
-Als Nächstes: **Ä-007 Bestätigung beim Einschalten der Automatisierung erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 5). **B-007 belegte Blöcke im partclone-Kopf erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Test [TESTS.md](TESTS.md) Abschnitt 13). **Ä-037 VM-Disk beim Zurückspielen vergrössern erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 13). **I-034 Projektübersicht erledigt** ✔ 10.11. (Extras → Projektübersicht …; am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 12). **I-001 VMs erledigt** ✔ 06.11. (alle 4 Aufträge, [VM.md](VM.md)) – Auftrag 3 „Digitaler Zwilling“ und Auftrag 4 „Snapshots“ umgesetzt und am Server installiert (Dominik 10.11.); Tests [TESTS.md](TESTS.md) Abschnitte 9, 10 und 11 (inkl. Master-Ablauf mit Snapshot „vor Sysprep“). Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 3 (Master-Image mit VMs), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
+Als Nächstes: **Ä-038 Agent-Stick „fertig“-Meldung und Prüfung am Schluss erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 14). **Ä-007 Bestätigung beim Einschalten der Automatisierung erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 5). **B-007 belegte Blöcke im partclone-Kopf erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Test [TESTS.md](TESTS.md) Abschnitt 13). **Ä-037 VM-Disk beim Zurückspielen vergrössern erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 13). **I-034 Projektübersicht erledigt** ✔ 10.11. (Extras → Projektübersicht …; am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 12). **I-001 VMs erledigt** ✔ 06.11. (alle 4 Aufträge, [VM.md](VM.md)) – Auftrag 3 „Digitaler Zwilling“ und Auftrag 4 „Snapshots“ umgesetzt und am Server installiert (Dominik 10.11.); Tests [TESTS.md](TESTS.md) Abschnitte 9, 10 und 11 (inkl. Master-Ablauf mit Snapshot „vor Sysprep“). Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 3 (Master-Image mit VMs), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
 Vorschlag Reihenfolge (Analyse 31.10.): ~~Ä-007~~ ✔ → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
 ## 🐞 Bugs
@@ -43,7 +43,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): ~~Ä-007~~ ✔ → **I-005/I-006** (Aufb
 | Ä-006 | 🔴 | offen | Claude | **Assistent „Neues Gerät einrichten“:** Sobald ein unbekanntes Gerät auftaucht, fragt ein Hinweis: „Neues Gerät gefunden: HP EliteBook 840 – jetzt einrichten?“. Danach Schritt für Schritt: Name → Ordner/Kunde → Vorlage oder Master-Image → „Sind noch Daten drauf?“ (Ja = Backup) → Zusammenfassung → Start. Heute muss man selbst wissen: Gerät suchen, Doppelklick, Reiter, 5 Abschnitte, Schalter | 31.10. (Laien-Test) |
 | Ä-010 | 🟡 | offen | Claude | **Vorabprüfung mit Ampel statt Fehler mitten im Lauf:** Image passt auf die Disk, UEFI/BIOS-Modus passt zum Master, BitLocker auf der Zieldisk (dann ist kein Datei-Backup möglich), Agent-Stick aktuell, Windows-Edition des Masters passt zum Key (Pro/Home). Befund 10.11.: BIOS/MBR-Image (CompactPlayer) liess sich ohne Warnung auf eine UEFI-VM spielen und startet dort nicht. Anzeige: „✔ Bereit“ bzw. „⚠ Achtung: …“ | 31.10. (Laien-Test) |
 | Ä-012 | 🟡 | offen | Claude | **Einfache Sprache im Reiter Automatisierung:** „Zieldisk“ → „Festplatte, die gelöscht wird“; Sysprep, Master und Content-Projekte mit einem „?“ pro Abschnitt erklären. Gerätenamen wie „DESKTOP-8F3K2LQ“ markieren und zum Umbenennen auffordern; optional Namensschema pro Vorlage (z. B. `KUNDE-001` fortlaufend) | 31.10. (Laien-Test) |
-| Ä-038 | 🟡 | in Arbeit | Dominik/Okuli | **Agent-Stick: Meldung „fertig, jetzt abziehen“ und Prüfung am Schluss:** Heute zeigt das Ende des Stick-Baus nur der Balken („Stick bereit“ bzw. „Fehlgeschlagen“ + Log) – leicht zu übersehen. Befund 10.11. (B-010): Stick 24 s nach dem Start abgezogen, keine auffällige Meldung, `okula-agent.squashfs` 0 Byte → Start am Gerät scheitert spät in der BusyBox-Shell. Gewünscht (Dominik): Popup „Stick fertig – jetzt abziehen“. Dazu: vor „fertig“ die Dateien auf dem Stick prüfen (Agent-Teil > 0 Byte und gültiger Squashfs-Kopf, Grösse filesystem.squashfs wie im ISO); bei Fehler rotes Popup mit Grund und „Stick neu erstellen“; Abziehen während des Baus klar melden | 10.11. |
 
 ## 💡 Ideen
 
@@ -143,6 +142,18 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 10.11.2026
+- **Ä-038 – Agent-Stick: Meldung „fertig, jetzt abziehen“ und Prüfung am Schluss** (Von: Dominik/Okuli, gemeldet
+  10.11., Anlass B-010): Nach `sync` hängt der Root-Helfer den Stick schreibgeschützt neu ein und prüft
+  (`stick.verify_stick`): `live/okula-agent.squashfs` > 0 Byte mit Squashfs-Kopf `hsqs`, `live/filesystem.squashfs`
+  so gross wie im ISO, Kernel und initrd vorhanden, beim Restore-Stick das Image auf der Datenpartition. Fehler →
+  `ERROR Prüfung am Schluss fehlgeschlagen: …` statt `DONE`. Gerät weg oder E/A-Fehler beim Bau → „Stick wurde
+  während des Schreibens abgezogen – Stick neu erstellen.“ (`stick.explain_unplugged`). Am Ende Fenster
+  „Agent-Stick fertig“/„Restore-Stick fertig“ („Der Stick kann jetzt abgezogen werden.“, OK) bzw. rot „Stick nicht
+  fertig“ mit Grund und „Stick nicht verwenden – neu erstellen.“ (Schliessen); während des Baus Hinweis unter dem
+  Balken „Stick erst abziehen, wenn „Stick fertig“ erscheint.“ *Boot-Stick aus ISO …* endete ebenso unauffällig
+  (nur Balkentext) → gleiches Fenster („Boot-Stick fertig“), ohne Datei-Prüfung. `uikit.confirm_error` kann Titel
+  und roten Text; Knopf heisst überall „Schliessen“ (vorher GTK-Standard). Neu `uikit.info`. Hilfe: Kapitel
+  *Erste Schritte* und *Sticks erstellen*. Kein neuer Agent-Stick. Tests: [TESTS.md](TESTS.md) Abschnitt 14.
 - **B-010 – Agent-Stick startete am Videoserver-PC (SRV-002) nicht** (Von: Dominik, gemeldet 10.11.): live-boot
   „Can not mount /dev/loop1 (…/live/okula-agent.squashfs)“ → BusyBox-Shell. Ursache (Okuli): Der Stick war unvollständig –
   `okula-agent.squashfs` 0 Byte; Kernel-Protokoll: Stick-Bau 09:31:13 gestartet, Stick 09:31:37 abgezogen („lost async

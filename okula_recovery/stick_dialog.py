@@ -14,8 +14,27 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk, Pango  # noqa: E402
 
 from okula_recovery import agentclient, isofetch, network, stick  # noqa: E402
+from okula_recovery.uikit import confirm_error, info  # noqa: E402
 
 HELPER = "/usr/local/sbin/okula-make-stick"
+UNPLUG_HINT = "Stick erst abziehen, wenn „Stick fertig“ erscheint."
+
+
+def stick_result_texts(ok: bool, error: str, done_title: str) -> tuple[str, str]:
+    """(Titel, Text) des Popups am Ende des Stick-Baus."""
+    if ok:
+        return done_title, "Der Stick kann jetzt abgezogen werden."
+    reason = error or "unbekannter Fehler"
+    return "Stick nicht fertig", f"{reason}\n\nStick nicht verwenden – neu erstellen."
+
+
+def show_stick_result(parent: Gtk.Window, ok: bool, error: str, done_title: str) -> None:
+    """Popup „… fertig“ (OK) bzw. roter Fehlerdialog „Stick nicht fertig“ (Schliessen)."""
+    title, text = stick_result_texts(ok, error, done_title)
+    if ok:
+        info(parent, title, text)
+    else:
+        confirm_error(parent, text, title=title, red=True)
 
 
 def helper_command(device: str, iso: str, server: str, image: str | None = None,
@@ -215,7 +234,14 @@ class StickDialog(Gtk.Dialog):
 
         self.progress = Gtk.ProgressBar(show_text=True)
         self.progress.set_text("Bereit")
-        grid.attach(self.progress, 0, 4, 3, 1)
+        # Hinweis unter dem Balken, nur während der Stick geschrieben wird
+        self.unplug_hint = Gtk.Label(xalign=0, wrap=True, no_show_all=True)
+        self.unplug_hint.set_markup(f"<b>{GLib.markup_escape_text(UNPLUG_HINT)}</b>")
+        self.unplug_hint.get_style_context().add_class("status-fail")
+        bar_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        bar_box.pack_start(self.progress, False, False, 0)
+        bar_box.pack_start(self.unplug_hint, False, False, 0)
+        grid.attach(bar_box, 0, 4, 3, 1)
 
         self.log = Gtk.TextView(editable=False, cursor_visible=False, monospace=True,
                                 wrap_mode=Gtk.WrapMode.WORD_CHAR)
@@ -335,11 +361,13 @@ class StickDialog(Gtk.Dialog):
 
         key_hex = agentclient.load_or_create_key().hex()
         self._set_busy(True)
+        self.unplug_hint.show()
         self.append_log(f"{'Restore-Stick' if self.image else 'Agent-Stick'} wird auf {device} erstellt …")
         run_helper(cmd, key_hex + "\n", self._on_progress, self.append_log, self._on_written)
 
     def _on_written(self, ok: bool, error: str) -> bool:
         self._set_busy(False)
+        self.unplug_hint.hide()
         if ok:
             self.progress.set_fraction(1.0)
             self.progress.set_text("Stick bereit")
@@ -348,4 +376,5 @@ class StickDialog(Gtk.Dialog):
             if error:
                 self.append_log(f"Fehler: {error}")
         self.refresh_disks()
+        show_stick_result(self, ok, error, "Restore-Stick fertig" if self.image else "Agent-Stick fertig")
         return False

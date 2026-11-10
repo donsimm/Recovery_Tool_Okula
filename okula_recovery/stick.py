@@ -13,6 +13,7 @@ Banner direkt im Live-System – ohne live-config-Hooks.
 from __future__ import annotations
 
 import argparse
+import errno
 import ipaddress
 import json
 import os
@@ -137,6 +138,57 @@ BOOT_PARAMS = ("boot=live components "
 
 class StickError(Exception):
     pass
+
+
+UNPLUGGED = "Stick wurde während des Schreibens abgezogen – Stick neu erstellen."
+SQUASHFS_MAGIC = b"hsqs"
+# Fehler, die beim Abziehen des Sticks auftreten (E/A-Fehler, Gerät weg)
+UNPLUG_ERRNOS = (errno.EIO, errno.ENODEV, errno.ENXIO)
+UNPLUG_TEXTS = ("Input/output error", "Eingabe-/Ausgabefehler", "No such device", "Kein passendes Gerät")
+
+
+def explain_unplugged(device: str, exc: Exception) -> Exception:
+    """Fehler beim Schreiben: verständliche Meldung, wenn der Stick abgezogen wurde, sonst der Fehler selbst."""
+    gone = not Path(device).exists()
+    io_error = (isinstance(exc, OSError) and exc.errno in UNPLUG_ERRNOS) \
+        or any(t in str(exc) for t in UNPLUG_TEXTS)
+    return StickError(UNPLUGGED) if gone or io_error else exc
+
+
+def verify_stick(root: Path, iso_root: Path, kernel: str, initrd: str, data_root: Path | None = None) -> None:
+    """Prüfung am Schluss: Stick (root) vollständig? Restore-Stick: zusätzlich das Image auf data_root.
+
+    Wirft StickError mit dem Grund; braucht kein root (nur Ordner).
+    """
+    live = root / "live"
+    layer = live / AGENT_LAYER
+    if not layer.is_file():
+        raise StickError(f"live/{AGENT_LAYER} fehlt auf dem Stick")
+    if layer.stat().st_size == 0:
+        raise StickError(f"live/{AGENT_LAYER} ist leer (0 Byte)")
+    with open(layer, "rb") as f:
+        if f.read(4) != SQUASHFS_MAGIC:
+            raise StickError(f"live/{AGENT_LAYER} ist kein gültiges Squashfs-Image")
+    iso_fs = iso_root / "live" / "filesystem.squashfs"
+    if iso_fs.is_file():
+        fs = live / "filesystem.squashfs"
+        want = iso_fs.stat().st_size
+        have = fs.stat().st_size if fs.is_file() else None
+        if have is None:
+            raise StickError("live/filesystem.squashfs fehlt auf dem Stick")
+        if have != want:
+            raise StickError(f"live/filesystem.squashfs unvollständig ({have} statt {want} Byte)")
+    for name in (kernel, initrd):
+        p = live / name
+        if not p.is_file() or p.stat().st_size == 0:
+            raise StickError(f"live/{name} fehlt auf dem Stick")
+    if data_root is not None:
+        from okula_recovery import standalone
+        img = data_root / standalone.IMAGE_DIR
+        if not img.is_dir():
+            raise StickError("Image fehlt auf der Datenpartition")
+        if tree_size(img) == 0:
+            raise StickError("Image auf der Datenpartition ist leer (0 Byte)")
 
 
 @dataclass
@@ -470,6 +522,21 @@ def prepare(device: str, iso: str, server_ip: str, emit: Emit, key: bytes | None
         progress(0.02, f"{mp} wird ausgehängt")
         _run(["umount", mp])
 
+    try:
+        _write_stick(device, iso_path, server_ip, key, table, label, title, restore, progress, emit,
+                     image_path if restore else None, src if restore else None, source_disk)
+    except (StickError, OSError) as e:
+        raise explain_unplugged(device, e) from None
+
+    progress(1.0, "Fertig")
+    what = f"Restore-Stick mit „{Path(image).name}“" if restore else "Agent-Stick"
+    emit("DONE", f"{what} auf {device} ist bereit und kann abgezogen werden")
+
+
+def _write_stick(device: str, iso_path: Path, server_ip: str, key: bytes | None, table: str, label: str,
+                 title: str, restore: bool, progress: Callable[[float, str], None], emit: Emit,
+                 image_path: Path | None, src: dict | None, source_disk: str | None) -> None:
+    """Partitionieren, Live-System und Agent schreiben, danach prüfen (StickError bei Fehler)."""
     progress(0.04, "Stick wird partitioniert")
     _run(["wipefs", "-a", device])
     _run(["sfdisk", "--wipe", "always", device], input=table)
@@ -519,12 +586,30 @@ def prepare(device: str, iso: str, server_ip: str, emit: Emit, key: bytes | None
                 _run(["sync"])
             finally:
                 subprocess.run(["umount", stick_mnt], capture_output=True)
+            # Erneut einhängen: gelesen wird vom Stick, nicht aus dem Zwischenspeicher
+            progress(0.98, "Stick wird geprüft")
+            check_written(part, data_part, Path(iso_mnt), kernel, initrd)
         finally:
             subprocess.run(["umount", iso_mnt], capture_output=True)
 
-    progress(1.0, "Fertig")
-    what = f"Restore-Stick mit „{Path(image).name}“" if restore else "Agent-Stick"
-    emit("DONE", f"{what} auf {device} ist bereit und kann abgezogen werden")
+
+def check_written(part: str, data_part: str | None, iso_root: Path, kernel: str, initrd: str) -> None:
+    """Stick-Partition(en) schreibgeschützt einhängen und verify_stick() ausführen."""
+    with tempfile.TemporaryDirectory(prefix="okula-check-") as mnt, \
+            tempfile.TemporaryDirectory(prefix="okula-check-data-") as data_mnt:
+        _run(["mount", "-o", "ro", part, mnt])
+        try:
+            if data_part:
+                _run(["mount", "-o", "ro", data_part, data_mnt])
+            try:
+                verify_stick(Path(mnt), iso_root, kernel, initrd, Path(data_mnt) if data_part else None)
+            except StickError as e:
+                raise StickError(f"Prüfung am Schluss fehlgeschlagen: {e}") from None
+            finally:
+                if data_part:
+                    subprocess.run(["umount", data_mnt], capture_output=True)
+        finally:
+            subprocess.run(["umount", mnt], capture_output=True)
 
 
 def copy_image_to_data(data_part: str, image: Path, src: dict, source_disk: str | None,

@@ -159,6 +159,12 @@ Rechts steht dann „● NAS verbunden“ in Grün.
 2.  <i>Menü → Agent-USB-Stick erstellen …</i> öffnen.
 3.  Den Stick wählen. Fehlt die Debian-Live-ISO, auf <i>Herunterladen</i> klicken.
 4.  Auf <i>Stick vorbereiten</i> klicken. Achtung: Der Stick wird gelöscht.
+5.  Warten, bis das Fenster <i>Agent-Stick fertig</i> erscheint („Der Stick kann jetzt abgezogen werden.“),
+    dann auf <i>OK</i> klicken und den Stick abziehen. <b>Stick erst abziehen, wenn „Stick fertig“ erscheint.</b>
+Zum Schluss prüft das Tool die Dateien auf dem Stick (Agent-Teil vorhanden und gültig, Live-System vollständig,
+Kernel und initrd vorhanden). Wurde der Stick zu früh abgezogen oder fehlt etwas, erscheint rot
+<i>Stick nicht fertig</i> mit dem Grund (z. B. „Stick wurde während des Schreibens abgezogen – Stick neu
+erstellen.“). Diesen Stick nicht verwenden, sondern neu erstellen.
 Nach einem Update des Tools muss der Agent-Stick manchmal neu erstellt werden.
 Das steht dann in den Hinweisen zum Update.
 
@@ -790,7 +796,12 @@ Der Stick enthält ein Image und stellt ein Gerät auch <b>ohne Netzwerk</b> wie
 <b>Agent-Stick</b>
 •  <i>Menü → Agent-USB-Stick erstellen …</i> (Kapitel <i>Erste Schritte</i>).
 
-Bei allen Sticks gilt: Der Stick wird dabei gelöscht."""),
+Bei allen Sticks gilt: Der Stick wird dabei gelöscht.
+<b>Stick erst abziehen, wenn „Stick fertig“ erscheint.</b> Am Ende erscheint ein Fenster
+<i>Agent-Stick fertig</i>, <i>Restore-Stick fertig</i> bzw. <i>Boot-Stick fertig</i> („Der Stick kann jetzt
+abgezogen werden.“). Agent- und Restore-Stick werden vorher geprüft, beim Restore-Stick auch das Image auf der
+Datenpartition. Ging etwas schief (z. B. Stick zu früh abgezogen), erscheint rot <i>Stick nicht fertig</i> mit
+dem Grund: Stick nicht verwenden – neu erstellen."""),
 
     ("USB klonen", """<big><b>USB-Stick oder externe Festplatte klonen</b></big>
 

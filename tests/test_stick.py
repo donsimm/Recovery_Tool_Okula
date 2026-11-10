@@ -157,6 +157,107 @@ class LayoutTest(unittest.TestCase):
         self.assertEqual(stick.main(["--device", "/dev/sdx", "--iso", "x.iso"]), 1)
 
 
+class VerifyStickTest(unittest.TestCase):
+    """Ä-038: Prüfung am Schluss (Ordner statt eingehängtem Stick)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        base = Path(self.tmp.name)
+        self.iso, self.root, self.data = base / "iso", base / "stick", base / "data"
+        for d in (self.iso / "live", self.root / "live", self.data / "image"):
+            d.mkdir(parents=True)
+        (self.iso / "live/filesystem.squashfs").write_bytes(b"hsqs" + b"x" * 1000)
+        shutil.copy(self.iso / "live/filesystem.squashfs", self.root / "live/filesystem.squashfs")
+        (self.root / "live" / stick.AGENT_LAYER).write_bytes(b"hsqs" + b"\0" * 100)
+        (self.root / "live/vmlinuz").write_bytes(b"k")
+        (self.root / "live/initrd.img").write_bytes(b"i")
+        (self.data / "image/sda1.ntfs-ptcl-img.zst").write_bytes(b"img")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def verify(self, data=False):
+        stick.verify_stick(self.root, self.iso, "vmlinuz", "initrd.img", self.data if data else None)
+
+    def assertFails(self, text, data=False):
+        with self.assertRaises(stick.StickError) as cm:
+            self.verify(data)
+        self.assertIn(text, str(cm.exception))
+
+    def test_valid_stick(self):
+        self.verify()
+        self.verify(data=True)
+
+    def test_agent_layer_empty(self):
+        (self.root / "live" / stick.AGENT_LAYER).write_bytes(b"")
+        self.assertFails("leer (0 Byte)")
+
+    def test_agent_layer_missing(self):
+        (self.root / "live" / stick.AGENT_LAYER).unlink()
+        self.assertFails("fehlt")
+
+    def test_agent_layer_wrong_header(self):
+        (self.root / "live" / stick.AGENT_LAYER).write_bytes(b"\0" * 100)
+        self.assertFails("kein gültiges Squashfs")
+
+    def test_filesystem_too_small(self):
+        (self.root / "live/filesystem.squashfs").write_bytes(b"hsqs" + b"x" * 10)
+        self.assertFails("filesystem.squashfs unvollständig")
+
+    def test_kernel_missing(self):
+        (self.root / "live/initrd.img").unlink()
+        self.assertFails("initrd.img fehlt")
+
+    def test_restore_image_missing(self):
+        shutil.rmtree(self.data / "image")
+        self.assertFails("Image fehlt", data=True)
+
+    def test_restore_image_empty(self):
+        (self.data / "image/sda1.ntfs-ptcl-img.zst").write_bytes(b"")
+        self.assertFails("leer", data=True)
+
+
+class UnpluggedTest(unittest.TestCase):
+    """Ä-038: Abziehen während des Baus → verständliche Meldung."""
+
+    def test_device_gone(self):
+        err = stick.explain_unplugged("/dev/okula-test-gibt-es-nicht", stick.StickError("mount: irgendwas"))
+        self.assertEqual(str(err), stick.UNPLUGGED)
+        self.assertEqual(stick.UNPLUGGED, "Stick wurde während des Schreibens abgezogen – Stick neu erstellen.")
+
+    def test_io_error(self):
+        with tempfile.NamedTemporaryFile() as dev:
+            err = stick.explain_unplugged(dev.name, OSError(5, "Input/output error"))
+            self.assertEqual(str(err), stick.UNPLUGGED)
+            err = stick.explain_unplugged(dev.name, stick.StickError("mksquashfs: write failed: Input/output error"))
+            self.assertEqual(str(err), stick.UNPLUGGED)
+
+    def test_other_error_unchanged(self):
+        with tempfile.NamedTemporaryFile() as dev:
+            orig = stick.StickError("apt-cache: kaputt")
+            self.assertIs(stick.explain_unplugged(dev.name, orig), orig)
+
+
+class StickResultTextTest(unittest.TestCase):
+    """Ä-038: Texte des Popups am Ende."""
+
+    def setUp(self):
+        try:
+            from okula_recovery import stick_dialog
+        except (ImportError, ValueError) as e:
+            self.skipTest(f"GTK fehlt: {e}")
+        self.sd = stick_dialog
+
+    def test_texts(self):
+        self.assertEqual(self.sd.stick_result_texts(True, "", "Agent-Stick fertig"),
+                         ("Agent-Stick fertig", "Der Stick kann jetzt abgezogen werden."))
+        title, text = self.sd.stick_result_texts(False, stick.UNPLUGGED, "Agent-Stick fertig")
+        self.assertEqual(title, "Stick nicht fertig")
+        self.assertIn(stick.UNPLUGGED, text)
+        self.assertTrue(text.endswith("Stick nicht verwenden – neu erstellen."))
+        self.assertEqual(self.sd.UNPLUG_HINT, "Stick erst abziehen, wenn „Stick fertig“ erscheint.")
+
+
 class IsoFetchTest(unittest.TestCase):
     SUMS = (
         "aaa  debian-live-13.7.0-amd64-gnome.iso\n"

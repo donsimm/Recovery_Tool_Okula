@@ -155,6 +155,20 @@ Bei erfassten Geräten zeigt das Gerätefenster (Übersicht → **Starttasten**)
    - eigene `grub.cfg`; gebootet wird per UEFI über den GRUB des ISO und per BIOS über `grub-install`
    - Agent als zusätzliches Image `/live/okula-agent.squashfs`. live-boot legt es über das Live-System, so sind Agent, systemd-Dienst und Banner beim Booten direkt aktiv. Auf der Zielmaschine wird nichts installiert, alles läuft im RAM.
    - Tastatur `ch`, Locale `de_CH.UTF-8`, Zeitzone `Europe/Zurich`
+4. **Prüfung am Schluss** (Ä-038, `stick.check_written` → `stick.verify_stick`): Nach `sync` und dem Aushängen hängt
+   der Helfer die FAT-Partition (beim Restore-Stick auch die Datenpartition) erneut schreibgeschützt ein, damit vom
+   Stick gelesen wird und nicht aus dem Zwischenspeicher. Geprüft wird: `live/okula-agent.squashfs` vorhanden,
+   > 0 Byte, beginnt mit dem Squashfs-Kopf `hsqs`; `live/filesystem.squashfs` so gross wie im ISO; Kernel und initrd
+   vorhanden; beim Restore-Stick das Image (`image/` auf der Datenpartition) vorhanden und > 0 Byte. Schlägt etwas
+   fehl, endet der Helfer mit `ERROR Prüfung am Schluss fehlgeschlagen: …` statt `DONE`. Verschwindet das Gerät
+   während des Baus oder kommt ein E/A-Fehler (EIO/ENODEV/ENXIO bzw. „Input/output error“ in der Ausgabe eines
+   Befehls), lautet die Meldung „Stick wurde während des Schreibens abgezogen – Stick neu erstellen.“
+   (`stick.explain_unplugged`). Anlass: B-010 (Stick nach 24 s abgezogen, Agent-Teil 0 Byte).
+5. **Meldung am Ende** (`stick_dialog.show_stick_result`): Fenster „Agent-Stick fertig“ bzw. „Restore-Stick fertig“
+   („Der Stick kann jetzt abgezogen werden.“, Knopf „OK“) oder rot „Stick nicht fertig“ mit dem Grund und
+   „Stick nicht verwenden – neu erstellen.“ (Knopf „Schliessen“, `uikit.confirm_error(…, red=True)`). Während des
+   Baus steht unter dem Balken „Stick erst abziehen, wenn „Stick fertig“ erscheint.“ Der Boot-Stick aus ISO zeigt
+   am Ende dasselbe Fenster („Boot-Stick fertig“), ohne die Datei-Prüfung.
 
 ![Boot-Menü des Agent-Sticks](grub-menu.png)
 
