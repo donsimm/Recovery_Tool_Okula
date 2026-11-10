@@ -116,12 +116,12 @@ Geht ohne echte Geräte mit VMs (Plan 06.11.): **Referenz = VM-Win11** neu **von
 - [ ] Nach 3 Tagen: Häkchen wieder an (oder Option aus → bleibt aus)
 - [ ] **Rückfrage (Ä-007), Gerät verbunden:** Häkchen *Auto* setzen → rote Zusammenfassung (Disk, Image, Gerätename,
       Backup, Abschluss, „in 3 Tagen wieder aktiv“) mit Knopf „Löschen und neu aufsetzen“; *Abbrechen* → Häkchen
-      bleibt aus, kein Countdown, kein Verlaufseintrag; bestätigen → Countdown 30 s
-- [ ] **Rückfrage, Gerät nicht verbunden:** Knopf „Einschalten“ und Satz „Beim nächsten Verbinden wird die Disk gelöscht.“
-- [ ] **Rückfrage im Reiter:** Schalter *Automatisierung* ein → gleiche Rückfrage; *Abbrechen* → Schalter wieder aus;
-      Ausschalten und andere Änderungen bei eingeschalteter Automatisierung ohne Rückfrage
-- [ ] **Unvollständig** (z. B. ohne Zieldisk): Häkchen bzw. Schalter → Meldung, was fehlt, keine Rückfrage, bleibt aus
-- [ ] Rückfrage bei einer VM mit Zeile „Snapshot vorher“ und beim DEMO-PC
+      bleibt aus, kein Countdown, kein Verlaufseintrag; bestätigen → Countdown 30 s – teilweise ✔ 10.11. (Okuli, Probe-VM über den Schalter im Reiter: Zusammenfassung vollständig, „Löschen und neu aufsetzen“, Abbrechen vorgewählt → aus, kein Verlaufseintrag. Offen: Häkchen *Auto* in der Liste (per Bedienungshilfe nicht auslösbar) und „bestätigen → Countdown“)
+- [x] **Rückfrage, Gerät nicht verbunden:** Knopf „Einschalten“ und Satz „Beim nächsten Verbinden wird die Disk gelöscht.“ – ✔ 10.11. (Okuli: Einschalten → Verlauf „Automatisierung eingeschaltet“, Ausschalten ohne Rückfrage)
+- [x] **Rückfrage im Reiter:** Schalter *Automatisierung* ein → gleiche Rückfrage; *Abbrechen* → Schalter wieder aus;
+      Ausschalten und andere Änderungen bei eingeschalteter Automatisierung ohne Rückfrage – ✔ 10.11. (Okuli; „andere Änderungen“ nicht einzeln geprüft)
+- [x] **Unvollständig** (z. B. ohne Zieldisk): Häkchen bzw. Schalter → Meldung, was fehlt, keine Rückfrage, bleibt aus – ✔ 10.11. (Okuli, Schalter: „Kein Image gewählt · Keine Zieldisk gewählt“)
+- [ ] Rückfrage bei einer VM mit Zeile „Snapshot vorher“ und beim DEMO-PC – VM ✔ 10.11. (Okuli: „Snapshot vorher: ja“), DEMO-PC offen
 
 ### 6. Demo-Gerät (Vorführung)
 - (alle geprüft)
