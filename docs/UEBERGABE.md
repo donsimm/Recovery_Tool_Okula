@@ -1,55 +1,55 @@
-# Übergabe – 10.11.2026, ca. 10:35
+# Übergabe – 10.11.2026, 14:40
 
-Sitzung „Okuli“ (Projektleitung heisst jetzt **Okuli**). Nächste Sitzung: `CLAUDE.md` → `docs/PROJEKTLEITUNG.md` →
-diese Datei → `docs/EINGANG.md` (leer) → `~/okuli/UEBERGABE.md` (Leitstand) → Dominik den Stand nennen.
+Sitzung „Okuli“ (Projektleitung). Nächste Sitzung: `CLAUDE.md` → `docs/PROJEKTLEITUNG.md` → diese Datei →
+`docs/EINGANG.md` (leer) → `~/okuli/UEBERGABE.md` (Leitstand) → Dominik den Stand nennen.
 
 ## Stand
 
-- **Neue Arbeitsweise (alles in `~/okuli/agenten/REGELN.md` und `PROJEKTLEITUNG.md`):** Okuli startet Agenten selbst mit
-  `~/.claude/agenten/agent.sh` (run_in_background), Agenten laufen als Benutzer **`okuli-agent`** (kein sudo, kein
-  Zugriff auf /home/dominik) in eigener Kopie auf Branch `agent/<ID>`; Ergebnis mit `~/.claude/agenten/holen.sh`,
-  prüfen, `--ff-only`, pushen, `holen.sh … --aufraeumen`. **Okuli hat volles sudo** (`/etc/sudoers.d/okuli`).
-  Agenten: Shell-Befehle einzeln (kein `&&`), keine Hintergrundprozesse; Server-/GUI-Prüfungen macht Okuli.
-- **I-034 Projektübersicht** (0910836) abgenommen, installiert, am Server getestet (TESTS.md 12, 6 Punkte ✔).
-- **Ä-037 VM-Disk beim Zurückspielen vergrössern + VM-Win11 256 GB** (55ed0dd) abgenommen, **von Okuli installiert**
-  (`sudo ./install.sh`, Tool von Dominik neu gestartet), am Server getestet mit Probe-VM (TESTS.md 13, 5 Punkte ✔; 9: 2 ✔).
-- **Neue Bugs:** B-007 🔴 (Ä-002 liest belegte Blöcke falsch → „Anpassen möglich“ bei 1-TB-Image), B-008 ⚪
-  (Projektübersicht dunkel: Auswahlfelder unlesbar). Befund zu Ä-010: BIOS/MBR-Image ohne Warnung auf UEFI-VM.
-- **VM-Win11 hat Dominik selbst gelöscht** (09:32). Am Server gibt es derzeit **keine VMs**.
-- **Okuli-Cockpit** (eigenes Projekt `~/okuli-cockpit`, siehe `~/okuli/PROJEKTE.md`): läuft als Dienst, Link im LAN
-  mit Schlüssel (`~/okuli-cockpit/link.sh`).
-- **Kontext-Arbeitsgrenze 400k** (Dominik: nie Auto-Compact): Statuszeilen und Übergabe-Hinweis rechnen in % von 400k.
+Alles committet, gepusht und am Server installiert (letzter Commit dieser Übergabe). Am Server: keine VMs (alle
+Probe-VMs gelöscht), Tool läuft mit Stand Ä-038.
+
+- **B-007** (belegte Blöcke im partclone-Kopf, abf61f8) abgenommen, installiert, am Server getestet (Probe-VM 64 GB +
+  1-TB-Image → „Anpassen: nicht möglich … 397.7 GB belegt“).
+- **Ä-007** (Rückfrage beim Einschalten der Automatisierung, 1f5c409) abgenommen, installiert, getestet (Probe-VMs:
+  Schalter im Reiter verbunden/nicht verbunden/unvollständig; Häkchen *Auto* von Dominik).
+- **Ä-038** (Agent-Stick: Popup „fertig“, Prüfung am Schluss, Meldung beim Abziehen; ca975e5) abgenommen, installiert,
+  getestet (Okuli: Stick-Bau mit Popup, Agent-Teil am Server geprüft; Dominik: Log, Start am Gerät).
+- **B-010** erledigt: Videoserver SRV-002 (Supermicro X11SSV-Q, i5-6600T, BIOS 2.0/2016) startete nicht vom Stick –
+  Stick war unvollständig (09:31 nach 24 s abgezogen, `okula-agent.squashfs` 0 Byte). Netzwerkstart klappte, Stick neu
+  erstellt → ok. Nebenbefund: CPU 3 meldet laufend korrigierte MCE (Bank 0) → Dominik empfohlen: BIOS-Update.
+- Neu aufgenommen: **B-009** ⚪ (4 Tests rot ohne `/usr/sbin` im PATH, 1 Test braucht root), **I-035** ⚪ (Hinweis,
+  wenn VM-Disk grösser als freier Platz), **I-036** ⚪ (Hardware-Fehler MCE/WHEA im Tool anzeigen).
+- **Okuli-Cockpit** (`~/okuli-cockpit`, a4debe0): veraltete Sitzung „Okuli“ verdrängte die aktive → behoben, Dienst neu
+  gestartet. Cockpit-Repo hat **keinen GitHub-Remote** (nur lokal).
 
 ## Offen und als Nächstes
 
-1. **B-007 starten, sobald das 5h-Limit zurückgesetzt ist (12:50; stand 97 %):** Prompt `docs/prompts/B-007-shrink-belegt.md`
-   (freigegeben, Status B-007 „in Arbeit“), Auftragsdatei z. B.:
-   `printf 'B-007 belegte Blöcke im partclone-Kopf\n\nLies docs/prompts/B-007-shrink-belegt.md und setze ihn um. Nicht pullen, nicht pushen, nur lokal committen. Shell-Befehle einzeln ausführen.\n' > <scratchpad>/b007.md`
-   `~/.claude/agenten/agent.sh umsetzen ~/recovery_tool_okula <scratchpad>/b007.md - "Bash(python3 -m unittest:*),Bash(python3 -c:*)" opus medium B-007`
-   Abnahme: Tests; echter Kopf `/mnt/okula-nas/Archiv/XX Test Images/2026-10-29_1133_nvme0n1/nvme0n1p4.ntfs.pcl.zst`
-   (`zstd -dc … | head -c 200`, `shrink.parse_pcl_header`) muss ~397 GB belegt ergeben; dann `sudo ./install.sh`,
-   Dominik Tool neu starten lassen, TESTS.md eintragen.
-2. Tests, die Okuli noch selbst machen kann (Tool über AT-SPI, vorher bei Dominik fragen – er hat für 10.11. „bitte
-   testen“ freigegeben): Abschnitt 11 (Snapshots), Rest von 12 und 13, Teile von 9/10. Hilfsskript:
-   `/tmp/claude-1000/…/scratchpad/ui.py` ist weg nach Neustart – Muster: `gi.repository.Atspi`, App
-   `ch.okula.RecoveryTool`, Knöpfe per `get_action_iface().do_action(0)`; Probe-VMs nur mit eigenem Namen, Netzwerk
-   der VM bei fremden Images mit `virsh domif-setlink <vm> <mac> down --config` trennen.
-3. Danach: Ä-007 (Bestätigung vor dem Löschen) brainstormen; die 4 roten Tests als Bug aufnehmen.
-4. Dominik empfehlen: in `/config` „Auto-compact“ ausschalten (zusätzliche Sicherheit zur 400k-Grenze).
+1. Tests am realen System, gesammelt (Dominik testet gern später):
+   - Ä-007 (TESTS.md 5): „bestätigen → Countdown“, Rückfrage beim DEMO-PC
+   - Ä-038 (TESTS.md 14): Stick während des Baus abziehen → rotes Popup; Restore-Stick fertig; Boot-Stick fertig;
+     Knopf „Schliessen“ bei anderen Fehlermeldungen
+   - Ä-037 (TESTS.md 13): „Beide Wege nicht möglich“, zu wenig Platz im Pool, Abbrechen bei 3/4, echtes Gerät
+   - weiterhin offen: Abschnitte 2, 3, 5, 7, 9–11 laut TESTS.md
+2. Nächstes Thema laut Vorschlag: **I-005/I-006** (Aufbewahrung, zweite Kopie) brainstormen; kleine Kandidaten:
+   **B-009** (Tests mit vollem Pfad/sbin), **B-008** (Projektübersicht dunkel).
+3. Offene Frage an Dominik: Cockpit-Repo auf GitHub sichern (Remote einrichten)?
+4. Dominik empfehlen (noch nicht erledigt?): `/config` → Auto-compact aus.
 
-## Entscheide dieser Sitzung (alle in AENDERUNGEN.md bzw. PROJEKTLEITUNG.md / ~/okuli eingetragen: ja)
+## Entscheide dieser Sitzung (in AENDERUNGEN.md „📌 Entscheidungen“: ja)
 
-- Projektleitung heisst Okuli; Leitstand-Repo `~/okuli` (privat, github.com/donsimm/okuli).
-- Okuli startet Agenten selbst; Agenten als `okuli-agent` ohne sudo; Okuli volles sudo und darf installieren.
-- Tool-Tests: Okuli darf im laufenden Tool klicken, vorher fragen.
-- Projektübersicht im Tool (Firefox, 127.0.0.1); Ä-037 so wie umgesetzt; Kontextgrenze 400k.
+- Ä-007 Variante B: Rückfrage bei jedem Einschalten von Hand; keine Rückfrage beim Wieder-Einschalten nach 3 Tagen und
+  beim Stopp ■; kein Eintippen (Dominik 10.11.).
+- Ä-038: Popup „Stick fertig – jetzt abziehen“ gewünscht (Dominik 10.11.), Umfang laut Prompt freigegeben.
 
 ## Learnings
 
-- Dominik will, dass Okuli selbst startet, installiert und testet – Fragen kurz, Empfehlung zuerst.
-- `claude setup-token` braucht ein echtes Terminal (nicht `!`). Token liegt in `/home/okuli-agent/.claude-token`.
-- Agenten mit `dontAsk` scheitern an verketteten Befehlen und Hintergrundprozessen → in der Rolle verboten.
-- Laufende Bash-Skripte nie in place überschreiben (atomar ersetzen), sonst bricht ein laufender `agent.sh`.
-- Firefox im Headless-Modus macht den Screenshot vor dem Nachladen → WebKit-Offscreen mit Wartezeit
-  (`WEBKIT_DISABLE_COMPOSITING_MODE=1`); Firefox-Adresse aus `sessionstore-backups/recovery.jsonlz4` (mozlz4).
-- 5h-Limit im Blick behalten (Cockpit „KI“): heute ~13 $ für 7 Agentenläufe, Limit bei 97 % um 10:30.
+- **Agent-Kurznamen ohne Umlaut:** Ä-IDs als `AE-0NN` (Branch `agent/AE-007`).
+- **AT-SPI im Tool:** Während ein modaler Dialog (`dlg.run()`) offen ist, findet `Atspi` die App kurz nicht – 1–2 s
+  warten und erneut suchen. Combo-Auswahl: Combo per `do_action(0)` öffnen, dann Menüeintrag `do_action(0)`
+  (`Atspi.Selection` löst kein `changed` aus). Namensfeld: `Atspi.EditableText.set_text_contents`. Häkchen *Auto*
+  (Zellen-Renderer) lässt sich nicht auslösen → Dominik klicken lassen. TextView-Log nicht lesbar.
+  Hilfsskript lag im Scratchpad (`ui.py`, weg nach Neustart): `app()`, `walk`, `find(role,name)`, `click`, `menu`.
+- Automatisierungs-Test braucht ein Gerät mit Inventar (Zieldisk) → Probe-VM einmal mit Agent starten, dann einrichten.
+- Stick-Probleme zuerst am Server prüfen: `unsquashfs -s live/okula-agent.squashfs`, Kernel-Journal nach
+  „USB disconnect“/„lost async page write“ zur Bauzeit; PXE-Journal zeigt, ob ein Gerät überhaupt per Netz startete.
+- Geräte-Inventar liegt in `~/.local/share/okula-recovery/geraete/**.json` (auch Unterordner pro Gruppe).
