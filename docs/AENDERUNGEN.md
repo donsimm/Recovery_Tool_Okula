@@ -16,7 +16,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 1 | 0 | 0 |
-| 🔧 Änderungen | 7 | 0 | 0 |
+| 🔧 Änderungen | 7 | 1 | 0 |
 | 💡 Ideen | 20 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
@@ -42,6 +42,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 | Ä-007 | 🔴 | offen | Claude | **Bestätigung vor dem Löschen:** Wird der Schalter eingeschaltet, während das Gerät verbunden ist, startet die Automatisierung ohne Rückfrage nach 30 s und löscht die Disk (`ui.save_automation` → `consider`). Nötig: rote Zusammenfassung „Disk Samsung 256 GB von HP-PC-07 wird gelöscht, Master ‚Win11 Büro‘, neuer Name …, Backup: nein“ mit Knopf „Löschen und neu aufsetzen“ | 31.10. (Laien-Test) |
 | Ä-010 | 🟡 | offen | Claude | **Vorabprüfung mit Ampel statt Fehler mitten im Lauf:** Image passt auf die Disk, UEFI/BIOS-Modus passt zum Master, BitLocker auf der Zieldisk (dann ist kein Datei-Backup möglich), Agent-Stick aktuell, Windows-Edition des Masters passt zum Key (Pro/Home). Anzeige: „✔ Bereit“ bzw. „⚠ Achtung: …“ | 31.10. (Laien-Test) |
 | Ä-012 | 🟡 | offen | Claude | **Einfache Sprache im Reiter Automatisierung:** „Zieldisk“ → „Festplatte, die gelöscht wird“; Sysprep, Master und Content-Projekte mit einem „?“ pro Abschnitt erklären. Gerätenamen wie „DESKTOP-8F3K2LQ“ markieren und zum Umbenennen auffordern; optional Namensschema pro Vorlage (z. B. `KUNDE-001` fortlaufend) | 31.10. (Laien-Test) |
+| Ä-037 | 🔴 | in Arbeit | Dominik | **VM-Disk beim Zurückspielen vergrössern:** Ist die Disk einer VM kleiner als die Quelldisk des Images, bietet *Image zurückspielen …* neben „Image anpassen“ (Ä-002) an: „VM-Disk auf <Originalgrösse> vergrössern und zurückspielen“ (Auftrag: VM aus → Disk vergrössern → Einschalten und Agent starten → ggf. Vorher Snapshot → Zurückspielen). Nicht möglich mit Snapshots oder zu wenig Platz im Pool. Dazu Profil **VM-Win11 neu 256 GB** statt 128 GB (dünne qcow2-Disk, kostet nichts). Auslöser: viele Images (L15 256/512 GB, 970 EVO 1 TB) passen nicht auf VM-Win11 (128 GB). Prompt: [Ä-037-vm-disk-vergroessern.md](prompts/Ä-037-vm-disk-vergroessern.md) | 10.11. |
 
 ## 💡 Ideen
 
