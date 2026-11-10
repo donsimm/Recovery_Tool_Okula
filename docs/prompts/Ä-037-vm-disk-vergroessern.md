@@ -1,6 +1,6 @@
 # Ä-037 – VM-Disk beim Zurückspielen vergrössern, Profil VM-Win11 256 GB
 
-Status: umgesetzt (Commit 55ed0dd) · erstellt 10.11.2026 von Okuli (Projektleitung) · Freigabe: Dominik 10.11.
+Status: abgenommen 10.11. (Commit 55ed0dd) – Ablauf an einer VM noch zu testen (TESTS.md Abschnitt 13) · erstellt 10.11.2026 von Okuli (Projektleitung) · Freigabe: Dominik 10.11.
 
 ## Rolle und Einstieg
 
