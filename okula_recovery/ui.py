@@ -19,7 +19,7 @@ from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 
 from okula_recovery import (__version__, agentclient, archive, automation, backups, bandwidth,  # noqa: E402
                             clonezilla, config, demostore, devices, discovery, distribute, imagecheck, jobs, nas,
-                            nasfiles, oslib, pxe, vm, warranty, wire, wol)
+                            nasfiles, oslib, projekt, pxe, vm, warranty, wire, wol)
 from okula_recovery.automation_tab import SendFoldersDialog, SettingsDialog  # noqa: E402
 from okula_recovery.inventory_dialog import InventoryExportDialog  # noqa: E402
 from okula_recovery.imagecheck_dialog import CheckWindow  # noqa: E402
@@ -70,7 +70,8 @@ MENU_LABELS: dict[str, list[str | None]] = {
                "_Backup erstellen …", "Backup zur_ückspielen …", "Ordner _senden …", "_Inventar neu einlesen",
                None, "_Restore-Stick aus Image …", "IS_O hinzufügen …",
                "_Boot-Stick aus ISO …", "_Netzwerkstart (PXE) …", None, "Images _aktualisieren"],
-    "E_xtras": ["_USB klonen …", "USB _formatieren …", None, "Neue _virtuelle Maschine …", None, DEMO_LABEL,
+    "E_xtras": ["_USB klonen …", "USB _formatieren …", None, "Neue _virtuelle Maschine …", None,
+                "Projektü_bersicht …", None, DEMO_LABEL,
                 "Demo: nächster Auftrag mit _Fehler",
                 "Demo-Daten _zurücksetzen …"],
     "_Hilfe": ["_So funktioniert das Tool", "_Tastenkürzel", "Ü_ber Okula Recovery Tool"],
@@ -159,6 +160,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.nas_dialog: NasDialog | None = None
         self.copies: set = set()     # laufende Kopien aufs NAS (Fenster)
         self.pxe_dialog = None
+        self.project_server = None   # Projektübersicht (I-034): Webserver erst beim ersten Aufruf
         self.virsh = vm.Virsh()
         self.vm_states: dict[str, str] = {}        # libvirt-Name → Zustand (alle VM_POLL s)
         self.vm_loaded = False                     # Zustände mindestens einmal gelesen
@@ -260,6 +262,7 @@ class MainWindow(Gtk.ApplicationWindow):
             "_USB klonen …": (lambda: CloneDialog(self), None),
             "USB _formatieren …": (lambda: FormatDialog(self), None),
             "Neue _virtuelle Maschine …": (self.vm_new, None),
+            "Projektü_bersicht …": (self.open_project_overview, None),
             "Demo: nächster Auftrag mit _Fehler": (self.demo_fail_next, None),
             "Demo-Daten _zurücksetzen …": (self.reset_demo_data, None),
             "_So funktioniert das Tool": (self.show_help, "F1"),
@@ -288,6 +291,21 @@ class MainWindow(Gtk.ApplicationWindow):
             dlg.set_logo(logo)
         dlg.run()
         dlg.destroy()
+
+    def open_project_overview(self) -> None:
+        """Extras → Projektübersicht … (I-034): lokaler Webserver (127.0.0.1 + Token), Seite im Browser."""
+        if self.project_server is None:
+            from okula_recovery.projekt_server import ProjectServer
+            server = ProjectServer(lambda: projekt.project_dir(config.load().project_dir))
+            try:
+                server.start()
+            except OSError as e:
+                confirm_error(self, f"Projektübersicht nicht gestartet: {e.strerror or e}")
+                return
+            self.project_server = server
+        open_url(self, self.project_server.url)
+        self.status("Projektübersicht im Browser geöffnet – Daten aus "
+                    f"{projekt.project_dir(config.load().project_dir)}/docs")
 
     # ---------- Netzwerkstart (PXE) ----------
 
@@ -3177,6 +3195,7 @@ class MainWindow(Gtk.ApplicationWindow):
             cfg = config.load()
             cfg.automation_max = self.cfg.automation_max = limit
             cfg.bandwidth = self.cfg.bandwidth = dlg.bandwidth_settings()
+            cfg.project_dir = self.cfg.project_dir = dlg.project_dir()
             config.save(cfg)
             self.set_automation_paused(paused)
             bw = bandwidth.describe(cfg.bandwidth).split(" – ")[0] or "Bandbreite unbegrenzt"

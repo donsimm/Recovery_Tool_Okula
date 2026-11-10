@@ -11,7 +11,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
 from okula_recovery import (automation, bandwidth, config, devices, distribute, imagecheck, linuxsetup,  # noqa: E402
-                            warranty, winunattend)
+                            projekt, warranty, winunattend)
 from okula_recovery.uikit import ask_text, confirm, confirm_error, numbered_section, run_async, scrolled  # noqa: E402
 
 if TYPE_CHECKING:
@@ -425,6 +425,7 @@ class SettingsDialog(Gtk.Dialog):
         frame.add(inner)
         box.pack_start(frame, False, False, 0)
         box.pack_start(self._build_warranty(), False, False, 0)
+        box.pack_start(self._build_project(cfg.project_dir), False, False, 0)
         self.get_content_area().add(box)
         self.show_all()
         run_async(warranty.configured, self._show_keys)
@@ -498,6 +499,41 @@ class SettingsDialog(Gtk.Dialog):
             "enabled": self.bw_on.get_active(), "mbit": int(self.bw_mbit.get_value()),
             "window": self.bw_window.get_active(), "start": self.bw_from.get_active_id(),
             "end": self.bw_to.get_active_id(), "days": [i for i, b in enumerate(self.bw_days) if b.get_active()]})
+
+    def _build_project(self, current: str) -> Gtk.Widget:
+        """Projektübersicht (I-034): Ordner des Repos, aus dessen docs/ die Seite liest."""
+        frame = Gtk.Frame(label="Projektübersicht")
+        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=10)
+        row = Gtk.Box(spacing=8)
+        row.pack_start(Gtk.Label(label="Projektordner (Repo)", xalign=0), False, False, 0)
+        self.project_entry = Gtk.Entry(text=current, width_chars=40,
+                                       placeholder_text=str(projekt.default_project_dir()))
+        row.pack_start(self.project_entry, True, True, 0)
+        choose = Gtk.Button(label="Wählen …")
+        choose.connect("clicked", lambda _b: self._choose_project())
+        row.pack_start(choose, False, False, 0)
+        inner.pack_start(row, False, False, 0)
+        inner.pack_start(_hint_wrapped("Extras → Projektübersicht … liest die Doku aus dem Ordner docs dieses Repos "
+                                       "(nach git pull sofort aktuell). Leer = Standard "
+                                       f"{projekt.default_project_dir()}."), False, False, 0)
+        frame.add(inner)
+        return frame
+
+    def _choose_project(self) -> None:
+        dlg = Gtk.FileChooserDialog(title="Projektordner (Repo) wählen", transient_for=self,
+                                    action=Gtk.FileChooserAction.SELECT_FOLDER)
+        dlg.add_buttons("Abbrechen", Gtk.ResponseType.CANCEL, "Wählen", Gtk.ResponseType.OK)
+        start = projekt.project_dir(self.project_entry.get_text())
+        if start.is_dir():
+            dlg.set_current_folder(str(start))
+        if dlg.run() == Gtk.ResponseType.OK and dlg.get_filename():
+            self.project_entry.set_text(dlg.get_filename())
+        dlg.destroy()
+
+    def project_dir(self) -> str:
+        """Leer bzw. Standardordner = "" (Standard folgt dem Benutzer)."""
+        text = self.project_entry.get_text().strip()
+        return "" if not text or projekt.project_dir(text) == projekt.default_project_dir() else text
 
     def _build_warranty(self) -> Gtk.Widget:
         """Schlüssel für Dell/HP: werden nur an den Root-Helfer gegeben (root-lesbar), nie angezeigt."""

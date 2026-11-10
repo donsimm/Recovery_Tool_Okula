@@ -34,6 +34,7 @@ Alles läuft über das Netzwerk. Die Sicherungen liegen auf dem <b>NAS</b>.
 •  USB-Sticks erstellen (Agent-, Boot- und Restore-Stick), USB-Datenträger klonen und formatieren.
 •  <b>Virtuelle Maschinen</b> auf dem Server: Master-Image bauen und Images testen ohne echtes Gerät.
 •  Ein <b>Demo-Gerät</b> zum Vorführen.
+•  Eine <b>Projektübersicht</b> im Browser: offene Tests, Bugs, Änderungen und Ideen mit Rückmeldungen.
 
 <b>Aufbau des Fensters:</b>
 •  <b>Links</b> stehen alle Geräte (Computer). Ein grüner Punkt bedeutet: verbunden.
@@ -1013,6 +1014,54 @@ Damit kommen nur die NAS-Einstellungen mit (ohne Passwort)."""),
 
 <b>Fehlermeldung „Hilfsprogramm … sudo-Regel“</b>
 •  Auf dem Server einmal <tt>sudo ./install.sh</tt> im Tool-Ordner ausführen."""),
+
+    ("Projektübersicht", """<big><b>Projektstand ansehen und Rückmeldungen geben (Projektübersicht)</b></big>
+
+Die Projektübersicht zeigt den ganzen Stand der Weiterentwicklung an einem Ort:
+offene Tests am realen System, Bugs, Änderungen, Ideen, die offenen Punkte der letzten Übergabe
+und die Aufträge (Prompts) mit ihrem Status. Zu jedem Eintrag lässt sich direkt eine Rückmeldung geben.
+
+<b>Öffnen:</b>
+1.  <i>Extras → Projektübersicht …</i> wählen.
+2.  Der Browser (Firefox) öffnet die Seite <i>Projektübersicht – Okula Recovery Tool</i>.
+    Ein weiterer Aufruf öffnet dieselbe Seite erneut.
+
+<b>Was die Seite zeigt:</b>
+•  <b>Oben</b> eine Übersicht mit Zählern: offene Tests je Abschnitt (offen, ✔ ok, ✖ Fehler),
+    offene Bugs, Änderungen und Ideen, neue Rückmeldungen, „Als Nächstes“ und die Prompts mit Status.
+•  Die Bereiche <i>Tests am realen System</i>, <i>Bugs</i>, <i>Änderungen</i>, <i>Ideen</i>,
+    <i>Offene Punkte (Übergabe)</i>, <i>Prompts</i>, <i>Meine neuen Notizen</i> und
+    <i>Rückmeldungen ohne Eintrag</i>. Jeder Bereich lässt sich einklappen.
+•  Suchfeld und Filter (Art, Priorität, nur mit eigener Rückmeldung, nur neue, erledigte Tests ausblenden).
+
+<b>Rückmeldungen geben</b> (werden sofort gespeichert, kurz erscheint „gespeichert“):
+•  Tests: <i>✔ ok</i> oder <i>✖ Fehler</i> anklicken (nochmals klicken = leer) und einen Kommentar schreiben.
+•  Bugs, Änderungen, Ideen: Kommentar, Wunsch-Priorität (🔴 🟡 ⚪) und Wunsch-Status
+    (<i>als Nächstes</i>, <i>zurückstellen</i>, <i>streichen</i>, <i>erledigt</i>).
+    Neben dem Eintrag steht der Wunsch zum Ist-Stand, zum Beispiel „Prio 🟡 → Wunsch 🔴“.
+•  Offene Punkte und Prompts: Kommentar.
+•  <i>Neue Notiz</i>: Art (Bug, Änderung, Idee, Frage) wählen, Text eingeben, auf <i>Neue Notiz</i> klicken.
+    Notizen lassen sich ändern und löschen, solange sie nicht übernommen sind.
+
+<b>Woher die Daten kommen:</b>
+Die Seite liest bei jedem Laden die Doku im Projektordner (Repo), Ordner <tt>docs</tt>:
+<tt>TESTS.md</tt>, <tt>AENDERUNGEN.md</tt>, <tt>UEBERGABE.md</tt> und <tt>prompts</tt>.
+Standard ist <tt>~/recovery_tool_okula</tt>; ändern unter <i>Menü → Einstellungen … → Projektordner (Repo)</i>.
+Nach <tt>git pull</tt> genügt auf der Seite der Knopf <i>Neu laden</i> – ohne Neustart des Tools.
+Fehlt der Ordner, steht oben auf der Seite ein Hinweis.
+
+<b>Wo die Rückmeldungen liegen:</b>
+In <tt>~/.local/share/okula-recovery/projekt-rueckmeldungen.json</tt> (nicht im Repo, nur für den Benutzer lesbar).
+Die Seite ändert <b>nie</b> die Doku. Erst die Projektleitung überträgt die Rückmeldungen in die Doku und
+markiert sie als übernommen; sie erscheinen dann grau mit „übernommen TT.MM.“.
+Eine neue Änderung daran macht sie wieder neu.
+Ändert sich der Text eines Eintrags in der Doku, steht die alte Rückmeldung unter
+<i>Rückmeldungen ohne Eintrag</i> – es geht nichts verloren.
+
+<b>Sicherheit:</b>
+Die Seite ist <b>nur auf diesem Rechner</b> erreichbar (127.0.0.1), nicht aus dem LAN.
+Die Adresse enthält einen zufälligen Schlüssel, der bei jedem Start des Tools neu ist.
+Nach einem Neustart des Tools die Seite daher über <i>Extras → Projektübersicht …</i> neu öffnen."""),
 
     ("Tastenkürzel", """<big><b>Tastenkürzel</b></big>
 

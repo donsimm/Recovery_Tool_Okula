@@ -237,3 +237,20 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stic
 - [ ] **Master-Ablauf** ([MASTER-IMAGE.md](MASTER-IMAGE.md)): Windows in der VM einrichten → herunterfahren →
       Snapshot **„vor Sysprep“** → Sysprep → Einschalten und Agent starten → Disk-Image → zurück zu „vor Sysprep“ →
       Windows startet wieder im eingerichteten Zustand (nicht in der Ersteinrichtung)
+
+### 12. Projektübersicht (I-034)
+Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stick).
+- [ ] Extras → Projektübersicht … → Firefox öffnet „Projektübersicht – Okula Recovery Tool“; zweiter Aufruf öffnet
+      dieselbe Adresse (gleicher Port)
+- [ ] Alle offenen Tests (Vorbereitung, Abschnitte 2–12) sind da; ✔ ok / ✖ Fehler und Kommentar → „gespeichert“;
+      nach „Neu laden“ und nach Neustart des Tools noch da; `ls -l ~/.local/share/okula-recovery/` → Datei `-rw-------`
+- [ ] Bugs, Änderungen, Ideen mit ID, Prio, Text; Kommentar, Prio-Wunsch und Status-Wunsch speichern → „Prio 🟡 → Wunsch 🔴“
+- [ ] Offene Punkte (Übergabe) und Prompts mit Status sichtbar und kommentierbar
+- [ ] Neue Notiz anlegen, ändern, löschen
+- [ ] Übersicht oben mit Zählern; Suche und alle Filter wirken; Filter bleiben nach Neuladen der Seite
+- [ ] In einer Kopie von TESTS.md einen Testtext ändern (Projektordner in den Einstellungen auf die Kopie) →
+      alte Rückmeldung unter „Rückmeldungen ohne Eintrag“
+- [ ] In der JSON-Datei bei einem Eintrag `"uebernommen": "2026-11-10"` setzen → „Neu laden“: grau, „übernommen 10.11.“;
+      erneute Änderung → wieder neu
+- [ ] Adresse ohne Token (`http://127.0.0.1:<port>/`) → 403; von einem anderen Rechner `http://<server-ip>:<port>/…` → keine Verbindung
+- [ ] Menü → Einstellungen … → Projektordner (Repo) auf einen nicht vorhandenen Ordner → Seite zeigt Hinweis statt Fehler; danach wieder leeren

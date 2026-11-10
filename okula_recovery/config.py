@@ -35,6 +35,7 @@ class Config:
     automation_max: int = 2         # höchstens so viele Automatisierungen gleichzeitig
     automation_paused: bool = False  # Hauptschalter: alle Automatisierungen angehalten
     bandwidth: bandwidth.Settings = field(default_factory=bandwidth.Settings)  # I-030, Standard unbegrenzt
+    project_dir: str = ""  # Projektübersicht (I-034): Repo-Ordner, leer = ~/recovery_tool_okula
 
 
 def load(path: Path | None = None) -> Config:
@@ -51,6 +52,7 @@ def load(path: Path | None = None) -> Config:
         automation_max=max(1, min(10, int(data.get("automation_max") or 2))),
         automation_paused=bool(data.get("automation_paused", False)),
         bandwidth=bandwidth.clean(data.get("bandwidth")),
+        project_dir=str(data.get("project_dir") or ""),
     )
 
 

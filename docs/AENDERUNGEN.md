@@ -17,12 +17,12 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 |---|---|---|---|
 | 🐞 Bugs | 1 | 0 | 0 |
 | 🔧 Änderungen | 7 | 0 | 0 |
-| 💡 Ideen | 21 | 0 | 0 |
+| 💡 Ideen | 20 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
 Erledigt 31.10. zusätzlich: I-007 ✔ (Image prüfen) → Ä-027 ✔ (Demo ohne NAS) → Ä-028 ✔ (Ein/Aus-Symbole) → Ä-029 ✔ (Legende) → Ä-030 ✔ (NAS-Leiste) → I-030 ✔ (Bandbreite) → Ä-031 ✔ (Tage hell/dunkel).
-Als Nächstes: **I-001 VMs erledigt** ✔ 06.11. (alle 4 Aufträge, [VM.md](VM.md)) – Auftrag 3 „Digitaler Zwilling“ und Auftrag 4 „Snapshots“ umgesetzt, Abnahme offen; am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitte 9, 10 und 11 (inkl. Master-Ablauf mit Snapshot „vor Sysprep“). Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 3 (Master-Image mit VMs), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
+Als Nächstes: **I-034 Projektübersicht erledigt** ✔ 10.11. (Extras → Projektübersicht …; am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 12). **I-001 VMs erledigt** ✔ 06.11. (alle 4 Aufträge, [VM.md](VM.md)) – Auftrag 3 „Digitaler Zwilling“ und Auftrag 4 „Snapshots“ umgesetzt, Abnahme offen; am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitte 9, 10 und 11 (inkl. Master-Ablauf mit Snapshot „vor Sysprep“). Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 3 (Master-Image mit VMs), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
 Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
 ## 🐞 Bugs
@@ -67,7 +67,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 | I-026 | ⚪ | offen | Claude | **Hardware-Änderungen erkennen:** RAM, Disk oder Seriennummer anders als beim letzten Mal → Hinweis im Verlauf (Diebstahl, Tausch, Defekt) |
 | I-027 | ⚪ | offen | Claude | **Neu aufsetzen direkt am Gerät:** Auf dem Agent-Bildschirm ein Menü „Mit Master neu aufsetzen“, geschützt mit PIN, damit Techniker vor Ort das Tool nicht brauchen (Acronis: user-initiated deployment) |
 | I-029 | ⚪ | offen | Claude | **Intel vPro/AMT:** Gerät ein- und ausschalten, ins BIOS starten und den Bildschirm sehen, auch ohne Agent und bei abgestürztem OS (MeshCentral) |
-| I-034 | 🔴 | offen | Dominik | **Projektübersicht im Tool (Extras → Projektübersicht …):** interaktive Webseite (lokal, Firefox) mit allen offenen Tests aus TESTS.md (abhaken, Kommentar), allen Bugs/Änderungen/Ideen aus AENDERUNGEN.md (Kommentar, Prio-/Status-Wunsch), offenen Punkten aus UEBERGABE.md und Prompts mit Status; Kopf mit Zählern, Suche/Filter, Feld „Neue Notiz“. Liest live aus dem Repo, Rückmeldungen in `~/.local/share/okula-recovery/projekt-rueckmeldungen.json`; die Projektleitung übernimmt sie auf Zuruf in die Doku. Prompt: [I-034-projektuebersicht.md](prompts/I-034-projektuebersicht.md) | 10.11. |
 
 Umgesetzte Ideen: Windows-Master-Image mit Sysprep ([MASTER-IMAGE.md](MASTER-IMAGE.md)), Ordner an Geräte senden
 ([ORDNER-SENDEN.md](ORDNER-SENDEN.md)), Automatisierung ([AUTOMATISIERUNG.md](AUTOMATISIERUNG.md)),
@@ -133,6 +132,16 @@ Gerätename = Name im Tool.
 ## ✅ Erledigt – Änderungsprotokoll
 
 Neueste zuoberst.
+
+### 10.11.2026
+- **I-034 – Projektübersicht im Tool** (Von: Dominik): *Extras → Projektübersicht …* startet einen Webserver nur auf
+  127.0.0.1 (freier Port, Token in der URL) und öffnet die Seite in Firefox. Liest bei jedem Laden `docs/` des Repos
+  (TESTS.md offen + Vorbereitung, Bugs/Änderungen/Ideen, Kurzübersicht, Entscheidungen, Übergabe-Punkte, Prompts mit
+  Status); Tests abhaken (ok/Fehler) und kommentieren, Kommentar/Prio-/Status-Wunsch zu jedem Eintrag, neue Notizen,
+  Übersicht mit Zählern, Suche und Filter. Rückmeldungen in `~/.local/share/okula-recovery/projekt-rueckmeldungen.json`
+  (0600, atomar, defekte Datei beiseitegelegt); verwaiste Rückmeldungen unter „Rückmeldungen ohne Eintrag“.
+  Projektordner unter *Menü → Einstellungen …*. Hilfe-Kapitel „Projektübersicht“. Details [TECHNIK.md](TECHNIK.md),
+  Prüfung [TESTS.md](TESTS.md) Abschnitt 12. Kein neuer Agent-Stick.
 
 ### 06.11.2026
 - **I-001 – Virtuelle Maschinen im Tool erledigt** (Von: Dominik, alle 4 Aufträge am 06.11.2026): VM-Grundlage mit

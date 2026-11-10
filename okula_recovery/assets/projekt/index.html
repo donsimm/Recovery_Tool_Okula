@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Projektübersicht – Okula Recovery Tool</title>
+<link rel="stylesheet" href="style.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="top-row">
+    <h1>Projektübersicht – Okula Recovery Tool</h1>
+    <button id="reload" type="button">Neu laden</button>
+  </div>
+  <div id="stand" class="muted"></div>
+</header>
+
+<main>
+  <div id="hinweise"></div>
+
+  <section id="uebersicht" class="card"></section>
+
+  <section class="card" id="notiz-neu">
+    <h2>Neue Notiz</h2>
+    <div class="note-form">
+      <select id="notiz-art" aria-label="Art der Notiz">
+        <option value="bug">Bug</option>
+        <option value="aenderung">Änderung</option>
+        <option value="idee" selected>Idee</option>
+        <option value="frage">Frage</option>
+      </select>
+      <textarea id="notiz-text" rows="2" placeholder="Text der Notiz …"></textarea>
+      <button id="notiz-speichern" type="button">Neue Notiz</button>
+      <span id="notiz-status" class="saved"></span>
+    </div>
+  </section>
+
+  <section class="card filters" id="filter">
+    <input id="suche" type="search" placeholder="Suchen in allen Texten …" aria-label="Suchen">
+    <span class="filter-group" id="filter-art">
+      <label><input type="checkbox" value="test" checked> Tests</label>
+      <label><input type="checkbox" value="bug" checked> Bugs</label>
+      <label><input type="checkbox" value="aenderung" checked> Änderungen</label>
+      <label><input type="checkbox" value="idee" checked> Ideen</label>
+      <label><input type="checkbox" value="uebergabe" checked> Offene Punkte</label>
+      <label><input type="checkbox" value="prompt" checked> Prompts</label>
+    </span>
+    <span class="filter-group">
+      <label>Priorität
+        <select id="filter-prio">
+          <option value="">alle</option>
+          <option value="🔴">🔴 hoch</option>
+          <option value="🟡">🟡 mittel</option>
+          <option value="⚪">⚪ tief</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="filter-meine"> nur mit eigener Rückmeldung</label>
+      <label><input type="checkbox" id="filter-neu"> nur neue (nicht übernommen)</label>
+      <label><input type="checkbox" id="filter-erledigt"> erledigte Tests ausblenden</label>
+    </span>
+    <span id="treffer" class="muted"></span>
+  </section>
+
+  <div id="inhalt"></div>
+</main>
+</body>
+</html>
