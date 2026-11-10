@@ -45,6 +45,14 @@ Nach Schritt 5 setzt das Tool die Startreihenfolge auf „lokal“ zurück (fall
 3. **Zieldisk über die Seriennummer** festgelegt, nicht `/dev/sda`. Andere Disk eingebaut → Abbruch, nichts gelöscht.
 4. **Hauptschalter** zum Pausieren aller Automatisierungen.
 5. **Vorab prüfen:** passt das Image auf die Disk, ist es unbeschädigt – erst danach wird etwas gelöscht.
+6. **Rückfrage beim Einschalten von Hand (Ä-007):** Häkchen *Auto* und Schalter im Reiter zeigen zuerst eine rote
+   Zusammenfassung (`automation.confirm_summary`, Dialog `uikit.confirm(…, red=True)`): Disk, die gelöscht wird, Image,
+   Gerätename danach, Backup, bei VMs Snapshot, Abschluss, Wieder-Einschalten nach 3 Tagen. Ist das Gerät verbunden,
+   heisst der Knopf „Löschen und neu aufsetzen“ (danach sofort Countdown), sonst „Einschalten“. *Abbrechen* ist
+   Standard und lässt alles aus. Die Rückfrage sitzt in den Auslösern (`ui._on_auto_toggled`,
+   `automation_tab._changed`), nicht in `save_automation`/`consider`. Unvollständige Einstellungen → Meldung, was
+   fehlt, keine Rückfrage. Ohne Rückfrage: Ausschalten, Wieder-Einschalten nach 3 Tagen (`Engine.tick`), Aufheben des
+   Stopps ■, Vorlage anwenden (ändert `enabled` nicht), Import der Einstellungen (übernimmt den exportierten Zustand).
 
 ## Gleichzeitige Automatisierungen
 

@@ -314,7 +314,17 @@ class AutomationTab(Gtk.Box):
             return
         s = self._collect()
         if s.enabled and not automation.settings(self.dev).enabled:
-            s.done_at = ""  # von Hand eingeschaltet: 24-h-Wartezeit vergessen
+            # von Hand eingeschaltet (Ä-007): erst vollständig, dann Rückfrage – sonst bleibt alles aus
+            missing = automation.problems(s, self.main.root_for(self.dev))
+            if missing:
+                confirm_error(self.get_toplevel(), "Automatisierung noch nicht eingerichtet:\n· " + "\n· ".join(missing))
+            if missing or not self.main.confirm_automation(self.dev, s, self.get_toplevel()):
+                self._updating = True
+                self.switch.set_active(False)
+                self._updating = False
+                self.refresh()
+                return
+            s.done_at = ""  # von Hand eingeschaltet: Wartezeit bis zum Wieder-Einschalten vergessen
         self.main.save_automation(self.dev, s)
         self.refresh()
 

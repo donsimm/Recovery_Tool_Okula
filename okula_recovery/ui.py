@@ -3135,8 +3135,20 @@ class MainWindow(Gtk.ApplicationWindow):
             confirm_error(win, "Automatisierung noch nicht eingerichtet:\n· " + "\n· ".join(missing))
             return
         if s.enabled:
+            if not self.confirm_automation(dev, s, self):
+                self.update_device_rows()   # Häkchen bleibt aus, nichts gespeichert
+                return
             s.done_at = ""
         self.save_automation(dev, s)
+
+    def confirm_automation(self, dev: devices.Device, s: automation.Settings, parent: Gtk.Window) -> bool:
+        """Rückfrage beim Einschalten von Hand (Ä-007; Häkchen Auto und Schalter im Reiter). True = einschalten."""
+        root = self.root_for(dev)
+        chosen = next((i for i in self.restorable_images(dev)
+                       if root and s.image and str(i.path) == str(Path(root) / s.image)), None)
+        title, text, ok_label = automation.confirm_summary(dev, s, self.online_agent(dev) is not None,
+                                                           chosen.name if chosen else "")
+        return confirm(parent, title, text, ok_label=ok_label, red=True)
 
     def _on_automation_change(self, dev_id: str) -> bool:
         self.update_device_rows()

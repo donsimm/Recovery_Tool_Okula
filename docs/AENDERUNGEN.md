@@ -16,14 +16,14 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 3 | 0 | 0 |
-| 🔧 Änderungen | 6 | 1 | 0 |
+| 🔧 Änderungen | 6 | 0 | 0 |
 | 💡 Ideen | 21 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
 Erledigt 31.10. zusätzlich: I-007 ✔ (Image prüfen) → Ä-027 ✔ (Demo ohne NAS) → Ä-028 ✔ (Ein/Aus-Symbole) → Ä-029 ✔ (Legende) → Ä-030 ✔ (NAS-Leiste) → I-030 ✔ (Bandbreite) → Ä-031 ✔ (Tage hell/dunkel).
-Als Nächstes: **B-007 belegte Blöcke im partclone-Kopf erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Test [TESTS.md](TESTS.md) Abschnitt 13). **Ä-037 VM-Disk beim Zurückspielen vergrössern erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 13). **I-034 Projektübersicht erledigt** ✔ 10.11. (Extras → Projektübersicht …; am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 12). **I-001 VMs erledigt** ✔ 06.11. (alle 4 Aufträge, [VM.md](VM.md)) – Auftrag 3 „Digitaler Zwilling“ und Auftrag 4 „Snapshots“ umgesetzt und am Server installiert (Dominik 10.11.); Tests [TESTS.md](TESTS.md) Abschnitte 9, 10 und 11 (inkl. Master-Ablauf mit Snapshot „vor Sysprep“). Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 3 (Master-Image mit VMs), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
-Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein) → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
+Als Nächstes: **Ä-007 Bestätigung beim Einschalten der Automatisierung erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 5). **B-007 belegte Blöcke im partclone-Kopf erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Test [TESTS.md](TESTS.md) Abschnitt 13). **Ä-037 VM-Disk beim Zurückspielen vergrössern erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 13). **I-034 Projektübersicht erledigt** ✔ 10.11. (Extras → Projektübersicht …; am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 12). **I-001 VMs erledigt** ✔ 06.11. (alle 4 Aufträge, [VM.md](VM.md)) – Auftrag 3 „Digitaler Zwilling“ und Auftrag 4 „Snapshots“ umgesetzt und am Server installiert (Dominik 10.11.); Tests [TESTS.md](TESTS.md) Abschnitte 9, 10 und 11 (inkl. Master-Ablauf mit Snapshot „vor Sysprep“). Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 3 (Master-Image mit VMs), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
+Vorschlag Reihenfolge (Analyse 31.10.): ~~Ä-007~~ ✔ → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
 ## 🐞 Bugs
 
@@ -41,7 +41,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): **Ä-007** (Sicherheit für Laien, klein
 | Ä-004 | 🟡 | offen | Claude | **Zentrales Protokoll:** `/var/log/okula-recovery/` mit logrotate. Festhalten, wer wann was auf welches Gerät gespielt hat. Dazu Menü → „Diagnosepaket exportieren“ (Logs, Version, Konfiguration ohne Geheimnisse), um Fehler an Claude Code zu melden | 31.10. (Analyse) |
 | Ä-005 | 🟡 | offen | Claude | **Entwicklung absichern:** GitHub Actions, die alle Tests (über 320) bei jedem Push ausführen. Versionsnummer pflegen (steht noch auf `0.1.0`) und Releases taggen, damit der Server einen geprüften Stand zieht statt den Branch-Kopf. `ui.py` (2780 Zeilen) aufteilen | 31.10. (Analyse) |
 | Ä-006 | 🔴 | offen | Claude | **Assistent „Neues Gerät einrichten“:** Sobald ein unbekanntes Gerät auftaucht, fragt ein Hinweis: „Neues Gerät gefunden: HP EliteBook 840 – jetzt einrichten?“. Danach Schritt für Schritt: Name → Ordner/Kunde → Vorlage oder Master-Image → „Sind noch Daten drauf?“ (Ja = Backup) → Zusammenfassung → Start. Heute muss man selbst wissen: Gerät suchen, Doppelklick, Reiter, 5 Abschnitte, Schalter | 31.10. (Laien-Test) |
-| Ä-007 | 🔴 | in Arbeit | Claude | **Bestätigung vor dem Löschen:** Wird der Schalter eingeschaltet, während das Gerät verbunden ist, startet die Automatisierung ohne Rückfrage nach 30 s und löscht die Disk (`ui.save_automation` → `consider`). Nötig: rote Zusammenfassung „Disk Samsung 256 GB von HP-PC-07 wird gelöscht, Master ‚Win11 Büro‘, neuer Name …, Backup: nein“ mit Knopf „Löschen und neu aufsetzen“ | 31.10. (Laien-Test) |
 | Ä-010 | 🟡 | offen | Claude | **Vorabprüfung mit Ampel statt Fehler mitten im Lauf:** Image passt auf die Disk, UEFI/BIOS-Modus passt zum Master, BitLocker auf der Zieldisk (dann ist kein Datei-Backup möglich), Agent-Stick aktuell, Windows-Edition des Masters passt zum Key (Pro/Home). Befund 10.11.: BIOS/MBR-Image (CompactPlayer) liess sich ohne Warnung auf eine UEFI-VM spielen und startet dort nicht. Anzeige: „✔ Bereit“ bzw. „⚠ Achtung: …“ | 31.10. (Laien-Test) |
 | Ä-012 | 🟡 | offen | Claude | **Einfache Sprache im Reiter Automatisierung:** „Zieldisk“ → „Festplatte, die gelöscht wird“; Sysprep, Master und Content-Projekte mit einem „?“ pro Abschnitt erklären. Gerätenamen wie „DESKTOP-8F3K2LQ“ markieren und zum Umbenennen auffordern; optional Namensschema pro Vorlage (z. B. `KUNDE-001` fortlaufend) | 31.10. (Laien-Test) |
 
@@ -77,6 +76,11 @@ Gerätename = Name im Tool.
 
 ## 📌 Entscheidungen
 
+- **Rückfrage beim Einschalten der Automatisierung (Ä-007, Entscheid Dominik 10.11.2026, Variante B):** bei jedem
+  Einschalten von Hand (Häkchen *Auto*, Schalter im Reiter), egal ob verbunden. Keine Rückfrage beim Wieder-Einschalten
+  nach 3 Tagen und beim Aufheben des Stopps ■; kein Eintippen des Gerätenamens (Variante C verworfen); Countdown
+  30 s mit Esc bleibt. Schalter im Reiter lässt sich unvollständig nicht mehr einschalten (Umsetzungs-Agent: sonst
+  startete eine später vervollständigte Einstellung ohne Rückfrage).
 - **Projektübersicht (I-034) im Tool, nicht auf claude.ai** (Entscheid Dominik 10.11.2026): Daten live aus dem Repo (`~/recovery_tool_okula/docs`), Anzeige in Firefox über einen Webserver nur auf 127.0.0.1, Rückmeldungen in einer Datei ausserhalb von Git; die Projektleitung trägt sie auf Zuruf („neue Daten“) in TESTS.md/AENDERUNGEN.md ein und markiert sie als übernommen.
 - **„Nach 3 Tagen wieder einschalten“ bleibt standardmässig an** (Automatisierung; Entscheid Dominik 31.10.2026).
 - **Netzwerkstart nur für freigeschaltete Geräte:** Nur Geräte, die schon mit dem Agent-Stick liefen und
@@ -137,6 +141,18 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 10.11.2026
+- **Ä-007 – Bestätigung beim Einschalten der Automatisierung** (Von: Claude, Laien-Test 31.10.): Wer die
+  Automatisierung von Hand einschaltet (Häkchen *Auto* in der Geräteliste oder Schalter im Reiter *Automatisierung*),
+  sieht zuerst eine rote Zusammenfassung (`automation.confirm_summary`): Disk, die gelöscht wird, Image (Master/eigenes,
+  Anzeigename wie im Reiter), Gerätename danach (mit Windows-Name), Backup vorher, bei VMs Snapshot vorher, Abschluss,
+  bei „Nach 3 Tagen wieder einschalten“ der Hinweis darauf. Verbunden: Knopf „Löschen und neu aufsetzen“, Satz zum
+  30-s-Countdown; nicht verbunden: Knopf „Einschalten“, Satz zum nächsten Verbinden. *Abbrechen* ist Standard und lässt
+  alles aus (nichts gespeichert, kein Verlaufseintrag). Unvollständige Einstellungen → Fehlermeldung statt Rückfrage –
+  jetzt auch beim Schalter im Reiter (vorher liess er sich unvollständig einschalten). `uikit.confirm` kann den Text
+  rot zeigen (`red=True`). Ausschalten, Wieder-Einschalten nach 3 Tagen und Stopp-Knopf ■ ohne Rückfrage; Vorlage
+  anwenden ändert `enabled` nicht. Hilfe (Kapitel Automatisierung, Aufbau des Fensters, Spalte „Auto“) ergänzt, Tests
+  `ConfirmSummaryTest`. Kein neuer Agent-Stick; am Server `git pull && sudo ./install.sh`, Tool neu starten.
+  Test: [TESTS.md](TESTS.md) Abschnitt 5.
 - **B-007 – Anpassen an kleinere Disk: belegte Blöcke im partclone-Kopf richtig lesen** (Von: Okuli, gemeldet
   10.11.): partclone-Kopf Format 0002 hat bei grossen Images `usedblocks = 0`; `shrink.parse_pcl_header` las nur dieses
   Feld → „belegt 0.0 GB … Anpassen: möglich“ beim 1-TB-Image. Jetzt: bei `usedblocks = 0` gilt das Feld danach

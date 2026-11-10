@@ -38,7 +38,7 @@ Alles läuft über das Netzwerk. Die Sicherungen liegen auf dem <b>NAS</b>.
 
 <b>Aufbau des Fensters:</b>
 •  <b>Links</b> stehen alle Geräte (Computer). Ein grüner Punkt bedeutet: verbunden.
-    Das Häkchen <i>Auto</i> schaltet die Automatisierung für ein Gerät ein oder aus.
+    Das Häkchen <i>Auto</i> schaltet die Automatisierung für ein Gerät ein (mit Rückfrage) oder aus.
 •  <b>Rechts</b> steht das NAS mit den Reitern <i>Images</i>, <i>Dateien</i> und <i>Backups</i>.
 •  <b>Oben rechts</b> steht, wie stark der Server gerade arbeitet (CPU, RAM, LAN).
 •  <b>Oben</b> ist die Menüleiste: <i>Menü</i>, <i>Tools</i>, <i>Extras</i> und <i>Hilfe</i>.
@@ -597,9 +597,15 @@ Mit der Automatisierung setzt das Tool ein Gerät selbst neu auf, sobald es mit 
     Nur bei VMs: <i>Vorher Snapshot</i> (oben, Standard an) – direkt vor dem Start entsteht ein Snapshot der Disk
     (Kapitel <i>Virtuelle Maschinen</i>). Schlägt er fehl, startet die Automatisierung nicht.
 7.  Schalter <i>Automatisierung</i> einschalten – oder in der Liste das Häkchen <i>Auto</i> setzen.
+8.  Rückfrage prüfen: Rot steht dort, was passiert – Disk, die gelöscht wird, Image, Gerätename danach,
+    Backup, bei VMs Snapshot, Abschluss und ob sie sich nach 3 Tagen wieder einschaltet.
+    Mit <i>Einschalten</i> bzw. <i>Löschen und neu aufsetzen</i> bestätigen. <i>Abbrechen</i> lässt alles aus.
+    Fehlt noch etwas (Image, Zieldisk, NAS), erscheint statt der Rückfrage eine Meldung, was fehlt.
 
-<b>Achtung:</b> Ist das Gerät beim Einschalten des Schalters verbunden, beginnt der Countdown sofort.
-Nach 30 Sekunden wird die Zieldisk überschrieben.
+<b>Achtung:</b> Ist das Gerät beim Einschalten verbunden, heisst der Knopf <i>Löschen und neu aufsetzen</i>:
+Nach der Bestätigung beginnt der Countdown sofort, nach 30 Sekunden wird die Zieldisk überschrieben.
+Ist es nicht verbunden, heisst er <i>Einschalten</i> – gelöscht wird beim nächsten Verbinden.
+Ausschalten, das Wieder-Einschalten nach 3 Tagen und der Stopp-Knopf ■ fragen nicht nach.
 
 <b>Vorlagen</b>
 •  <i>Als Vorlage speichern …</i>: Einstellungen unter einem Namen speichern (z. B. „Schulungs-PC“).
@@ -907,7 +913,8 @@ In der Geräteliste steht bei jedem Gerät ein Balken mit Prozent und Restzeit.
     Den Grund zeigt das Gerätefenster unter <i>Aufträge</i>. Der rote Balken bleibt, bis der nächste Auftrag startet.
 
 <b>Spalte „Auto“ und Status der Automatisierung</b>
-•  Häkchen gesetzt: Die Automatisierung ist eingeschaltet.
+•  Häkchen gesetzt: Die Automatisierung ist eingeschaltet. Beim Setzen erscheint zuerst eine Rückfrage
+    mit allem, was gelöscht und aufgesetzt wird (Kapitel <i>Automatisierung</i>).
 •  Häkchen grau: Alles ist pausiert (Stopp-Knopf ■ ist rot).
 •  <i>startet in 25 s</i>: Countdown läuft. Am Gerät bricht Esc ab.
 •  <i>wartet (Platz 2)</i>: Es laufen schon so viele Geräte wie erlaubt. Das Gerät kommt gleich dran.

@@ -89,6 +89,53 @@ class SettingsTest(unittest.TestCase):
                          "Samsung SSD 256 GB (S6)")
 
 
+class ConfirmSummaryTest(unittest.TestCase):
+    """Ä-007: Rückfrage beim Einschalten von Hand."""
+
+    def dev(self, is_vm=False):
+        return SimpleNamespace(name="HP-PC-07", is_vm=is_vm, inventory={"disks": [
+            {"model": "Samsung SSD", "size": 256e9, "serial": "S6"}]})
+
+    def settings(self, **kw):
+        return automation.Settings(image="images/win11", disk_key="S6", **kw)
+
+    def test_connected(self):
+        title, text, ok = automation.confirm_summary(self.dev(), self.settings(rearm=False), True, "Win11 Büro")
+        self.assertEqual(title, "Automatisierung für HP-PC-07 einschalten?")
+        self.assertEqual(ok, "Löschen und neu aufsetzen")
+        self.assertIn("Disk, die gelöscht wird: Samsung SSD 256 GB (S6)", text)   # aus dem Inventar
+        self.assertIn("Image: Master-Image „Win11 Büro“", text)
+        self.assertIn("Gerätename danach: „HP-PC-07“ (Windows: HP-PC-07)", text)
+        self.assertIn("Backup vorher: nein", text)
+        self.assertIn("Abschluss: Neustart", text)
+        self.assertIn(automation.CONFIRM_ONLINE, text)
+        self.assertNotIn(automation.CONFIRM_OFFLINE, text)
+        self.assertNotIn("Snapshot", text)
+        self.assertNotIn("wieder aktiv", text)
+
+    def test_not_connected(self):
+        s = self.settings(disk_label="Gespeichert 1 TB", image_mode="own", finish="poweroff")
+        _title, text, ok = automation.confirm_summary(self.dev(), s, False)
+        self.assertEqual(ok, "Einschalten")
+        self.assertIn(automation.CONFIRM_OFFLINE, text)
+        self.assertNotIn(automation.CONFIRM_ONLINE, text)
+        self.assertIn("Disk, die gelöscht wird: Gespeichert 1 TB", text)
+        self.assertIn("Image: Eigenes Image „images/win11“", text)
+        self.assertIn("Abschluss: Herunterfahren", text)
+
+    def test_backup_modes(self):
+        for mode, expected in (("files", "Benutzerdaten"), ("image", "ganze Disk (Disk-Image)")):
+            _t, text, _o = automation.confirm_summary(self.dev(), self.settings(backup=True, backup_mode=mode), True)
+            self.assertIn(f"Backup vorher: {expected}", text)
+
+    def test_vm_snapshot_and_rearm(self):
+        _t, text, _o = automation.confirm_summary(self.dev(True), self.settings(), True)
+        self.assertIn("Snapshot vorher: ja", text)
+        self.assertIn("Nach dem Durchlauf in 3 Tagen wieder aktiv.", text)
+        _t, text, _o = automation.confirm_summary(self.dev(True), self.settings(snapshot=False), True)
+        self.assertIn("Snapshot vorher: nein", text)
+
+
 class EngineTest(unittest.TestCase):
     """Ablauf mit Attrappen statt Agent: Countdown, Warteschlange (N), Erfolg, Fehler, 24 h."""
 

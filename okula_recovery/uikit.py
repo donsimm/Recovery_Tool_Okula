@@ -85,10 +85,14 @@ def scrolled(child: Gtk.Widget) -> Gtk.ScrolledWindow:
     return sw
 
 
-def confirm(parent: Gtk.Window, title: str, text: str, ok_label: str = "Löschen") -> bool:
+def confirm(parent: Gtk.Window, title: str, text: str, ok_label: str = "Löschen", red: bool = False) -> bool:
+    """Rückfrage mit rotem Knopf, Abbrechen als Standard. red: Text rot (Zusammenfassung vor dem Löschen)."""
     dlg = Gtk.MessageDialog(transient_for=parent, modal=True, message_type=Gtk.MessageType.WARNING,
                             buttons=Gtk.ButtonsType.NONE, text=title)
-    dlg.format_secondary_text(text)
+    if red:
+        dlg.format_secondary_markup(f'<span foreground="#c62828">{GLib.markup_escape_text(text)}</span>')
+    else:
+        dlg.format_secondary_text(text)
     dlg.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
     btn = dlg.add_button(ok_label, Gtk.ResponseType.OK)
     btn.get_style_context().add_class("destructive-action")

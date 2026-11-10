@@ -114,6 +114,14 @@ Geht ohne echte Geräte mit VMs (Plan 06.11.): **Referenz = VM-Win11** neu **von
 - [ ] Hauptschalter: Stopp-Knopf ■ über der Geräteliste (wird rot) → Gerät startet keinen Countdown
 - [ ] Vorlage speichern („Schulungs-PC“), bei zweitem Gerät anwenden, Zieldisk dort wählen
 - [ ] Nach 3 Tagen: Häkchen wieder an (oder Option aus → bleibt aus)
+- [ ] **Rückfrage (Ä-007), Gerät verbunden:** Häkchen *Auto* setzen → rote Zusammenfassung (Disk, Image, Gerätename,
+      Backup, Abschluss, „in 3 Tagen wieder aktiv“) mit Knopf „Löschen und neu aufsetzen“; *Abbrechen* → Häkchen
+      bleibt aus, kein Countdown, kein Verlaufseintrag; bestätigen → Countdown 30 s
+- [ ] **Rückfrage, Gerät nicht verbunden:** Knopf „Einschalten“ und Satz „Beim nächsten Verbinden wird die Disk gelöscht.“
+- [ ] **Rückfrage im Reiter:** Schalter *Automatisierung* ein → gleiche Rückfrage; *Abbrechen* → Schalter wieder aus;
+      Ausschalten und andere Änderungen bei eingeschalteter Automatisierung ohne Rückfrage
+- [ ] **Unvollständig** (z. B. ohne Zieldisk): Häkchen bzw. Schalter → Meldung, was fehlt, keine Rückfrage, bleibt aus
+- [ ] Rückfrage bei einer VM mit Zeile „Snapshot vorher“ und beim DEMO-PC
 
 ### 6. Demo-Gerät (Vorführung)
 - (alle geprüft)

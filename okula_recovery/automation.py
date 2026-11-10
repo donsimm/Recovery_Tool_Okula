@@ -133,6 +133,37 @@ def problems(s: Settings, nas_root: str | Path | None) -> list[str]:
     return out
 
 
+BACKUP_TEXT = {"files": "Benutzerdaten", "image": "ganze Disk (Disk-Image)"}
+CONFIRM_ONLINE = "Das Gerät ist verbunden – das Löschen beginnt nach 30 s Countdown."
+CONFIRM_OFFLINE = "Beim nächsten Verbinden wird die Disk gelöscht."
+
+
+def confirm_summary(dev, s: Settings, connected: bool, image_name: str = "") -> tuple[str, str, str]:
+    """Rückfrage vor dem Einschalten von Hand (Ä-007): (Titel, Text, Knopfbeschriftung).
+
+    image_name: Anzeigename des Images wie im Reiter (leer = Pfad aus den Einstellungen).
+    """
+    from okula_recovery import winunattend
+    label = s.disk_label
+    if not label:
+        disk = find_disk((getattr(dev, "inventory", None) or {}).get("disks") or [], s.disk_key)
+        label = disk_label(disk) if disk else s.disk_key or "(keine)"
+    image = image_name or s.image or "(keines)"
+    win = winunattend.computer_name(dev.name) or "(ungültig)"
+    lines = [f"Disk, die gelöscht wird: {label}",
+             f"Image: {'Master-Image' if s.image_mode == 'master' else 'Eigenes Image'} „{image}“",
+             f"Gerätename danach: „{dev.name}“ (Windows: {win})",
+             "Backup vorher: " + (BACKUP_TEXT[s.backup_mode] if s.backup else "nein")]
+    if getattr(dev, "is_vm", False):
+        lines.append("Snapshot vorher: " + ("ja" if s.snapshot else "nein"))
+    lines.append(f"Abschluss: {FINISH[s.finish]}")
+    if s.rearm:
+        lines.append(f"Nach dem Durchlauf in {REARM_LABEL} wieder aktiv.")
+    lines += ["", CONFIRM_ONLINE if connected else CONFIRM_OFFLINE]
+    return (f"Automatisierung für {dev.name} einschalten?", "\n".join(lines),
+            "Löschen und neu aufsetzen" if connected else "Einschalten")
+
+
 def rearm_at(s: Settings) -> datetime | None:
     if s.enabled or not s.rearm or not s.done_at:
         return None
