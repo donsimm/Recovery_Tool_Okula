@@ -1,6 +1,6 @@
 # Ä-007 – Bestätigung beim Einschalten der Automatisierung
 
-Status: umgesetzt (Commit 1f5c409) · erstellt 10.11.2026 von Okuli (Projektleitung) · Freigabe: Dominik 10.11.
+Status: abgenommen (Commit 1f5c409) · Abnahme Okuli 10.11.: Diff, Tests, Hilfe
 
 ## Rolle und Einstieg
 

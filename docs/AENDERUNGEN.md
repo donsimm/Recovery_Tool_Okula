@@ -15,9 +15,9 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
-| 🐞 Bugs | 3 | 0 | 0 |
+| 🐞 Bugs | 4 | 0 | 0 |
 | 🔧 Änderungen | 6 | 0 | 0 |
-| 💡 Ideen | 21 | 0 | 0 |
+| 💡 Ideen | 22 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
@@ -32,6 +32,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): ~~Ä-007~~ ✔ → **I-005/I-006** (Aufb
 | B-004 | 🔴 | offen | Dominik | **HP EliteBook 850 G1 in „UEFI Native (Without CSM)“: Agent-Stick wird nicht angezeigt, Netzwerkstart (UEFI IPv4) scheitert – im Tool kein Hinweis.** Stick: MBR + FAT32 (Typ 0x0c) mit Debian-shim; PXE: Proxy-DHCP mit `pxe-prompt`/`pxe-service` BC_EFI/X86-64_EFI. Befund 05.11. (BIOS-Fotos): Secure Boot aus, Fast Boot aus, USB device boot an; **„PXE Internal IPV4 NIC boot“ aus** (nur „PXE Internal NIC boot“ = Legacy an) → im UEFI-Modus gibt es keinen Netzwerkstart; F9 zeigt nur „Boot From EFI File“ – auch der Stick fehlt. Nächster Test: IPV4 NIC boot an; Stick über „Boot From EFI File“ → EFI/boot/bootx64.efi starten (liest die Firmware die FAT-Partition?). BIOS-Vergleich 05.11.: einziger lesbarer Unterschied die **BIOS-Version** – EliteBook 2 (geht nicht) L71 **01.49** (2020), EliteBook 1 (geht) L71 **01.11** (2014); Einstellungen über Linux nicht lesbar (B-006) | 05.11. |
 | B-008 | ⚪ | offen | Okuli | **Projektübersicht im Dunkelmodus: Auswahlfelder kaum lesbar** (Art der neuen Notiz „Idee“, Filter „Priorität: alle“ – hellgrau auf weiss). Befund 10.11. per Bildschirmfoto | 10.11. |
 | B-009 | ⚪ | offen | Okuli | **4 Tests rot, wenn sie als normaler Benutzer laufen:** `test_imaging` (ConsoleAndPowerTest.test_image_shows_progress_on_console, EndToEndTest.test_full_image, EndToEndTest.test_failure_leaves_no_partial) und `test_jobs` (ParallelJobsTest.test_two_disks_in_parallel_same_disk_refused) scheitern mit „No such file or directory: 'sfdisk'“ – `sfdisk` liegt in `/usr/sbin`, das bei Debian nicht im PATH normaler Benutzer ist. Mit `PATH=…:/usr/sbin` grün. Zusätzlich RealPartcloneTest.test_ext4_roundtrip: braucht Schreibrecht auf `/var/log/partclone.log` (nur root). Kein Fehler im Betrieb (Agent läuft als root). Lösung: Programme mit vollem Pfad aufrufen bzw. PATH um sbin ergänzen; Root-Test sauber überspringen | 10.11. |
+| B-010 | 🟡 | offen | Dominik | **Agent-Stick startet am Videoserver-PC nicht:** live-boot meldet „Can not mount /dev/loop1 (/run/live/medium/live/okula-agent.squashfs)“ → BusyBox-Shell (Debian-Teil lädt, nur der Agent-Teil nicht). Gleichzeitig jede Sekunde `mce: [Hardware Error]: CPU 3: Machine Check: 0 Bank 0: d4000…40150` (korrigierter Fehler im Befehlsabruf, CPU 506e3 = Skylake, microcode f0). Bei einem Start sah die Firmware den Stick gar nicht (UEFI-Shell, nur NVMe). Kein Netzwerkstart versucht (PXE-Protokoll 12:47/13:15 leer). Verdacht: Datei auf dem Stick defekt, USB-Lesefehler oder instabile CPU. Nächste Schritte: Netzwerkstart probieren; in der Shell `dmesg \| tail -40` fotografieren; Stick am Server prüfen; BIOS (Übertaktung/Undervolting, Update) | 10.11. |
 
 ## 🔧 Änderungen / Verbesserungen
 
@@ -69,6 +70,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): ~~Ä-007~~ ✔ → **I-005/I-006** (Aufb
 | I-027 | ⚪ | offen | Claude | **Neu aufsetzen direkt am Gerät:** Auf dem Agent-Bildschirm ein Menü „Mit Master neu aufsetzen“, geschützt mit PIN, damit Techniker vor Ort das Tool nicht brauchen (Acronis: user-initiated deployment) |
 | I-029 | ⚪ | offen | Claude | **Intel vPro/AMT:** Gerät ein- und ausschalten, ins BIOS starten und den Bildschirm sehen, auch ohne Agent und bei abgestürztem OS (MeshCentral) |
 | I-035 | ⚪ | offen | Okuli | **Hinweis bei VM-Disk grösser als freier Platz:** Ä-037 bietet „VM-Disk auf 1001 GB vergrössern“ an, obwohl der Server nur 889 GB frei hat (Befund 10.11., Probe-VM). Zum Zurückspielen reicht es (qcow2 wächst nur mit den belegten Daten), füllt sich die VM später, läuft der Server voll. Vorschlag: Hinweis „⚠ Disk grösser als der freie Platz auf dem Server (… GB)“ im Prüftext, ohne zu sperren |
+| I-036 | ⚪ | offen | Okuli | **Hardware-Fehler (MCE/WHEA) anzeigen:** Der Agent liest Kernel-Meldungen `mce: [Hardware Error]` (bzw. `rasdaemon`) und meldet sie im Tool (Gerätefenster, Verlauf, Hinweis in der Liste). Anlass B-010 (CPU 3 meldet laufend Fehler). Passt zu I-033 Hardware-Test |
 
 Umgesetzte Ideen: Windows-Master-Image mit Sysprep ([MASTER-IMAGE.md](MASTER-IMAGE.md)), Ordner an Geräte senden
 ([ORDNER-SENDEN.md](ORDNER-SENDEN.md)), Automatisierung ([AUTOMATISIERUNG.md](AUTOMATISIERUNG.md)),
