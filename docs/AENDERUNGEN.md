@@ -15,8 +15,8 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
-| 🐞 Bugs | 4 | 0 | 0 |
-| 🔧 Änderungen | 6 | 0 | 0 |
+| 🐞 Bugs | 3 | 0 | 0 |
+| 🔧 Änderungen | 7 | 0 | 0 |
 | 💡 Ideen | 22 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
@@ -32,7 +32,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): ~~Ä-007~~ ✔ → **I-005/I-006** (Aufb
 | B-004 | 🔴 | offen | Dominik | **HP EliteBook 850 G1 in „UEFI Native (Without CSM)“: Agent-Stick wird nicht angezeigt, Netzwerkstart (UEFI IPv4) scheitert – im Tool kein Hinweis.** Stick: MBR + FAT32 (Typ 0x0c) mit Debian-shim; PXE: Proxy-DHCP mit `pxe-prompt`/`pxe-service` BC_EFI/X86-64_EFI. Befund 05.11. (BIOS-Fotos): Secure Boot aus, Fast Boot aus, USB device boot an; **„PXE Internal IPV4 NIC boot“ aus** (nur „PXE Internal NIC boot“ = Legacy an) → im UEFI-Modus gibt es keinen Netzwerkstart; F9 zeigt nur „Boot From EFI File“ – auch der Stick fehlt. Nächster Test: IPV4 NIC boot an; Stick über „Boot From EFI File“ → EFI/boot/bootx64.efi starten (liest die Firmware die FAT-Partition?). BIOS-Vergleich 05.11.: einziger lesbarer Unterschied die **BIOS-Version** – EliteBook 2 (geht nicht) L71 **01.49** (2020), EliteBook 1 (geht) L71 **01.11** (2014); Einstellungen über Linux nicht lesbar (B-006) | 05.11. |
 | B-008 | ⚪ | offen | Okuli | **Projektübersicht im Dunkelmodus: Auswahlfelder kaum lesbar** (Art der neuen Notiz „Idee“, Filter „Priorität: alle“ – hellgrau auf weiss). Befund 10.11. per Bildschirmfoto | 10.11. |
 | B-009 | ⚪ | offen | Okuli | **4 Tests rot, wenn sie als normaler Benutzer laufen:** `test_imaging` (ConsoleAndPowerTest.test_image_shows_progress_on_console, EndToEndTest.test_full_image, EndToEndTest.test_failure_leaves_no_partial) und `test_jobs` (ParallelJobsTest.test_two_disks_in_parallel_same_disk_refused) scheitern mit „No such file or directory: 'sfdisk'“ – `sfdisk` liegt in `/usr/sbin`, das bei Debian nicht im PATH normaler Benutzer ist. Mit `PATH=…:/usr/sbin` grün. Zusätzlich RealPartcloneTest.test_ext4_roundtrip: braucht Schreibrecht auf `/var/log/partclone.log` (nur root). Kein Fehler im Betrieb (Agent läuft als root). Lösung: Programme mit vollem Pfad aufrufen bzw. PATH um sbin ergänzen; Root-Test sauber überspringen | 10.11. |
-| B-010 | 🟡 | offen | Dominik | **Agent-Stick startet am Videoserver-PC nicht:** live-boot meldet „Can not mount /dev/loop1 (/run/live/medium/live/okula-agent.squashfs)“ → BusyBox-Shell (Debian-Teil lädt, nur der Agent-Teil nicht). Gleichzeitig jede Sekunde `mce: [Hardware Error]: CPU 3: Machine Check: 0 Bank 0: d4000…40150` (korrigierter Fehler im Befehlsabruf, CPU 506e3 = Skylake, microcode f0). Bei einem Start sah die Firmware den Stick gar nicht (UEFI-Shell, nur NVMe). Kein Netzwerkstart versucht (PXE-Protokoll 12:47/13:15 leer). Verdacht: Datei auf dem Stick defekt, USB-Lesefehler oder instabile CPU. **Netzwerkstart 13:50 (Legacy, PXELINUX) klappt:** Agent verbunden, Gerät SRV-002 = Supermicro X11SSV-Q, i5-6600T, BIOS 2.0 (12/2016); MCE-Meldungen auch dort → CPU/BIOS-Thema, nicht der Start-Weg. Stick (SanDisk 3.2Gen1 64 GB, OKULAAGENT) steckte dabei im Gerät und ist im Inventar sichtbar. Damit eher Stick-Datei bzw. USB-Lesen. Nächste Schritte: Stick am Server prüfen (`okula-agent.squashfs` mit `unsquashfs -s`, ggf. neu erstellen); BIOS-Update für X11SSV-Q prüfen | 10.11. |
 
 ## 🔧 Änderungen / Verbesserungen
 
@@ -44,6 +43,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): ~~Ä-007~~ ✔ → **I-005/I-006** (Aufb
 | Ä-006 | 🔴 | offen | Claude | **Assistent „Neues Gerät einrichten“:** Sobald ein unbekanntes Gerät auftaucht, fragt ein Hinweis: „Neues Gerät gefunden: HP EliteBook 840 – jetzt einrichten?“. Danach Schritt für Schritt: Name → Ordner/Kunde → Vorlage oder Master-Image → „Sind noch Daten drauf?“ (Ja = Backup) → Zusammenfassung → Start. Heute muss man selbst wissen: Gerät suchen, Doppelklick, Reiter, 5 Abschnitte, Schalter | 31.10. (Laien-Test) |
 | Ä-010 | 🟡 | offen | Claude | **Vorabprüfung mit Ampel statt Fehler mitten im Lauf:** Image passt auf die Disk, UEFI/BIOS-Modus passt zum Master, BitLocker auf der Zieldisk (dann ist kein Datei-Backup möglich), Agent-Stick aktuell, Windows-Edition des Masters passt zum Key (Pro/Home). Befund 10.11.: BIOS/MBR-Image (CompactPlayer) liess sich ohne Warnung auf eine UEFI-VM spielen und startet dort nicht. Anzeige: „✔ Bereit“ bzw. „⚠ Achtung: …“ | 31.10. (Laien-Test) |
 | Ä-012 | 🟡 | offen | Claude | **Einfache Sprache im Reiter Automatisierung:** „Zieldisk“ → „Festplatte, die gelöscht wird“; Sysprep, Master und Content-Projekte mit einem „?“ pro Abschnitt erklären. Gerätenamen wie „DESKTOP-8F3K2LQ“ markieren und zum Umbenennen auffordern; optional Namensschema pro Vorlage (z. B. `KUNDE-001` fortlaufend) | 31.10. (Laien-Test) |
+| Ä-038 | 🟡 | offen | Dominik/Okuli | **Agent-Stick: Meldung „fertig, jetzt abziehen“ und Prüfung am Schluss:** Heute zeigt das Ende des Stick-Baus nur der Balken („Stick bereit“ bzw. „Fehlgeschlagen“ + Log) – leicht zu übersehen. Befund 10.11. (B-010): Stick 24 s nach dem Start abgezogen, keine auffällige Meldung, `okula-agent.squashfs` 0 Byte → Start am Gerät scheitert spät in der BusyBox-Shell. Gewünscht (Dominik): Popup „Stick fertig – jetzt abziehen“. Dazu: vor „fertig“ die Dateien auf dem Stick prüfen (Agent-Teil > 0 Byte und gültiger Squashfs-Kopf, Grösse filesystem.squashfs wie im ISO); bei Fehler rotes Popup mit Grund und „Stick neu erstellen“; Abziehen während des Baus klar melden | 10.11. |
 
 ## 💡 Ideen
 
@@ -143,6 +143,13 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 10.11.2026
+- **B-010 – Agent-Stick startete am Videoserver-PC (SRV-002) nicht** (Von: Dominik, gemeldet 10.11.): live-boot
+  „Can not mount /dev/loop1 (…/live/okula-agent.squashfs)“ → BusyBox-Shell. Ursache (Okuli): Der Stick war unvollständig –
+  `okula-agent.squashfs` 0 Byte; Kernel-Protokoll: Stick-Bau 09:31:13 gestartet, Stick 09:31:37 abgezogen („lost async
+  page write“). Netzwerkstart klappte (Supermicro X11SSV-Q, i5-6600T, BIOS 2.0 von 2016). Stick neu erstellt → Start
+  am Gerät ok (Dominik). Kein Code-Fehler; dass der Abbruch unbemerkt blieb, behebt Ä-038. Nebenbefund: CPU 3 meldet
+  laufend korrigierte Machine-Check-Fehler (Bank 0) – Hardware/BIOS des Geräts, Empfehlung BIOS-Update; Anzeige im
+  Tool: I-036.
 - **Ä-007 – Bestätigung beim Einschalten der Automatisierung** (Von: Claude, Laien-Test 31.10.): Wer die
   Automatisierung von Hand einschaltet (Häkchen *Auto* in der Geräteliste oder Schalter im Reiter *Automatisierung*),
   sieht zuerst eine rote Zusammenfassung (`automation.confirm_summary`): Disk, die gelöscht wird, Image (Master/eigenes,
