@@ -743,6 +743,9 @@ Netzwerkstart mit dem aktuellen Tool). Geprüft wird nur lesend: Daten, Windows 
 •  <i>Oberfläche</i>: Jeder Sektor wird gelesen; Lesefehler bedeuten: Disk ersetzen.
 •  <i>Arbeitsspeicher</i>: Teilprüfung im laufenden System. Ein Test ohne Befund schliesst Defekte nicht ganz aus.
 •  <i>CPU unter Last</i>: Temperatur, Takt und Drosselung – drosselt das Gerät, Lüfter und Wärmeleitpaste prüfen.
+    Dazu Hardware-Fehler des Prozessors (Machine Check) aus dem Kernel-Protokoll, zusammengefasst nach CPU und Bank:
+    gelb, wenn seit dem Start des Geräts Hardware-Fehler gemeldet wurden; rot, wenn während der Last neue dazukommen
+    oder ein Fehler nicht korrigiert wurde. Abhilfe: BIOS-Update, sonst Prozessor bzw. Mainboard prüfen.
 •  <i>Netzwerk</i>: tatsächlicher Durchsatz zum Server (ohne Bandbreitengrenze) und Verbindungsgeschwindigkeit."""),
 
     ("Windows / Linux installieren", """<big><b>Betriebssystem installieren</b></big>

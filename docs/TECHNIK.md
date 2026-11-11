@@ -477,6 +477,21 @@ Reiter **BIOS** im Gerätefenster. Agent (`biosread.py`, nur stdlib): Grundangab
 ### Hardware-Test (I-023)
 Reiter **Hardware-Test** im Gerätefenster, nur lesend. Agent (`hwtest.py`, stdlib + smartctl): Akku (`power_supply`: Kapazität gegen neu, Zyklen), Temperaturen (hwmon/thermal), SMART-Selbsttest kurz/lang (`smartctl -t`, ATA und NVMe, Werte 5/197/198/199 bzw. NVMe Abnutzung/Reserve/Medienfehler), Oberfläche (jeden Sektor lesen, `posix_fadvise` gegen Zwischenspeicher, Lesefehler übersprungen), Arbeitsspeicher (Muster 0x00/FF/55/AA im freien Speicher, Schnell 15 %/max. 1 GiB, Gründlich 60 %/max. 16 GiB), CPU-Last (je Kern ein Prozess, Temperatur, Takt, `thermal_throttle`, Kernel-Meldungen zu Machine Checks), Netzwerk (Daten an das Tool, ohne Bandbreitengrenze). Befehl `hwtest`: Ereignisse step_start/progress/step, Durchsatz über Daten-Frames mit Bestätigung, Abbrechen per `cancel`; die gewählten Disks sind gesperrt. Tool: Auftrag „Hardware-Test“ (`jobs.hwtest_work`), Bericht in `Device.hwtests` (letzte 10), Verlauf, PDF-Prüfprotokoll (`hwreport.py`, reportlab). Neuer Agent-Stick nötig. Folgt: vollständiger RAM-Test mit memtest86+ (I-033).
 
+**Prozessor-Fehler (Machine Check, B-011):** Der Agent liest das Kernel-Protokoll seit dem Start vor und nach der Last
+(`journalctl -k -b -o short-monotonic --no-pager`, liefert es nichts oder einen Fehler: `dmesg`) – bewusst **ohne
+`journalctl -g`** (braucht PCRE2 zur Laufzeit; Fehler fielen früher als „0 Fehler“ durch). Gefiltert wird in Python
+(„mce“, „machine check“, „hardware error“, Gross-/Kleinschreibung egal); Rückgabewert, Zeitlimit (60 s) und fehlende
+Programme werden geprüft. Ein Ereignis ist die Zeile `CPU n: Machine Check: … Bank b: <Status>` (PROCESSOR-, TSC-,
+ADDR-Zeilen zählen nicht), `Machine check events logged` zählt „ohne Zuordnung“; Status-Bit 61 (UC) unterscheidet
+korrigiert/nicht korrigiert. Gruppen nach CPU, Bank und Art mit Anzahl und höchstens 3 Beispielzeilen (gekürzt). Neu
+während der Last = Zeilen, die zwischen den beiden Lesungen dazukamen (Zeitstempel unterscheiden gleichlautende
+Meldungen). Bewertung: neue während der Last oder nicht korrigiert → rot; nur vor dem Test → gelb („Hardware-Fehler
+seit dem Start gemeldet (CPU 3, Bank 0: 12 Mal) – BIOS-Update bzw. Prozessor prüfen“); Temperatur/Drosselung wie
+bisher, der schlechtere Status gilt. Kernel-Protokoll nicht lesbar → Detail „Hardware-Fehler nicht prüfbar“, Status
+unverändert. `values`: `mce` (neu während der Last), `mce_boot` (seit Start), `mce_groups` (`cpu`, `bank`, `count`,
+`kind` = corrected/uncorrected/leer, `during`). Funktionen `mce_events`/`mce_groups`/`new_lines` rein (Tests mit den
+Zeilen vom Foto SRV-002), `_mce_lines` für Tests austauschbar.
+
 ### Inventar exportieren (CSV/PDF)
 
 **Menü → Inventar exportieren (CSV/PDF) …** oder **Rechtsklick auf einen Ordner** (bzw. „Neu / nicht einsortiert“ oder ein Gerät) → **„Inventar exportieren …“**.

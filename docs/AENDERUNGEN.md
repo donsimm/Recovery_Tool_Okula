@@ -15,14 +15,14 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
-| 🐞 Bugs | 2 | 0 | 0 |
+| 🐞 Bugs | 1 | 0 | 0 |
 | 🔧 Änderungen | 6 | 0 | 0 |
 | 💡 Ideen | 22 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
 Erledigt 31.10. zusätzlich: I-007 ✔ (Image prüfen) → Ä-027 ✔ (Demo ohne NAS) → Ä-028 ✔ (Ein/Aus-Symbole) → Ä-029 ✔ (Legende) → Ä-030 ✔ (NAS-Leiste) → I-030 ✔ (Bandbreite) → Ä-031 ✔ (Tage hell/dunkel).
-Als Nächstes: **B-008 Projektübersicht im Dunkelmodus lesbar erledigt** ✔ 10.11. (abgenommen von Okuli; am Server am Server `git pull && sudo ./install.sh`, Firefox-Seite neu laden, kein neuer Agent-Stick; Test [TESTS.md](TESTS.md) Abschnitt 12). **B-009 Tests grün ohne sbin im PATH erledigt** ✔ 10.11. (Abnahme durch Okuli; nur Tests und Werkzeugsuche, am Server `git pull && sudo ./install.sh` genügt, neuer Agent-Stick nicht nötig). **Ä-038 Agent-Stick „fertig“-Meldung und Prüfung am Schluss erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 14). **Ä-007 Bestätigung beim Einschalten der Automatisierung erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 5). **B-007 belegte Blöcke im partclone-Kopf erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Test [TESTS.md](TESTS.md) Abschnitt 13). **Ä-037 VM-Disk beim Zurückspielen vergrössern erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 13). **I-034 Projektübersicht erledigt** ✔ 10.11. (Extras → Projektübersicht …; am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 12). **I-001 VMs erledigt** ✔ 06.11. (alle 4 Aufträge, [VM.md](VM.md)) – Auftrag 3 „Digitaler Zwilling“ und Auftrag 4 „Snapshots“ umgesetzt und am Server installiert (Dominik 10.11.); Tests [TESTS.md](TESTS.md) Abschnitte 9, 10 und 11 (inkl. Master-Ablauf mit Snapshot „vor Sysprep“). Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 3 (Master-Image mit VMs), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
+Als Nächstes: **B-011 Hardware-Test meldet Prozessor-Fehler seit dem Start erledigt** ✔ 11.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, **neuer Agent-Stick nötig**; Test [TESTS.md](TESTS.md) Abschnitt 15 an SRV-002). **B-008 Projektübersicht im Dunkelmodus lesbar erledigt** ✔ 10.11. (abgenommen von Okuli; am Server am Server `git pull && sudo ./install.sh`, Firefox-Seite neu laden, kein neuer Agent-Stick; Test [TESTS.md](TESTS.md) Abschnitt 12). **B-009 Tests grün ohne sbin im PATH erledigt** ✔ 10.11. (Abnahme durch Okuli; nur Tests und Werkzeugsuche, am Server `git pull && sudo ./install.sh` genügt, neuer Agent-Stick nicht nötig). **Ä-038 Agent-Stick „fertig“-Meldung und Prüfung am Schluss erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 14). **Ä-007 Bestätigung beim Einschalten der Automatisierung erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 5). **B-007 belegte Blöcke im partclone-Kopf erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Test [TESTS.md](TESTS.md) Abschnitt 13). **Ä-037 VM-Disk beim Zurückspielen vergrössern erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 13). **I-034 Projektübersicht erledigt** ✔ 10.11. (Extras → Projektübersicht …; am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 12). **I-001 VMs erledigt** ✔ 06.11. (alle 4 Aufträge, [VM.md](VM.md)) – Auftrag 3 „Digitaler Zwilling“ und Auftrag 4 „Snapshots“ umgesetzt und am Server installiert (Dominik 10.11.); Tests [TESTS.md](TESTS.md) Abschnitte 9, 10 und 11 (inkl. Master-Ablauf mit Snapshot „vor Sysprep“). Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 3 (Master-Image mit VMs), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
 Vorschlag Reihenfolge (Analyse 31.10.): ~~Ä-007~~ ✔ → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
 ## 🐞 Bugs
@@ -30,7 +30,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): ~~Ä-007~~ ✔ → **I-005/I-006** (Aufb
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
 | B-004 | 🔴 | offen | Dominik | **HP EliteBook 850 G1 in „UEFI Native (Without CSM)“: Agent-Stick wird nicht angezeigt, Netzwerkstart (UEFI IPv4) scheitert – im Tool kein Hinweis.** Stick: MBR + FAT32 (Typ 0x0c) mit Debian-shim; PXE: Proxy-DHCP mit `pxe-prompt`/`pxe-service` BC_EFI/X86-64_EFI. Befund 05.11. (BIOS-Fotos): Secure Boot aus, Fast Boot aus, USB device boot an; **„PXE Internal IPV4 NIC boot“ aus** (nur „PXE Internal NIC boot“ = Legacy an) → im UEFI-Modus gibt es keinen Netzwerkstart; F9 zeigt nur „Boot From EFI File“ – auch der Stick fehlt. Nächster Test: IPV4 NIC boot an; Stick über „Boot From EFI File“ → EFI/boot/bootx64.efi starten (liest die Firmware die FAT-Partition?). BIOS-Vergleich 05.11.: einziger lesbarer Unterschied die **BIOS-Version** – EliteBook 2 (geht nicht) L71 **01.49** (2020), EliteBook 1 (geht) L71 **01.11** (2014); Einstellungen über Linux nicht lesbar (B-006) | 05.11. |
-| B-011 | 🟡 | offen | Dominik | **Hardware-Test meldet Prozessor-Fehler nicht, die vor dem Test aufgetreten sind:** SRV-002 (CPU 3 meldet korrigierte MCE, Bank 0 – Bilder 10.11.) → gründlicher Test 10.11. 16:27 „CPU unter Last: ok, mce 0“. Ursache (Okuli 11.11.): `hwtest.cpu()` zählt nur MCE-Zeilen, die während der Last neu ins Kernel-Log kommen (`mce0` vorher, Differenz nachher, `hwtest.py:338/364`); Fehler seit dem Start werden ignoriert, sporadische korrigierte Fehler fallen so leicht durch. Lösung: alle MCE seit Start auswerten – während der Last rot, vorher gelb; nach CPU/Bank zusammenfassen. Neuer Agent-Stick nötig. Erster Schritt zu I-036 | 11.11. |
 
 ## 🔧 Änderungen / Verbesserungen
 
@@ -139,6 +138,23 @@ Gerätename = Name im Tool.
 ## ✅ Erledigt – Änderungsprotokoll
 
 Neueste zuoberst.
+
+### 11.11.2026
+- **B-011 – Hardware-Test meldet Prozessor-Fehler seit dem Start** (Von: Dominik, gemeldet 11.11.; SRV-002: CPU 3
+  meldet jede Sekunde korrigierte MCE, Bank 0, gründlicher Test 10.11. trotzdem „ok, mce 0“): „CPU unter Last“ wertet
+  jetzt alle Machine-Check-Meldungen seit dem Start aus. Kernel-Protokoll ohne `journalctl -g` gelesen
+  (`journalctl -k -b -o short-monotonic`, sonst `dmesg`), in Python gefiltert, Rückgabewert/Fehler geprüft; liefert
+  keine Quelle Daten → Detail „Hardware-Fehler nicht prüfbar“ statt stillschweigend 0. Ereignisse (`CPU n: Machine
+  Check … Bank b: <Status>`, „Machine check events logged“ = ohne Zuordnung) nach CPU, Bank und Art (Bit 61:
+  korrigiert/nicht korrigiert) gruppiert, je Gruppe Anzahl und bis 3 Beispielzeilen. Neu während der Last oder nicht
+  korrigiert → rot; nur vor dem Test → gelb „Hardware-Fehler seit dem Start gemeldet (CPU 3, Bank 0: 12 Mal) –
+  BIOS-Update bzw. Prozessor prüfen“; Temperatur/Drosselung unverändert, der schlechtere Status gilt. `values`: `mce`
+  (neu), `mce_boot`, `mce_groups`. Gilt für Schnelltest und Gründlich; Gerätefenster und PDF zeigen Kurztext und
+  Details wie bisher; Demo-Agent unverändert. Nur echte Fehlerzeilen zählen (Startmeldungen wie „mce: CPU supports 10
+  MCE banks“ nicht). Ursache für „mce 0“ trotz Fehlern am Stick nicht am Gerät nachgeprüft:
+  PCRE2 fehlt kaum (Debian-`grep` hängt von `libpcre2-8-0` ab), Foto (11.11.) und Test (10.11.) stammen aus
+  verschiedenen Starts; `-g`/PCRE2 als Fehlerquelle entfällt jetzt ohnehin, „nicht prüfbar“ wird sichtbar. Hilfe: Kapitel „Hardware-Test“. Details [TECHNIK.md](TECHNIK.md), Tests
+  `MceTest` in `tests/test_hwtest.py`, Prüfung [TESTS.md](TESTS.md) Abschnitt 15. **Neuer Agent-Stick nötig.**
 
 ### 10.11.2026
 - **B-009 – Tests grün auch als normaler Benutzer** (Von: Okuli, gemeldet 10.11.): Vier Tests in `test_imaging`/

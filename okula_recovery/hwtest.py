@@ -12,10 +12,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Callable
 
@@ -323,10 +325,121 @@ def _throttles(sys_root: Path) -> int:
                sys_root.glob("devices/system/cpu/cpu[0-9]*/thermal_throttle/*_throttle_count"))
 
 
-def _mce_lines() -> list[str]:
-    r = subprocess.run(["journalctl", "-k", "-b", "--no-pager", "-q", "-g", "mce|machine check|hardware error"],
-                       capture_output=True, text=True, timeout=30)
-    return [l for l in r.stdout.splitlines() if l.strip()]
+# Hardware-Fehler (Machine Check, B-011). Kernel-Log ohne `journalctl -g` lesen (braucht PCRE2 zur Laufzeit, ein
+# Fehler fiel früher als „0 Fehler“ durch) und in Python filtern. Mit Zeitstempel, damit sich gleichlautende
+# Meldungen verschiedener Ereignisse unterscheiden.
+KERNEL_LOG_SOURCES = (["journalctl", "-k", "-b", "-o", "short-monotonic", "--no-pager"], ["dmesg"])
+MCE_WORDS = ("mce", "machine check", "hardware error")
+# „mce: [Hardware Error]: CPU 3: Machine Check: 0 Bank 0: d400008000040150“ (auch „Machine Check Exception“)
+MCE_EVENT = re.compile(r"CPU\s+(\d+):\s*Machine Check[^:]*:\s*\S+\s+Bank\s+(\d+):\s*([0-9a-f]+)", re.I)
+MCE_UNASSIGNED = re.compile(r"machine check events logged", re.I)
+MCE_UC_BIT = 1 << 61                      # Status-Bit 61: nicht korrigiert
+MCE_KIND = {"corrected": "korrigiert", "uncorrected": "nicht korrigiert", "": "Art unbekannt"}
+
+
+def _run_lines(cmd: list[str], timeout: int = 60) -> list[str] | None:
+    """Ausgabe eines Befehls als Zeilen; None bei Fehler, Zeitlimit oder leerer Ausgabe."""
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    lines = [l for l in r.stdout.splitlines() if l.strip() and not l.startswith("-- ")]   # „-- No entries --“
+    return lines or None
+
+
+def kernel_log() -> list[str] | None:
+    """Kernel-Meldungen seit dem Start: journalctl, sonst dmesg; None, wenn keine Quelle Daten liefert."""
+    for cmd in KERNEL_LOG_SOURCES:
+        lines = _run_lines(cmd)
+        if lines:
+            return lines
+    return None
+
+
+def mce_filter(lines: list[str]) -> list[str]:
+    return [l for l in lines if any(w in l.lower() for w in MCE_WORDS)]
+
+
+def _mce_lines() -> list[str] | None:
+    """MCE-Zeilen des Kernel-Logs seit dem Start; None = nicht prüfbar (für Tests austauschbar)."""
+    lines = kernel_log()
+    return None if lines is None else mce_filter(lines)
+
+
+def mce_events(lines: list[str]) -> list[dict]:
+    """Kernel-Zeilen → Ereignisse {cpu, bank, kind, line}. Ein Ereignis = Zeile „CPU n: Machine Check … Bank b:
+    <Status>“ (PROCESSOR-, TSC-, ADDR-Zeilen gehören dazu und zählen nicht); „Machine check events logged“ =
+    Ereignis ohne Zuordnung."""
+    out = []
+    for line in lines:
+        m = MCE_EVENT.search(line)
+        if m:
+            kind = "uncorrected" if int(m.group(3), 16) & MCE_UC_BIT else "corrected"
+            out.append({"cpu": int(m.group(1)), "bank": int(m.group(2)), "kind": kind, "line": line})
+        elif MCE_UNASSIGNED.search(line):
+            out.append({"cpu": None, "bank": None, "kind": "", "line": line})
+    return out
+
+
+def new_lines(before: list[str], after: list[str]) -> list[str]:
+    """Zeilen, die nach `before` dazugekommen sind (gleichlautende Zeilen werden mitgezählt)."""
+    left = Counter(before)
+    out = []
+    for l in after:
+        if left[l]:
+            left[l] -= 1
+        else:
+            out.append(l)
+    return out
+
+
+def _short_line(line: str, width: int = 110) -> str:
+    low = line.lower()
+    i = low.find("mce:")
+    if i < 0:
+        i = max(low.find("[hardware error]"), 0)
+    text = line[i:].strip()
+    return text if len(text) <= width else text[:width - 1] + "…"
+
+
+def mce_groups(lines: list[str], new: list[str] = ()) -> list[dict]:
+    """Ereignisse nach CPU, Bank und Art zusammenfassen: [{cpu, bank, kind, count, during, examples}].
+    `new` = Zeilen, die während der Last dazukamen (Teil von `lines`)."""
+    fresh = Counter(new)
+    groups: dict[tuple, dict] = {}
+    for ev in mce_events(lines):
+        g = groups.setdefault((ev["cpu"], ev["bank"], ev["kind"]), {
+            "cpu": ev["cpu"], "bank": ev["bank"], "kind": ev["kind"], "count": 0, "during": 0, "examples": []})
+        g["count"] += 1
+        if fresh[ev["line"]]:
+            fresh[ev["line"]] -= 1
+            g["during"] += 1
+        ex = _short_line(ev["line"])
+        if len(g["examples"]) < 3 and ex not in g["examples"]:
+            g["examples"].append(ex)
+    return sorted(groups.values(), key=lambda g: (g["cpu"] is None, g["cpu"] or 0, g["bank"] or 0, g["kind"]))
+
+
+def _mce_where(g: dict) -> str:
+    return f"CPU {g['cpu']}, Bank {g['bank']}" if g["cpu"] is not None else "ohne Zuordnung"
+
+
+def mce_short(groups: list[dict], key: str = "count") -> str:
+    """„CPU 3, Bank 0: 12 Mal“ – höchstens 3 Gruppen."""
+    parts = [f"{_mce_where(g)}: {g[key]} Mal" for g in groups if g[key]]
+    return "; ".join(parts[:3]) + (f"; {len(parts) - 3} weitere" if len(parts) > 3 else "")
+
+
+def mce_details(groups: list[dict]) -> list[str]:
+    out = []
+    for g in groups:
+        kind = f" ({MCE_KIND[g['kind']]})" if g["kind"] else ""
+        out.append(f"Hardware-Fehler {_mce_where(g)}{kind}: {g['count']} Mal seit dem Start"
+                   + (f", davon {g['during']} während der Last" if g["during"] else ""))
+        out += [f"  Beispiel: {ex}" for ex in g["examples"]]
+    return out
 
 
 def cpu(level: str, emit: Emit, cancel: Callable[[], bool], sys_root: Path = Path("/sys"),
@@ -361,7 +474,11 @@ def cpu(level: str, emit: Emit, cancel: Callable[[], bool], sys_root: Path = Pat
         for p in procs:
             p.wait(5)
     thr = _throttles(sys_root) - thr0
-    mce = [l for l in _mce_lines() if l not in mce0]
+    mce1 = _mce_lines()
+    lines = mce1 if mce1 is not None else mce0
+    groups = mce_groups(lines or [], new_lines(mce0, mce1) if mce0 is not None and mce1 is not None else [])
+    mce_new, mce_boot = sum(g["during"] for g in groups), sum(g["count"] for g in groups)
+    uncorrected = any(g["kind"] == "uncorrected" for g in groups)
     avg = sum(freqs[len(freqs) // 2:]) / max(1, len(freqs[len(freqs) // 2:])) if freqs else 0
     details = [f"{cores} Kerne, {max(1, round(seconds / 60))} min Volllast",
                f"höchste Temperatur: {peak:.0f} °C" if sensed else "keine Temperatursensoren gefunden"]
@@ -369,13 +486,29 @@ def cpu(level: str, emit: Emit, cancel: Callable[[], bool], sys_root: Path = Pat
         details.append(f"Takt in der zweiten Hälfte: {avg / 1e6:.2f} GHz (höchstens {max_freq / 1e6:.2f} GHz)")
     if thr:
         details.append(f"Drosselung wegen Hitze: {thr} Mal")
-    details += [f"Hardware-Fehler: {l}" for l in mce[:5]]
-    status = FAIL if mce or peak >= 100 else WARN if peak >= 95 or thr > 0 or (
+    if lines is None:
+        details.append("Hardware-Fehler nicht prüfbar (Kernel-Protokoll nicht lesbar)")
+    elif not groups:
+        details.append("Hardware-Fehler: keine seit dem Start")
+    details += mce_details(groups)
+    status = FAIL if peak >= 100 else WARN if peak >= 95 or thr > 0 or (
         max_freq and avg and avg < 0.5 * max_freq) else OK
-    summary = ("Hardware-Fehler des Prozessors gemeldet" if mce else
-               (f"höchstens {peak:.0f} °C" if sensed else "Temperatur nicht messbar") +
-               (", drosselt wegen Hitze (Lüfter/Wärmeleitpaste prüfen)" if thr else ", stabil"))
-    return result("cpu", status, summary, details, {"peak": peak, "throttle": thr, "mce": len(mce)})
+    hint = " – BIOS-Update bzw. Prozessor prüfen"
+    if mce_new:
+        status = FAIL
+        summary = f"Hardware-Fehler des Prozessors während der Last gemeldet ({mce_short(groups, 'during')})" + hint
+    elif uncorrected:
+        status = FAIL
+        summary = f"Nicht korrigierte Hardware-Fehler seit dem Start gemeldet ({mce_short(groups)})" + hint
+    elif mce_boot:
+        status = WARN if status == OK else status
+        summary = f"Hardware-Fehler seit dem Start gemeldet ({mce_short(groups)})" + hint
+    else:
+        summary = ((f"höchstens {peak:.0f} °C" if sensed else "Temperatur nicht messbar") +
+                   (", drosselt wegen Hitze (Lüfter/Wärmeleitpaste prüfen)" if thr else ", stabil"))
+    return result("cpu", status, summary, details, {
+        "peak": peak, "throttle": thr, "mce": mce_new, "mce_boot": mce_boot,
+        "mce_groups": [{k: g[k] for k in ("cpu", "bank", "count", "kind", "during")} for g in groups]})
 
 
 # ---------- Netzwerk ----------
