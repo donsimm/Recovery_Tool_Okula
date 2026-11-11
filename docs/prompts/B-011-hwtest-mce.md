@@ -1,6 +1,6 @@
 # B-011 – Hardware-Test: Prozessor-Fehler seit dem Start melden
 
-Status: umgesetzt (Commit d6d39ff) · erstellt 11.11.2026 von der Projektleitung · Freigabe: Dominik 11.11.
+Status: abgenommen (Commit d6d39ff) · Abnahme Okuli 11.11.: Diff, 532 Tests grün; Live-System geprüft: PCRE2 und journalctl vorhanden, Agent-Dienst als root – Ursache „mce 0“ vermutlich keine Fehler während der Last am 10.11. · erstellt 11.11.2026 von der Projektleitung · Freigabe: Dominik 11.11.
 
 ## Rolle und Einstieg
 
