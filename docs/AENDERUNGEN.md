@@ -17,7 +17,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 |---|---|---|---|
 | 🐞 Bugs | 1 | 0 | 0 |
 | 🔧 Änderungen | 6 | 0 | 0 |
-| 💡 Ideen | 22 | 0 | 0 |
+| 💡 Ideen | 23 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
@@ -68,6 +68,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): ~~Ä-007~~ ✔ → **I-005/I-006** (Aufb
 | I-029 | ⚪ | offen | Claude | **Intel vPro/AMT:** Gerät ein- und ausschalten, ins BIOS starten und den Bildschirm sehen, auch ohne Agent und bei abgestürztem OS (MeshCentral) |
 | I-035 | ⚪ | offen | Okuli | **Hinweis bei VM-Disk grösser als freier Platz:** Ä-037 bietet „VM-Disk auf 1001 GB vergrössern“ an, obwohl der Server nur 889 GB frei hat (Befund 10.11., Probe-VM). Zum Zurückspielen reicht es (qcow2 wächst nur mit den belegten Daten), füllt sich die VM später, läuft der Server voll. Vorschlag: Hinweis „⚠ Disk grösser als der freie Platz auf dem Server (… GB)“ im Prüftext, ohne zu sperren |
 | I-036 | ⚪ | offen | Okuli | **Hardware-Fehler (MCE/WHEA) anzeigen:** Der Agent liest Kernel-Meldungen `mce: [Hardware Error]` (bzw. `rasdaemon`) und meldet sie im Tool (Gerätefenster, Verlauf, Hinweis in der Liste). Anlass B-010 (CPU 3 meldet laufend Fehler). Passt zu I-033 Hardware-Test |
+| I-037 | ⚪ | offen | Dominik | **Grafikkarte im Inventar und im Gerätefenster (Übersicht):** Heute erfasst das Inventar keine Grafikkarte (`inventory.py`: dmi, cpu, memory, batteries, network, disks, systems). Agent liest Grafikkarten aus `/sys/bus/pci/devices/*/class` (0x03xxxx) bzw. `lspci -mm` (Hersteller, Modell, ggf. Speicher), Anzeige in der Übersicht; neuer Agent-Stick nötig. Hilft auch bei VM-Zwilling/Treibern | 11.11. (Cockpit-Idee ID-0002) |
 
 Umgesetzte Ideen: Windows-Master-Image mit Sysprep ([MASTER-IMAGE.md](MASTER-IMAGE.md)), Ordner an Geräte senden
 ([ORDNER-SENDEN.md](ORDNER-SENDEN.md)), Automatisierung ([AUTOMATISIERUNG.md](AUTOMATISIERUNG.md)),
