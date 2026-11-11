@@ -307,11 +307,12 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stic
 
 ### 15. Hardware-Test: Prozessor-Fehler seit dem Start (B-011)
 Nach `git pull && sudo ./install.sh` das Tool neu starten und **neuen Agent-Stick** erstellen.
-- [ ] SRV-002 mit neuem Stick starten, Reiter *Hardware-Test* → *Schnelltest* → „CPU unter Last“ mit Hinweis auf
+- [x] SRV-002 mit neuem Stick starten, Reiter *Hardware-Test* → *Schnelltest* → „CPU unter Last“ mit Hinweis auf
       Hardware-Fehler (CPU 3, Bank 0, Anzahl), Details „Hardware-Fehler CPU 3, Bank 0 (korrigiert): … Mal seit dem
       Start“ mit Beispielzeilen; Protokoll-PDF zeigt dasselbe. **Gelb**, wenn während der Minute Last keine neuen
       Meldungen kamen; meldet CPU 3 wie auf dem Foto jede Sekunde einen Fehler, kommen während der Last neue dazu →
-      **rot** („… während der Last gemeldet …“)
+      **rot** („… während der Last gemeldet …“) – ✔ 11.11. (Dominik; Netzwerkstart, Schnelltest 10:51: gelb, CPU 3 Bank 0
+      korrigiert 37 Mal + 2 ohne Zuordnung seit dem Start, keine neuen während der Last)
 - [ ] Gerät ohne MCE (z. B. EliteBook) → „CPU unter Last“ weiterhin grün, Detail „Hardware-Fehler: keine seit dem Start“
 - [ ] Erscheint stattdessen „Hardware-Fehler nicht prüfbar (Kernel-Protokoll nicht lesbar)“: am Gerät
       `journalctl -k -b | tail` und `dmesg | tail` prüfen und an Okuli melden
