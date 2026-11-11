@@ -1,6 +1,6 @@
 # B-011 – Hardware-Test: Prozessor-Fehler seit dem Start melden
 
-Status: Entwurf · erstellt 11.11.2026 von der Projektleitung · Freigabe: offen
+Status: freigegeben · erstellt 11.11.2026 von der Projektleitung · Freigabe: Dominik 11.11.
 
 ## Rolle und Einstieg
 
