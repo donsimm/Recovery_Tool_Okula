@@ -15,7 +15,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
-| 🐞 Bugs | 1 | 0 | 0 |
+| 🐞 Bugs | 2 | 0 | 0 |
 | 🔧 Änderungen | 6 | 0 | 0 |
 | 💡 Ideen | 22 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
@@ -30,6 +30,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): ~~Ä-007~~ ✔ → **I-005/I-006** (Aufb
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
 | B-004 | 🔴 | offen | Dominik | **HP EliteBook 850 G1 in „UEFI Native (Without CSM)“: Agent-Stick wird nicht angezeigt, Netzwerkstart (UEFI IPv4) scheitert – im Tool kein Hinweis.** Stick: MBR + FAT32 (Typ 0x0c) mit Debian-shim; PXE: Proxy-DHCP mit `pxe-prompt`/`pxe-service` BC_EFI/X86-64_EFI. Befund 05.11. (BIOS-Fotos): Secure Boot aus, Fast Boot aus, USB device boot an; **„PXE Internal IPV4 NIC boot“ aus** (nur „PXE Internal NIC boot“ = Legacy an) → im UEFI-Modus gibt es keinen Netzwerkstart; F9 zeigt nur „Boot From EFI File“ – auch der Stick fehlt. Nächster Test: IPV4 NIC boot an; Stick über „Boot From EFI File“ → EFI/boot/bootx64.efi starten (liest die Firmware die FAT-Partition?). BIOS-Vergleich 05.11.: einziger lesbarer Unterschied die **BIOS-Version** – EliteBook 2 (geht nicht) L71 **01.49** (2020), EliteBook 1 (geht) L71 **01.11** (2014); Einstellungen über Linux nicht lesbar (B-006) | 05.11. |
+| B-011 | 🟡 | offen | Dominik | **Hardware-Test meldet Prozessor-Fehler nicht, die vor dem Test aufgetreten sind:** SRV-002 (CPU 3 meldet korrigierte MCE, Bank 0 – Bilder 10.11.) → gründlicher Test 10.11. 16:27 „CPU unter Last: ok, mce 0“. Ursache (Okuli 11.11.): `hwtest.cpu()` zählt nur MCE-Zeilen, die während der Last neu ins Kernel-Log kommen (`mce0` vorher, Differenz nachher, `hwtest.py:338/364`); Fehler seit dem Start werden ignoriert, sporadische korrigierte Fehler fallen so leicht durch. Lösung: alle MCE seit Start auswerten – während der Last rot, vorher gelb; nach CPU/Bank zusammenfassen. Neuer Agent-Stick nötig. Erster Schritt zu I-036 | 11.11. |
 
 ## 🔧 Änderungen / Verbesserungen
 

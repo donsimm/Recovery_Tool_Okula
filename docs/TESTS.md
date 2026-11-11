@@ -304,3 +304,9 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stic
 - [ ] *Boot-Stick aus ISO …* → am Ende „Boot-Stick fertig“ (bzw. rot „Stick nicht fertig“ bei Fehler)
 - [ ] Andere Fehlermeldungen „Aktion fehlgeschlagen“ (z. B. Wake-on-LAN bei einem Gerät ohne bekannte
       Kabel-Netzwerkkarte) → Knopf heisst jetzt „Schliessen“
+
+### 15. Hardware-Test: Prozessor-Fehler seit dem Start (B-011)
+Nach `git pull && sudo ./install.sh` das Tool neu starten und **neuen Agent-Stick** erstellen.
+- [ ] SRV-002 mit neuem Stick starten, Reiter *Hardware-Test* → *Schnelltest* → „CPU unter Last“ gelb mit Hinweis auf
+      Hardware-Fehler seit dem Start (CPU 3, Bank 0, Anzahl), Details mit Beispielzeilen; Protokoll-PDF zeigt dasselbe
+- [ ] Gerät ohne MCE (z. B. EliteBook) → „CPU unter Last“ weiterhin grün
