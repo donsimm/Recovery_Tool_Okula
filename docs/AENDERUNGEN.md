@@ -16,7 +16,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 1 | 0 | 0 |
-| 🔧 Änderungen | 6 | 0 | 0 |
+| 🔧 Änderungen | 7 | 0 | 0 |
 | 💡 Ideen | 23 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
@@ -41,6 +41,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): ~~Ä-007~~ ✔ → ~~B-012~~ ✔ → **I
 | Ä-006 | 🔴 | offen | Claude | **Assistent „Neues Gerät einrichten“:** Sobald ein unbekanntes Gerät auftaucht, fragt ein Hinweis: „Neues Gerät gefunden: HP EliteBook 840 – jetzt einrichten?“. Danach Schritt für Schritt: Name → Ordner/Kunde → Vorlage oder Master-Image → „Sind noch Daten drauf?“ (Ja = Backup) → Zusammenfassung → Start. Heute muss man selbst wissen: Gerät suchen, Doppelklick, Reiter, 5 Abschnitte, Schalter | 31.10. (Laien-Test) |
 | Ä-010 | 🟡 | offen | Claude | **Vorabprüfung mit Ampel statt Fehler mitten im Lauf:** Image passt auf die Disk, UEFI/BIOS-Modus passt zum Master, BitLocker auf der Zieldisk (dann ist kein Datei-Backup möglich), Agent-Stick aktuell, Windows-Edition des Masters passt zum Key (Pro/Home). Befund 10.11.: BIOS/MBR-Image (CompactPlayer) liess sich ohne Warnung auf eine UEFI-VM spielen und startet dort nicht. Anzeige: „✔ Bereit“ bzw. „⚠ Achtung: …“ | 31.10. (Laien-Test) |
 | Ä-012 | 🟡 | offen | Claude | **Einfache Sprache im Reiter Automatisierung:** „Zieldisk“ → „Festplatte, die gelöscht wird“; Sysprep, Master und Content-Projekte mit einem „?“ pro Abschnitt erklären. Gerätenamen wie „DESKTOP-8F3K2LQ“ markieren und zum Umbenennen auffordern; optional Namensschema pro Vorlage (z. B. `KUNDE-001` fortlaufend) | 31.10. (Laien-Test) |
+| Ä-039 | 🟡 | offen | Dominik | **Windows-Direktinstallation: Fehler am Gerät besser erkennbar.** Bricht `install.cmd` ab (z. B. „Windows-Partition :“ leer, Befund CompactPlayer 1 am 12.11.), schreibt es heute nur zwei Zeilen ins Protokoll; nach dem Schliessen des Editors fährt das Gerät sofort herunter (`wpeutil shutdown`), eine Untersuchung ist dann nicht mehr möglich. Vorschlag: im Fehlerfall Laufwerksliste (`diskpart` → `list volume`) und Inhalt der Laufwerke (Suche nach `okula-*.target`) ins `install.log` schreiben; im Editor bzw. Fenster deutlich angeben, dass das Gerät nach dem Schliessen herunterfährt (oder Eingabeaufforderung offen lassen). Ursache des Partitionsfehlers am Gerät noch offen (zweiter Versuch nach B-012) | 12.11. |
 
 ## 💡 Ideen
 
