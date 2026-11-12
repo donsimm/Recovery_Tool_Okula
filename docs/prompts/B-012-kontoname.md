@@ -1,6 +1,6 @@
 # B-012 – Windows-Konto „Benutzer“ bricht die Einrichtung ab
 
-Status: freigegeben · erstellt 12.11.2026 von der Projektleitung · Freigabe: Dominik 12.11.
+Status: umgesetzt (Commit 0157140) · erstellt 12.11.2026 von der Projektleitung · Freigabe: Dominik 12.11.
 
 ## Rolle und Einstieg
 
