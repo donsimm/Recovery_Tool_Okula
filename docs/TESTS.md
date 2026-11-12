@@ -346,3 +346,8 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stic
 - [ ] Image mit *Danach anpassen* zurückspielen → startet **nicht** im Audit-Modus, sondern in die normale
       Einrichtung mit Gerätename und Windows-Schlüssel (und ggf. Konto)
 - [ ] Ohne Häkchen: Direktinstallation wie bisher (Konto, Computername, Schlüssel)
+
+### 18. Direktinstallation mit OEM-Schlüssel: Setup-Partition (B-013)
+An einem Gerät mit Windows-Schlüssel im BIOS (OEM, z. B. HP/Lenovo-Notebook), Windows Pro/Home – nicht Enterprise.
+- [ ] *OS installieren …* mit Schlüssel aus dem BIOS → nach der Einrichtung in der Datenträgerverwaltung prüfen: Setup-Partition „OKULASETUP“ **weg** und C: über die ganze Disk? (bleibt sie stehen: B-013 bestätigt)
+- [ ] `C:\Windows\Temp\okula-aufraeumen.log` vorhanden?

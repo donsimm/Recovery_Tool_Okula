@@ -15,7 +15,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
-| 🐞 Bugs | 1 | 0 | 0 |
+| 🐞 Bugs | 2 | 0 | 0 |
 | 🔧 Änderungen | 7 | 0 | 0 |
 | 💡 Ideen | 23 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
@@ -29,6 +29,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): ~~Ä-007~~ ✔ → ~~B-012~~ ✔ → **I
 
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
+| B-013 | 🟡 | offen | Okuli | **Windows-Direktinstallation mit OEM-Schlüssel: Setup-Partition bleibt evtl. stehen.** Laut Microsoft Learn („Add a Custom Script to Windows Setup“) läuft `%WINDIR%\Setup\Scripts\SetupComplete.cmd` nicht, wenn Windows mit einem OEM-Schlüssel installiert wird (ausser Enterprise). Die Direktinstallation setzt den Schlüssel (hinterlegt oder aus dem BIOS, MSDM) in specialize als `ProductKey`; ist es ein OEM-Schlüssel, würde das Aufräumen (Setup-Partition „OKULASETUP“ löschen, C: vergrössern) ausbleiben. Hinweis des Agenten bei I-038 (12.11.), am realen System ungeprüft. Prüfen an einem Gerät mit Schlüssel im BIOS; falls bestätigt: Aufräumen zusätzlich anders auslösen (z. B. wie bei I-038 als RunSynchronous bzw. FirstLogonCommand) | 12.11. |
 | B-004 | 🔴 | offen | Dominik | **HP EliteBook 850 G1 in „UEFI Native (Without CSM)“: Agent-Stick wird nicht angezeigt, Netzwerkstart (UEFI IPv4) scheitert – im Tool kein Hinweis.** Stick: MBR + FAT32 (Typ 0x0c) mit Debian-shim; PXE: Proxy-DHCP mit `pxe-prompt`/`pxe-service` BC_EFI/X86-64_EFI. Befund 05.11. (BIOS-Fotos): Secure Boot aus, Fast Boot aus, USB device boot an; **„PXE Internal IPV4 NIC boot“ aus** (nur „PXE Internal NIC boot“ = Legacy an) → im UEFI-Modus gibt es keinen Netzwerkstart; F9 zeigt nur „Boot From EFI File“ – auch der Stick fehlt. Nächster Test: IPV4 NIC boot an; Stick über „Boot From EFI File“ → EFI/boot/bootx64.efi starten (liest die Firmware die FAT-Partition?). BIOS-Vergleich 05.11.: einziger lesbarer Unterschied die **BIOS-Version** – EliteBook 2 (geht nicht) L71 **01.49** (2020), EliteBook 1 (geht) L71 **01.11** (2014); Einstellungen über Linux nicht lesbar (B-006) | 05.11. |
 
 ## 🔧 Änderungen / Verbesserungen
