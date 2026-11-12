@@ -9,9 +9,17 @@ Stand: **umgesetzt** (29.10.2026). Details in [TECHNIK.md](TECHNIK.md), Bedienun
 
 1. **Referenzgerät aufsetzen**
    - Windows frisch installieren (typisches Gerät oder VM), Edition passend zu den Lizenzen (meist Pro).
-   - Beim ersten Einrichtungsbildschirm (Region) **Ctrl+Shift+F3** → Neustart in den **Audit-Modus**
-     (eingebauter Administrator, kein Benutzer wird angelegt).
+   - **Über das Tool (I-038, empfohlen):** Agent starten → *OS installieren …* mit Häkchen
+     **„Für Master-Image (Audit-Modus)“**. Windows wird ohne Eingriff installiert und startet direkt im
+     **Audit-Modus** (eingebauter Administrator, kein Konto, kein Computername, kein Schlüssel). Beim ersten Start
+     im Audit-Modus werden die Setup-Partition entfernt, C: vergrössert und die Antwortdatei des Tools
+     (`C:\Windows\Panther\unattend.xml`) gelöscht – sie darf nicht ins Image (Windows sucht bei jedem
+     Setup-Durchgang implizit in `%WINDIR%\Panther`). Das Log des Auftrags nennt die nächsten Schritte.
+   - **Von Hand** (Microsoft-Stick oder „Von ISO starten“): beim ersten Einrichtungsbildschirm (Region)
+     **Ctrl+Shift+F3** → Neustart in den **Audit-Modus**.
    - Keine Domäne, kein Azure AD/Intune, kein Microsoft-Konto.
+   - VM-Zwilling: vor Sysprep im Reiter *Snapshots* → *Snapshot erstellen …* (z. B. „vor Sysprep“), damit sich
+     der Stand für die nächste Master-Version zurückholen lässt.
 2. **Im Audit-Modus einrichten**
    - Updates, Treiber, Programme, Einstellungen. Neustarts bleiben im Audit-Modus; das Sysprep-Fenster nach dem
      Start schliessen.
@@ -39,7 +47,9 @@ Stand: **umgesetzt** (29.10.2026). Details in [TECHNIK.md](TECHNIK.md), Bedienun
   installieren).
 - Image von einem UEFI/GPT-Gerät läuft nur auf UEFI-Geräten.
 
-Quelle: Microsoft Learn – „Sysprep (Generalize) a Windows installation“, „Boot Windows to Audit Mode or OOBE“.
+Quelle: Microsoft Learn – „Sysprep (Generalize) a Windows installation“, „Boot Windows to Audit Mode or OOBE“,
+„Mode (microsoft-windows-deployment-reseal-mode)“, „Windows Setup Automation Overview“ (implizite Suche,
+„you must delete the cached answer file in the %WINDIR%\panther directory“), „Add a Custom Script to Windows Setup“.
 
 ## Funktion im Tool (umgesetzt)
 

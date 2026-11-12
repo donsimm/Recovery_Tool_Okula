@@ -443,9 +443,15 @@ Ein Master-Image ist ein vorbereitetes Windows. Beim Zurückspielen bekommt jede
 seinen eigenen Namen, seinen Windows-Schlüssel und auf Wunsch Region Schweiz und ein lokales Konto.
 
 <b>Master-Image vorbereiten (am Referenzgerät):</b>
-1.  Windows frisch installieren. Beim ersten Einrichtungsbildschirm <b>Ctrl+Shift+F3</b> drücken:
-    Windows startet in den <b>Audit-Modus</b> (ohne Benutzer anzulegen).
+1.  Windows frisch installieren, sodass es im <b>Audit-Modus</b> startet (eingebauter Administrator,
+    kein Benutzer):
+    •  Am einfachsten: Agent starten → <i>OS installieren …</i> mit Häkchen
+        <i>Für Master-Image (Audit-Modus)</i> (Kapitel <i>Windows / Linux installieren</i>). Kein Konto,
+        kein Computername, kein Schlüssel – das kommt beim Zurückspielen dazu.
+    •  Oder von Hand (Boot-Stick): beim ersten Einrichtungsbildschirm <b>Ctrl+Shift+F3</b> drücken.
 2.  Updates, Treiber und Programme installieren. Kein Microsoft-Konto, keine Domäne.
+    Bei einer VM vorher einen Snapshot erstellen (Reiter <i>Snapshots</i> → <i>Snapshot erstellen …</i>,
+    z. B. „vor Sysprep“) – so lässt sich der Stand vor Sysprep jederzeit zurückholen.
 3.  BitLocker ausschalten.
 4.  Sysprep starten (als Administrator):
     <tt>C:\\Windows\\System32\\Sysprep\\sysprep.exe /generalize /oobe /shutdown</tt>
@@ -775,6 +781,18 @@ Windows erlaubt nur 15 Zeichen ohne Sonderzeichen. Der Dialog zeigt, wie der Nam
     und startet nicht. Ebenso: mehr als 20 Zeichen, Punkt am Ende, Zeichen wie / \\ [ ] : ; | = , + * ? &lt; &gt; "
 •  Benutzername leer: Windows fragt beim ersten Start selbst nach einem Konto (die Einrichtung hält dort an).
 •  Gilt auch für den Boot-Stick (Kapitel <i>Sticks erstellen</i>).
+
+<b>Für Master-Image (Audit-Modus)</b> (Häkchen, nur bei Windows, Standard aus)
+•  Windows wird genauso ohne Eingriff installiert, startet danach aber im <b>Audit-Modus</b>
+    (eingebauter Administrator). Kein Konto, kein Computername, kein Windows-Schlüssel – diese Felder sind
+    ausgegraut. Region Schweiz, Datenschutz-Fragen und BitLocker wirken weiterhin.
+•  Beim ersten Start im Audit-Modus entfernt Windows die Setup-Partition, vergrössert C: und löscht die
+    Antwortdatei des Tools (<tt>C:\\Windows\\Panther\\unattend.xml</tt>), damit sie nicht ins Image kommt.
+•  Danach: einrichten (Updates, Treiber, Programme), dann Sysprep:
+    <tt>C:\\Windows\\System32\\Sysprep\\sysprep.exe /generalize /oobe /shutdown</tt>
+    Windows nicht mehr starten, mit dem Agent-Stick <i>Disk-Image erstellen …</i> und das Image als Master
+    markieren (Kapitel <i>Master-Image</i>). Das Log des Auftrags nennt diese Schritte ebenfalls.
+•  Bei einer VM vor Sysprep im Reiter <i>Snapshots</i> einen Snapshot erstellen (<i>Snapshot erstellen …</i>).
 
 Direkt installieren geht mit Windows 10/11, Ubuntu Desktop ab 24.04, Debian und Fedora/Rocky/Alma.
 Bei anderen Systemen zeigt das Tool den Grund. Dann hilft ein Boot-Stick (Kapitel <i>Sticks erstellen</i>).

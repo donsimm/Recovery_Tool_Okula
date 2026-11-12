@@ -134,6 +134,147 @@ class KontonameTest(unittest.TestCase):
 
 
 
+def structure(xml: str) -> list[str]:
+    """Alle Elemente als „Durchgang|Komponente|Pfad[=Text]“ in Dokumentreihenfolge."""
+    out = []
+    for s in ET.fromstring(xml):
+        for c in s:
+            def walk(el, prefix):
+                for ch in el:
+                    path = f"{prefix}/{ch.tag.split('}')[1]}" if prefix else ch.tag.split('}')[1]
+                    out.append(f"{s.get('pass')}|{c.get('name')}|{path}"
+                               + (f"={ch.text}" if ch.text and len(ch) == 0 else ""))
+                    walk(ch, path)
+            walk(c, "")
+    return out
+
+
+SPEC = "specialize|Microsoft-Windows-Deployment|RunSynchronous"
+OOBE = "oobeSystem|Microsoft-Windows-Shell-Setup|"
+# I-038: Antwortdatei der Direktinstallation ohne Audit-Modus – Stand vor I-038 (darf sich nicht ändern)
+EXPECTED_DIRECT = [
+    "specialize|Microsoft-Windows-Shell-Setup|ComputerName=PC-1",
+    "specialize|Microsoft-Windows-Shell-Setup|ProductKey=VK7JG-NPHTM-C97JM-9MPGT-3V66T",
+    "specialize|Microsoft-Windows-Shell-Setup|TimeZone=W. Europe Standard Time",
+    SPEC,
+    SPEC + "/RunSynchronousCommand", SPEC + "/RunSynchronousCommand/Order=1",
+    SPEC + "/RunSynchronousCommand/Path=reg add HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\OOBE "
+           "/v BypassNRO /t REG_DWORD /d 1 /f",
+    SPEC + "/RunSynchronousCommand", SPEC + "/RunSynchronousCommand/Order=2",
+    SPEC + "/RunSynchronousCommand/Path=reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\BitLocker "
+           "/v PreventDeviceEncryption /t REG_DWORD /d 1 /f",
+    SPEC + "/RunSynchronousCommand", SPEC + "/RunSynchronousCommand/Order=3",
+    SPEC + "/RunSynchronousCommand/Path=reg add HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\OOBE "
+           "/v DisablePrivacyExperience /t REG_DWORD /d 1 /f",
+    "oobeSystem|Microsoft-Windows-International-Core|InputLocale=0807:00000807",
+    "oobeSystem|Microsoft-Windows-International-Core|SystemLocale=de-CH",
+    "oobeSystem|Microsoft-Windows-International-Core|UILanguage=de-DE",
+    "oobeSystem|Microsoft-Windows-International-Core|UserLocale=de-CH",
+    OOBE + "OOBE", OOBE + "OOBE/HideEULAPage=true", OOBE + "OOBE/HideOnlineAccountScreens=true",
+    OOBE + "OOBE/HideLocalAccountScreen=true", OOBE + "OOBE/HideWirelessSetupInOOBE=true",
+    OOBE + "OOBE/ProtectYourPC=3",
+    OOBE + "UserAccounts", OOBE + "UserAccounts/LocalAccounts", OOBE + "UserAccounts/LocalAccounts/LocalAccount",
+    OOBE + "UserAccounts/LocalAccounts/LocalAccount/Name=Okula",
+    OOBE + "UserAccounts/LocalAccounts/LocalAccount/DisplayName=Okula",
+    OOBE + "UserAccounts/LocalAccounts/LocalAccount/Group=Administrators",
+    OOBE + "UserAccounts/LocalAccounts/LocalAccount/Password",
+    OOBE + "UserAccounts/LocalAccounts/LocalAccount/Password/Value",
+    OOBE + "UserAccounts/LocalAccounts/LocalAccount/Password/PlainText=true",
+    OOBE + "AutoLogon", OOBE + "AutoLogon/Password", OOBE + "AutoLogon/Password/Value",
+    OOBE + "AutoLogon/Password/PlainText=true", OOBE + "AutoLogon/Enabled=true", OOBE + "AutoLogon/LogonCount=1",
+    OOBE + "AutoLogon/Username=Okula",
+    OOBE + "FirstLogonCommands", OOBE + "FirstLogonCommands/SynchronousCommand",
+    OOBE + "FirstLogonCommands/SynchronousCommand/Order=1",
+    OOBE + 'FirstLogonCommands/SynchronousCommand/CommandLine=net user "Okula" /logonpasswordchg:yes',
+    OOBE + "FirstLogonCommands/SynchronousCommand", OOBE + "FirstLogonCommands/SynchronousCommand/Order=2",
+    OOBE + "FirstLogonCommands/SynchronousCommand/CommandLine=net accounts /maxpwage:unlimited",
+]
+DIRECT_OPTS = dict(ui_language="de-DE", computer_name="PC-1", product_key="VK7JG-NPHTM-C97JM-9MPGT-3V66T",
+                   skip_network=True)
+
+
+class DirectUnchangedTest(unittest.TestCase):
+    def test_structure_without_audit(self):
+        self.assertEqual(structure(wu.build(wu.WinOptions(**DIRECT_OPTS), pe=False)), EXPECTED_DIRECT)
+        self.assertEqual(structure(wu.build(wu.WinOptions(**DIRECT_OPTS, audit_mode=False), pe=False)),
+                         EXPECTED_DIRECT)
+        self.assertNotIn("Audit", " ".join(wu.summary(wu.WinOptions(**DIRECT_OPTS))))
+
+
+class AuditModeTest(unittest.TestCase):
+    """I-038: Direktinstallation für ein Master-Image – Windows startet im Audit-Modus."""
+
+    def setUp(self):
+        # Konto, Name und Schlüssel bewusst gesetzt: Audit-Modus hat Vorrang
+        self.opts = wu.WinOptions(**DIRECT_OPTS, password="geheim", audit_mode=True)
+        self.xml = wu.build(self.opts, pe=False, audit_commands=["cmd /c aufraeumen.cmd"])
+        self.root = ET.fromstring(self.xml)
+
+    def test_passes_and_reseal(self):
+        self.assertEqual([s.get("pass") for s in self.root], ["specialize", "auditUser", "oobeSystem"])
+        oobe = [c.get("name") for s in self.root if s.get("pass") == "oobeSystem" for c in s]
+        self.assertEqual(oobe, ["Microsoft-Windows-Deployment"])  # alles andere ignoriert Windows bei Reseal
+        mode = component(self.root, "oobeSystem", "Microsoft-Windows-Deployment").find("u:Reseal/u:Mode", N)
+        self.assertEqual(mode.text, "Audit")
+        self.assertNotIn("ForceShutdownNow", self.xml)
+
+    def test_no_account_name_key(self):
+        for tag in ("LocalAccount", "AutoLogon", "ComputerName", "ProductKey", "FirstLogonCommands", "BypassNRO",
+                    ">Okula<", "PC-1", "VK7JG", wu.encode_password("geheim")):
+            self.assertNotIn(tag, self.xml, tag)
+
+    def test_region_bitlocker_privacy_kept(self):
+        spec = component(self.root, "specialize", "Microsoft-Windows-Shell-Setup")
+        self.assertEqual(spec.find("u:TimeZone", N).text, "W. Europe Standard Time")
+        intl = component(self.root, "specialize", "Microsoft-Windows-International-Core")
+        self.assertEqual(intl.find("u:InputLocale", N).text, "0807:00000807")
+        self.assertEqual(intl.find("u:UserLocale", N).text, "de-CH")
+        regs = " ".join(p.text for p in component(self.root, "specialize", "Microsoft-Windows-Deployment")
+                        .iter(f"{{{wu.NS}}}Path"))
+        self.assertIn("PreventDeviceEncryption", regs)
+        self.assertIn("DisablePrivacyExperience", regs)
+        off = wu.build(wu.WinOptions(audit_mode=True, no_bitlocker=False, skip_privacy=False, swiss_region=False,
+                                     ui_language=""), pe=False)
+        self.assertNotIn("PreventDeviceEncryption", off)
+        self.assertNotIn("International-Core", off)
+
+    def test_audit_user_commands(self):
+        audit = component(self.root, "auditUser", "Microsoft-Windows-Deployment")
+        cmds = audit.findall("u:RunSynchronous/u:RunSynchronousCommand", N)
+        self.assertEqual([c.find("u:Order", N).text for c in cmds], ["1", "2", "3"])
+        paths = [c.find("u:Path", N).text for c in cmds]
+        self.assertEqual(paths[0], "cmd /c aufraeumen.cmd")  # zuerst Aufräumen, dann Antwortdatei löschen
+        self.assertEqual(paths[1], 'cmd /c del /f /q "%WINDIR%\\Panther\\unattend.xml"')
+        self.assertIn("del /f /q %WINDIR%\\Panther\\unattend.xml", paths[2])
+        self.assertTrue(paths[2].startswith('cmd /c start "Okula" /min '))
+        # ohne Zusatzbefehle (z. B. Boot-Stick): nur das Löschen
+        plain = ET.fromstring(wu.build(wu.WinOptions(audit_mode=True), pe=False))
+        self.assertEqual(len(component(plain, "auditUser", "Microsoft-Windows-Deployment")
+                             .findall("u:RunSynchronous/u:RunSynchronousCommand", N)), 2)
+
+    def test_pe_part_unchanged(self):
+        self.assertEqual(wu.build(self.opts, pe=True, system=False, launch="x"),
+                         wu.build(wu.WinOptions(**DIRECT_OPTS), pe=True, system=False, launch="x"))
+
+    def test_summary(self):
+        lines = wu.summary(self.opts)
+        self.assertEqual(lines[0], "Startet im Audit-Modus für ein Master-Image (kein Konto, kein Computername, "
+                                   "kein Schlüssel)")
+        text = " ".join(lines)
+        for word in ("Lokales Konto", "Computername PC-1", "Windows-Schlüssel …"):
+            self.assertNotIn(word, text)
+        self.assertIn("Keine automatische BitLocker-Verschlüsselung", text)
+        self.assertIn("Region Schweiz", text)
+        self.assertIn("sysprep.exe /generalize /oobe /shutdown", wu.AUDIT_NEXT_STEPS)
+
+    def test_master_unattend_unchanged(self):
+        # Zurückspielen eines Master-Images startet nie im Audit-Modus
+        xml = wu.master_unattend("PC-1", "VK7JG-NPHTM-C97JM-9MPGT-3V66T", account="Okula")
+        self.assertNotIn("Reseal", xml)
+        self.assertNotIn("auditUser", xml)
+        self.assertIn("PC-1", xml)
+
+
 class ProductKeyUnattendTest(unittest.TestCase):
     def test_key_only_in_specialize(self):
         opts = wu.WinOptions(product_key="VK7JG-NPHTM-C97JM-9MPGT-3V66T")

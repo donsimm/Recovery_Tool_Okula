@@ -470,6 +470,8 @@ def install_work(ip: str, key: bytes, port: int, iso: str, index: int, opts, dis
         except Exception as e:
             after(job, None, e)
             raise
+        if getattr(opts, "audit_mode", False):  # I-038: was am Gerät als Nächstes zu tun ist
+            jm.log(job, winunattend.AUDIT_NEXT_STEPS)
         after(job, boot, None)
         return f"Windows-Installation auf {disk} gestartet (Boot{boot})"
 

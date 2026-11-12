@@ -594,8 +594,13 @@ class InstallDialog(Gtk.Dialog):
         self.w_privacy = Gtk.CheckButton(label="Datenschutz-Fragen überspringen (alles aus)", active=True)
         self.w_bitlocker = Gtk.CheckButton(label="Keine automatische BitLocker-Verschlüsselung", active=True)
         self.w_account.connect("toggled", lambda _c: self._update())
-        rows = [(self.w_key, None), (self.w_account, None), ("Benutzername", self.w_user), ("Passwort", self.w_pass),
-                (self.w_privacy, None), (self.w_bitlocker, None)]
+        # I-038: Windows für ein Master-Image – startet im Audit-Modus (Sysprep danach am Gerät)
+        self.w_audit = Gtk.CheckButton(label="Für Master-Image (Audit-Modus)")
+        self.w_audit.set_tooltip_text("Kein Konto, kein Computername, kein Schlüssel – Windows startet im "
+                                      "Audit-Modus zum Einrichten und für Sysprep.")
+        self.w_audit.connect("toggled", lambda _c: self._update())
+        rows = [(self.w_audit, None), (self.w_key, None), (self.w_account, None), ("Benutzername", self.w_user),
+                ("Passwort", self.w_pass), (self.w_privacy, None), (self.w_bitlocker, None)]
         for i, (a, b) in enumerate(rows):
             if b is None:
                 wbox.attach(a, 0, i, 3, 1)
@@ -816,8 +821,13 @@ class InstallDialog(Gtk.Dialog):
             self.btn_start.set_sensitive(False)
             return
         windows = iso is not None and iso.family == "windows"
+        audit = windows and self.w_audit.get_active()  # I-038: kein Konto, kein Name, kein Schlüssel
+        self.w_key.set_sensitive(bool(self.key) and not audit)
+        self.w_account.set_sensitive(not audit)
         for w in (self.w_user, self.w_pass):
-            w.set_sensitive(self.w_account.get_active())
+            w.set_sensitive(self.w_account.get_active() and not audit)
+        for w in (self.name, self.name_hint):
+            w.set_sensitive(not audit)
         disk = self.disks.get(self.disk_combo.get_active_id() or "")
         self.part_store.clear()
         ok = bool(iso and disk and (self.edition.get_active_id() or not windows))
@@ -834,14 +844,14 @@ class InstallDialog(Gtk.Dialog):
             if any(p.get("mounted") for p in disk["partitions"]):
                 problems.append("Eine Partition der Zieldisk ist eingehängt.")
                 ok = False
-        if windows and self.w_key.get_active() and self.device.windows_edition:
+        if windows and not audit and self.w_key.get_active() and self.device.windows_edition:
             chosen = next((e for e in iso.meta["windows"]["editions"]
                            if str(e["index"]) == self.edition.get_active_id()), None)
             if chosen and chosen.get("edition_id") != self.device.windows_edition:
                 old = EDITION_NAMES.get(self.device.windows_edition, self.device.windows_edition)
                 problems.append(f"Hinweis: Auf dem Gerät war Windows {old} – der Schlüssel aktiviert vermutlich nur "
                                 f"diese Edition, nicht {chosen['name']}.")
-        if windows and self.w_account.get_active():
+        if windows and not audit and self.w_account.get_active():
             account_problem = winunattend.pruefe_kontoname(self.w_user.get_text())
             if account_problem:  # B-012
                 problems.append(account_problem)
@@ -868,8 +878,10 @@ class InstallDialog(Gtk.Dialog):
             except self.linuxsetup.LinuxSetupError as e:
                 problems.append(str(e))
                 ok = False
-        self.check.set_markup("\n".join(GLib.markup_escape_text(p) for p in problems)
-                              if problems else (f"Disk passt: {_gb(disk['size'])}" if disk else ""))
+        lines = problems or ([f"Disk passt: {_gb(disk['size'])}"] if disk else [])
+        if audit:
+            lines.append(winunattend.AUDIT_SUMMARY + ". Danach Sysprep am Gerät, dann „Disk-Image erstellen …“.")
+        self.check.set_markup("\n".join(GLib.markup_escape_text(p) for p in lines))
         if reasons is not None and not self.w_unsupported.get_active():
             ok = False
         typed = disk is not None and self.confirm.get_text().strip() == disk["name"]
@@ -887,15 +899,18 @@ class InstallDialog(Gtk.Dialog):
         iso = self._iso()
         if iso.family == "windows":
             w = iso.meta.get("windows", {})
+            audit = self.w_audit.get_active()  # I-038: Konto, Name und Schlüssel werden ignoriert
+            account = self.w_account.get_active() and not audit
             return winunattend.WinOptions(
                 bypass_requirements=False,  # Direktinstallation läuft ohne Setup-Assistent
-                local_account=self.w_user.get_text().strip() if self.w_account.get_active() else "",
-                password=self.w_pass.get_text() if self.w_account.get_active() else "",
+                local_account=self.w_user.get_text().strip() if account else "",
+                password=self.w_pass.get_text() if account else "",
                 skip_privacy=self.w_privacy.get_active(), no_bitlocker=self.w_bitlocker.get_active(),
                 swiss_region=self.swiss.get_active(), ui_language=(w.get("languages") or ["de-DE"])[0],
-                computer_name=self.device.name, arch=w.get("arch") or "amd64", skip_network=True,
-                product_key=self.key if self.w_key.get_active() else "",
-                unsupported_hardware=self.unsupported_reasons() is not None and self.w_unsupported.get_active())
+                computer_name="" if audit else self.device.name, arch=w.get("arch") or "amd64", skip_network=True,
+                product_key=self.key if self.w_key.get_active() and not audit else "",
+                unsupported_hardware=self.unsupported_reasons() is not None and self.w_unsupported.get_active(),
+                audit_mode=audit)
         return self.linuxsetup.LinuxOptions(
             username=self.l_user.get_text().strip(), password=self.l_pass.get_text(),
             hostname=self.device.name, swiss_region=self.swiss.get_active(),
@@ -912,7 +927,7 @@ class InstallDialog(Gtk.Dialog):
         iso = self._iso()
         disk = self.disks[self.disk_combo.get_active_id()]
         index = int(self.edition.get_active_id()) if iso.family == "windows" else None
-        if iso.family == "windows" and self.w_account.get_active():
+        if iso.family == "windows" and self.w_account.get_active() and not self.w_audit.get_active():
             problem = winunattend.pruefe_kontoname(self.w_user.get_text())
             if problem:  # B-012: Konto liesse sich in Windows nicht anlegen → Einrichtung hinge
                 self.status.set_text(f"Nicht gestartet: {problem}")

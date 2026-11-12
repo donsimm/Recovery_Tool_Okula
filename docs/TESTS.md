@@ -326,3 +326,23 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stic
       „Der Name ‚Benutzer‘ ist in Windows … vergeben …“, *Installieren* bleibt gesperrt; „Okula“ → wieder frei
 - [ ] *Boot-Stick aus ISO …* (Windows), *Benutzername* „Administrator“ → *Stick erstellen* zeigt Fenster
       „Benutzername nicht möglich“, der Stick wird nicht gelöscht
+
+### 17. Windows für Master-Image im Audit-Modus (I-038)
+Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stick). Am VM-Zwilling
+(z. B. „VM-CompactPlayer-1“), danach am echten Gerät.
+- [ ] *OS installieren …* mit Windows-ISO: Häkchen *Für Master-Image (Audit-Modus)* → Windows-Schlüssel, Lokales
+      Konto, Benutzername, Passwort und Computername ausgegraut; Region, Datenschutz, BitLocker bleiben wählbar;
+      unter der Disk steht „Startet im Audit-Modus für ein Master-Image …“. Bei einer Linux-ISO kein Häkchen
+- [ ] Installation läuft ohne Eingriff und startet im **Audit-Modus** (Administrator angemeldet, Sysprep-Fenster
+      erscheint); kein Konto „Okula“ angelegt
+- [ ] Setup-Partition „OKULASETUP“ weg, C: über die ganze Disk (Datenträgerverwaltung);
+      `C:\Windows\Temp\okula-aufraeumen.log` vorhanden
+- [ ] Nach ca. 3 Minuten: `C:\Windows\Panther\unattend.xml` **fehlt** (`dir C:\Windows\Panther`)
+- [ ] Tastatur Schweiz, Formate de-CH, Zeitzone Zürich gesetzt
+- [ ] Neustart im Audit-Modus → startet wieder im Audit-Modus (kein OOBE)
+- [ ] Log des Auftrags nennt die nächsten Schritte (Sysprep … /generalize /oobe /shutdown, Disk-Image, Master);
+      Verlauf „Windows-Installation … für Master-Image (Audit-Modus) → …: vorbereitet …“
+- [ ] VM: Snapshot „vor Sysprep“ → Sysprep → mit Agent *Disk-Image erstellen …* → als Master markieren
+- [ ] Image mit *Danach anpassen* zurückspielen → startet **nicht** im Audit-Modus, sondern in die normale
+      Einrichtung mit Gerätename und Windows-Schlüssel (und ggf. Konto)
+- [ ] Ohne Häkchen: Direktinstallation wie bisher (Konto, Computername, Schlüssel)

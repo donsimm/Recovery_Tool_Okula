@@ -11,6 +11,7 @@ Die Sprache von Windows selbst bleibt die des Mediums (ui_language).
 from __future__ import annotations
 
 import base64
+import dataclasses
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 
@@ -47,6 +48,29 @@ class WinOptions:
     skip_network: bool = False         # Netzwerk-Seite im Willkommens-Assistenten überspringen
     product_key: str = ""              # nur Direktinstallation: wird beim ersten Start gesetzt
     unsupported_hardware: bool = False  # Direktinstallation: Windows 11 trotz „nicht tauglich“ (am Gerät vermerken)
+    audit_mode: bool = False           # I-038: für ein Master-Image – startet im Audit-Modus, kein Konto/Name/Key
+
+
+# I-038: Text für Dialog, Log und Verlauf
+AUDIT_SUMMARY = "Startet im Audit-Modus für ein Master-Image (kein Konto, kein Computername, kein Schlüssel)"
+AUDIT_NEXT_STEPS = ("Windows startet im Audit-Modus. Einrichten, dann Sysprep: "
+                    "C:\\Windows\\System32\\Sysprep\\sysprep.exe /generalize /oobe /shutdown – danach Windows nicht "
+                    "mehr starten, mit dem Agent-Stick „Disk-Image erstellen …“ und das Image als Master markieren.")
+
+# I-038: Die Antwortdatei der Direktinstallation liegt als Windows\Panther\unattend.xml auf C:. Windows sucht bei jedem
+# Durchgang implizit dort (Microsoft Learn, „Windows Setup Automation Overview“ → „Implicit Answer File Search Order“,
+# Platz 3) und verlangt: „Before you deliver the computer to a customer, you must delete the cached answer file in the
+# %WINDIR%\panther directory.“ Bliebe sie im Master-Image, könnte ein Gerät daraus wieder im Audit-Modus starten.
+# Gelöscht wird im Durchgang auditUser (RunSynchronous ist laut Microsoft nur in auditUser und specialize gültig,
+# nicht in auditSystem; auditUser läuft beim Eintritt in den Audit-Modus als eingebauter Administrator).
+# Microsoft dokumentiert zudem, dass Setup die zwischengespeicherte Datei nach einem Durchgang annotiert („Windows Setup
+# Annotates Configuration Passes“). Damit ein Zurückschreiben am Ende von auditUser die Löschung nicht aufhebt, löscht
+# ein abgekoppelter Befehl die Datei nach zwei Minuten noch einmal. Mehrfaches Löschen ist harmlos.
+PANTHER_UNATTEND = "%WINDIR%\\Panther\\unattend.xml"
+AUDIT_DELETE_ANSWER_FILE = [
+    f'cmd /c del /f /q "{PANTHER_UNATTEND}"',
+    f'cmd /c start "Okula" /min cmd /c "ping -n 121 127.0.0.1 >nul & del /f /q {PANTHER_UNATTEND}"',
+]
 
 
 # B-012: Namen, die in Windows (deutsch/englisch) schon für eingebaute Gruppen oder Konten vergeben sind.
@@ -158,9 +182,20 @@ def _international(b: _Builder, pass_name: str, opts: WinOptions, winpe: bool) -
     b.sub(comp, "UserLocale", SWISS_LOCALE if opts.swiss_region else opts.ui_language)
 
 
-def build(opts: WinOptions, pe: bool = True, system: bool = True, launch: str | None = None) -> str:
-    """pe: Setup-Umgebung (windowsPE); system: erster Start (specialize, oobeSystem);
-    launch: Befehl, der in der Setup-Umgebung statt des Setup-Assistenten läuft (Direktinstallation)."""
+def _audit_opts(opts: WinOptions) -> WinOptions:
+    """I-038: Audit-Modus hat Vorrang – kein Konto, kein Computername, kein Schlüssel (gehören ins Zurückspielen)."""
+    if not opts.audit_mode:
+        return opts
+    return dataclasses.replace(opts, local_account="", password="", computer_name="", product_key="")
+
+
+def build(opts: WinOptions, pe: bool = True, system: bool = True, launch: str | None = None,
+          audit_commands: list[str] | None = None) -> str:
+    """pe: Setup-Umgebung (windowsPE); system: erster Start (specialize, oobeSystem bzw. auditUser);
+    launch: Befehl, der in der Setup-Umgebung statt des Setup-Assistenten läuft (Direktinstallation);
+    audit_commands: nur bei audit_mode – Befehle, die im Durchgang auditUser vor dem Löschen der Antwortdatei laufen
+    (Direktinstallation: Setup-Partition aufräumen)."""
+    opts = _audit_opts(opts)
     b = _Builder(opts.arch)
 
     # --- windowsPE: Setup selbst ---
@@ -203,6 +238,20 @@ def build(opts: WinOptions, pe: bool = True, system: bool = True, launch: str | 
         deploy = b.component("specialize", "Microsoft-Windows-Deployment")
         b.commands(deploy, "RunSynchronous", "RunSynchronousCommand", regs)
 
+    if opts.audit_mode:
+        # I-038: Reseal/Mode=Audit im oobeSystem – Windows startet nach der Installation im Audit-Modus (eingebauter
+        # Administrator, kein Konto). Microsoft Learn, „Boot Windows to Audit Mode or OOBE“ und „Mode
+        # (microsoft-windows-deployment-reseal-mode)“: oobeSystem + Audit (ForceShutdownNow nicht gesetzt) „ignores all
+        # other settings in the oobeSystem configuration pass“ und startet auditSystem. Darum steht die Region hier
+        # in specialize (International-Core ist dort gültig) und oobeSystem enthält nur Reseal.
+        _international(b, "specialize", opts, winpe=False)
+        cmds = list(audit_commands or []) + AUDIT_DELETE_ANSWER_FILE
+        audit = b.component("auditUser", "Microsoft-Windows-Deployment")
+        b.commands(audit, "RunSynchronous", "RunSynchronousCommand", cmds)
+        reseal = b.sub(b.component("oobeSystem", "Microsoft-Windows-Deployment"), "Reseal")
+        b.sub(reseal, "Mode", "Audit")
+        return b.xml()
+
     # --- oobeSystem: Willkommens-Assistent ---
     _international(b, "oobeSystem", opts, winpe=False)
     shell = b.component("oobeSystem", "Microsoft-Windows-Shell-Setup")
@@ -241,7 +290,8 @@ def build(opts: WinOptions, pe: bool = True, system: bool = True, launch: str | 
 
 def summary(opts: WinOptions) -> list[str]:
     """Was die Anpassung bewirkt – für Dialog und Log."""
-    lines = []
+    lines = [AUDIT_SUMMARY] if opts.audit_mode else []
+    opts = _audit_opts(opts)
     if opts.bypass_requirements:
         lines.append("Anforderungen umgangen: TPM 2.0, Secure Boot, RAM, CPU – nicht unterstützt, Updates nicht "
                      "garantiert")

@@ -571,7 +571,7 @@ Bestehende Clonezilla-Images (Modus „savedisk“) erkennt das Tool automatisch
 Ein Master-Image ist ein vorbereitetes Windows für viele Geräte. Beim Zurückspielen bekommt jedes Gerät seinen eigenen Namen, seinen Windows-Schlüssel und auf Wunsch Region Schweiz und ein lokales Konto. Ausführliche Anleitung: [docs/MASTER-IMAGE.md](MASTER-IMAGE.md).
 
 **Vorbereiten (am Referenzgerät):**
-1. Windows frisch installieren. Beim ersten Einrichtungsbildschirm **Ctrl+Shift+F3** drücken – Windows startet im **Audit-Modus** (ohne Benutzer).
+1. Windows frisch installieren, sodass es im **Audit-Modus** startet (ohne Benutzer): im Tool *OS installieren …* mit Häkchen **„Für Master-Image (Audit-Modus)“** (I-038, siehe „Betriebssystem direkt auf ein Gerät installieren“) oder von Hand beim ersten Einrichtungsbildschirm **Ctrl+Shift+F3**. Bei einer VM vor Sysprep einen Snapshot erstellen (Reiter *Snapshots*).
 2. Updates, Treiber und Programme installieren. Kein Microsoft-Konto, keine Domäne. BitLocker ausschalten.
 3. Sysprep als Administrator starten: `C:\Windows\System32\Sysprep\sysprep.exe /generalize /oobe /shutdown`
 4. Windows **nicht mehr starten**, direkt mit dem Agent-Stick starten und *Disk-Image erstellen …* (Name z. B. „Master-Win11-2026-10“).
@@ -621,6 +621,35 @@ Gerät mit dem Agent-Stick starten, dann im Gerätefenster (oder Rechtsklick auf
 3. Der Agent setzt per `efibootmgr` den **einmaligen** Start (BootNext) auf die Setup-Partition und startet neu.
 4. Die Windows-Setup-Umgebung (von Microsoft signiert) startet über `sources\autounattend.xml` nur `okula\install.cmd`: `dism` spielt die gewählte Edition auf, `bcdboot` richtet den Start ein. Der Setup-Assistent läuft nicht (keine Klicks). Bei einem Fehler öffnet sich das Protokoll `okula\install.log`.
 5. Erster Start: Windows richtet sich mit den Anpassungen ein (Konto, Region Schweiz, Computername, Windows-Schlüssel). Danach löscht `SetupComplete.cmd` die Setup-Partition und vergrössert C:.
+
+**Für Master-Image (Audit-Modus) (I-038):** Häkchen im Dialog *OS installieren …* (nur Windows, Standard aus;
+`WinOptions.audit_mode`). Konto, Benutzername, Passwort, Windows-Schlüssel und der Computername sind ausgegraut und
+werden ignoriert (`winunattend._audit_opts` – Audit hat Vorrang, auch wenn Werte gesetzt sind); keine Prüfung des
+Kontonamens (B-012). Region Schweiz, Datenschutz und BitLocker-Verhinderung bleiben wählbar. `winsetup.system_unattend`
+erzeugt `okula/unattend.xml` (→ `C:\Windows\Panther\unattend.xml`):
+- **specialize** wie bisher (Zeitzone, BitLocker, Datenschutz – ohne `BypassNRO`, ohne `ComputerName`/`ProductKey`),
+  dazu `Microsoft-Windows-International-Core` (Region): Reseal/Audit im oobeSystem ignoriert laut Microsoft alle
+  anderen oobeSystem-Einstellungen, die Region steht darum in specialize.
+- **auditUser** (`Microsoft-Windows-Deployment/RunSynchronous`, läuft als eingebauter Administrator beim Eintritt in den
+  Audit-Modus; RunSynchronous ist laut Microsoft nur in auditUser und specialize gültig, nicht in auditSystem):
+  1. `cmd /c "%WINDIR%\Setup\Scripts\SetupComplete.cmd"` – Setup-Partition löschen, C: vergrössern. Ob
+     `SetupComplete.cmd` beim Start in den Audit-Modus von selbst läuft, belegt Microsoft nicht; doppelt ist harmlos
+     (ohne Marker-Datei tut das Skript nichts).
+  2. `del /f /q "%WINDIR%\Panther\unattend.xml"` – die Antwortdatei darf nicht ins Master-Image (implizite Suche in
+     `%WINDIR%\Panther`, Microsoft: „you must delete the cached answer file in the %WINDIR%\panther directory“).
+  3. Dasselbe Löschen noch einmal nach zwei Minuten, abgekoppelt (`start … ping -n 121 …`): Setup annotiert die
+     zwischengespeicherte Antwortdatei nach einem Durchgang; so bleibt sie auch dann weg, wenn Setup sie am Ende von
+     auditUser zurückschreibt.
+- **oobeSystem** nur `Microsoft-Windows-Deployment/Reseal/Mode=Audit` (ohne `ForceShutdownNow`).
+
+Log des Auftrags: Zusammenfassung „Startet im Audit-Modus für ein Master-Image …“ und nach dem Vorbereiten die nächsten
+Schritte (`winunattend.AUDIT_NEXT_STEPS`: einrichten, Sysprep `/generalize /oobe /shutdown`, Windows nicht mehr
+starten, *Disk-Image erstellen …*, als Master markieren). Verlauf: „Windows-Installation <Edition> für Master-Image
+(Audit-Modus) → <Disk>: vorbereitet …“. Beim Zurückspielen des Masters legt der Agent wie bisher seine eigene
+`Windows\Panther\unattend.xml` ab (`master_unattend`, unverändert, ohne Reseal). Agent unverändert – kein neuer
+Agent-Stick. Quellen: Microsoft Learn „Boot Windows to Audit Mode or OOBE“, „Mode (microsoft-windows-deployment-
+reseal-mode)“, „RunSynchronousCommand (microsoft-windows-deployment-…)“, „Windows Setup Automation Overview“,
+„Add a Custom Script to Windows Setup“.
 
 **Windows-Konto (B-012):** Mit „Lokales Konto statt Microsoft-Konto“ legt die `autounattend.xml` ein lokales Konto
 (Gruppe `Administrators`) an; ohne Passwort meldet es sich einmal automatisch an und verlangt dann ein neues

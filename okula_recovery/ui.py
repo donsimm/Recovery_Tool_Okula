@@ -3701,7 +3701,8 @@ class MainWindow(Gtk.ApplicationWindow):
                 self.vm_auto_snapshot(dev, "OS-Installation")
             if iso.family == "windows":
                 edition = next((e["name"] for e in iso.meta["windows"]["editions"] if e["index"] == index), "")
-                what = f"Windows-Installation {edition} → {disk['path']}"
+                audit = " für Master-Image (Audit-Modus)" if getattr(opts, "audit_mode", False) else ""  # I-038
+                what = f"Windows-Installation {edition}{audit} → {disk['path']}"
                 kind = "install"
             else:
                 what = f"Linux-Installation {iso.title} → {disk['path']}"

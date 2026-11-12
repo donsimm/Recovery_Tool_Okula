@@ -10,6 +10,8 @@ Ablauf:
    daher auch keine TPM-/Secure-Boot-Prüfung.
 5. Erster Start: Anpassungen aus Panther\\unattend.xml; SetupComplete.cmd löscht die Setup-Partition
    und vergrössert C: auf die ganze Disk.
+   Für ein Master-Image (I-038, audit_mode): Windows startet im Audit-Modus; im Durchgang auditUser laufen das
+   Aufräumen (SetupComplete.cmd) und das Löschen von Panther\\unattend.xml.
 """
 
 from __future__ import annotations
@@ -117,6 +119,22 @@ del "%TEMP%\\okula-dp.txt"
 """)
 
 
+# I-038: Ob SetupComplete.cmd auch beim Start in den Audit-Modus läuft, sagt Microsoft nicht eindeutig („After Windows
+# is installed but before the logon screen appears“, Microsoft Learn „Add a Custom Script to Windows Setup“). Damit die
+# Setup-Partition nicht im Master-Image landet, läuft dasselbe Skript im Audit-Fall zusätzlich im Durchgang auditUser
+# (RunSynchronous, dort laut Microsoft gültig; auditSystem kennt kein RunSynchronous). Doppelt ist harmlos: Ohne
+# Marker-Datei (Partition schon weg) tut das Skript nichts.
+SETUPCOMPLETE = "%WINDIR%\\Setup\\Scripts\\SetupComplete.cmd"
+AUDIT_CLEANUP = f'cmd /c "{SETUPCOMPLETE}"'
+
+
+def system_unattend(opts: winunattend.WinOptions) -> str:
+    """Panther\\unattend.xml für den ersten Start nach der Direktinstallation (specialize, oobeSystem bzw. auditUser)."""
+    system_opts = winunattend.WinOptions(**{**opts.__dict__, "skip_network": True})
+    return winunattend.build(system_opts, pe=False, system=True,
+                             audit_commands=[AUDIT_CLEANUP] if opts.audit_mode else None)
+
+
 def launch_command() -> str:
     """RunSynchronous in der Setup-Umgebung: install.cmd auf der Setup-Partition suchen und starten."""
     return (f"cmd /c for %i in ({LETTERS}) do @if exist %i:\\okula\\install.cmd "
@@ -140,14 +158,13 @@ def plan(iso_path: str | Path, index: int, opts: winunattend.WinOptions) -> Plan
     # eigene Antwortdatei statt einer evtl. mitgelieferten
     files = [(p, e) for p, e in entries if p.lower() not in ("autounattend.xml", "sources/autounattend.xml")]
     language = opts.ui_language or "de-DE"
-    system_opts = winunattend.WinOptions(**{**opts.__dict__, "skip_network": True})
     launcher = winunattend.build(opts, pe=True, system=False, launch=launch_command())
     extra = {
         # Setup sucht auf festen Disks in \sources des Mediums, auf Wechselmedien im Wurzelverzeichnis
         "sources/autounattend.xml": launcher,
         "autounattend.xml": launcher,
         "okula/install.cmd": install_cmd(install_id, index, wim[0], split, language),
-        "okula/unattend.xml": winunattend.build(system_opts, pe=False, system=True),
+        "okula/unattend.xml": system_unattend(opts),
         "okula/SetupComplete.cmd": setupcomplete_cmd(install_id),
         f"okula/{install_id}.setup": install_id,
     }
