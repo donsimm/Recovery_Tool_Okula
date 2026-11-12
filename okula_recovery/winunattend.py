@@ -36,7 +36,7 @@ UNSUPPORTED_WARNING = ("Microsoft rät davon ab: kein Support, Updates (auch Sic
 @dataclass
 class WinOptions:
     bypass_requirements: bool = False  # LabConfig: Setup-Prüfung TPM/Secure Boot/RAM/CPU umgehen – nur von Hand
-    local_account: str = "Benutzer"    # leer = Windows fragt selbst
+    local_account: str = "Okula"       # leer = Windows fragt selbst (B-012: nicht „Benutzer“, s. pruefe_kontoname)
     password: str = ""                 # leer = beim ersten Anmelden setzen
     skip_privacy: bool = True
     no_bitlocker: bool = True
@@ -47,6 +47,54 @@ class WinOptions:
     skip_network: bool = False         # Netzwerk-Seite im Willkommens-Assistenten überspringen
     product_key: str = ""              # nur Direktinstallation: wird beim ersten Start gesetzt
     unsupported_hardware: bool = False  # Direktinstallation: Windows 11 trotz „nicht tauglich“ (am Gerät vermerken)
+
+
+# B-012: Namen, die in Windows (deutsch/englisch) schon für eingebaute Gruppen oder Konten vergeben sind.
+# Ein lokales Konto mit so einem Namen lässt sich nicht anlegen (0x80070563), die Einrichtung hängt danach in einer
+# Neustart-Schleife. Vergleich ohne Gross-/Kleinschreibung.
+RESERVED_ACCOUNT_NAMES = (
+    "Benutzer", "Benutzerin", "Administrator", "Administratoren", "Administrator-Gruppe", "Administratoren-Gruppe",
+    "Gast", "Gäste", "Jeder", "Users", "User", "Administrators", "Guest", "Guests", "Everyone", "System", "Network",
+    "Local", "Default", "DefaultAccount", "WDAGUtilityAccount", "Konto",
+    # weitere eingebaute Gruppen/Konten
+    "Hauptbenutzer", "Power Users", "Sicherungs-Operatoren", "Backup Operators", "Remotedesktopbenutzer",
+    "Remote Desktop Users", "Netzwerkkonfigurations-Operatoren", "Network Configuration Operators",
+    "Leistungsüberwachungsbenutzer", "Performance Monitor Users", "Leistungsprotokollbenutzer",
+    "Performance Log Users", "Ereignisprotokollleser", "Event Log Readers", "Replikations-Operator", "Replicator",
+    "IIS_IUSRS", "Hyper-V-Administratoren", "Hyper-V Administrators", "Remoteverwaltungsbenutzer",
+    "Remote Management Users", "Zugriffssteuerungsunterstützungsoperatoren", "Access Control Assistance Operators",
+    "Kryptografie-Operatoren", "Cryptographic Operators", "Distributed COM-Benutzer", "Distributed COM Users",
+    "Gerätebesitzer", "Device Owners", "Lokaler Dienst", "Local Service", "Netzwerkdienst", "Network Service",
+    "Interaktiv", "Interactive", "Authentifizierte Benutzer", "Authenticated Users", "Anonymous Logon",
+    "Batch", "Dialup", "Service", "Dienst", "Creator Owner", "Ersteller-Besitzer", "Creator Group",
+    "Erstellergruppe", "Terminal Server User", "TrustedInstaller",
+)
+_RESERVED_LOWER = frozenset(n.casefold() for n in RESERVED_ACCOUNT_NAMES)
+ACCOUNT_FORBIDDEN_CHARS = '"/\\[]:;|=,+*?<>'
+ACCOUNT_MAX_LEN = 20
+
+
+def pruefe_kontoname(name: str) -> str | None:
+    """Meldung, wenn Windows ein lokales Konto mit diesem Namen nicht anlegen kann, sonst None.
+
+    Leer ist erlaubt: Dann legt die Antwortdatei kein Konto an und Windows fragt beim ersten Start selbst nach
+    einem Konto (Einrichtung hält dort an). Der Name wird nicht korrigiert – die Meldung nennt den Grund."""
+    name = (name or "").strip()
+    if not name:
+        return None
+    if name.casefold() in _RESERVED_LOWER:
+        return (f"Der Name „{name}“ ist in Windows für eine Gruppe oder ein eingebautes Konto vergeben und lässt "
+                "sich nicht als Konto verwenden. Anderen Benutzernamen eingeben.")
+    if len(name) > ACCOUNT_MAX_LEN:
+        return (f"Der Benutzername „{name}“ ist zu lang ({len(name)} Zeichen, Windows erlaubt höchstens "
+                f"{ACCOUNT_MAX_LEN}). Kürzeren Benutzernamen eingeben.")
+    if name.endswith("."):
+        return f"Der Benutzername „{name}“ darf nicht auf einen Punkt enden. Anderen Benutzernamen eingeben."
+    bad = "".join(dict.fromkeys(c for c in name if c in ACCOUNT_FORBIDDEN_CHARS))
+    if bad:
+        return (f"Der Benutzername „{name}“ enthält Zeichen, die Windows nicht erlaubt ({' '.join(bad)}). "
+                "Anderen Benutzernamen eingeben.")
+    return None
 
 
 def encode_password(password: str, kind: str = "Password") -> str:

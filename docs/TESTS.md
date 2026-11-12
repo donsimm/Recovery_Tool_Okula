@@ -316,3 +316,13 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten und **neuen Agent-Stic
 - [ ] Gerät ohne MCE (z. B. EliteBook) → „CPU unter Last“ weiterhin grün, Detail „Hardware-Fehler: keine seit dem Start“
 - [ ] Erscheint stattdessen „Hardware-Fehler nicht prüfbar (Kernel-Protokoll nicht lesbar)“: am Gerät
       `journalctl -k -b | tail` und `dmesg | tail` prüfen und an Okuli melden
+
+### 16. Windows-Kontoname (B-012)
+Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stick).
+- [ ] CompactPlayer (bzw. VM-Zwilling „VM-CompactPlayer-1“): *OS installieren …* mit Windows-ISO, *Benutzername*
+      vorbelegt mit „Okula“ → Installation läuft ohne Eingriff bis zum Anmeldebildschirm, Konto „Okula“ meldet sich
+      einmal automatisch an und verlangt ein neues Passwort (keine Neustart-Schleife)
+- [ ] Im selben Dialog *Benutzername* „Benutzer“ (auch „ benutzer “) → unter der Disk erscheint die Meldung
+      „Der Name ‚Benutzer‘ ist in Windows … vergeben …“, *Installieren* bleibt gesperrt; „Okula“ → wieder frei
+- [ ] *Boot-Stick aus ISO …* (Windows), *Benutzername* „Administrator“ → *Stick erstellen* zeigt Fenster
+      „Benutzername nicht möglich“, der Stick wird nicht gelöscht

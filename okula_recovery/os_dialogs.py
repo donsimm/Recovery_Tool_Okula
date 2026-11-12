@@ -15,7 +15,7 @@ from gi.repository import GLib, Gtk, Pango  # noqa: E402
 
 from okula_recovery import isostick, nas, oslib, stick, win11, winunattend  # noqa: E402
 from okula_recovery.stick_dialog import iso_stick_command, run_helper, show_stick_result  # noqa: E402
-from okula_recovery.uikit import confirm, scrolled  # noqa: E402
+from okula_recovery.uikit import confirm, confirm_error, scrolled  # noqa: E402
 
 MODE_LABELS = {
     "windows": "Windows-Installation (FAT32, UEFI mit Secure Boot und BIOS)",
@@ -334,7 +334,7 @@ class BootStickDialog(Gtk.Dialog):
         self.w_bypass.set_tooltip_text(winunattend.UNSUPPORTED_WARNING)
         self.w_bypass.connect("toggled", self._on_bypass)
         self.w_account = Gtk.CheckButton(label="Lokales Konto statt Microsoft-Konto", active=True)
-        self.w_user = Gtk.Entry(text="Benutzer", width_chars=16)
+        self.w_user = Gtk.Entry(text=winunattend.WinOptions.local_account, width_chars=16)
         self.w_pass = Gtk.Entry(visibility=False, placeholder_text="leer = beim ersten Anmelden setzen", width_chars=26)
         self.w_privacy = Gtk.CheckButton(label="Datenschutz-Fragen überspringen (alles aus)", active=True)
         self.w_bitlocker = Gtk.CheckButton(label="Keine automatische BitLocker-Verschlüsselung", active=True)
@@ -451,6 +451,13 @@ class BootStickDialog(Gtk.Dialog):
         device, mode = self.disk_combo.get_active_id(), self.mode_combo.get_active_id()
         if not device or not mode:
             return
+        if mode == "windows" and self.w_account.get_active():
+            problem = winunattend.pruefe_kontoname(self.w_user.get_text())
+            if problem:  # B-012: Konto liesse sich in Windows nicht anlegen → Einrichtung hinge
+                self._log(f"Nicht gestartet: {problem}")
+                confirm_error(self, problem, title="Benutzername nicht möglich")
+                self.w_user.grab_focus()
+                return
         if not confirm(self, "Stick wirklich löschen?",
                        f"{self.disk_combo.get_active_text()}\n\nAlle Daten auf diesem Stick gehen verloren.",
                        ok_label="Stick löschen"):
@@ -581,7 +588,8 @@ class InstallDialog(Gtk.Dialog):
         self.w_key.set_sensitive(bool(self.key))
         self.w_key.connect("toggled", lambda _c: self._update())
         self.w_account = Gtk.CheckButton(label="Lokales Konto statt Microsoft-Konto", active=True)
-        self.w_user = Gtk.Entry(text="Benutzer", width_chars=16)
+        self.w_user = Gtk.Entry(text=winunattend.WinOptions.local_account, width_chars=16)
+        self.w_user.connect("changed", lambda _e: self._update())
         self.w_pass = Gtk.Entry(visibility=False, placeholder_text="leer = beim ersten Anmelden setzen", width_chars=26)
         self.w_privacy = Gtk.CheckButton(label="Datenschutz-Fragen überspringen (alles aus)", active=True)
         self.w_bitlocker = Gtk.CheckButton(label="Keine automatische BitLocker-Verschlüsselung", active=True)
@@ -833,6 +841,13 @@ class InstallDialog(Gtk.Dialog):
                 old = EDITION_NAMES.get(self.device.windows_edition, self.device.windows_edition)
                 problems.append(f"Hinweis: Auf dem Gerät war Windows {old} – der Schlüssel aktiviert vermutlich nur "
                                 f"diese Edition, nicht {chosen['name']}.")
+        if windows and self.w_account.get_active():
+            account_problem = winunattend.pruefe_kontoname(self.w_user.get_text())
+            if account_problem:  # B-012
+                problems.append(account_problem)
+                ok = False
+            elif not self.w_user.get_text().strip():
+                problems.append("Hinweis: Benutzername leer – Windows fragt beim ersten Start selbst nach einem Konto.")
         if iso and not windows:
             try:
                 self.linuxsetup.username(self.l_user.get_text())
@@ -897,6 +912,12 @@ class InstallDialog(Gtk.Dialog):
         iso = self._iso()
         disk = self.disks[self.disk_combo.get_active_id()]
         index = int(self.edition.get_active_id()) if iso.family == "windows" else None
+        if iso.family == "windows" and self.w_account.get_active():
+            problem = winunattend.pruefe_kontoname(self.w_user.get_text())
+            if problem:  # B-012: Konto liesse sich in Windows nicht anlegen → Einrichtung hinge
+                self.status.set_text(f"Nicht gestartet: {problem}")
+                self.w_user.grab_focus()
+                return
         try:
             self.start_job(iso, disk, index, self.options(),
                            snapshot=self.snapshot.get_visible() and self.snapshot.get_active())

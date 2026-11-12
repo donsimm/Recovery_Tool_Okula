@@ -769,6 +769,13 @@ Netzwerkstart mit dem aktuellen Tool). Geprüft wird nur lesend: Daten, Windows 
 Der <b>Computername</b> ist immer der Gerätename im Tool. Für einen anderen Namen das Gerät umbenennen.
 Windows erlaubt nur 15 Zeichen ohne Sonderzeichen. Der Dialog zeigt, wie der Name ankommt.
 
+<b>Windows-Konto</b> (<i>Lokales Konto statt Microsoft-Konto</i>, Feld <i>Benutzername</i>, vorbelegt mit „Okula“)
+•  Namen, die Windows schon für Gruppen oder eingebaute Konten verwendet, gehen nicht – zum Beispiel
+    „Benutzer“, „Administrator“, „Gast“, „Jeder“, „Users“ oder „System“. Das Tool zeigt dann eine Meldung
+    und startet nicht. Ebenso: mehr als 20 Zeichen, Punkt am Ende, Zeichen wie / \\ [ ] : ; | = , + * ? &lt; &gt; "
+•  Benutzername leer: Windows fragt beim ersten Start selbst nach einem Konto (die Einrichtung hält dort an).
+•  Gilt auch für den Boot-Stick (Kapitel <i>Sticks erstellen</i>).
+
 Direkt installieren geht mit Windows 10/11, Ubuntu Desktop ab 24.04, Debian und Fedora/Rocky/Alma.
 Bei anderen Systemen zeigt das Tool den Grund. Dann hilft ein Boot-Stick (Kapitel <i>Sticks erstellen</i>).
 
@@ -783,6 +790,8 @@ Bei anderen Systemen zeigt das Tool den Grund. Dann hilft ein Boot-Stick (Kapite
 •  Rechts eine ISO wählen und auf <i>Boot-Stick aus ISO …</i> klicken.
 •  Mit dem Stick lässt sich Windows oder Linux an jedem Computer installieren.
 •  Bei Windows gibt es Einstellungen: lokales Konto statt Microsoft-Konto, Region Schweiz.
+    Für den <i>Benutzernamen</i> gelten dieselben Regeln wie beim Installieren
+    (Kapitel <i>Windows / Linux installieren</i>, „Benutzer“ oder „Administrator“ gehen nicht).
 •  Altes Gerät, das Windows 11 nicht erfüllt? Microsoft rät ab (keine Updates garantiert).
     Wer es trotzdem will: Häkchen <i>Trotzdem installieren</i> bzw. beim Stick
     <i>Auch für nicht unterstützte Hardware</i>. Das Gerät bekommt dann einen Vermerk.

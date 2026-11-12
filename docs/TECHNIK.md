@@ -604,7 +604,8 @@ Rechts im Reiter *Images* steht der Ast **„Betriebssysteme“**. Das Tool legt
 | Dateien kopieren | UEFI-ISOs ohne Hybrid-Bootsektor | FAT32, nur UEFI. |
 
 - **Stick prüfen** vor dem Schreiben: *Schnelltest* (Standard, Sekunden) erkennt **gefälschte Sticks**, die mehr Kapazität melden als vorhanden; *Vollständig* schreibt und liest alle Blöcke (badblocks, dauert lange).
-- **Windows-Anpassung** (`autounattend.xml` auf dem Stick): optional **„Auch für nicht unterstützte Hardware“** (TPM 2.0, Secure Boot, RAM, CPU nicht prüfen – standardmässig **aus**, Einschalten nur nach Bestätigung der Microsoft-Hinweise), lokales Konto statt Microsoft-Konto (Name, optional Passwort – sonst beim ersten Anmelden setzen), Datenschutz-Fragen überspringen, keine automatische BitLocker-Verschlüsselung, **Region Schweiz** (Formate de-CH, Tastatur Schweiz-Deutsch, Zeitzone Zürich), optional Computername. Die Windows-Sprache bleibt die des Mediums.
+- **Windows-Anpassung** (`autounattend.xml` auf dem Stick): optional **„Auch für nicht unterstützte Hardware“** (TPM 2.0, Secure Boot, RAM, CPU nicht prüfen – standardmässig **aus**, Einschalten nur nach Bestätigung der Microsoft-Hinweise), lokales Konto statt Microsoft-Konto (Name, vorbelegt „Okula“, Prüfung wie beim Direktinstallieren – siehe
+„Windows-Konto (B-012)“ unten; optional Passwort – sonst beim ersten Anmelden setzen), Datenschutz-Fragen überspringen, keine automatische BitLocker-Verschlüsselung, **Region Schweiz** (Formate de-CH, Tastatur Schweiz-Deutsch, Zeitzone Zürich), optional Computername. Die Windows-Sprache bleibt die des Mediums.
 - Der Stick wird über den bestehenden Root-Helfer geschrieben (`sudo okula-make-stick iso-stick …`); ISOs werden nur vom eingehängten NAS (`/mnt/…`) akzeptiert.
 - Nicht übernommen von Rufus: ReFS/MS-DOS (unter Linux nicht erstellbar), FFU-Abbilder (nur mit Microsoft DISM), Windows To Go, Download von Windows-ISOs (ISOs selbst hochladen).
 
@@ -620,6 +621,25 @@ Gerät mit dem Agent-Stick starten, dann im Gerätefenster (oder Rechtsklick auf
 3. Der Agent setzt per `efibootmgr` den **einmaligen** Start (BootNext) auf die Setup-Partition und startet neu.
 4. Die Windows-Setup-Umgebung (von Microsoft signiert) startet über `sources\autounattend.xml` nur `okula\install.cmd`: `dism` spielt die gewählte Edition auf, `bcdboot` richtet den Start ein. Der Setup-Assistent läuft nicht (keine Klicks). Bei einem Fehler öffnet sich das Protokoll `okula\install.log`.
 5. Erster Start: Windows richtet sich mit den Anpassungen ein (Konto, Region Schweiz, Computername, Windows-Schlüssel). Danach löscht `SetupComplete.cmd` die Setup-Partition und vergrössert C:.
+
+**Windows-Konto (B-012):** Mit „Lokales Konto statt Microsoft-Konto“ legt die `autounattend.xml` ein lokales Konto
+(Gruppe `Administrators`) an; ohne Passwort meldet es sich einmal automatisch an und verlangt dann ein neues
+(`net user "<Name>" /logonpasswordchg:yes`). Vorbelegt ist **„Okula“** (`WinOptions.local_account`). Der frühere
+Standard „Benutzer“ ist in deutschem Windows der Name der eingebauten Gruppe Builtin\Users: Das Anlegen scheitert
+(`0x80070563`, `Windows\Panther\UnattendGC\setuperr.log`), danach hängt die Einrichtung in einer Neustart-Schleife
+(oobeldr `0x8030000b`/`0x8030000c`). Darum prüft `winunattend.pruefe_kontoname(name)` (Meldung oder `None`) vor dem
+Start – im Dialog „OS installieren …“ (Meldung in der Prüfliste, *Installieren* gesperrt, zusätzlich beim
+Bestätigen) und beim Boot-Stick (Fehlerfenster beim Start, Stick wird nicht gelöscht):
+- reservierte Namen von Gruppen und eingebauten Konten, deutsch und englisch (`RESERVED_ACCOUNT_NAMES`: Benutzer,
+  Administrator(en), Gast, Gäste, Jeder, Users, User, Guest(s), Everyone, System, Network, Local, Default,
+  DefaultAccount, WDAGUtilityAccount, Konto, Hauptbenutzer, Remotedesktopbenutzer, Netzwerkdienst …), nach
+  `strip()` und ohne Gross-/Kleinschreibung;
+- mehr als 20 Zeichen, Punkt am Ende, eines der Zeichen `" / \ [ ] : ; | = , + * ? < >`.
+
+Der Name wird nie still korrigiert. **Leer** ist erlaubt: Dann enthält die Antwortdatei kein Konto (auch kein
+`BypassNRO`), Windows fragt beim ersten Start selbst nach einem Konto – die Einrichtung hält dort an (Dialog zeigt
+einen Hinweis). Die Prüfung läuft nur auf dem Server (kein neuer Agent-Stick). Das Konto im Master-Ablauf
+(`master_unattend`, Automatisierung) ist davon nicht betroffen (Standard dort leer).
 
 **Windows 11 auf nicht unterstützter Hardware:** Ist das Gerät laut Inventar nicht Windows-11-tauglich (z. B. TPM 1.2, Prozessor vor 8. Generation), zeigt der Dialog den Grund und die Hinweise von Microsoft (kein Support, Updates – auch Sicherheitsupdates – nicht garantiert, Schäden nicht von der Herstellergarantie gedeckt, Wasserzeichen). „Installieren“ geht erst mit dem Häkchen **„Trotzdem installieren – nicht unterstützt“**. Nach erfolgreicher Vorbereitung steht am Gerät ein Vermerk (Gerätefenster → Übersicht → Windows 11, Verlauf, Inventar-Export). Nie in der Automatisierung. Empfehlung: lieber Gerät ersetzen, Windows 10 mit ESU oder Linux. Quelle: [Microsoft](https://support.microsoft.com/en-us/windows/installing-windows-11-on-devices-that-don-t-meet-minimum-system-requirements-0b2dc4a2-5933-4ad4-9c09-ef0a331518f1).
 

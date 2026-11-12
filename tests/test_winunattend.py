@@ -51,12 +51,15 @@ class UnattendTest(unittest.TestCase):
         oobe = component(root, "oobeSystem", "Microsoft-Windows-Shell-Setup")
         acc = oobe.find("u:UserAccounts/u:LocalAccounts/u:LocalAccount", N)
         self.assertEqual(acc.get(f"{{{wu.WCM}}}action"), "add")
-        self.assertEqual(acc.find("u:Name", N).text, "Benutzer")
+        # B-012: Standardname „Okula“ (nicht „Benutzer“ – kollidiert mit der Gruppe in deutschem Windows)
+        self.assertEqual(acc.find("u:Name", N).text, "Okula")
+        self.assertEqual(acc.find("u:Group", N).text, "Administrators")
         self.assertEqual(acc.find("u:Password/u:PlainText", N).text, "true")
         # ohne Passwort: einmal automatisch anmelden, dann Passwort setzen lassen
         self.assertEqual(oobe.find("u:AutoLogon/u:LogonCount", N).text, "1")
+        self.assertEqual(oobe.find("u:AutoLogon/u:Username", N).text, "Okula")
         first = [c.text for c in oobe.iter(f"{{{wu.NS}}}CommandLine")]
-        self.assertIn('net user "Benutzer" /logonpasswordchg:yes', first)
+        self.assertIn('net user "Okula" /logonpasswordchg:yes', first)
         self.assertEqual(oobe.find("u:OOBE/u:ProtectYourPC", N).text, "3")
 
     def test_password_encoded_and_name_cleaned(self):
@@ -82,6 +85,52 @@ class UnattendTest(unittest.TestCase):
         oobe = component(root, "oobeSystem", "Microsoft-Windows-Shell-Setup")
         self.assertIsNone(oobe.find("u:UserAccounts", N))
         self.assertEqual(wu.summary(opts), ["Region Schweiz: Formate de-CH, Tastatur Schweiz, Zeitzone Zürich"])
+
+
+class KontonameTest(unittest.TestCase):
+    """B-012: Kontonamen, die Windows nicht anlegen kann, vor dem Start abfangen."""
+
+    def test_default_ok(self):
+        self.assertEqual(wu.WinOptions().local_account, "Okula")
+        self.assertIsNone(wu.pruefe_kontoname(wu.WinOptions().local_account))
+
+    def test_reserved_names(self):
+        for name in ("Benutzer", "benutzer", " Benutzer ", "BENUTZER", "Administrator", "administratoren", "Gast",
+                     "Gäste", "GÄSTE", "Jeder", "Users", "user", "Administrators", "Guest", "Guests", "Everyone",
+                     "SYSTEM", "Network", "Local", "Default", "DefaultAccount", "WDAGUtilityAccount", "Konto",
+                     "Benutzerin", "Administrator-Gruppe", "Administratoren-Gruppe"):
+            msg = wu.pruefe_kontoname(name)
+            self.assertIsNotNone(msg, name)
+            self.assertIn(f"„{name.strip()}“", msg)
+            self.assertIn("Anderen Benutzernamen eingeben", msg)
+
+    def test_ok_names(self):
+        for name in ("Okula", "Dominik", "Büro", "Empfang 2", "max.muster", "Benutzer1", "Admin", "a" * 20, ""):
+            self.assertIsNone(wu.pruefe_kontoname(name), name)
+
+    def test_empty_allowed(self):
+        # leer: kein Konto in der Antwortdatei, Windows fragt beim ersten Start selbst
+        self.assertIsNone(wu.pruefe_kontoname("   "))
+        self.assertIsNone(wu.pruefe_kontoname(None))
+
+    def test_length_dot_chars(self):
+        self.assertIn("zu lang", wu.pruefe_kontoname("a" * 21))
+        self.assertIn("Punkt", wu.pruefe_kontoname("Okula."))
+        for c in '"/\\[]:;|=,+*?<>':
+            msg = wu.pruefe_kontoname(f"Ok{c}ula")
+            self.assertIsNotNone(msg, c)
+            self.assertIn(c, msg)
+
+    def test_name_in_xml(self):
+        for name in ("Okula", "Empfang"):
+            root = ET.fromstring(wu.build(wu.WinOptions(local_account=name)))
+            oobe = component(root, "oobeSystem", "Microsoft-Windows-Shell-Setup")
+            acc = oobe.find("u:UserAccounts/u:LocalAccounts/u:LocalAccount", N)
+            self.assertEqual(acc.find("u:Name", N).text, name)
+            self.assertEqual(acc.find("u:DisplayName", N).text, name)
+            self.assertIn(f'net user "{name}" /logonpasswordchg:yes',
+                          [c.text for c in oobe.iter(f"{{{wu.NS}}}CommandLine")])
+            self.assertNotIn("Benutzer", ET.tostring(acc, encoding="unicode"))
 
 
 
