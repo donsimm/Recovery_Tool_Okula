@@ -1,6 +1,6 @@
 # I-038 – Windows-Direktinstallation „Für Master-Image (Audit-Modus)“
 
-Status: freigegeben · erstellt 12.11.2026 von der Projektleitung · Freigabe: Dominik 12.11. („Audit-Modus planen und umsetzen“)
+Status: umgesetzt (Commit 3d28d7b) · erstellt 12.11.2026 von der Projektleitung · Freigabe: Dominik 12.11. („Audit-Modus planen und umsetzen“)
 
 ## Rolle und Einstieg
 
