@@ -1,6 +1,6 @@
 # I-020 – Software aus dem Ordner „Software“ automatisch installieren
 
-Status: freigegeben · erstellt 17.11.2026 von der Projektleitung · Freigabe: Dominik 17.11.
+Status: umgesetzt (Commit dc1389d; davor 91b02b2, 32a8fee) · erstellt 17.11.2026 von der Projektleitung · Freigabe: Dominik 17.11.
 
 ## Rolle und Einstieg
 
