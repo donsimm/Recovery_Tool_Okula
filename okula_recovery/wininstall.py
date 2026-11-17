@@ -7,6 +7,8 @@ Setup-Partition; dort installiert die Windows-Setup-Umgebung per dism/bcdboot (s
 
 from __future__ import annotations
 
+import errno
+import mmap
 import os
 import re
 import shutil
@@ -26,7 +28,10 @@ GPT_ESP = "C12A7328-F81F-11D2-BA4B-00A0C93EC93B"
 GPT_MSR = "E3C9E316-0B5C-4DB8-817D-F92DF00215AE"
 GPT_DATA = "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7"
 SETUP_LABEL = "OKULASETUP"
+WIN_LABEL = "OKULAWIN"                   # install.cmd sucht danach, wenn die Markierung fehlt (B-014)
 MIN_WIN_MIB = 20 * 1024                  # Platz für Windows selbst
+WIPE_HEAD, WIPE_TAIL = 16 * MIB, MIB     # B-014: Bootsektor/$MFT am Anfang, Backup-Bootsektor im letzten Sektor
+WRITE_CHECK_FAILED = "Schreiben auf die Disk wird nicht übernommen – Disk prüfen"
 
 Report = Callable[[float, str, int], None]
 ImagingError = imaging.ImagingError
@@ -64,16 +69,99 @@ def _mkntfs(part: str, label: str) -> None:
 
 
 def _mkstage(part: str) -> None:
-    _run(["mkfs.ext4", "-q", "-F", "-L", "OKULASTAGE", part])
+    # nodiscard: kein TRIM über die ganze Partition direkt vor dem Schreiben (B-014, ältere SSDs)
+    _run(["mkfs.ext4", "-q", "-F", "-E", "nodiscard", "-L", "OKULASTAGE", part])
 
 
-def _mount(part: str, where: Path, ntfs: bool = False) -> None:
+def _mount(part: str, where: Path, ntfs: bool = False, ro: bool = False) -> None:
     where.mkdir(parents=True, exist_ok=True)
-    _run(["ntfs-3g", part, str(where)] if ntfs else ["mount", part, str(where)])
+    opts = ["-o", "ro"] if ro else []
+    _run(["ntfs-3g", *opts, part, str(where)] if ntfs else ["mount", *opts, part, str(where)])
 
 
 def _umount(where: Path) -> None:
     subprocess.run(["umount", str(where)], capture_output=True)
+
+
+# ---------- B-014: alte Strukturen löschen, Geschriebenes direkt von der Disk prüfen ----------
+
+def zero_ranges(size: int, head: int = WIPE_HEAD, tail: int = WIPE_TAIL) -> list[tuple[int, int]]:
+    """(Start, Länge) der zu löschenden Bereiche; Ende auf 4 KiB ausgerichtet (O_DIRECT, 4K-Sektoren)."""
+    if size <= head + tail:
+        return [(0, size)]
+    start = (size - tail) // 4096 * 4096
+    return [(0, head), (start, size - start)]
+
+
+def _write_zeros(path: str, ranges: list[tuple[int, int]], flags: int) -> None:
+    buf = mmap.mmap(-1, MIB)  # seitenausgerichtet – nötig für O_DIRECT
+    fd = os.open(path, os.O_WRONLY | flags)
+    try:
+        with memoryview(buf) as view:
+            for offset, length in ranges:
+                while length > 0:
+                    n = os.pwrite(fd, view[:min(length, MIB)], offset)
+                    offset, length = offset + n, length - n
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+        buf.close()
+
+
+def zero_ends(path: str, head: int = WIPE_HEAD, tail: int = WIPE_TAIL) -> None:
+    """Anfang und Ende mit Nullen überschreiben, am Seitencache vorbei (O_DIRECT) und mit fsync.
+
+    Kein Discard: Lesen nach TRIM liefert nicht auf jeder SSD Nullen (ATA: nur mit „RZAT“)."""
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        size = os.lseek(fd, 0, os.SEEK_END)
+    finally:
+        os.close(fd)
+    ranges = zero_ranges(size, head, tail)
+    try:
+        _write_zeros(path, ranges, getattr(os, "O_DIRECT", 0))
+    except OSError as e:
+        if e.errno != errno.EINVAL:   # Dateisystem/Gerät ohne O_DIRECT bzw. Länge nicht ausgerichtet
+            raise
+        _write_zeros(path, ranges, 0)
+
+
+def _wipe(part: str) -> None:
+    """Signaturen löschen (wipefs) und Anfang/Ende nullen – vor dem Formatieren (B-014)."""
+    _run(["wipefs", "-a", "-q", part])
+    zero_ends(part)
+
+
+def _flush(part: str) -> None:
+    """Alles auf die Disk schreiben und die Caches verwerfen, damit die Prüfung wirklich von der Disk liest."""
+    subprocess.run(["sync"])
+    subprocess.run(["blockdev", "--flushbufs", part], capture_output=True)
+    try:
+        Path("/proc/sys/vm/drop_caches").write_text("3\n")
+    except OSError:
+        pass
+
+
+def _probe(part: str) -> dict:
+    """Dateisystem und Bezeichnung direkt vom Gerät (blkid -p, ohne blkid-Cache)."""
+    r = subprocess.run(["blkid", "-p", "-o", "export", part], capture_output=True, text=True)
+    return dict(line.split("=", 1) for line in r.stdout.splitlines() if "=" in line)
+
+
+def check_windows_partition(part: str, marker: str, where: Path) -> None:
+    """Nach dem Schreiben: Bezeichnung OKULAWIN und Markierung müssen von der Disk kommen, sonst Abbruch."""
+    _flush(part)
+    info = _probe(part)
+    if info.get("TYPE") != "ntfs" or info.get("LABEL") != WIN_LABEL:
+        found = f"{info.get('TYPE') or 'kein Dateisystem'}, Bezeichnung „{info.get('LABEL', '')}“"
+        raise ImagingError(f"{WRITE_CHECK_FAILED} (Windows-Partition {part}: {found} statt ntfs „{WIN_LABEL}“)")
+    _mount(part, where, ntfs=True, ro=True)
+    try:
+        ok = (where / marker).is_file()
+    finally:
+        _umount(where)
+    if not ok:
+        raise ImagingError(f"{WRITE_CHECK_FAILED} (Windows-Partition {part}: Markierung {marker} fehlt)")
 
 
 def efibootmgr(*args: str) -> str:
@@ -213,6 +301,10 @@ def install(sock, req: dict, log: Callable[[str], None] = print, report: Report 
     parts = [imaging.partition_device(disk, n) for n in (1, 2, 3, 4)]
     imaging._wait_for(parts)
     esp, _msr, win, setup = parts
+    # B-014: Gleiche Startsektoren wie vorher → altes NTFS (Bootsektor, Backup am Ende) läge sonst noch darunter
+    log("Alte Daten auf den neuen Partitionen werden gelöscht (Anfang und Ende) …")
+    for part in parts:
+        _wipe(part)
     _mkfat(esp, "SYSTEM")
     _mkfat(setup, SETUP_LABEL)
     setup_dir, stage_dir, win_dir = WORK / "setup", WORK / "stage", WORK / "windows"
@@ -272,13 +364,19 @@ def install(sock, req: dict, log: Callable[[str], None] = print, report: Report 
             _umount(stage_dir)
 
     report(0.98, "Windows-Partition", received)
-    _mkntfs(win, "OKULAWIN")
+    marker = str(req.get("target_marker") or "okula.target")
+    if split:  # Zwischenablage (ext4) weg, bevor NTFS darauf kommt
+        log("Alte Daten auf der Windows-Partition werden gelöscht …")
+        _wipe(win)
+    _mkntfs(win, WIN_LABEL)
     _mount(win, win_dir, ntfs=True)
     try:
-        (win_dir / str(req.get("target_marker") or "okula.target")).write_text("Okula Recovery Tool\n")
+        (win_dir / marker).write_text("Okula Recovery Tool\n")
     finally:
         subprocess.run(["sync"])
         _umount(win_dir)
+    log("Windows-Partition wird geprüft …")
+    check_windows_partition(win, marker, win_dir)  # Fehler → Abbruch ohne BootNext und ohne Neustart
     entry = set_bootnext(disk, 4, str(req.get("boot_label") or "Okula Windows-Installation"))
     log(f"Setup-Partition bereit, nächster Start: Boot{entry}")
     report(1.0, "bereit", received)

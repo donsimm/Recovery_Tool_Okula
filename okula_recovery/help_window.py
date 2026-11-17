@@ -859,6 +859,20 @@ Windows erlaubt nur 15 Zeichen ohne Sonderzeichen. Der Dialog zeigt, wie der Nam
     markieren (Kapitel <i>Master-Image</i>). Das Log des Auftrags nennt diese Schritte ebenfalls.
 •  Bei einer VM vor Sysprep im Reiter <i>Snapshots</i> einen Snapshot erstellen (<i>Snapshot erstellen …</i>).
 
+<b>Fehler am Gerät</b> (Windows)
+•  Vor dem Neustart löscht der Agent alte Daten auf den neuen Partitionen (Anfang und Ende) und prüft die
+    Windows-Partition direkt auf der Disk. Kommt das Geschriebene dort nicht an, bricht der Auftrag ab mit
+    „Schreiben auf die Disk wird nicht übernommen – Disk prüfen“. Das Gerät startet dann nicht neu.
+•  Die Setup-Umgebung sucht die Windows-Partition über eine Markierungsdatei, sonst über die Bezeichnung
+    „OKULAWIN“ (nur wenn genau ein Laufwerk sie trägt). Ein Laufwerk mit einem alten Windows wird nie formatiert.
+•  Wird keine gefunden, öffnet sich der Editor mit dem Protokoll <tt>okula\\install.log</tt> auf der Setup-Partition
+    „OKULASETUP“: oben ein Hinweis, darunter der Ablauf, die Laufwerksliste (<tt>diskpart</tt>) und je Laufwerk
+    Bezeichnung, Inhalt und ob eine Markierung <tt>okula-….target</tt> darauf liegt.
+•  Editor nicht gleich schliessen: Danach schaltet sich das Gerät aus. Für eine Eingabeaufforderung vorher
+    Shift+F10 drücken; ohne Wirkung im Editor <i>Datei → Öffnen</i>, Dateityp „Alle Dateien“,
+    <tt>X:\\Windows\\System32\\cmd.exe</tt> mit der rechten Maustaste öffnen.
+•  Für die Fehlersuche das Protokoll fotografieren oder später von der Setup-Partition kopieren.
+
 Direkt installieren geht mit Windows 10/11, Ubuntu Desktop ab 24.04, Debian und Fedora/Rocky/Alma.
 Bei anderen Systemen zeigt das Tool den Grund. Dann hilft ein Boot-Stick (Kapitel <i>Sticks erstellen</i>).
 

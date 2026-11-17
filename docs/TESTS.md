@@ -385,8 +385,26 @@ Windows ganz heruntergefahren, dann mit dem Agent starten.
 - [ ] Alter Agent (Stick vor I-039) → Meldung „Agent zu alt …“
 - [ ] DEMO-PC: *Windows anpassen …* → Auftrag nach wenigen Sekunden „fertig“
 
-### 20. Direktinstallation auf Disk mit altem Windows (B-014)
-Nach der Korrektur von B-014. Am CompactPlayer 1 (bzw. VM mit installiertem, hart ausgeschaltetem Windows).
+### 20. Direktinstallation auf Disk mit altem Windows (B-014, Ä-039)
+Nach `git pull && sudo ./install.sh` das Tool neu starten und **Agent-Stick bzw. Netzwerkstart neu erstellen**
+(Agent geändert). Am CompactPlayer 1 (bzw. VM mit installiertem, hart ausgeschaltetem Windows).
 - [ ] *OS installieren …* auf eine Disk, auf der schon ein Windows aus einer früheren Direktinstallation liegt →
-      `install.cmd` findet die Windows-Partition, Installation läuft ohne Eingriff durch
+      Log des Auftrags zeigt „Alte Daten auf den neuen Partitionen werden gelöscht …“ und „Windows-Partition wird
+      geprüft …“; `install.cmd` findet die Windows-Partition, Installation läuft ohne Eingriff durch
 - [ ] Zweiter Versuch direkt hintereinander (ohne Windows zu starten) → ebenfalls ohne Fehler
+- [ ] `okula\install.log` (vor dem Aufräumen bzw. bei einem Fehler): Zeile „Windows-Partition C: - Markierung …“
+- [ ] Fehlerfall-Diagnose sichtbar (absichtlich auslösen, z. B. am VM-Zwilling: nach „vorbereitet“ vor dem Neustart
+      ausschalten, auf der Windows-Partition Bezeichnung auf „Windows“ ändern und Markierung löschen, dann von der
+      Setup-Partition starten): Editor zeigt
+      oben den Kasten „Nach dem Schliessen dieses Fensters schaltet sich das Geraet aus …“, darunter Laufwerksliste
+      (`list volume`) und je Laufwerk Markierung ja/nein und Inhalt; das Laufwerk mit „Windows“ wird **nicht**
+      formatiert
+- [ ] Im selben Zustand Shift+F10 → öffnet sich eine Eingabeaufforderung? Sonst Weg über *Datei → Öffnen*,
+      Dateityp „Alle Dateien“, `X:\Windows\System32\cmd.exe` mit Rechtsklick → Öffnen (Ergebnis melden, Hilfe ggf.
+      anpassen); nach dem Schliessen des Editors schaltet sich das Gerät aus
+- [ ] Nur Bezeichnung „OKULAWIN“ ohne Markierung (Markierungsdatei löschen) → Installation läuft trotzdem durch,
+      `install.log`: „Markierung … fehlt, Laufwerke mit Bezeichnung OKULAWIN: 1“
+- [ ] Meldung bei nicht übernommenem Schreiben: nicht künstlich auslösbar; falls sie am CompactPlayer erscheint
+      („Schreiben auf die Disk wird nicht übernommen – Disk prüfen (Windows-Partition …)“), Auftrag bricht ab,
+      Gerät startet **nicht** neu, kein Starteintrag „Okula Windows-Installation“ als BootNext → Meldung samt Klammertext
+      notieren (Hinweis auf die SSD, B-014 in [TECHNIK.md](TECHNIK.md))

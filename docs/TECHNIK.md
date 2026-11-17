@@ -619,8 +619,70 @@ Gerät mit dem Agent-Stick starten, dann im Gerätefenster (oder Rechtsklick auf
 1. Der Agent legt auf der Zieldisk an (GPT): EFI (FAT32) · MSR · Windows · **Setup-Partition** (FAT32, am Ende).
 2. Das Tool liest die Setup-Dateien direkt aus der ISO auf dem NAS und überträgt sie verschlüsselt (SHA-256 je Datei). Eine `install.wim` über 4 GB teilt der Agent in `install.swm`-Teile.
 3. Der Agent setzt per `efibootmgr` den **einmaligen** Start (BootNext) auf die Setup-Partition und startet neu.
-4. Die Windows-Setup-Umgebung (von Microsoft signiert) startet über `sources\autounattend.xml` nur `okula\install.cmd`: `dism` spielt die gewählte Edition auf, `bcdboot` richtet den Start ein. Der Setup-Assistent läuft nicht (keine Klicks). Bei einem Fehler öffnet sich das Protokoll `okula\install.log`.
+4. Die Windows-Setup-Umgebung (von Microsoft signiert) startet über `sources\autounattend.xml` nur `okula\install.cmd`: `dism` spielt die gewählte Edition auf, `bcdboot` richtet den Start ein. Der Setup-Assistent läuft nicht (keine Klicks). Bei einem Fehler öffnet sich das Protokoll `okula\install.log` (mit Laufwerksliste, siehe unten).
 5. Erster Start: Windows richtet sich mit den Anpassungen ein (Konto, Region Schweiz, Computername, Windows-Schlüssel). Danach löscht `SetupComplete.cmd` die Setup-Partition und vergrössert C:.
+
+**Windows-Partition: alte Daten löschen, Prüfung, Suche in der Setup-Umgebung (B-014, Ä-039)**
+
+Ablauf im Agent (`wininstall.install`):
+1. Nach `sfdisk`: auf **allen vier** neuen Partitionen `wipefs -a` und Anfang (16 MiB) und Ende (letztes 1 MiB, darin
+   der NTFS-Backup-Bootsektor im letzten Sektor) mit Nullen überschreiben (`zero_ends`: `O_DIRECT`, danach `fsync`;
+   wo `O_DIRECT` nicht geht, gepuffert mit `fsync`). Kleine Partitionen (MSR, 16 MiB) ganz. Log „Alte Daten auf den
+   neuen Partitionen werden gelöscht …“. Kein Discard als Mittel.
+2. Zwischenablage für eine grosse `install.wim` (`_mkstage`, ext4) jetzt mit `-E nodiscard`: kein TRIM über die ganze
+   Windows-Partition (~105 GB am CompactPlayer) direkt vor dem Schreiben.
+3. Bei geteilter `install.wim`: vor `mkntfs` die Windows-Partition noch einmal löschen (ext4-Superblock weg).
+4. `mkntfs -Q -F -L OKULAWIN`, Markierung `okula-<id>.target` über ntfs-3g, `sync`.
+5. **Prüfung** (`check_windows_partition`, Log „Windows-Partition wird geprüft …“): `sync`, `blockdev --flushbufs`,
+   `drop_caches`, dann `blkid -p` (liest direkt vom Gerät): Typ `ntfs` und Bezeichnung „OKULAWIN“; danach nur lesend
+   einhängen (`ntfs-3g -o ro`) und Markierung suchen. Fehlt etwas → Auftrag bricht ab mit „Schreiben auf die Disk wird
+   nicht übernommen – Disk prüfen (Windows-Partition …: gefunden …)“; **kein BootNext, kein Neustart**.
+
+`install.cmd` (Setup-Umgebung, `winsetup.install_cmd`):
+- Windows-Partition = Laufwerk mit `okula-<id>.target`; sonst **genau ein** Laufwerk, dessen `vol`-Ausgabe das Wort
+  „OKULAWIN“ enthält (genauer Wortvergleich, Sprache der Setup-Umgebung egal). Kein Treffer oder mehrere → Fehler. Ein
+  Laufwerk mit altem Windows (Bezeichnung „Windows“ von `format /v:Windows`) wird nie auf Verdacht formatiert.
+- Protokoll `okula\install.log`: Installations-ID, Setup-Partition, wie die Windows-Partition gefunden wurde
+  (Markierung/Bezeichnung, Anzahl Treffer).
+- **Fehlerfall (Ä-039):** zusätzlich `diskpart` → `list volume` (Skriptdatei in `%TEMP%`), je Laufwerk C–Z (ohne X:)
+  „Markierung okula-*.target: ja/nein“, die gefundenen Markierungen und `dir` des Wurzelverzeichnisses (Bezeichnung,
+  Ordner mit Datum, freier Platz), dann die Liste der nicht vorhandenen Laufwerke. Oben im Protokoll ein Kasten:
+  „Nach dem Schliessen dieses Fensters schaltet sich das Geraet aus. Fuer eine Eingabeaufforderung vorher Shift+F10
+  druecken.“ und als Ausweichweg *Datei → Öffnen*, Dateityp „Alle Dateien“, `X:\Windows\System32\cmd.exe` mit
+  Rechtsklick → Öffnen. Dann Editor, danach `wpeutil shutdown`. Ob Shift+F10 in diesem Zustand (RunSynchronous im
+  Durchgang windowsPE, Editor offen) eine Eingabeaufforderung öffnet, ist hier nicht prüfbar – Microsoft nennt
+  Shift+F10 für die Setup-Oberfläche; daher beide Wege ([TESTS.md](TESTS.md) Abschnitt 20).
+
+Ursache (Stand 17.11.2026, CompactPlayer 1, Kingston SH103S3 120 GB, SandForce-Controller):
+- **Belegt:** In Windows PE war C: (sda3) das **alte** Volume: Bezeichnung „Windows“ (vergibt nur `install.cmd`),
+  Ordner aus dem Win10-Image, keine Markierung – obwohl der Agent ohne Fehler `mkntfs` und die Markierung
+  geschrieben und sauber neu gestartet hatte; die Setup-Partition (gleicher Auftrag, früher geschrieben) war neu.
+  Gleiche Startsektoren wie beim Vorversuch; der 1. Versuch (Disk vorher anders aufgeteilt) lief durch.
+  `sfdisk` löscht im Skriptbetrieb keine Signaturen in neuen Partitionen (`--wipe-partitions` Standard `auto` = nur
+  interaktiv). `mkntfs -Q` überschreibt das Volume nicht („skip both zeroing of the volume and bad sector
+  checking“) – alte Strukturen mitten in der Partition (z. B. das alte `$MFT`) bleiben liegen. `mkntfs` schreibt den
+  Backup-Bootsektor in den letzten Sektor der Partition (Test `WipeTest` mit Probe-Datei).
+- **Vermutet** (nicht geprüft, in dieser Reihenfolge): (1) Das Geschriebene kam nicht bzw. nicht dauerhaft auf der SSD
+  an – Windows PE las den alten Bootsektor und damit das alte `$MFT`. Begünstigt durch das TRIM von `mkfs.ext4` über
+  die ganze Partition kurz vorher (SandForce verarbeitet TRIM verzögert; Lesen nach TRIM ist nur mit „Deterministic
+  read ZEROs after TRIM“/RZAT garantiert null). Passt zu „103 GB frei“ trotz alter Ordner: die Daten der alten
+  Zuordnungstabelle (`$Bitmap`) waren überschrieben bzw. getrimmt, das alte Verzeichnis nicht. Dagegen spricht: Der
+  1. Versuch lief mit demselben Ablauf (inkl. TRIM) durch – der Verlust müsste also nur zeitweise auftreten (z. B.
+  abhängig vom Zustand der SSD nach dem Vorversuch). (2) Windows nahm statt
+  des neuen einen alten Bootsektor (Kopie am Partitionsende) – nur möglich, wenn der neue nicht gelesen werden konnte,
+  da `mkntfs` die Kopie am Ende ebenfalls neu schreibt. (3) Wiederholung des Journals (`$LogFile`) des hart
+  ausgeschalteten alten Windows – unwahrscheinlich, da `mkntfs` ein neues `$LogFile` anlegt.
+  Nicht erklärt: Ordner `Windows` mit Datum 17.11. 09:37.
+- **Wirkung der Korrektur:** Ohne alten Bootsektor (Anfang und Ende genullt) gibt es keinen Weg mehr zum alten
+  Volume; kein grosses TRIM mehr direkt davor. Kommt das Geschriebene trotzdem nicht an, meldet das die Prüfung
+  im Agent (Abbruch vor dem Neustart). Sieht Windows PE trotz bestandener Prüfung etwas anderes, zeigt das Protokoll
+  der Setup-Umgebung den Zustand aller Laufwerke – dann liegt es an der SSD (Firmware, Disk-Test) und nicht am Ablauf.
+
+Quellen: mkntfs(8) (ntfs-3g, Option `-Q`), mke2fs(8) (`-E discard/nodiscard`, Discard ist Standard), sfdisk(8)
+(`--wipe-partitions`), wipefs(8) (löscht nur Signaturen, nicht die Daten), hdparm(8) / ATA ACS-2 DATA SET MANAGEMENT
+(DRAT/RZAT), Microsoft Learn „How NTFS Works“ (Kopie des Bootsektors am Volumeende), Microsoft Learn „Windows
+Setup Command-Line Options“/„WinPE: Use a command prompt“ (Shift+F10 in der Setup-Oberfläche). Agent betroffen → neuer
+Agent-Stick bzw. Netzwerkstart neu vorbereiten.
 
 **Für Master-Image (Audit-Modus) (I-038):** Häkchen im Dialog *OS installieren …* (nur Windows, Standard aus;
 `WinOptions.audit_mode`). Konto, Benutzername, Passwort, Windows-Schlüssel und der Computername sind ausgegraut und

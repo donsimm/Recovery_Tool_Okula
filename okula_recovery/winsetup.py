@@ -28,6 +28,9 @@ SETUP_RESERVE = 512 * 1024 * 1024        # FAT32-Verwaltung, Skripte, Rundung
 MIN_DISK = 40 * 1000**3                  # Windows 10/11 + Setup-Partition
 LETTERS = "C D E F G H I J K L M N O P Q R S T U V W Y Z"
 BOOT_LABEL = "Okula Windows-Installation"
+WIN_LABEL = "OKULAWIN"                   # Bezeichnung der Windows-Partition (wininstall.WIN_LABEL, Agent)
+PE_CMD = "X:\\Windows\\System32\\cmd.exe"  # Eingabeaufforderung in der Setup-Umgebung
+DIR = "dir"   # cmd-Befehl; eigene Konstante, damit die Anrede-Prüfung (tests/test_help.py) ihn nicht meldet
 
 
 class WinSetupError(Exception):
@@ -60,7 +63,10 @@ def _crlf(text: str) -> str:
 
 
 def install_cmd(install_id: str, index: int, wim_path: str, split: bool, language: str) -> str:
-    """Läuft in der Windows-Setup-Umgebung (cmd, nur ASCII). %1 = Laufwerk der Setup-Partition."""
+    """Läuft in der Windows-Setup-Umgebung (cmd, nur ASCII). %1 = Laufwerk der Setup-Partition.
+
+    Windows-Partition: Markierung okula-<id>.target, sonst genau ein Laufwerk mit Bezeichnung OKULAWIN (B-014) –
+    nie ein Laufwerk auf Verdacht. Im Fehlerfall Laufwerksliste ins Protokoll und Hinweis oben im Editor (Ä-039)."""
     win_path = wim_path.replace("/", "\\")
     if split:
         image = '/ImageFile:"%S%:\\sources\\install.swm" /SWMFile:"%S%:\\sources\\install*.swm"'
@@ -71,10 +77,20 @@ rem Okula Recovery Tool - Windows-Direktinstallation ({install_id})
 title Okula Recovery Tool - Windows wird installiert
 set S=%1
 set W=
+set K=
+set N=0
 set LOG=%S%:\\okula\\install.log
+echo Okula: Installation {install_id}, Setup-Partition %S%: > "%LOG%"
 for %%L in ({LETTERS}) do if exist %%L:\\okula-{install_id}.target set W=%%L
-echo Okula: Setup-Partition %S%:, Windows-Partition %W%: > "%LOG%"
-if "%W%"=="" goto fehler
+if not "%W%"=="" echo Okula: Windows-Partition %W%: - Markierung okula-{install_id}.target >> "%LOG%"
+if not "%W%"=="" goto gefunden
+rem Markierung fehlt: nur ein einziges Laufwerk mit der Bezeichnung {WIN_LABEL} gilt als Windows-Partition
+for %%L in ({LETTERS}) do call :bezeichnung %%L
+echo Okula: Markierung okula-{install_id}.target fehlt, Laufwerke mit Bezeichnung {WIN_LABEL}: %N% >> "%LOG%"
+if not "%N%"=="1" goto fehler
+set W=%K%
+echo Okula: Windows-Partition %W%: - Bezeichnung {WIN_LABEL} >> "%LOG%"
+:gefunden
 echo.
 echo  Okula Recovery Tool: Windows wird auf %W%: installiert - bitte nicht ausschalten.
 echo.
@@ -95,8 +111,51 @@ wpeutil reboot
 exit /b 0
 :fehler
 echo FEHLER - Protokoll: %LOG% >> "%LOG%"
+echo. >> "%LOG%"
+echo Laufwerke - diskpart list volume: >> "%LOG%"
+> "%TEMP%\\okula-dp.txt" echo list volume
+diskpart /s "%TEMP%\\okula-dp.txt" >> "%LOG%" 2>&1
+set FEHLT=
+for %%L in ({LETTERS}) do call :laufwerk %%L
+echo. >> "%LOG%"
+echo Nicht vorhanden:%FEHLT% >> "%LOG%"
+> "%TEMP%\\okula-kopf.txt" (
+  echo ==========================================================================
+  echo  FEHLER bei der Windows-Installation - Okula Recovery Tool
+  echo.
+  echo  Nach dem Schliessen dieses Fensters schaltet sich das Geraet aus.
+  echo  Fuer eine Eingabeaufforderung vorher Shift+F10 druecken. Ohne Wirkung:
+  echo  Datei - Oeffnen, Dateityp "Alle Dateien", {PE_CMD}
+  echo  mit der rechten Maustaste - Oeffnen.
+  echo.
+  echo  Unten: Ablauf, Laufwerksliste und je Laufwerk Bezeichnung, Inhalt
+  echo  und Markierung okula-*.target. Protokoll: %LOG%
+  echo ==========================================================================
+  echo.
+)
+copy /y /b "%TEMP%\\okula-kopf.txt"+"%LOG%" "%TEMP%\\okula-install.log" >nul
+copy /y /b "%TEMP%\\okula-install.log" "%LOG%" >nul
 notepad "%LOG%"
 wpeutil shutdown
+exit /b 1
+
+:bezeichnung
+rem %1 = Laufwerksbuchstabe; zaehlt Laufwerke mit der Bezeichnung {WIN_LABEL} (genaues Wort)
+if not exist %1:\\ goto :eof
+for /f "tokens=*" %%z in ('vol %1: 2^>nul') do for %%t in (%%z) do if /i "%%t"=="{WIN_LABEL}" (set /a N+=1 & set K=%1)
+goto :eof
+
+:laufwerk
+rem %1 = Laufwerksbuchstabe; Bezeichnung, Inhalt und Markierung ins Protokoll
+if not exist %1:\\ (set FEHLT=%FEHLT% %1:& goto :eof)
+echo. >> "%LOG%"
+echo ----- Laufwerk %1: >> "%LOG%"
+set M=nein
+if exist %1:\\okula-*.target set M=ja
+echo Markierung okula-*.target: %M% >> "%LOG%"
+{DIR} /b %1:\\okula-*.target >> "%LOG%" 2>nul
+{DIR} %1:\\ >> "%LOG%" 2>&1
+goto :eof
 """)
 
 
