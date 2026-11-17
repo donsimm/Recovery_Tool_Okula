@@ -619,7 +619,7 @@ Gerät mit dem Agent-Stick starten, dann im Gerätefenster (oder Rechtsklick auf
 1. Der Agent legt auf der Zieldisk an (GPT): EFI (FAT32) · MSR · Windows · **Setup-Partition** (FAT32, am Ende).
 2. Das Tool liest die Setup-Dateien direkt aus der ISO auf dem NAS und überträgt sie verschlüsselt (SHA-256 je Datei). Eine `install.wim` über 4 GB teilt der Agent in `install.swm`-Teile.
 3. Der Agent setzt per `efibootmgr` den **einmaligen** Start (BootNext) auf die Setup-Partition und startet neu.
-4. Die Windows-Setup-Umgebung (von Microsoft signiert) startet über `sources\autounattend.xml` nur `okula\install.cmd`: `dism` spielt die gewählte Edition auf, `bcdboot` richtet den Start ein. Der Setup-Assistent läuft nicht (keine Klicks). Bei einem Fehler öffnet sich das Protokoll `okula\install.log` (mit Laufwerksliste, siehe unten).
+4. Die Windows-Setup-Umgebung (von Microsoft signiert) startet über `sources\autounattend.xml` nur `okula\install.cmd`: `dism` spielt die gewählte Edition auf, `bcdboot` richtet den Start ein, `bcdedit` setzt den Windows Boot Manager an die erste Stelle der Firmware-Startreihenfolge (B-015). Der Setup-Assistent läuft nicht (keine Klicks). Bei einem Fehler öffnet sich das Protokoll `okula\install.log` (mit Laufwerksliste, siehe unten).
 5. Erster Start: Windows richtet sich mit den Anpassungen ein (Konto, Region Schweiz, Computername, Windows-Schlüssel). Danach löscht `SetupComplete.cmd` die Setup-Partition und vergrössert C:.
 
 **Windows-Partition: alte Daten löschen, Prüfung, Suche in der Setup-Umgebung (B-014, Ä-039)**
@@ -683,6 +683,34 @@ Quellen: mkntfs(8) (ntfs-3g, Option `-Q`), mke2fs(8) (`-E discard/nodiscard`, Di
 (DRAT/RZAT), Microsoft Learn „How NTFS Works“ (Kopie des Bootsektors am Volumeende), Microsoft Learn „Windows
 Setup Command-Line Options“/„WinPE: Use a command prompt“ (Shift+F10 in der Setup-Oberfläche). Agent betroffen → neuer
 Agent-Stick bzw. Netzwerkstart neu vorbereiten.
+
+**Startreihenfolge nach der Installation (B-015)**
+
+Befund (CompactPlayer 1, AMI-Firmware 2014, 17.11.2026): Nach `dism`/`bcdboot` und `wpeutil reboot` startete das Gerät
+wieder die Setup-Partition, `install.cmd` lief ein zweites Mal. `bcdedit /enum firmware` zeigte in `{fwbootmgr}`
+`displayorder` zuerst „UEFI OS“ (Setup-Partition, `\EFI\BOOT\BOOTX64.EFI`), erst danach `{bootmgr}`. Den Eintrag „UEFI OS“
+legt die Firmware selbst für den Wechseldatenträger-Pfad auf einer FAT-Partition an – nicht der Agent (dessen Eintrag
+„Okula Windows-Installation“ gilt nur als BootNext).
+
+`install.cmd` setzt darum nach erfolgreichem `bcdboot` (und `mountvol Z: /d`):
+`bcdedit /set {fwbootmgr} displayorder {bootmgr} /addfirst`. Ins `install.log` kommen `bcdedit /enum firmware` vorher und
+nachher sowie „Windows Boot Manager an erste Stelle - Rueckgabe <Code>“. Schlägt `bcdedit` fehl, wird das nur
+protokolliert („Startreihenfolge nicht gesetzt - Installation laeuft weiter“), kein Abbruch. Am CompactPlayer 1 hat
+genau dieser Befehl von Hand in Windows PE geholfen. Ab dem ersten Windows-Start (SetupComplete bzw. auditUser, I-038)
+ist die Setup-Partition gelöscht, der Firmware-Eintrag dann gegenstandslos.
+
+- **Keine zusätzliche `bcdboot`-Option:** Laut Microsoft Learn („BCDBoot Command-Line Options“) legt `bcdboot` den
+  Firmware-Eintrag des Windows Boot Managers ohnehin zuerst an; `/addlast` setzt ihn ans Ende, `/p` behält eine
+  bestehende Position, `/d` betrifft nur den Standardeintrag im `{bootmgr}`. Eine Option, die die Reihenfolge
+  zuverlässiger setzt, gibt es nicht – die Firmware hat ihren Eintrag trotzdem davorgestellt. (Stand der Doku aus dem
+  Wissen des Umsetzungs-Agenten, am 17.11. nicht neu abgerufen.)
+- **Einträge der Setup-Partition werden nicht entfernt** (Anforderung 3 bewusst weggelassen): Die Ausgabe von
+  `bcdedit /enum firmware` ist in der Sprache der Setup-Umgebung (z. B. „Bezeichner“ statt „identifier“) und in
+  mehrzeiligen Blöcken – in `cmd` nicht sicher auszuwerten. Der Agent-Stick („UEFI: USB“) nutzt denselben Pfad
+  `\EFI\BOOT\BOOTX64.EFI`; ein Fehlgriff träfe den falschen Eintrag. Zudem kann die Firmware solche Einträge bei jedem
+  Start neu anlegen (vermutet). Mit `{bootmgr}` an erster Stelle ist das Entfernen nicht nötig.
+- Agent nicht betroffen (`install.cmd` erzeugt das Tool) – kein neuer Agent-Stick. Prüfung: [TESTS.md](TESTS.md)
+  Abschnitt 20.
 
 **Für Master-Image (Audit-Modus) (I-038):** Häkchen im Dialog *OS installieren …* (nur Windows, Standard aus;
 `WinOptions.audit_mode`). Konto, Benutzername, Passwort, Windows-Schlüssel und der Computername sind ausgegraut und

@@ -84,6 +84,29 @@ class ScriptTest(unittest.TestCase):
             if "echo" in line and ">>" in line:
                 self.assertNotIn("(", line.split("echo", 1)[1], line)
 
+    def test_install_cmd_boot_order(self):
+        """B-015: nach bcdboot Windows Boot Manager zuerst, vorher/nachher ins Protokoll, Fehler ohne Abbruch."""
+        cmd = winsetup.install_cmd("ab12cd34", 1, "sources/install.wim", False, "de-DE")
+        self.assertTrue(cmd.isascii(), "cmd-Skripte nur ASCII")
+        self.assertNotIn("\n", cmd.replace("\r\n", ""), "nur CRLF")
+        main = cmd.split("\r\n:fehler\r\n")[0]
+        lines = main.split("\r\n")
+        boot = lines.index('bcdboot %W%:\\Windows /s Z: /f UEFI /l de-DE >> "%LOG%" 2>&1')
+        order = lines.index('bcdedit /set {fwbootmgr} displayorder {bootmgr} /addfirst >> "%LOG%" 2>&1')
+        self.assertLess(boot, order)
+        self.assertEqual(lines[boot + 1], "if errorlevel 1 goto fehler")   # bcdboot-Fehler bricht weiter ab
+        enum = [i for i, l in enumerate(lines) if l == 'bcdedit /enum firmware >> "%LOG%" 2>&1']
+        self.assertEqual(len(enum), 2)
+        self.assertTrue(boot < enum[0] < order < enum[1] < lines.index("wpeutil reboot"))
+        # bcdedit-Fehler: nur protokollieren, kein Abbruch
+        after = lines[order + 1:lines.index("wpeutil reboot")]
+        self.assertFalse([l for l in after if "goto" in l or "exit" in l], after)
+        self.assertEqual(after[0], "set RC=%ERRORLEVEL%")
+        self.assertIn('echo Okula: Windows Boot Manager an erste Stelle - Rueckgabe %RC% >> "%LOG%"', after)
+        self.assertTrue(any(l.startswith('if not "%RC%"=="0" echo ') and l.endswith('>> "%LOG%"') for l in after))
+        # Setup-Partition wird nicht aus der Firmware-Liste entfernt (B-015, Anforderung 3 bewusst weggelassen)
+        self.assertNotIn("/remove", cmd)
+
     def test_layout(self):
         t = wininstall.layout(256 * 1000**3, 7 * 1024**3, 40 * 1000**3)
         sizes = [int(x) for x in re.findall(r"size=(\d+)MiB", t)]

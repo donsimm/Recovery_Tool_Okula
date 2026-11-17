@@ -385,7 +385,7 @@ Windows ganz heruntergefahren, dann mit dem Agent starten.
 - [ ] Alter Agent (Stick vor I-039) → Meldung „Agent zu alt …“
 - [ ] DEMO-PC: *Windows anpassen …* → Auftrag nach wenigen Sekunden „fertig“
 
-### 20. Direktinstallation auf Disk mit altem Windows (B-014, Ä-039)
+### 20. Direktinstallation auf Disk mit altem Windows (B-014, Ä-039, B-015)
 Nach `git pull && sudo ./install.sh` das Tool neu starten und **Agent-Stick bzw. Netzwerkstart neu erstellen**
 (Agent geändert). Am CompactPlayer 1 (bzw. VM mit installiertem, hart ausgeschaltetem Windows).
 - [ ] *OS installieren …* auf eine Disk, auf der schon ein Windows aus einer früheren Direktinstallation liegt →
@@ -408,3 +408,7 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten und **Agent-Stick bzw.
       („Schreiben auf die Disk wird nicht übernommen – Disk prüfen (Windows-Partition …)“), Auftrag bricht ab,
       Gerät startet **nicht** neu, kein Starteintrag „Okula Windows-Installation“ als BootNext → Meldung samt Klammertext
       notieren (Hinweis auf die SSD, B-014 in [TECHNIK.md](TECHNIK.md))
+- [ ] Startet nach der Installation direkt Windows (CompactPlayer, B-015): nach `dism`/`bcdboot` startet das Gerät
+      **nicht** erneut die Setup-Partition (kein zweiter Lauf von `install.cmd`), sondern das neue Windows. Falls
+      möglich `okula\install.log` vor dem Aufräumen ansehen: „Windows Boot Manager an erste Stelle - Rueckgabe 0“ und
+      `bcdedit /enum firmware` nachher mit `{bootmgr}` zuoberst in `displayorder` (dafür kein neuer Agent-Stick nötig)

@@ -6,7 +6,8 @@ Ablauf:
    eine install.wim über 4 GB teilt der Agent in install.swm-Teile.
 3. Der Agent setzt per efibootmgr den einmaligen Start (BootNext) auf die Setup-Partition und startet neu.
 4. Die Windows-Setup-Umgebung (signiert – Secure Boot geht) startet über autounattend.xml nur okula\\install.cmd:
-   dism spielt die gewählte Edition auf, bcdboot richtet den Start ein. Der Setup-Assistent läuft nicht,
+   dism spielt die gewählte Edition auf, bcdboot richtet den Start ein, bcdedit setzt den Windows Boot Manager
+   an die erste Stelle der Firmware-Startreihenfolge (B-015). Der Setup-Assistent läuft nicht,
    daher auch keine TPM-/Secure-Boot-Prüfung.
 5. Erster Start: Anpassungen aus Panther\\unattend.xml; SetupComplete.cmd löscht die Setup-Partition
    und vergrössert C: auf die ganze Disk.
@@ -102,6 +103,16 @@ mountvol Z: /s >> "%LOG%" 2>&1
 bcdboot %W%:\\Windows /s Z: /f UEFI /l {language} >> "%LOG%" 2>&1
 if errorlevel 1 goto fehler
 mountvol Z: /d >> "%LOG%" 2>&1
+rem B-015: Windows Boot Manager zuerst - manche Firmware setzt einen eigenen Eintrag fuer die Setup-Partition
+rem an die erste Stelle. Fehler hier nur protokollieren, bcdboot hat die Reihenfolge normalerweise schon gesetzt.
+echo Okula: Firmware-Startreihenfolge vorher - bcdedit /enum firmware: >> "%LOG%"
+bcdedit /enum firmware >> "%LOG%" 2>&1
+bcdedit /set {{fwbootmgr}} displayorder {{bootmgr}} /addfirst >> "%LOG%" 2>&1
+set RC=%ERRORLEVEL%
+echo Okula: Windows Boot Manager an erste Stelle - Rueckgabe %RC% >> "%LOG%"
+if not "%RC%"=="0" echo Okula: Startreihenfolge nicht gesetzt - Installation laeuft weiter >> "%LOG%"
+echo Okula: Firmware-Startreihenfolge nachher - bcdedit /enum firmware: >> "%LOG%"
+bcdedit /enum firmware >> "%LOG%" 2>&1
 mkdir %W%:\\Windows\\Panther >nul 2>&1
 copy /y "%S%:\\okula\\unattend.xml" %W%:\\Windows\\Panther\\unattend.xml >> "%LOG%" 2>&1
 mkdir %W%:\\Windows\\Setup\\Scripts >nul 2>&1
