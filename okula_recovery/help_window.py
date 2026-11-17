@@ -242,7 +242,7 @@ Einsortieren und umbenennen: Kapitel <i>Geräte verwalten</i>.
 <b>Gerätefenster</b>
 Doppelklick auf ein Gerät öffnet sein Fenster:
 •  Oben die Knöpfe: Disk-Image erstellen, Image zurückspielen, OS installieren, Backup erstellen,
-    Ordner senden, Inventar neu einlesen; rechts die Symbole <i>Neu starten</i> (Pfeil im Ein/Aus-Zeichen)
+    Ordner senden, Windows anpassen (Kapitel <i>Windows anpassen</i>), Inventar neu einlesen; rechts die Symbole <i>Neu starten</i> (Pfeil im Ein/Aus-Zeichen)
     und <i>Herunterfahren</i> (Ein/Aus-Zeichen).
 •  Oben rechts <i>VM mit dieser Hardware erstellen …</i>: virtuelle Maschine mit der Hardware des Geräts
     (Kapitel <i>Virtuelle Maschinen</i>, Abschnitt „Digitaler Zwilling“).
@@ -658,6 +658,71 @@ Die Inhalte lassen sich rechts im Reiter <i>Dateien</i> ändern.
 •  Gibt es den Ordner schon auf dem Desktop, wird er ersetzt.
 •  Bricht etwas ab, bleibt der alte Ordner.
 •  Windows muss ganz heruntergefahren sein (Shift-Taste gedrückt halten + „Herunterfahren“)."""),
+
+    ("Windows anpassen", """<big><b>Windows anpassen</b></big>
+
+Stellt an einem Gerät mit Windows per Häkchen Einstellungen um – zum Beispiel Store-Apps entfernen,
+Windows Update aus, Energie für Dauerbetrieb, automatische Anmeldung. Windows setzt die Einstellungen
+beim <b>nächsten Start selbst</b> um, vor der Anmeldung. Geht nach einer Installation oder jederzeit.
+
+<b>Ablauf:</b>
+1.  Gerät mit dem Agent starten (Agent-Stick oder Netzwerkstart). Windows muss ganz heruntergefahren sein.
+2.  Rechtsklick auf das Gerät → <i>Windows anpassen …</i> (auch <i>Tools → Windows anpassen …</i> oder
+    der Knopf <i>Windows anpassen …</i> im Gerätefenster).
+3.  Oben eine <b>Vorlage</b> wählen oder die Häkchen einzeln setzen.
+4.  Auf <i>Senden</i> klicken. Der Auftrag steht in der Auftragsliste, der Verlauf des Geräts nennt die Auswahl.
+5.  Gerät neu starten (Agent-Stick abziehen). Beim Start von Windows werden die Einstellungen umgesetzt.
+
+<b>Vorlagen</b> (setzen die Häkchen; danach lässt sich jedes Häkchen ändern – dann steht
+„Vorlage: Player (geändert)“):
+•  <b>Player</b>: alles an ausser <i>Kamera</i> und <i>Druckwarteschlange</i>, mit automatischer Anmeldung.
+•  <b>Laptop</b>: Store-Apps ausser <i>Kamera</i> und <i>Microsoft Store</i>, Wiederinstallation sperren, Cortana aus;
+    Updates bleiben; Betrieb nur Schnellstart, Tipps und Einrastfunktion aus; Datenschutz und Explorer alles;
+    Dienste nur Xbox-Dienste und Remote-Registrierung; keine automatische Anmeldung.
+•  <b>Keine</b>: alle Häkchen weg.
+
+<b>Die Einstellungen:</b>
+•  <b>Apps</b>: Store-Apps entfernen (Xbox, Bing (Wetter, News …), Groove/Filme &amp; TV, Solitaire, Kontakte,
+    Smartphone-Link, Kamera, Office/Office-Hub, 3D-Viewer/Paint 3D/Mixed Reality, Feedback-Hub/Tipps/Hilfe,
+    Microsoft Store) – für alle Benutzer und auch für später angelegte Konten. Treiber-Apps (NVIDIA, Realtek,
+    Intel) und Bausteine, die andere Apps brauchen, bleiben immer. Dazu: Wiederinstallation von Werbe-Apps
+    sperren, OneDrive entfernen, Cortana aus.
+•  <b>Updates</b>: Windows Update aus, keine Treiber über Windows Update, keine automatischen App-Updates.
+•  <b>Betrieb</b>: Energieplan Höchstleistung, Bildschirm und Standby nie ausschalten, Ruhezustand aus,
+    Schnellstart aus, Sperrbildschirm aus, Tipps, Vorschläge und Benachrichtigungen aus, Einrastfunktion und
+    Anschlagverzögerung aus.
+•  <b>Datenschutz</b>: Telemetrie minimal (bei Windows Pro wirkt das wie „Erforderliche Diagnosedaten“),
+    Werbe-ID aus, Standort aus, Fehlerberichte aus, Bing-Suche im Startmenü aus.
+•  <b>Explorer und Desktop</b>: Dateiendungen anzeigen, versteckte Dateien anzeigen, Explorer öffnet
+    „Dieser PC“, Symbole „Dieser PC“ und „Netzwerk“ auf dem Desktop, Suchfeld und Taskansicht aus der Taskleiste.
+•  <b>Dienste</b>: Windows Search, Xbox-Dienste, SysMain, Remote-Registrierung, Druckwarteschlange – je Häkchen
+    gestoppt und auf „Deaktiviert“ gestellt.
+•  <b>Anmeldung</b>: <i>Automatische Anmeldung</i> mit Benutzername und Passwort. Ohne beide Angaben lässt sich
+    nicht senden. Das Konto muss auf dem Gerät schon vorhanden sein, sonst wird nichts gesetzt (Eintrag im
+    Protokoll).
+Einstellungen für Benutzer gelten für alle vorhandenen Konten und für neue Konten.
+
+<b>Passwort:</b> Das Passwort der automatischen Anmeldung liegt danach – wie bei Windows üblich – im
+<b>Klartext in der Registrierung</b> (Winlogon). Bis zum nächsten Start steht es im Startskript auf der Disk;
+das Skript löscht sich beim Start als Erstes. Im Protokoll, im Log des Auftrags und im Verlauf steht es nie.
+
+<b>Protokoll am Gerät:</b> <tt>C:\\Windows\\Temp\\okula-windows-anpassen.log</tt> – je Einstellung „ok“ oder
+„FEHLER“ mit Grund. Ein Fehler hält die übrigen Einstellungen nicht auf.
+
+<b>Gut zu wissen:</b>
+•  Das Startskript läuft genau einmal und entfernt sich danach vollständig. Eine vorhandene lokale
+    Gruppenrichtlinie bleibt erhalten.
+•  Erneut senden vor dem nächsten Start ersetzt die noch nicht umgesetzte Auswahl.
+•  Meldung „Ruhezustand bzw. Schnellstart“: Windows starten und mit Shift + „Herunterfahren“ ganz
+    herunterfahren, dann erneut senden.
+•  Kein Windows auf der Disk (oder BitLocker): Es wird nichts gesendet.
+•  Frisch zurückgespieltes Master-Image (Ersteinrichtung steht noch aus): Die Einstellungen greifen erst nach
+    der Ersteinrichtung bei einem Windows-Start.
+•  Die automatische Anmeldung kann erst beim zweiten Start greifen, wenn sich Windows beim ersten Start schon
+    vor dem Ende des Skripts anmeldet.
+•  Rückgängig macht das Tool nichts: Apps lassen sich aus dem Microsoft Store neu installieren, Einstellungen
+    in Windows zurückstellen.
+•  Neuer Agent nötig: Agent-Stick bzw. Netzwerkstart nach dem Update neu erstellen (sonst „Agent zu alt“)."""),
 
     ("Inventar, Garantie, Windows 11", """<big><b>Inventar, Garantie und Windows 11</b></big>
 
@@ -1159,8 +1224,9 @@ Die Vorführung braucht <b>kein NAS</b>. Alle Demo-Daten liegen lokal auf dem Se
     Rechts im Reiter <i>Images</i> erscheint der Bereich <i>Demo (lokal, nicht auf dem NAS)</i> –
     auch wenn „NAS nicht verbunden“ steht. Das ist bei der Vorführung normal.
 3.  Jetzt lässt sich alles zeigen: Disk-Image erstellen, Image prüfen, zurückspielen, Automatisierung,
-    Backup erstellen und zurückspielen, Ordner senden, Inventar exportieren.
-    Ein Auftrag dauert knapp eine Minute.
+    Backup erstellen und zurückspielen, Ordner senden, Windows anpassen, Inventar exportieren.
+    Ein Auftrag dauert knapp eine Minute (<i>Windows anpassen</i> nur ein paar Sekunden; am DEMO-PC wird
+    nichts abgelegt).
 
 <b>Fertige Demo-Images</b> (im Bereich <i>Demo</i>):
 •  <i>DEMO-Master-Win11</i>: als Master-Image markiert (★). <i>Image prüfen …</i> ergibt ✔.

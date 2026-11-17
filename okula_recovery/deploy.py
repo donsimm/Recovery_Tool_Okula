@@ -4,6 +4,9 @@
   Windows/Panther/unattend.xml (Computername, Key, Region …, vom Tool erstellt); Linux bekommt den Hostnamen.
 - deliver: Ordner (Software, Test Files, Content/Projekt …) auf den öffentlichen Desktop
   (Users/Public/Desktop); vorhandene Ordner gleichen Namens werden ersetzt – erst wenn alles da ist.
+- tweak: „Windows anpassen“ (I-039) – ein vom Tool erzeugtes PowerShell-Skript als einmaliges Startskript der
+  lokalen Gruppenrichtlinie ablegen (System32/GroupPolicy); vorhandene Richtlinien bleiben, das Skript stellt den
+  vorherigen Stand beim Start selbst wieder her.
 - countdown: „Automatisierung startet in 30 s – Esc zum Abbrechen“ am Bildschirm; Esc direkt von der
   Tastatur (/dev/input), unabhängig davon, was auf tty1 läuft.
 """
@@ -268,6 +271,259 @@ def deliver(sock, req: dict, log: Callable[[str], None] = print, report: Report 
             shutil.rmtree(stage, ignore_errors=True)
     wire.send_json(sock, {"type": "done", "files": files, "bytes": received})
     log(f"Ordner auf den Desktop gelegt: {', '.join(map(str, items))} ({files} Dateien)")
+
+
+# ---------- Windows anpassen (I-039): einmaliges Startskript der lokalen Gruppenrichtlinie ----------
+#
+# Ablage (alles unter Windows/System32/GroupPolicy):
+#   Machine/Scripts/Startup/okula-windows-anpassen.cmd   – Startskript (ruft PowerShell auf, Notfall-Aufräumen)
+#   Machine/Scripts/Startup/okula-windows-anpassen.ps1   – Einstellungen (vom Tool erzeugt, wintweaks.py)
+#   Machine/Scripts/scripts.ini                           – Eintrag [Startup] NCmdLine=okula-windows-anpassen.cmd
+#   gpt.ini                                               – Scripts-Erweiterung ergänzt, Version +1
+#   gpt.ini.okula-nachher, Machine/Scripts/scripts.ini.okula-nachher
+#                                                         – Stand für nach dem Lauf (Original, gpt.ini mit Version
+#                                                           +2); fehlt die Datei, gab es das Original nicht
+# Das Skript legt beim Start zuerst diese Dateien zurück (bzw. löscht gpt.ini/scripts.ini, wenn es sie vorher nicht
+# gab), entfernt seine Einträge unter HKLM\…\Group Policy\Scripts und löscht sich – danach erst die Einstellungen.
+
+TWEAK_NAME = "okula-windows-anpassen"
+TWEAK_CMD = TWEAK_NAME + ".cmd"
+TWEAK_PS1 = TWEAK_NAME + ".ps1"
+TWEAK_AFTER = ".okula-nachher"
+TWEAK_LOG = r"C:\Windows\Temp\okula-windows-anpassen.log"
+MAX_SCRIPT = 512 * 1024
+SCRIPTS_CSE = "{42B5FAAE-6536-11D2-AE5A-0000F87571E3}"     # Client-Erweiterung „Scripts“
+SCRIPTS_TOOL = "{40B6664F-4972-11D1-A7CA-0000F87571E3}"    # Snap-in „Skripts (Start/Herunterfahren)“, Computer
+GUID_RE = re.compile(r"\{[0-9A-Fa-f-]{36}\}")
+
+# Nur ASCII (cmd liest die Datei in der OEM-Codepage). Die zweite Hälfte läuft nur, wenn PowerShell das Skript nicht
+# gestartet hat – sonst hat das Skript beide Dateien schon gelöscht und cmd findet die nächste Zeile nicht mehr.
+TWEAK_CMD_TEXT = "\r\n".join((
+    "@echo off",
+    "rem Okula Recovery Tool - Windows anpassen: einmaliges Startskript (entfernt sich selbst)",
+    '"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -NonInteractive '
+    f'-ExecutionPolicy Bypass -File "%~dp0{TWEAK_PS1}"',
+    "rem Nur erreicht, wenn PowerShell das Skript nicht gestartet hat: aufraeumen, damit nichts erneut laeuft",
+    f'del /f /q "%~dp0{TWEAK_PS1}" >nul 2>&1',
+    f'>>"%SystemRoot%\\Temp\\{TWEAK_NAME}.log" echo %DATE% %TIME%  FEHLER  PowerShell-Skript nicht gestartet '
+    "- Einstellungen nicht umgesetzt",
+    'set "OKULA_GP=%SystemRoot%\\System32\\GroupPolicy"',
+    'for %%F in ("%OKULA_GP%\\Machine\\Scripts\\scripts.ini" "%OKULA_GP%\\gpt.ini") do (',
+    '  attrib -r -h -s "%%~F" >nul 2>&1',
+    '  del /f /q "%%~F" >nul 2>&1',
+    f'  if exist "%%~F{TWEAK_AFTER}" move /y "%%~F{TWEAK_AFTER}" "%%~F" >nul',
+    ")",
+    'del /f /q "%~f0" >nul 2>&1',
+    ""))
+
+
+def ini_decode(data: bytes) -> tuple[str, str]:
+    """Text und Kodierung einer INI-Datei (scripts.ini schreibt Windows als UTF-16, gpt.ini als ANSI)."""
+    if data.startswith(b"\xff\xfe"):
+        return data[2:].decode("utf-16-le", errors="replace"), "utf-16"
+    if data.startswith(b"\xef\xbb\xbf"):
+        return data[3:].decode("utf-8", errors="replace"), "utf-8-sig"
+    try:
+        return data.decode("utf-8"), "utf-8"
+    except UnicodeDecodeError:
+        return data.decode("latin-1"), "latin-1"
+
+
+def ini_encode(text: str, encoding: str) -> bytes:
+    if encoding == "utf-16":
+        return b"\xff\xfe" + text.encode("utf-16-le")
+    return text.encode(encoding, errors="replace")
+
+
+def merge_extensions(value: str, cse: str = SCRIPTS_CSE, tool: str = SCRIPTS_TOOL) -> str:
+    """gPCMachineExtensionNames um [{CSE}{Tool}] ergänzen – vorhandene Einträge bleiben, Reihenfolge nach GUID."""
+    groups = [GUID_RE.findall(g) for g in re.findall(r"\[([^\]]*)\]", value)]
+    groups = [g for g in groups if g]
+    for g in groups:
+        if g[0].upper() == cse.upper():
+            if tool.upper() not in (x.upper() for x in g[1:]):
+                g.append(tool)
+            break
+    else:
+        groups.append([cse, tool])
+    out = []
+    for g in sorted(groups, key=lambda g: g[0].upper()):
+        rest = sorted({x.upper(): x for x in g[1:]}.values(), key=str.upper)
+        out.append("[" + g[0] + "".join(rest) + "]")
+    return "".join(out)
+
+
+def bump_version(version: int, step: int) -> int:
+    """gpt.ini: Version = Benutzer-Teil (obere 16 Bit) · Computer-Teil (untere 16 Bit); Computer-Teil erhöhen."""
+    machine = (version & 0xFFFF) + step
+    if machine > 0xFFFF:
+        machine = step
+    return (version & 0xFFFF0000) | machine
+
+
+def gpt_edit(text: str, step: int, add_scripts: bool) -> tuple[str, int]:
+    """gpt.ini mit erhöhter Version (und auf Wunsch der Scripts-Erweiterung); übrige Zeilen bleiben."""
+    lines = text.splitlines()
+    start = next((i for i, line in enumerate(lines) if line.strip().lower() == "[general]"), None)
+    if start is None:
+        lines = ["[General]"] + lines
+        start = 0
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].strip().startswith("[")), len(lines))
+    found: dict[str, int] = {}
+    for i in range(start + 1, end):
+        key = lines[i].split("=", 1)[0].strip().lower()
+        if "=" in lines[i] and key in ("version", "gpcmachineextensionnames"):
+            found[key] = i
+    try:
+        old = int(lines[found["version"]].split("=", 1)[1].strip()) if "version" in found else 0
+    except ValueError:
+        old = 0
+    version = bump_version(old, step)
+    new = {"version": f"Version={version}"}
+    if add_scripts:
+        current = lines[found["gpcmachineextensionnames"]].split("=", 1)[1] if "gpcmachineextensionnames" in found \
+            else ""
+        new["gpcmachineextensionnames"] = f"gPCMachineExtensionNames={merge_extensions(current)}"
+    insert = []
+    for key, line in new.items():
+        if key in found:
+            lines[found[key]] = line
+        else:
+            insert.append(line)
+    if not text.strip():
+        insert = ["gPCFunctionalityVersion=2"] + insert
+    lines[end:end] = insert
+    return "\r\n".join(lines) + "\r\n", version
+
+
+def scripts_ini_has(text: str, cmdline: str = TWEAK_CMD) -> bool:
+    """Steht das Startskript schon in [Startup]?"""
+    section = ""
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("["):
+            section = s.lower()
+        elif section == "[startup]" and re.match(r"^\d+cmdline\s*=", s, re.IGNORECASE):
+            if s.split("=", 1)[1].strip().lower().endswith(cmdline.lower()):
+                return True
+    return False
+
+
+def scripts_ini_add(text: str, cmdline: str = TWEAK_CMD, parameters: str = "") -> str:
+    """Startskript hinten in [Startup] anhängen (nächste freie Nummer); andere Skripte bleiben."""
+    lines = text.splitlines()
+    start = next((i for i, line in enumerate(lines) if line.strip().lower() == "[startup]"), None)
+    if start is None:
+        while lines and not lines[-1].strip():
+            lines.pop()
+        lines += ["[Startup]"]
+        start = len(lines) - 1
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].strip().startswith("[")), len(lines))
+    numbers = [int(m.group(1)) for line in lines[start + 1:end]
+               if (m := re.match(r"^\s*(\d+)CmdLine\s*=", line, re.IGNORECASE))]
+    n = max(numbers) + 1 if numbers else 0
+    while end > start + 1 and not lines[end - 1].strip():
+        end -= 1
+    lines[end:end] = [f"{n}CmdLine={cmdline}", f"{n}Parameters={parameters}"]
+    return "\r\n".join(lines) + "\r\n"
+
+
+def _dir_ci(parent: Path, name: str) -> Path:
+    path = find_ci(parent, name) or parent / name
+    if path.is_symlink():
+        raise ImagingError(f"{path.name} ist ein Link – nicht angepasst")
+    return path
+
+
+def _write_file(path: Path, data: bytes) -> None:
+    if path.is_symlink():
+        raise ImagingError(f"{path.name} ist ein Link – nicht angepasst")
+    tmp = path.with_name(f".{path.name}.okula-tmp")
+    tmp.write_bytes(data)
+    tmp.replace(path)
+
+
+def install_startup_script(root: Path, script: str) -> dict:
+    """Skript als einmaliges Startskript der lokalen Gruppenrichtlinie ablegen (root = Windows-Partition).
+
+    Ist schon ein noch nicht gelaufenes Okula-Startskript da, wird nur das Skript ersetzt (die gesicherten
+    Originale bleiben). Ergebnis: {"replaced", "gpo" (gab es vorher eine lokale Richtlinie), "version"}."""
+    windir = find_ci(root, "Windows")
+    sys32 = find_ci(windir, "System32") if windir else None
+    if sys32 is None:
+        raise ImagingError("Kein Windows-Ordner gefunden")
+    gp = _dir_ci(sys32, "GroupPolicy")
+    machine = _dir_ci(gp, "Machine")
+    scripts = _dir_ci(machine, "Scripts")
+    startup = _dir_ci(scripts, "Startup")
+    startup.mkdir(parents=True, exist_ok=True)
+    gpt = find_ci(gp, "gpt.ini") or gp / "gpt.ini"
+    ini = find_ci(scripts, "scripts.ini") or scripts / "scripts.ini"
+    ini_bytes = ini.read_bytes() if ini.is_file() else b""
+    ini_text, ini_enc = ini_decode(ini_bytes) if ini_bytes else ("", "utf-16")
+    gpt_bytes = gpt.read_bytes() if gpt.is_file() else b""
+    gpt_text, gpt_enc = ini_decode(gpt_bytes) if gpt_bytes else ("", "latin-1")
+    # Skript zuerst: PowerShell 5.1 liest UTF-8 nur mit BOM richtig
+    _write_file(startup / TWEAK_PS1, b"\xef\xbb\xbf" + script.replace("\r\n", "\n").replace("\n", "\r\n")
+                .encode("utf-8"))
+    _write_file(startup / TWEAK_CMD, TWEAK_CMD_TEXT.encode("ascii"))
+    if scripts_ini_has(ini_text) and SCRIPTS_CSE.lower() in gpt_text.lower():
+        return {"replaced": True, "gpo": (gp / ("gpt.ini" + TWEAK_AFTER)).exists(),
+                "version": gpt_edit(gpt_text, 0, False)[1]}
+    # Stand für nach dem Lauf: Originale (gpt.ini mit Version +2, damit Windows die Richtlinie neu verarbeitet)
+    after_gpt, after_ini = gp / (gpt.name + TWEAK_AFTER), scripts / (ini.name + TWEAK_AFTER)
+    if gpt_bytes:
+        _write_file(after_gpt, ini_encode(gpt_edit(gpt_text, 2, False)[0], gpt_enc))
+    elif after_gpt.exists():
+        after_gpt.unlink()
+    if ini_bytes:
+        _write_file(after_ini, ini_bytes)
+    elif after_ini.exists():
+        after_ini.unlink()
+    # Erst gpt.ini, dann scripts.ini (scripts.ini mit Eintrag = „wartet auf den Start“)
+    new_gpt, version = gpt_edit(gpt_text, 1, True)
+    _write_file(gpt, ini_encode(new_gpt, gpt_enc))
+    _write_file(ini, ini_encode(scripts_ini_add(ini_text), ini_enc))
+    return {"replaced": False, "gpo": bool(gpt_bytes), "version": version}
+
+
+def _windows_system(m: filebackup.Mounts, disk: str) -> tuple[str, Path]:
+    """(Partition, Wurzel) des einzigen Windows auf der Disk – Ruhezustand/Schnellstart wird gemeldet."""
+    found = []
+    for part in _candidates(disk):
+        if part["fstype"] != "ntfs":
+            continue
+        try:
+            root = m.get(part["path"])
+        except ImagingError as e:
+            if "Ruhezustand" in str(e):
+                raise
+            continue
+        if windows_state(root):
+            found.append((part["path"], root))
+    if not found:
+        raise ImagingError(f"Kein Windows auf {disk} gefunden – nichts geändert")
+    if len(found) > 1:
+        raise ImagingError(f"Mehrere Windows-Installationen auf {disk} – nicht eindeutig, nichts geändert")
+    return found[0]
+
+
+def tweak(req: dict, log: Callable[[str], None] = print) -> dict:
+    """Windows anpassen: Skript vom Tool als einmaliges Startskript ablegen (Inhalt wird nie protokolliert)."""
+    disk = str(req.get("disk") or "")
+    script = str(req.get("script") or "")
+    if not script.strip():
+        raise ImagingError("Keine Einstellungen gewählt")
+    if len(script) > MAX_SCRIPT:
+        raise ImagingError("Skript zu gross")
+    with filebackup.Mounts(write=True) as m:
+        part, root = _windows_system(m, disk)
+        state = windows_state(root)
+        result = install_startup_script(root, script)
+        subprocess.run(["sync"])
+    log(f"Windows anpassen {part}: Startskript " + ("ersetzt" if result["replaced"] else "abgelegt") +
+        (" (lokale Gruppenrichtlinie ergänzt)" if result["gpo"] else ""))
+    return {"type": "done", "part": part, "state": state, **result}
 
 
 # ---------- Countdown am Bildschirm ----------

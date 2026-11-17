@@ -1,4 +1,4 @@
-"""Reiter „Automatisierung“ im Gerätefenster, Fenster „Ordner senden“ und „Einstellungen“."""
+"""Reiter „Automatisierung“ im Gerätefenster, Fenster „Ordner senden“, „Windows anpassen“ und „Einstellungen“."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
 from okula_recovery import (automation, bandwidth, config, devices, distribute, imagecheck, linuxsetup,  # noqa: E402
-                            projekt, warranty, winunattend)
+                            projekt, warranty, wintweaks, winunattend)
 from okula_recovery.uikit import ask_text, confirm, confirm_error, numbered_section, run_async, scrolled  # noqa: E402
 
 if TYPE_CHECKING:
@@ -409,6 +409,116 @@ class SendFoldersDialog(Gtk.Dialog):
 
     def _update(self) -> None:
         self.btn.set_sensitive(bool(self.items()))
+
+
+class WindowsTweakDialog(Gtk.Dialog):
+    """Windows anpassen (I-039): Vorlage, Häkchen je Gruppe, automatische Anmeldung – Senden legt ein Startskript ab."""
+
+    def __init__(self, parent: Gtk.Window, device_name: str):
+        super().__init__(title="Windows anpassen", transient_for=parent, modal=True)
+        self.set_default_size(660, 720)
+        self.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
+        self.btn = self.add_button("Senden", Gtk.ResponseType.OK)
+        self.btn.get_style_context().add_class("suggested-action")
+        self.template = wintweaks.NO_TEMPLATE
+        self._applying = False
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=14)
+        head = Gtk.Label(xalign=0, wrap=True)
+        head.set_markup(f"Einstellungen für <b>{GLib.markup_escape_text(device_name)}</b> – Windows setzt sie beim "
+                        "nächsten Start selbst um (als SYSTEM, vor der Anmeldung).")
+        box.pack_start(head, False, False, 0)
+        row = Gtk.Box(spacing=8)
+        row.pack_start(Gtk.Label(label="Vorlage", xalign=0), False, False, 0)
+        self.combo = Gtk.ComboBoxText()
+        for name in wintweaks.TEMPLATE_NAMES:
+            self.combo.append(name, name)
+        self.combo.set_active_id(wintweaks.NO_TEMPLATE)
+        self.combo.set_tooltip_text("Setzt die Häkchen; danach lassen sich einzelne Häkchen ändern")
+        self.combo.connect("changed", lambda c: self._apply_template(c.get_active_id()))
+        row.pack_start(self.combo, False, False, 0)
+        self.state = Gtk.Label(xalign=0)
+        row.pack_start(self.state, False, False, 0)
+        box.pack_start(row, False, False, 0)
+
+        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self.checks: dict[str, Gtk.CheckButton] = {}
+        for group, opts in wintweaks.by_group().items():
+            frame = Gtk.Frame(label=group)
+            fbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, margin=8)
+            subs = [o for o in opts if o.sub]
+            if subs:
+                fbox.pack_start(Gtk.Label(label=subs[0].sub, xalign=0), False, False, 0)
+                grid = Gtk.Grid(column_spacing=18, row_spacing=2, margin_start=16)
+                for i, o in enumerate(subs):
+                    grid.attach(self._check(o), i % 2, i // 2, 1, 1)
+                fbox.pack_start(grid, False, False, 0)
+            for o in opts:
+                if not o.sub:
+                    fbox.pack_start(self._check(o), False, False, 0)
+            if group == "Anmeldung":
+                fbox.pack_start(self._build_logon(), False, False, 0)
+            frame.add(fbox)
+            inner.pack_start(frame, False, False, 0)
+        sw = scrolled(inner)
+        sw.set_min_content_height(420)
+        box.pack_start(sw, True, True, 0)
+        self.why = Gtk.Label(xalign=0, wrap=True)
+        self.why.get_style_context().add_class("status-fail")
+        box.pack_start(self.why, False, False, 0)
+        box.pack_start(_hint_wrapped(f"Wird beim nächsten Windows-Start umgesetzt. Protokoll: {wintweaks.LOG_PATH}",
+                                     80), False, False, 0)
+        box.pack_start(_hint_wrapped("Das Gerät muss mit dem Agent laufen; Windows vollständig heruntergefahren "
+                                     "(kein Schnellstart/Ruhezustand). Erneut senden ersetzt Einstellungen, die "
+                                     "noch nicht umgesetzt sind.", 80), False, False, 0)
+        self.get_content_area().add(box)
+        self.show_all()
+        self._update()
+
+    def _check(self, o: "wintweaks.Option") -> Gtk.CheckButton:
+        c = Gtk.CheckButton(label=o.label)
+        c.connect("toggled", lambda _c: self._update())
+        self.checks[o.key] = c
+        return c
+
+    def _build_logon(self) -> Gtk.Widget:
+        grid = Gtk.Grid(column_spacing=8, row_spacing=4, margin_start=24)
+        self.user = Gtk.Entry(width_chars=24, placeholder_text="z. B. Okula")
+        self.password = Gtk.Entry(width_chars=24, visibility=False, input_purpose=Gtk.InputPurpose.PASSWORD)
+        for i, (label, entry) in enumerate((("Benutzername", self.user), ("Passwort", self.password))):
+            grid.attach(Gtk.Label(label=label, xalign=0), 0, i, 1, 1)
+            grid.attach(entry, 1, i, 1, 1)
+            entry.connect("changed", lambda _e: self._update())
+        grid.attach(_hint_wrapped("Das Konto muss auf dem Gerät vorhanden sein. " + wintweaks.PASSWORD_HINT, 70),
+                    0, 2, 2, 1)
+        return grid
+
+    def _apply_template(self, name: str | None) -> None:
+        self.template = name or wintweaks.NO_TEMPLATE
+        keys = wintweaks.template_keys(self.template)
+        self._applying = True
+        for key, c in self.checks.items():
+            c.set_active(key in keys)
+        self._applying = False
+        self._update()
+
+    def selected(self) -> set[str]:
+        return {k for k, c in self.checks.items() if c.get_active()}
+
+    def credentials(self) -> tuple[str, str]:
+        return self.user.get_text().strip(), self.password.get_text()
+
+    def _update(self) -> None:
+        if self._applying:
+            return
+        sel = self.selected()
+        self.state.set_text(f"Vorlage: {wintweaks.template_label(self.template, sel)}")
+        on = wintweaks.AUTOLOGON in sel
+        self.user.set_sensitive(on)
+        self.password.set_sensitive(on)
+        problem = wintweaks.check(sel, *self.credentials())
+        self.btn.set_sensitive(problem is None)
+        self.why.set_text(problem if problem and sel else "")
+        self.why.set_visible(bool(problem and sel))
 
 
 class SettingsDialog(Gtk.Dialog):

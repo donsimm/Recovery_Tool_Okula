@@ -351,3 +351,36 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stic
 An einem Gerät mit Windows-Schlüssel im BIOS (OEM, z. B. HP/Lenovo-Notebook), Windows Pro/Home – nicht Enterprise.
 - [ ] *OS installieren …* mit Schlüssel aus dem BIOS → nach der Einrichtung in der Datenträgerverwaltung prüfen: Setup-Partition „OKULASETUP“ **weg** und C: über die ganze Disk? (bleibt sie stehen: B-013 bestätigt)
 - [ ] `C:\Windows\Temp\okula-aufraeumen.log` vorhanden?
+
+### 19. Windows anpassen (I-039)
+Nach `git pull && sudo ./install.sh` das Tool neu starten und **Agent-Stick bzw. Netzwerkstart neu erstellen** (neuer
+Agent-Befehl). Je eine VM mit Windows 10 Pro 22H2 und Windows 11 Pro (installiert, mit lokalem Konto, z. B. „Okula“),
+Windows ganz heruntergefahren, dann mit dem Agent starten.
+- [ ] Rechtsklick auf das Gerät → *Windows anpassen …* (auch *Tools* und Knopf im Gerätefenster): Dialog mit allen
+      Gruppen; Vorlage *Player* setzt alles ausser *Kamera* und *Druckwarteschlange*, „Vorlage: Player“;
+      ein Häkchen ändern → „Vorlage: Player (geändert)“; *Senden* gesperrt, bis Benutzername und Passwort da sind
+- [ ] Vorlage *Player* senden → Auftrag „Windows anpassen“ fertig, Log nennt die Auswahl (ohne Passwort), Verlauf
+      „Windows anpassen (Vorlage Player: …): Startskript abgelegt …“
+- [ ] Neustart in Windows → `C:\Windows\Temp\okula-windows-anpassen.log`: je Einstellung „ok“ (Fehler mit Grund),
+      „Ende: … ok, … mit Fehler“; **kein Passwort** im Protokoll
+- [ ] Store-Apps weg (Xbox, Bing-Wetter/News, Solitaire, Store …; Kamera noch da), auch für ein neu angelegtes Konto;
+      `Get-AppxProvisionedPackage -Online` ohne die entfernten Apps
+- [ ] Automatische Anmeldung als „Okula“ (spätestens beim zweiten Start); Energieplan Höchstleistung, Bildschirm/
+      Standby „Nie“, kein Ruhezustand/Schnellstart, kein Sperrbildschirm; Dateiendungen und versteckte Dateien sichtbar,
+      Explorer öffnet „Dieser PC“, Symbole auf dem Desktop; Dienste WSearch/SysMain/RemoteRegistry „Deaktiviert“
+- [ ] Danach weg: `C:\Windows\System32\GroupPolicy\Machine\Scripts\Startup\okula-windows-anpassen.*`, Eintrag in
+      `scripts.ini`, `*.okula-nachher`; `gpt.ini` gelöscht (vorher keine) bzw. wie vorher mit höherer Version;
+      unter `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy\Scripts\Startup` kein Okula-Eintrag
+- [ ] Zweiter Neustart: **kein erneuter Lauf** (keine neuen Zeilen im Protokoll)
+- [ ] Vorhandene lokale Gruppenrichtlinie (z. B. mit `gpedit.msc` eine Einstellung und ein eigenes Startskript
+      setzen) → *Windows anpassen* senden → nach dem Lauf beides noch da und wirksam (`gpresult /r`)
+- [ ] Vorlage *Laptop* an der zweiten VM: Updates unverändert, Kamera und Store bleiben, keine automatische Anmeldung
+- [ ] Windows im Schnellstart (normal „Herunterfahren“) → Meldung „Windows ist im Ruhezustand bzw. Schnellstart …“,
+      nichts abgelegt
+- [ ] Gerät ohne Windows (z. B. Linux) → Meldung „kein Windows erkannt“, nichts gesendet
+- [ ] Automatische Anmeldung mit einem Konto, das es nicht gibt → Protokoll „FEHLER Automatische Anmeldung: Konto … nicht
+      vorhanden – nichts gesetzt“, die übrigen Einstellungen „ok“
+- [ ] Dauer der App-Entfernung am echten Gerät (Startskripte haben eine Wartezeit von 10 min, danach bricht Windows sie
+      ab – Protokoll muss „Ende“ zeigen)
+- [ ] Alter Agent (Stick vor I-039) → Meldung „Agent zu alt …“
+- [ ] DEMO-PC: *Windows anpassen …* → Auftrag nach wenigen Sekunden „fertig“

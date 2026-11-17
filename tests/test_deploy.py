@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from okula_recovery import agent, agentclient, deploy, distribute, filebackup, inventory, winunattend, wire
+from okula_recovery import agent, agentclient, deploy, distribute, filebackup, inventory, wintweaks, winunattend, wire
 from tests.test_restore import can_run, loop_disks, sh
 
 
@@ -200,6 +200,15 @@ class DeployE2ETest(unittest.TestCase):
         results = agentclient.customize("127.0.0.1", self.key, self.dev, xml, "", self.port)
         self.assertIn(("windows", "not_generalized"), {(r["system"], r["action"]) for r in results})
         self.assertEqual(self.read("p2", "Windows/Panther"), [])
+
+    def test_tweak_windows(self):
+        script = wintweaks.build_script({"cortana"})
+        res = agentclient.tweak("127.0.0.1", self.key, self.dev, script, self.port)
+        self.assertEqual((res["part"][-2:], res["state"], res["replaced"]), ("p2", "generalized", False))
+        gp = "Windows/System32/GroupPolicy"
+        self.assertIn(b"Version=1\r\n", self.read("p2", f"{gp}/gpt.ini"))
+        self.assertEqual(self.read("p2", f"{gp}/Machine/Scripts/Startup"), [deploy.TWEAK_CMD, deploy.TWEAK_PS1])
+        self.assertIn("Cortana aus".encode(), self.read("p2", f"{gp}/Machine/Scripts/Startup/{deploy.TWEAK_PS1}"))
 
     def test_deliver_replaces_folders(self):
         with tempfile.TemporaryDirectory() as tmp:

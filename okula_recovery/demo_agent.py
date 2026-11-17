@@ -331,6 +331,16 @@ def deliver(sock, req: dict, log=print, report=None) -> None:
     log(f"Demo: Ordner auf den Desktop gelegt (simuliert): {', '.join(map(str, req.get('items') or []))}")
 
 
+def tweak(req: dict, log=print) -> dict:
+    """Windows anpassen: Skript annehmen, nichts ablegen (der Inhalt wird nicht protokolliert)."""
+    if not str(req.get("script") or "").strip():
+        raise ImagingError("Keine Einstellungen gewählt")
+    time.sleep(2)
+    log("Demo: Startskript für „Windows anpassen“ abgelegt (simuliert)")
+    return {"type": "done", "part": f"{DEMO_DISK_PATH}p3", "state": "installed", "replaced": False, "gpo": False,
+            "version": 1}
+
+
 BOOT = {"order": ["0001", "0002", "0003"], "netfirst": False}
 LABELS = {"0001": "Windows Boot Manager", "0002": "UEFI: USB-Stick", "0003": "UEFI: PXE IPv4 Intel(R) Ethernet"}
 
@@ -456,7 +466,7 @@ def install_fakes() -> None:
     filebackup.backup, filebackup.restore_files = backup, restore_files
     wininstall.install, wininstall.bootprep = install, bootprep
     wininstall.boot_status, wininstall.set_netfirst = boot_status, set_netfirst
-    deploy.customize, deploy.deliver = customize, deliver
+    deploy.customize, deploy.deliver, deploy.tweak = customize, deliver, tweak
     deploy.open_keyboards = lambda pattern="": []
     biosread.read, biosread.write = bios_read, bios_write
     hwtest.battery, hwtest.temperature_step, hwtest.smart_test = hw_battery, hw_temperature, hw_smart

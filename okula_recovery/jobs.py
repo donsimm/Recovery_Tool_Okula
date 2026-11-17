@@ -51,7 +51,8 @@ class Job:
         return self.phase or {"image": "Disk-Image", "install": "Windows-Installation", "linux": "Linux-Installation",
                               "backup": "Backup", "filerestore": "Dateien zurückspielen",
                               "download": "Backup herunterladen", "auto": "Automatisierung",
-                              "deliver": "Ordner senden", "hwtest": "Hardware-Test"}.get(self.kind, "Zurückspielen")
+                              "deliver": "Ordner senden", "hwtest": "Hardware-Test",
+                              "tweak": "Windows anpassen"}.get(self.kind, "Zurückspielen")
 
     @property
     def shown_fraction(self) -> float:
@@ -621,6 +622,39 @@ def deliver_work(ip: str, key: bytes, port: int, disk: str, nas_root: str, items
             raise
         after(job, distribute.describe(plan.items), None)
         return f"{result.get('files', 0)} Dateien auf den Desktop gelegt"
+
+    return work
+
+
+TWEAK_GENERALIZED = ("Windows ist generalisiert (Sysprep, Ersteinrichtung steht noch aus): Die Einstellungen werden "
+                     "erst nach der Ersteinrichtung bei einem Windows-Start umgesetzt.")
+
+
+def tweak_work(ip: str, key: bytes, port: int, disk: str, script: str, lines: list[str],
+               after: Callable[[Job, str | None, Exception | None], None]):
+    """Windows anpassen (I-039): Skript (im Tool erzeugt, wintweaks.build_script) als einmaliges Startskript ablegen.
+    lines = gewählte Optionen fürs Log – das Skript selbst (ggf. mit Passwort) kommt nie ins Log."""
+    def work(job: Job, jm: JobManager) -> str:
+        try:
+            jm.log(job, "Gewählte Einstellungen:")
+            for line in lines:
+                jm.log(job, line)
+            jm.log(job, "Einstellungen werden übertragen …")
+            jm.progress(job, 0.3, "Einstellungen werden übertragen …")
+            result = agentclient.tweak(ip, key, disk, script, port)
+            how = "ersetzt (noch nicht umgesetzte Einstellungen von vorher verworfen)" if result.get("replaced") \
+                else "abgelegt"
+            jm.log(job, f"Startskript auf {result.get('part', disk)} {how}"
+                        + (" – vorhandene lokale Gruppenrichtlinie bleibt erhalten" if result.get("gpo") else ""))
+            if result.get("state") == "generalized":
+                jm.log(job, TWEAK_GENERALIZED)
+            jm.log(job, "Wird beim nächsten Windows-Start umgesetzt (als SYSTEM, vor der Anmeldung). "
+                        "Protokoll am Gerät: C:\\Windows\\Temp\\okula-windows-anpassen.log")
+        except Exception as e:
+            after(job, None, e)
+            raise
+        after(job, "", None)
+        return "wird beim nächsten Windows-Start umgesetzt"
 
     return work
 

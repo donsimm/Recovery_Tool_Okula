@@ -17,12 +17,12 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 |---|---|---|---|
 | 🐞 Bugs | 2 | 0 | 0 |
 | 🔧 Änderungen | 7 | 0 | 0 |
-| 💡 Ideen | 24 | 0 | 0 |
+| 💡 Ideen | 23 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
 Erledigt 31.10. zusätzlich: I-007 ✔ (Image prüfen) → Ä-027 ✔ (Demo ohne NAS) → Ä-028 ✔ (Ein/Aus-Symbole) → Ä-029 ✔ (Legende) → Ä-030 ✔ (NAS-Leiste) → I-030 ✔ (Bandbreite) → Ä-031 ✔ (Tage hell/dunkel).
-Als Nächstes: **I-038 Direktinstallation für Master-Image (Audit-Modus) erledigt** ✔ 12.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Test [TESTS.md](TESTS.md) Abschnitt 17 am VM-Zwilling). **B-012 Windows-Kontoname erledigt** ✔ 12.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Test [TESTS.md](TESTS.md) Abschnitt 16 am CompactPlayer). **B-011 Hardware-Test meldet Prozessor-Fehler seit dem Start erledigt** ✔ 11.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, **neuer Agent-Stick nötig**; Test [TESTS.md](TESTS.md) Abschnitt 15 an SRV-002). **B-008 Projektübersicht im Dunkelmodus lesbar erledigt** ✔ 10.11. (abgenommen von Okuli; am Server am Server `git pull && sudo ./install.sh`, Firefox-Seite neu laden, kein neuer Agent-Stick; Test [TESTS.md](TESTS.md) Abschnitt 12). **B-009 Tests grün ohne sbin im PATH erledigt** ✔ 10.11. (Abnahme durch Okuli; nur Tests und Werkzeugsuche, am Server `git pull && sudo ./install.sh` genügt, neuer Agent-Stick nicht nötig). **Ä-038 Agent-Stick „fertig“-Meldung und Prüfung am Schluss erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 14). **Ä-007 Bestätigung beim Einschalten der Automatisierung erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 5). **B-007 belegte Blöcke im partclone-Kopf erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Test [TESTS.md](TESTS.md) Abschnitt 13). **Ä-037 VM-Disk beim Zurückspielen vergrössern erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 13). **I-034 Projektübersicht erledigt** ✔ 10.11. (Extras → Projektübersicht …; am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 12). **I-001 VMs erledigt** ✔ 06.11. (alle 4 Aufträge, [VM.md](VM.md)) – Auftrag 3 „Digitaler Zwilling“ und Auftrag 4 „Snapshots“ umgesetzt und am Server installiert (Dominik 10.11.); Tests [TESTS.md](TESTS.md) Abschnitte 9, 10 und 11 (inkl. Master-Ablauf mit Snapshot „vor Sysprep“). Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 3 (Master-Image mit VMs), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
+Als Nächstes: **I-039 Windows anpassen erledigt** ✔ 17.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, **neuer Agent-Stick nötig** bzw. Netzwerkstart neu vorbereiten; Test [TESTS.md](TESTS.md) Abschnitt 19 an VMs mit Windows 10 und 11). **I-038 Direktinstallation für Master-Image (Audit-Modus) erledigt** ✔ 12.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Test [TESTS.md](TESTS.md) Abschnitt 17 am VM-Zwilling). **B-012 Windows-Kontoname erledigt** ✔ 12.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Test [TESTS.md](TESTS.md) Abschnitt 16 am CompactPlayer). **B-011 Hardware-Test meldet Prozessor-Fehler seit dem Start erledigt** ✔ 11.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, **neuer Agent-Stick nötig**; Test [TESTS.md](TESTS.md) Abschnitt 15 an SRV-002). **B-008 Projektübersicht im Dunkelmodus lesbar erledigt** ✔ 10.11. (abgenommen von Okuli; am Server am Server `git pull && sudo ./install.sh`, Firefox-Seite neu laden, kein neuer Agent-Stick; Test [TESTS.md](TESTS.md) Abschnitt 12). **B-009 Tests grün ohne sbin im PATH erledigt** ✔ 10.11. (Abnahme durch Okuli; nur Tests und Werkzeugsuche, am Server `git pull && sudo ./install.sh` genügt, neuer Agent-Stick nicht nötig). **Ä-038 Agent-Stick „fertig“-Meldung und Prüfung am Schluss erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 14). **Ä-007 Bestätigung beim Einschalten der Automatisierung erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 5). **B-007 belegte Blöcke im partclone-Kopf erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Test [TESTS.md](TESTS.md) Abschnitt 13). **Ä-037 VM-Disk beim Zurückspielen vergrössern erledigt** ✔ 10.11. (Abnahme durch Okuli, dann am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 13). **I-034 Projektübersicht erledigt** ✔ 10.11. (Extras → Projektübersicht …; am Server `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick; Tests [TESTS.md](TESTS.md) Abschnitt 12). **I-001 VMs erledigt** ✔ 06.11. (alle 4 Aufträge, [VM.md](VM.md)) – Auftrag 3 „Digitaler Zwilling“ und Auftrag 4 „Snapshots“ umgesetzt und am Server installiert (Dominik 10.11.); Tests [TESTS.md](TESTS.md) Abschnitte 9, 10 und 11 (inkl. Master-Ablauf mit Snapshot „vor Sysprep“). Daneben Tests am realen System in [TESTS.md](TESTS.md) – Abschnitt 2 (Netzwerk, nach UEFI-Umstellung), 3 (Master-Image mit VMs), 5 (Automatisierung) und 7 (inkl. I-007: Dauer für ein grosses Image).
 Vorschlag Reihenfolge (Analyse 31.10.): ~~Ä-007~~ ✔ → ~~B-012~~ ✔ → **I-005/I-006** (Aufbewahrung, zweite Kopie) → Ä-005 (CI) → **Ä-006, Ä-010** (Assistent) → I-008 (Meldungen) → Rest nach Bedarf.
 
 ## 🐞 Bugs
@@ -71,7 +71,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): ~~Ä-007~~ ✔ → ~~B-012~~ ✔ → **I
 | I-035 | ⚪ | offen | Okuli | **Hinweis bei VM-Disk grösser als freier Platz:** Ä-037 bietet „VM-Disk auf 1001 GB vergrössern“ an, obwohl der Server nur 889 GB frei hat (Befund 10.11., Probe-VM). Zum Zurückspielen reicht es (qcow2 wächst nur mit den belegten Daten), füllt sich die VM später, läuft der Server voll. Vorschlag: Hinweis „⚠ Disk grösser als der freie Platz auf dem Server (… GB)“ im Prüftext, ohne zu sperren |
 | I-036 | ⚪ | offen | Okuli | **Hardware-Fehler (MCE/WHEA) anzeigen:** Der Agent liest Kernel-Meldungen `mce: [Hardware Error]` (bzw. `rasdaemon`) und meldet sie im Tool (Gerätefenster, Verlauf, Hinweis in der Liste). Anlass B-010 (CPU 3 meldet laufend Fehler). Passt zu I-033 Hardware-Test |
 | I-037 | ⚪ | offen | Dominik | **Grafikkarte im Inventar und im Gerätefenster (Übersicht):** Heute erfasst das Inventar keine Grafikkarte (`inventory.py`: dmi, cpu, memory, batteries, network, disks, systems). Agent liest Grafikkarten aus `/sys/bus/pci/devices/*/class` (0x03xxxx) bzw. `lspci -mm` (Hersteller, Modell, ggf. Speicher), Anzeige in der Übersicht; neuer Agent-Stick nötig. Hilft auch bei VM-Zwilling/Treibern | 11.11. (Cockpit-Idee ID-0002) |
-| I-039 | 🟡 | offen | Dominik | **Windows anpassen … (Einstellungen nach der Installation, wie *Ordner senden*):** Dialog mit Gruppen und Häkchen (Apps, Updates, Betrieb, Datenschutz, Explorer und Desktop, Dienste, automatische Anmeldung), vorgegebene Vorlagen „Player“ und „Laptop“. Agent legt ein einmaliges Startskript auf die Windows-Partition; Windows führt es beim nächsten Start als SYSTEM aus, Protokoll unter `C:\Windows\Temp`. Optionen aus dem TGF-TuningPack 4.3 ausgewählt (riskante Punkte bewusst nicht, siehe Prompt). Prompt `docs/prompts/I-039-windows-anpassen.md` | 17.11. |
 
 Umgesetzte Ideen: Windows-Master-Image mit Sysprep ([MASTER-IMAGE.md](MASTER-IMAGE.md)), Ordner an Geräte senden
 ([ORDNER-SENDEN.md](ORDNER-SENDEN.md)), Automatisierung ([AUTOMATISIERUNG.md](AUTOMATISIERUNG.md)),
@@ -84,6 +83,9 @@ Gerätename = Name im Tool.
   Windows-Start; Vorlagen „Player“ und „Laptop“ fest vorgegeben; automatische Anmeldung gehört dazu. Bewusst **nicht**
   aus dem TuningPack: Utilman durch CMD ersetzen, Sicherheitscenter/Defender aus, Microsoft-Server sperren,
   Zeitsynchronisation aus, Admin-Freigaben aus, Gaming-/TCP-Tweaks, Entwicklermodus, Core Parking.
+  Startmechanismus (Umsetzungs-Agent 17.11., Prompt liess die Wahl offen): **Startskript der lokalen
+  Gruppenrichtlinie** (`System32\GroupPolicy`, nur Dateien, kein Hive-Schreiben); vorhandene Richtlinie wird ergänzt
+  und nach dem Lauf wiederhergestellt. Begründung und verworfene Varianten: [TECHNIK.md](TECHNIK.md), „Windows anpassen“.
 
 - **Rückfrage beim Einschalten der Automatisierung (Ä-007, Entscheid Dominik 10.11.2026, Variante B):** bei jedem
   Einschalten von Hand (Häkchen *Auto*, Schalter im Reiter), egal ob verbunden. Keine Rückfrage beim Wieder-Einschalten
@@ -103,7 +105,7 @@ Gerätename = Name im Tool.
 - **Automatisches Zusammenführen nur bei sicherer Identität** (gleiche Board-UUID/Seriennummer); eine gleiche MAC
   allein reicht nie (geteilter USB-Netzwerkadapter).
 - **Gerätename im Tool = Computername** bei Neuinstallation, Anpassen und Automatisierung; ändern = Gerät umbenennen.
-- **Windows anpassen nur bei Master-Images (Sysprep)**; ein nicht generalisiertes Windows wird nicht verändert. (Wird mit I-003 neu geprüft.)
+- **Windows anpassen nur bei Master-Images (Sysprep)**; ein nicht generalisiertes Windows wird nicht verändert. (Wird mit I-003 neu geprüft.) Gilt für *Danach anpassen* (Name, Key); die Funktion „Windows anpassen …“ (I-039) ändert bewusst auch ein installiertes Windows.
 - **Passwörter werden nicht gespeichert:** lokales Konto ohne Passwort, Windows verlangt es beim ersten Anmelden.
 - **Kleinere Disk (Ä-002):** Anpassen auf dem Server als neues Image (Original bleibt); Zwischenspeicher zuerst
   Server-SSD, sonst NAS (Entscheid Dominik 31.10.). Nicht bei BitLocker/Rohkopie, Btrfs/XFS, LVM, logischen Partitionen.
@@ -148,6 +150,27 @@ Gerätename = Name im Tool.
 ## ✅ Erledigt – Änderungsprotokoll
 
 Neueste zuoberst.
+
+### 17.11.2026
+- **I-039 – Windows anpassen …** (Von: Dominik, 17.11.; Optionen aus dem TGF-TuningPack 4.3): Neue Funktion wie
+  *Ordner senden* – Menü *Tools* und Rechtsklick auf das Gerät „Windows anpassen …“ (unter „Ordner senden“), Knopf
+  im Gerätefenster. Dialog mit Vorlage (*Player*, *Laptop*, *Keine*; danach einzeln änderbar, „Vorlage: Player
+  (geändert)“) und Häkchen in den Gruppen Apps (11 Store-App-Gruppen, Wiederinstallation sperren, OneDrive, Cortana),
+  Updates, Betrieb, Datenschutz, Explorer und Desktop, Dienste, Anmeldung (automatische Anmeldung mit Benutzername/
+  Passwort – ohne beide kein *Senden*, Hinweis Klartext in der Registrierung). Das Tool erzeugt ein PowerShell-Skript
+  (`wintweaks.py`, je Option ein Baustein mit try/catch, Store-Apps zuletzt, „alle Benutzer“ = alle Profile und
+  Standardprofil); neuer Agent-Befehl `tweak` legt es als **einmaliges Startskript der lokalen Gruppenrichtlinie** ab
+  (`deploy.install_startup_script`: `scripts.ini`/`gpt.ini` ergänzt, Version erhöht, Originale als `*.okula-nachher`).
+  Beim nächsten Start läuft es als SYSTEM vor der Anmeldung, löscht sich und den Startmechanismus zuerst (Notfall-
+  Aufräumen in der `.cmd`, falls PowerShell nicht startet), dann die Einstellungen; Protokoll
+  `C:\Windows\Temp\okula-windows-anpassen.log` ohne Passwort. Schnellstart/Ruhezustand → Meldung wie bei *Ordner
+  senden*; kein Windows → Meldung, nichts gesendet. Auftrag „Windows anpassen“, Verlauf mit Kurzform der Auswahl.
+  Demo-Gerät meldet „fertig“. Hilfe: neues Kapitel „Windows anpassen“, Gerätefenster und Demo-Gerät ergänzt.
+  Details [TECHNIK.md](TECHNIK.md), Tests `tests/test_wintweaks.py` (Skript je Option und Vorlage, Passwort, Aufräumen,
+  Startmechanismus auf Probe-Verzeichnis mit vorhandener Richtlinie, Ablehnung ohne Windows/bei Schnellstart, Auftrag,
+  „Agent zu alt“), `tests/test_deploy.py` (Loop-Disk, root), `tests/test_demo.py`; Prüfung [TESTS.md](TESTS.md)
+  Abschnitt 19. **Neuer Agent-Stick nötig.** Kombination mit *Danach anpassen*, Direktinstallation und
+  Automatisierung folgt später.
 
 ### 12.11.2026
 - **I-038 – Windows-Direktinstallation „Für Master-Image (Audit-Modus)“** (Von: Dominik, 12.11.; Anlass: Master-Image

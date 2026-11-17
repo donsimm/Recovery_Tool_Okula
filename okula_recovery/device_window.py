@@ -110,11 +110,14 @@ class DeviceWindow(Gtk.Window):
                 ("install", "OS installieren …", lambda: main.start_install(self.dev)),
                 ("backup", "Backup erstellen …", lambda: main.start_backup(self.dev)),
                 ("send", "Ordner senden …", lambda: main.on_send_folders(self.dev)),
+                ("tweak", "Windows anpassen …", lambda: main.on_tweak_windows(self.dev)),
                 ("inventory", "Inventar neu einlesen", lambda: main.refresh_inventory(self.dev))):
             b = Gtk.Button(label=label)
             b.connect("clicked", lambda _b, h=handler: h())
             self.buttons[key] = b
-        for key in ("image", "restore", "install", "backup", "send", "inventory"):
+        self.buttons["tweak"].set_tooltip_text("Einstellungen per Häkchen (Store-Apps, Updates, Energie, automatische "
+                                               "Anmeldung …) – Windows setzt sie beim nächsten Start um")
+        for key in ("image", "restore", "install", "backup", "send", "tweak", "inventory"):
             actions.pack_start(self.buttons[key], False, False, 0)
         # Neu starten / Herunterfahren als Symbole wie im Hauptfenster (rechts, abgesetzt von den Aufträgen)
         power = power_buttons(lambda action: main.power(self.dev, action), sensitive=True)

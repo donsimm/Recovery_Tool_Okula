@@ -19,8 +19,8 @@ from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 
 from okula_recovery import (__version__, agentclient, archive, automation, backups, bandwidth,  # noqa: E402
                             clonezilla, config, demostore, devices, discovery, distribute, imagecheck, jobs, nas,
-                            nasfiles, oslib, projekt, pxe, vm, warranty, wire, wol)
-from okula_recovery.automation_tab import SendFoldersDialog, SettingsDialog  # noqa: E402
+                            nasfiles, oslib, projekt, pxe, vm, warranty, wintweaks, wire, wol)
+from okula_recovery.automation_tab import SendFoldersDialog, SettingsDialog, WindowsTweakDialog  # noqa: E402
 from okula_recovery.inventory_dialog import InventoryExportDialog  # noqa: E402
 from okula_recovery.imagecheck_dialog import CheckWindow  # noqa: E402
 from okula_recovery.backup_dialogs import (BackupDetailsDialog, BackupDialog, RestoreFilesDialog,  # noqa: E402
@@ -67,7 +67,8 @@ MENU_LABELS: dict[str, list[str | None]] = {
               "Inven_tar exportieren (CSV/PDF) …", None,
               "Einstellungen e_xportieren …", "Einstellungen _importieren …", None, "_Beenden"],
     "_Tools": ["Gerät ö_ffnen …", "_Disk-Image erstellen …", "Image _zurückspielen …", "_OS installieren …",
-               "_Backup erstellen …", "Backup zur_ückspielen …", "Ordner _senden …", "_Inventar neu einlesen",
+               "_Backup erstellen …", "Backup zur_ückspielen …", "Ordner _senden …", "Windows _anpassen …",
+               "_Inventar neu einlesen",
                None, "_Restore-Stick aus Image …", "IS_O hinzufügen …",
                "_Boot-Stick aus ISO …", "_Netzwerkstart (PXE) …", None, "Images _aktualisieren"],
     "E_xtras": ["_USB klonen …", "USB _formatieren …", None, "Neue _virtuelle Maschine …", None,
@@ -253,6 +254,7 @@ class MainWindow(Gtk.ApplicationWindow):
             "_Backup erstellen …": (lambda: self._with_device(self.start_backup), None),
             "Backup zur_ückspielen …": (lambda: self._with_device(lambda d: self.start_file_restore(None, d)), None),
             "Ordner _senden …": (lambda: self._with_device(self.on_send_folders), None),
+            "Windows _anpassen …": (lambda: self._with_device(self.on_tweak_windows), None),
             "_Inventar neu einlesen": (lambda: self._with_device(self.refresh_inventory), None),
             "_Restore-Stick aus Image …": (lambda: self.on_restore_stick(None), None),
             "IS_O hinzufügen …": (self.on_add_iso, None),
@@ -2233,6 +2235,7 @@ class MainWindow(Gtk.ApplicationWindow):
                 sub.append(item)
             send.set_submenu(sub)
             menu.append(send)
+            add("Windows anpassen …", lambda: self.on_tweak_windows(dev), ready)
             menu.append(Gtk.SeparatorMenuItem())   # Strom abgesetzt von den Aufträgen
         if dev is not None and dev.is_vm:
             # VM: Einschalten, Bildschirm, Ausschalten … über libvirt statt Wake-on-LAN
@@ -3319,6 +3322,43 @@ class MainWindow(Gtk.ApplicationWindow):
             return
         self.open_device(dev).show_jobs()
 
+    def on_tweak_windows(self, dev: devices.Device) -> None:
+        """Windows anpassen (I-039): Dialog, Skript im Tool erzeugen, Agent legt es als Startskript ab."""
+        parent = self._parent_for(dev)
+        agent = self._ready_agent(dev, parent)
+        if agent is None:
+            return
+        disk = self.windows_disk(dev)
+        if disk is None:
+            confirm_error(parent, f"Auf „{dev.name}“ wurde kein Windows erkannt (oder es ist mit BitLocker "
+                                  "verschlüsselt) – nichts gesendet. Inventar neu einlesen.")
+            return
+        dlg = WindowsTweakDialog(parent, dev.name)
+        ok = dlg.run() == Gtk.ResponseType.OK
+        selected, template = dlg.selected(), dlg.template
+        user, password = dlg.credentials()
+        dlg.destroy()
+        if not ok:
+            return
+        try:
+            script = wintweaks.build_script(selected, user, password, dev.name, template)
+        except wintweaks.TweakError as e:
+            confirm_error(parent, str(e))
+            return
+        what = f"Windows anpassen ({wintweaks.summary(selected, template, user)})"
+
+        def after(job, path, error) -> None:
+            GLib.idle_add(self._after_job, dev.id, job, what, path, error, False)
+
+        try:
+            self.jobs.start(dev.id, "tweak", disk, what,
+                            jobs.tweak_work(agent.ip, self.key, agent.control_port, disk, script,
+                                            wintweaks.describe_lines(selected, user), after))
+        except agentclient.AgentError as e:
+            confirm_error(parent, str(e))
+            return
+        self.open_device(dev).show_jobs()
+
     def _on_device_drag_received(self, view, context, x, y, selection, _info, time_) -> None:
         view.stop_emission_by_name("drag-data-received")
         Gtk.drag_finish(context, True, False, time_)
@@ -3915,6 +3955,9 @@ class MainWindow(Gtk.ApplicationWindow):
             if error is None and job.kind in ("install", "linux"):
                 self.store.add_history(dev, job.kind, f"{what}: vorbereitet, Gerät startet neu und installiert "
                                                       "selbständig", ok=True)
+            elif error is None and job.kind == "tweak":
+                self.store.add_history(dev, job.kind, f"{what}: Startskript abgelegt, wird beim nächsten "
+                                                      "Windows-Start umgesetzt", ok=True)
             elif error is None:
                 where = ""
                 if job.kind in ("image", "backup") and path and Path(path).is_relative_to(demostore.base()):

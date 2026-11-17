@@ -745,6 +745,114 @@ NAS/Verteilen/Content/<Projekt>/   Auswahl – gewählte Projekte landen unter C
 - **Erneut senden ersetzt** den Ordner auf dem Desktop. Der Agent schreibt zuerst in einen versteckten Zwischenordner und tauscht erst um, wenn alles angekommen ist – bei einem Abbruch bleibt der alte Stand. Andere Projekte unter `Content\` bleiben.
 - **Voraussetzungen:** Gerät läuft mit dem Agent (Stick oder Netzwerkstart), Windows vollständig heruntergefahren (kein Schnellstart/Ruhezustand), keine BitLocker-Verschlüsselung. Links auf dem NAS werden nicht mitgesendet.
 
+## Windows anpassen (I-039)
+
+Einstellungen an einem Gerät mit Windows per Häkchen umstellen; Windows setzt sie beim **nächsten Start selbst** um
+(als SYSTEM, vor der Anmeldung). Bedienung wie *Ordner senden*: Rechtsklick auf das Gerät, *Tools* oder Knopf im
+Gerätefenster → **„Windows anpassen …“** → Vorlage/Häkchen → *Senden*. Module: `wintweaks.py` (Optionen, Vorlagen,
+Skript – ohne GTK), `automation_tab.WindowsTweakDialog`, `jobs.tweak_work`, `agentclient.tweak`, Agent-Befehl `tweak`
+in `deploy.tweak`/`deploy.install_startup_script`; Demo-Agent nimmt den Befehl an und meldet „fertig“.
+
+**Ablauf:** Das Tool prüft wie bei *Ordner senden*, ob laut Inventar ein Windows (ohne BitLocker) da ist, sonst Meldung
+und nichts gesendet. Es erzeugt das PowerShell-Skript (`wintweaks.build_script`) und schickt es verschlüsselt an den
+Agent (Befehl `tweak`, älterer Agent → „Agent zu alt …“). Der Agent hängt die NTFS-Partitionen schreibend ein
+(ntfs-3g; Ruhezustand/Schnellstart → „Windows ist im Ruhezustand bzw. Schnellstart …“), sucht genau ein Windows
+(keins → „Kein Windows auf … gefunden – nichts geändert“, mehrere → nicht eindeutig) und legt das Startskript ab.
+Auftrag in der Auftragsliste, Log mit den gewählten Optionen, Verlauf „Windows anpassen (Vorlage Player (geändert):
+Apps (12), …, automatische Anmeldung (Okula)): Startskript abgelegt, wird beim nächsten Windows-Start umgesetzt“.
+
+**Startmechanismus: Startskript der lokalen Gruppenrichtlinie.** Begründung: dokumentierter Weg, ein Skript beim
+Start **als SYSTEM vor der Anmeldung** laufen zu lassen, auf Windows 10 Pro und 11 Pro gleich; zur Laufzeit sind alle
+Dienste da (AppX-Bereitstellung für `Remove-AppxPackage`, Dienststeuerung, powercfg); offline nur mit Dateien
+einzurichten (kein Hive-Schreiben nötig). Verworfen: `RunOnce` (läuft erst bei einer Anmeldung), Dienst im
+SYSTEM-Hive (`cmd`/PowerShell ist kein Dienst – die Dienststeuerung bricht nach 30 s ab), geplante Aufgabe offline
+(binäre, nicht dokumentierte Einträge unter `TaskCache`), `SetupComplete.cmd` (nur nach einer Windows-Installation),
+`HKLM\SYSTEM\Setup\CmdLine` (nicht dokumentiert, läuft vor den Diensten).
+
+Ablage durch den Agent (alles unter `Windows\System32\GroupPolicy`, Gross/Klein wie vorhanden):
+
+| Datei | Inhalt |
+|---|---|
+| `Machine\Scripts\Startup\okula-windows-anpassen.ps1` | Skript vom Tool (UTF-8 mit BOM, CRLF – Windows PowerShell 5.1) |
+| `Machine\Scripts\Startup\okula-windows-anpassen.cmd` | ruft `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File …` auf; nur ASCII |
+| `Machine\Scripts\scripts.ini` | `[Startup]` um `NCmdLine=okula-windows-anpassen.cmd` ergänzt (nächste freie Nummer, andere Skripte bleiben; Kodierung wie vorhanden, neu UTF-16 wie gpedit) |
+| `gpt.ini` | `gPCMachineExtensionNames` um `[{42B5FAAE-6536-11D2-AE5A-0000F87571E3}{40B6664F-4972-11D1-A7CA-0000F87571E3}]` (Scripts) ergänzt, nach GUID sortiert; `Version` Computer-Teil (untere 16 Bit) +1, damit Windows die Richtlinie neu verarbeitet; neu: `gPCFunctionalityVersion=2` |
+| `gpt.ini.okula-nachher`, `Machine\Scripts\scripts.ini.okula-nachher` | Stand nach dem Lauf: Original (gpt.ini mit Version +2); fehlt die Datei, gab es das Original nicht |
+
+Erneut senden vor dem Start (Eintrag in `scripts.ini` und Scripts-Erweiterung in `gpt.ini` vorhanden) ersetzt nur das
+Skript; Originale und Version bleiben. Links (Symlinks) im Pfad werden abgelehnt.
+
+**Bestehende Einstellungen bleiben:** Eine vorhandene lokale Gruppenrichtlinie (Registry.pol, eigene Start-/
+Herunterfahrskripte, Benutzerteil) wird nur ergänzt. Das Skript legt beim Start als Erstes die `*.okula-nachher`-
+Dateien zurück bzw. löscht `gpt.ini`/`scripts.ini`, wenn es sie vorher nicht gab, entfernt leere Ordner des
+Startskripts und seine Einträge unter `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy\Scripts\Startup`
+und `…\State\Machine\Scripts\Startup`. Die erhöhte Version sorgt dafür, dass Windows die Richtlinie beim nächsten Start
+wieder im Originalzustand verarbeitet.
+
+**Genau einmal, keine Schleife:** Erste Anweisung des Skripts: `.ps1` und `.cmd` löschen (PowerShell hat das Skript da
+schon ganz gelesen), dann der Rückbau – erst danach die Einstellungen. Startet PowerShell das Skript nicht (z. B.
+Ausführungsrichtlinie per Domänen-Richtlinie erzwungen, Syntaxfehler), läuft der Rest der `.cmd`: Skript löschen,
+„FEHLER PowerShell-Skript nicht gestartet“ ins Protokoll, `gpt.ini`/`scripts.ini` zurücklegen, sich selbst löschen.
+
+**Bausteine** (`wintweaks.OPTIONS`, je Option ein `Invoke-OkulaStep` mit try/catch; Fehler → `FEHLER <Option>: <Grund>`
+im Protokoll, der nächste Baustein läuft; Store-Apps zuletzt, weil am langsamsten):
+
+| Gruppe | Option | Umsetzung |
+|---|---|---|
+| Apps | Store-Apps: Xbox · Bing … · Groove/Filme & TV · Solitaire · Kontakte · Smartphone-Link · Kamera · Office/Office-Hub · 3D-Viewer/Paint 3D/Mixed Reality · Feedback-Hub/Tipps/Hilfe · Microsoft Store | je Gruppe Name-Muster (z. B. `Microsoft.Xbox*`, `Microsoft.Bing*`, `Microsoft.MSPaint` = Paint 3D); `Remove-AppxPackage -AllUsers` (erst Bundle, dann Main) **und** `Remove-AppxProvisionedPackage -Online`; nie: `NonRemovable`, `*VCLibs*`, `*NET.Native*`, `*UI.Xaml*`, `*NVIDIA*`, `*Realtek*`, `*Intel*` |
+| Apps | Wiederinstallation von Werbe-Apps sperren | `Policies\…\CloudContent\DisableWindowsConsumerFeatures=1`; ContentDeliveryManager `SilentInstalledAppsEnabled`, `PreInstalledAppsEnabled`, `PreInstalledAppsEverEnabled`, `OemPreInstalledAppsEnabled` = 0 (alle Benutzer) |
+| Apps | OneDrive entfernen | Prozess beenden, `OneDriveSetup.exe /uninstall` (System32/SysWOW64), `DisableFileSyncNGSC=1`, Run-Werte `OneDriveSetup`/`OneDrive` weg (alle Benutzer) |
+| Apps | Cortana aus | `Windows Search\AllowCortana=0` |
+| Updates | Windows Update aus · Keine Treiber · Keine App-Updates | `WindowsUpdate\AU\NoAutoUpdate=1` · `ExcludeWUDriversInQualityUpdate=1`, `DriverSearching\SearchOrderConfig=0` · `WindowsStore\AutoDownload=2` |
+| Betrieb | Energieplan Höchstleistung | `powercfg /setactive 8c5e7fda-…`; fehlt der Plan: `/duplicatescheme` und den neuen aktivieren |
+| Betrieb | Bildschirm und Standby nie · Ruhezustand aus · Schnellstart aus · Sperrbildschirm aus | `powercfg /change monitor-/standby-timeout-ac/-dc 0` · `powercfg /hibernate off` · `HiberbootEnabled=0` · `Personalization\NoLockScreen=1` |
+| Betrieb | Tipps, Vorschläge und Benachrichtigungen aus | ContentDeliveryManager `SubscribedContent-*Enabled` (bekannte und vorhandene), `SystemPaneSuggestionsEnabled`, `SoftLandingEnabled` = 0; `PushNotifications\ToastEnabled=0` (alle Benutzer) |
+| Betrieb | Einrastfunktion und Anschlagverzögerung aus | `Control Panel\Accessibility\StickyKeys\Flags="506"`, `Keyboard Response\Flags="122"` (alle Benutzer) |
+| Datenschutz | Telemetrie minimal · Werbe-ID · Standort · Fehlerberichte | `DataCollection\AllowTelemetry=0` (Pro: wirkt wie 1) + Dienst DiagTrack deaktiviert · `AdvertisingInfo\DisabledByGroupPolicy=1` · `LocationAndSensors\DisableLocation=1` · `Windows Error Reporting\Disabled=1` |
+| Datenschutz | Bing-Suche im Startmenü aus | `DisableWebSearch=1`, `ConnectedSearchUseWeb=0`; Benutzer `BingSearchEnabled=0`, `Policies\…\Explorer\DisableSearchBoxSuggestions=1` (Windows 11) |
+| Explorer und Desktop | Dateiendungen · versteckte Dateien · „Dieser PC“ · Desktop-Symbole · Taskleiste | `HideFileExt=0` · `Hidden=1` · `LaunchTo=1` · `HideDesktopIcons\NewStartPanel` `{20D04FE0-…}`/`{F02C1A0D-…}` = 0 · `SearchboxTaskbarMode=0`, `ShowTaskViewButton=0` (alle Benutzer) |
+| Dienste | Windows Search · Xbox-Dienste · SysMain · Remote-Registrierung · Druckwarteschlange | `WSearch` · `XblAuthManager`, `XblGameSave`, `XboxNetApiSvc`, `XboxGipSvc` · `SysMain` · `RemoteRegistry` · `Spooler`: stoppen, Starttyp *Deaktiviert*; fehlt der Dienst: „nicht vorhanden“ |
+| Anmeldung | Automatische Anmeldung | Konto fehlt (`Get-LocalUser`) → Fehler, nichts gesetzt; sonst Winlogon `DefaultUserName`, `DefaultPassword`, `DefaultDomainName` = Computername, `AutoLogonCount` weg, `AutoAdminLogon="1"` |
+
+Richtlinien-Werte stehen direkt unter `HKLM\SOFTWARE\Policies` (nicht in Registry.pol) – die Verarbeitung der lokalen
+Richtlinie entfernt nur Werte, die sie selbst gesetzt hat. **„Alle Benutzer“** (`Invoke-OkulaAllUsers`): jedes Profil
+mit SID `S-1-5-21-…` aus `ProfileList` (geladen: `HKU\<SID>`, sonst `NTUSER.DAT` mit `reg load HKU\OkulaAnpassen`
+laden und wieder entladen) und das Standardprofil (`ProfileList\Default`, sonst `%SystemDrive%\Users\Default`).
+
+**Vorlagen** (fest, `wintweaks.TEMPLATES`): *Player* = alles ausser Kamera und Druckwarteschlange, mit automatischer
+Anmeldung; *Laptop* = Store-Apps ausser Kamera/Store, Wiederinstallation sperren, Cortana aus, Betrieb nur Schnellstart/
+Tipps/Einrastfunktion, Datenschutz und Explorer alles, Dienste Xbox und Remote-Registrierung; *Keine* = nichts. Danach
+einzeln änderbar, Anzeige „Vorlage: Player (geändert)“. Keine eigenen Vorlagen.
+
+**Protokoll:** `C:\Windows\Temp\okula-windows-anpassen.log` (UTF-8, Zeitstempel, „ok“/„FEHLER“ je Baustein mit Kurzinfo,
+z. B. entfernte Apps; am Ende „Ende: N ok, M mit Fehler“).
+
+**Sicherheit Passwort (automatische Anmeldung):** nie im Protokoll am Gerät, im Log des Auftrags, im Verlauf, in
+Vorlagen oder im Agent-Log (der Agent protokolliert den Skriptinhalt nicht). Im Skript steht es Base64-kodiert (gegen
+Anführungszeichen-Probleme, **kein** Schutz) – Übertragung Tool → Agent über TLS. Auf der Disk liegt es nur bis zum
+nächsten Start (die Datei bekommt von ntfs-3g keine Windows-Rechte; Windows läuft in der Zeit nicht); das Skript löscht
+sich als Erstes. Danach steht es – wie bei der automatischen Anmeldung von Windows üblich – im **Klartext** in Winlogon
+(`DefaultPassword`); Hinweis im Dialog und in der Hilfe.
+
+**Grenzen:** Startskripte haben eine Wartezeit von 10 Minuten (Richtlinie „Maximale Wartezeit für
+Gruppenrichtlinienskripts“, Standard 600 s) – dauert die App-Entfernung länger, bricht Windows ab (das Aufräumen ist
+dann schon erledigt, Protokoll ohne „Ende“). Ist die Anmeldung schneller als das Skript (asynchrone Verarbeitung beim
+Start), greift die automatische Anmeldung erst beim nächsten Start. Bei einem frisch zurückgespielten,
+generalisierten Master-Image (Ersteinrichtung offen) wirkt es erst nach der Ersteinrichtung (Hinweis im Log). Wird
+die lokale Richtlinie per Domäne abgeschaltet, läuft das Skript nicht. Rückgängig macht das Tool nichts.
+Kombination mit *Danach anpassen*, Direktinstallation und Automatisierung folgt später.
+
+**Agent:** neuer Befehl → **neuer Agent-Stick bzw. Netzwerkstart neu vorbereiten**. Für das Startskript sind keine
+neuen Pakete nötig (nur Dateien über ntfs-3g; `libhivex-bin` ist ohnehin auf dem Stick).
+
+Quellen (Microsoft Learn): „Use Startup, Shutdown, Logon, and Logoff Scripts“ / „Assign computer startup scripts“
+(Group Policy: Startskripte laufen als Local System beim Start), „[MS-GPSCR]: Group Policy: Scripts Extension Encoding“
+(`scripts.ini`, GUIDs der Scripts-Erweiterung), „[MS-GPOL]: Group Policy: Core Protocol“ (`gpt.ini`, `Version` mit
+Benutzer-/Computer-Teil, `gPCMachineExtensionNames`), Richtlinie „Specify maximum wait time for Group Policy scripts“
+(`MaxGPOScriptWait`), „Turn on automatic logon in Windows“ (Winlogon `AutoAdminLogon`/`DefaultPassword`, Klartext),
+„Remove-AppxPackage“ und „Remove-AppxProvisionedPackage“, „Sysprep fails after you remove or update Microsoft Store
+apps that include built-in Windows images“ (warum auch die vorinstallierten Pakete entfernt werden).
+
 ## Automatisierung
 
 Erfasste Geräte mit eingeschalteter Automatisierung werden **neu aufgesetzt, sobald sie im LAN auftauchen** (Agent-Stick oder Netzwerkstart). Plan und Entscheide: [docs/AUTOMATISIERUNG.md](AUTOMATISIERUNG.md).
@@ -763,7 +871,7 @@ Erfasste Geräte mit eingeschalteter Automatisierung werden **neu aufgesetzt, so
 
 ## Demo-Gerät (Vorführung)
 
-**Extras → Demo-Gerät (Vorführung)** startet auf dem Server einen simulierten Agent. In der Liste erscheint **DEMO-PC** (Okula Demo-PC, Windows 11 Pro, 512-GB-SSD, Akku, Netzwerkkarten) wie ein echtes, verbundenes Gerät. Alles lässt sich vorführen: Disk-Image, Zurückspielen, Backup, OS installieren, Ordner senden, Anpassen, Netzwerkstart zuerst, Neustart/Herunterfahren (das Gerät ist dann kurz weg) und die Automatisierung mit Countdown. Ein Auftrag dauert etwa 45 s.
+**Extras → Demo-Gerät (Vorführung)** startet auf dem Server einen simulierten Agent. In der Liste erscheint **DEMO-PC** (Okula Demo-PC, Windows 11 Pro, 512-GB-SSD, Akku, Netzwerkkarten) wie ein echtes, verbundenes Gerät. Alles lässt sich vorführen: Disk-Image, Zurückspielen, Backup, OS installieren, Ordner senden, Windows anpassen (meldet nach wenigen Sekunden „fertig“, legt nichts ab), Anpassen, Netzwerkstart zuerst, Neustart/Herunterfahren (das Gerät ist dann kurz weg) und die Automatisierung mit Countdown. Ein Auftrag dauert etwa 45 s.
 
 - **Fehler vorführen:** Extras → „Demo: nächster Auftrag mit Fehler“ – der nächste Auftrag bricht bei etwa 40 % ab (roter Balken, Meldung im Log).
 - **Sicher:** Der Demo-Agent ersetzt alles, was Disks anfasst, durch Attrappen, läuft als normaler Benutzer und ist nur über 127.0.0.1 erreichbar – andere Geräte im Netz sehen nichts. Die Disk `/dev/demo-nvme0n1` gibt es nicht.
@@ -846,7 +954,7 @@ Klappzustand nur im `localStorage` des Browsers.
 
 ## Hilfe (F1) und Tastenkürzel
 
-**Hilfe → So funktioniert das Tool** (F1): Anleitung im Handbuch-Stil mit Kapiteln in der Reihenfolge des Arbeitsablaufs – Überblick, Wichtige Begriffe, Erste Schritte, Typischer Ablauf, Gerät verbinden, Netzwerkstart, Geräte verwalten, Disk-Image, Image zurückspielen, Datei-Backup, Master-Image, Automatisierung, Ordner senden, Inventar/Garantie/Windows 11, Windows/Linux installieren, Sticks, USB klonen/formatieren, Images verwalten, Anzeigen, Neuer Rechner, Probleme lösen, Tastenkürzel, Demo-Gerät. **Suchfeld** oben links (oder **Ctrl+F**): zeigt nur Kapitel mit dem Wort und markiert die Treffer gelb; **Esc** leert die Suche.
+**Hilfe → So funktioniert das Tool** (F1): Anleitung im Handbuch-Stil mit Kapiteln in der Reihenfolge des Arbeitsablaufs – Überblick, Wichtige Begriffe, Erste Schritte, Typischer Ablauf, Gerät verbinden, Netzwerkstart, Geräte verwalten, Disk-Image, Image zurückspielen, Datei-Backup, Master-Image, Automatisierung, Ordner senden, Windows anpassen, Inventar/Garantie/Windows 11, Windows/Linux installieren, Sticks, USB klonen/formatieren, Images verwalten, Anzeigen, Neuer Rechner, Probleme lösen, Tastenkürzel, Demo-Gerät. **Suchfeld** oben links (oder **Ctrl+F**): zeigt nur Kapitel mit dem Wort und markiert die Treffer gelb; **Esc** leert die Suche.
 
 | Taste | Wirkung |
 |---|---|

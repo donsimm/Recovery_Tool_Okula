@@ -97,7 +97,9 @@ class DemoAgentTest(unittest.TestCase):
         self.assertEqual(result["files"], 1)
         res = agentclient.customize("127.0.0.1", self.key, demo_agent.DEMO_DISK_PATH, "<x/>", "demo-pc", self.port)
         self.assertEqual(res[0]["action"], "unattend")
-        st = agentclient.bootorder("127.0.0.1", self.key, "netfirst", port=self.port)
+        res = agentclient.tweak("127.0.0.1", self.key, demo_agent.DEMO_DISK_PATH, "Write-Host 1", self.port)
+        self.assertEqual((res["type"], res["state"]), ("done", "installed"))     # Windows anpassen: „fertig“
+        st =agentclient.bootorder("127.0.0.1", self.key, "netfirst", port=self.port)
         self.assertTrue(st["netfirst"])
         st = agentclient.bootorder("127.0.0.1", self.key, "normal", st["previous"], self.port)
         self.assertFalse(st["netfirst"])
