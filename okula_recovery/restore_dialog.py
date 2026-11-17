@@ -28,7 +28,7 @@ class RestoreDialog(Gtk.Dialog):
         """start_job(image, quelldisk, zieldisk, prüfen, herunterfahren, bezeichnung, anpassen, adapt,
         snapshot=…, grow_gb=…) startet den Auftrag (snapshot: nur VMs, Häkchen „Vorher Snapshot“;
         grow_gb: nur VMs, Disk der VM vorher auf so viele GB vergrössern – Ä-037);
-        anpassen = {"swiss", "account", "copy_profile"} oder None.
+        anpassen = {"swiss", "account", "copy_profile", "software"} oder None (software: gewählte Programme, I-020).
         vm_info (nur VMs): {"snapshots", "pool_free"} – läuft im Hintergrund."""
         super().__init__(title="Image zurückspielen", transient_for=parent, modal=True)
         self.start_job = start_job
@@ -132,6 +132,13 @@ class RestoreDialog(Gtk.Dialog):
         self.custom_copy = Gtk.CheckButton(label=winunattend.COPY_PROFILE_LABEL, active=True, margin_start=24)
         self.custom_copy.set_tooltip_text(winunattend.COPY_PROFILE_TOOLTIP)
         grid.attach(self.custom_copy, 0, row, 2, 1)
+        row += 1
+        # I-020: Software aus Verteilen/Software – installiert beim ersten Start nach der Ersteinrichtung
+        from okula_recovery.software_ui import SoftwareChooser
+        self.custom_software = SoftwareChooser(height=90)
+        self.custom_software.set_margin_start(24)
+        grid.attach(self.custom_software, 0, row, 2, 1)
+        self.custom_software.load(nas_root)
         row += 1
         # Ä-002: Zieldisk kleiner → Image dafür anpassen (neues Image, Original bleibt)
         self.adapt = Gtk.CheckButton(label="Für diese Disk anpassen (neues Image wird erstellt, Original bleibt)",
@@ -264,6 +271,7 @@ class RestoreDialog(Gtk.Dialog):
             self.custom.set_active(bool(meta.get("master")))
         self.custom_box.set_sensitive(self.custom.get_active())
         self.custom_copy.set_sensitive(self.custom.get_active())
+        self.custom_software.set_sensitive(self.custom.get_active())
         disk = self.disks.get(self.disk_combo.get_active_id() or "")
         if meta:
             d = meta["disk_info"]
@@ -426,7 +434,8 @@ class RestoreDialog(Gtk.Dialog):
         label = f"{chosen['machine']} ({chosen['disk_info'].get('name', '?')})"
         try:
             custom = {"swiss": self.custom_swiss.get_active(), "account": self.custom_account.get_text().strip(),
-                      "copy_profile": self.custom_copy.get_active()} if self.custom.get_active() else None
+                      "copy_profile": self.custom_copy.get_active(),
+                      "software": self.custom_software.selected()} if self.custom.get_active() else None
             adapt = self.disks[target]["size"] if self.adapt.get_visible() and self.adapt.get_active() else None
             grow = None
             if self.way_box.get_visible() and self._ways is not None:     # Ä-037: Disk der VM zu klein

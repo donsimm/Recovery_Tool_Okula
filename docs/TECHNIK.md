@@ -1038,6 +1038,127 @@ Benutzer-/Computer-Teil, `gPCMachineExtensionNames`), Richtlinie „Specify maxi
 „Remove-AppxPackage“ und „Remove-AppxProvisionedPackage“, „Sysprep fails after you remove or update Microsoft Store
 apps that include built-in Windows images“ (warum auch die vorinstallierten Pakete entfernt werden).
 
+**Zusammen mit „Software installieren“ (I-020):** Stehen beide Startskripte gleichzeitig aus, ergänzt das zweite nur
+seinen Eintrag in `scripts.ini` (Originale und Version bleiben, Ergebnis `shared`). Beim Start laufen beide
+nacheinander; der Rückbau (`wintweaks.RESTORE_START`, auch im Notfall-Teil der `.cmd`) legt `gpt.ini`/`scripts.ini`
+erst zurück, wenn keine andere `okula-*.cmd` mehr im Startup-Ordner liegt.
+
+## Software installieren (I-020)
+
+Programme aus `NAS/Verteilen/Software` werden auf dem Gerät **still und ohne Klicks** installiert – beim ersten
+Windows-Start als SYSTEM. Quelle sind feste, getestete Versionen im Ordner (bewusst nicht winget, Entscheid 17.11.).
+Module: `software.py` (Katalog, Erkennung, Skript – ohne GTK), `software_ui.py` (Liste *Software installieren*,
+Fenster *Software …*), Agent-Befehl `software` (`deploy.software`), `jobs.send_software`/`software_plan`,
+Direktinstallation in `winsetup.py`.
+
+**Katalog** (`software.scan`): Einträge sind `.exe`/`.msi` direkt in `Software\` und Unterordner. Daneben liegt je
+Eintrag eine versteckte Beschreibung `.<Name>.okula.json` (`format: okula-software`): Programmname, Version, Schlüssel
+für neue Versionen, erkannter und gewählter Installer-Typ, Parameter, erfolgreiche Rückgabewerte (Standard 0, 3010),
+Art (`install`/`copy`/`manual`), bei Ordnern die Installer-Datei, Grösse, Zeit und SHA-256 des Installers. Sie entsteht
+beim ersten Lesen; wird die Datei ersetzt (andere Grösse/Zeit), wird neu erkannt – von Hand gesetzte Parameter
+bleiben. Links werden übersprungen; *Ordner senden* nimmt die Beschreibungen nicht mit.
+
+**Sammelordner** („System Tools“): ein Ordner ist ein Eintrag. Liegt genau ein Installer darin (bzw. genau einer
+direkt im Ordner), gilt er als Installer, sonst „Installer im Ordner wählen“. Für Ordner mit vielen kleinen Werkzeugen
+gibt es die Art **„nur kopieren“**: der Ordner landet auf dem öffentlichen Desktop unter `Software\<Ordner>`. Begründung:
+eine Zeile je Ordner hält die Liste kurz, Werkzeuge sind meist portabel bzw. werden nur bei Bedarf installiert; was
+installiert werden soll, gehört als eigene Datei oder eigener Ordner nach `Software\`. Einzelne Dateien eines
+Sammelordners zu wählen, wurde verworfen (Baumansicht in drei Dialogen, unklare Reihenfolge).
+
+**Erkennung ohne Ausführen** (`software.detect`, erste 8 MB der Datei):
+
+| Typ | Kennung | Parameter | Quelle |
+|---|---|---|---|
+| MSI | Endung `.msi` bzw. OLE-Kopf `D0 CF 11 E0` | `msiexec /i "<Datei>" /qn /norestart` | Microsoft Learn „msiexec“, „Standard Installer Command-Line Options“ |
+| NSIS | „Nullsoft.NSIS“ (Manifest), „NullsoftInst“ (Kopf der Daten) | `/S` | NSIS-Handbuch 3.2.1 „Common Options“ / 4.12 „Silent Installers“ |
+| Inno Setup | „Inno Setup Setup Data“, „JR.Inno.Setup“, „Inno Setup“ (Versionsinfo) | `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-` | Inno-Setup-Hilfe „Setup Command Line Parameters“ |
+| InstallShield | „InstallShield“ (ASCII/UTF-16) | `/s /v"/qn /norestart"` | Revenera „Setup.exe and Update.exe Command-Line Parameters“ |
+| WiX Burn | PE-Abschnitt `.wixburn` | `/quiet /norestart` | WiX Toolset „Burn Command Line“ |
+| Squirrel | „Squirrel“ | – („nur von Hand“) | Squirrel.Windows: installiert nach `%LocalAppData%` des angemeldeten Benutzers – als SYSTEM nutzlos |
+
+Unbekannt → **„Parameter fehlt“**, nicht wählbar. Programmname und Version kommen aus der Versionsinfo
+(VS_VERSIONINFO, `ProductName`/`ProductVersion`), sonst aus dem Dateinamen. Reine InstallScript-Projekte von
+InstallShield brauchen eine Antwortdatei (`/s /f1"{ordner}\setup.iss"`) – `{ordner}` setzt das Skript ein. Die
+Erkennung beruht auf den Herstellerangaben (Stand Wissen des Umsetzungs-Agenten, am 17.11. nicht neu abgerufen).
+
+**Neue Version** (`split_name`, `_adopt`): Schlüssel = Datei-/Ordnername ohne Version, Architektur und Füllwörter
+(`vlc-3.0.24-win64.exe` → `vlc`, `AcroRdrDC2400221005_de_DE.exe` → `acrordrdc-de-de`), zusätzlich der Programmname.
+Bekommt ein neuer Eintrag eine Beschreibung und gibt es eine mit gleichem Schlüssel (auch von einer gelöschten
+Datei), werden Typ, Parameter, Rückgabewerte, Art und – bei gleichem Namen – der Installer im Ordner übernommen
+(`adopted_from`, Hinweis im Fenster *Software …*). Bei mehreren gilt die höchste Version. Eine gespeicherte Auswahl
+(Automatisierung) mit einem nicht mehr vorhandenen Namen nimmt die neueste Version gleichen Schlüssels
+(`software.resolve`, Log „alt → neu (neue Version)“). Leere Schlüssel (`setup.exe`) übernehmen nie etwas.
+
+**Ablage auf dem Gerät:** `C:\ProgramData\Okula\Software\<Eintrag>` und das Startskript
+`System32\GroupPolicy\Machine\Scripts\Startup\okula-software.cmd/.ps1` (Mechanismus von I-039,
+`deploy.install_startup_script(root, script, "okula-software", SOFTWARE_CMD_TEXT)`).
+- *Image zurückspielen* (*Danach anpassen*) und Automatisierung (Schritt *Anpassen*, nach dem Anpassen): Agent-Befehl
+  `software` – das Tool liest den NAS und überträgt wie *Ordner senden* (SHA-256 je Datei); der Agent sucht genau ein
+  Windows (generalisiert oder installiert), schreibt in einen Zwischenordner und tauscht erst am Ende; eine noch nicht
+  installierte Auswahl von vorher wird ersetzt. Alter Agent → „Agent zu alt“, Log „Zurückgespielt, aber Software
+  nicht übertragen …“.
+- Direktinstallation: die Dateien kommen auf die Setup-Partition (`okula/software`, Dateien über 4 GB → Fehler,
+  FAT32), das Startskript nach `okula/gp`. `install.cmd` kopiert nach `dism`/`bcdboot` mit `xcopy` nach
+  `ProgramData\Okula\Software` und richtet das Startskript ein (hat das Image schon eine lokale Richtlinie, werden
+  `gpt.ini`/`scripts.ini` nur als `*.okula-nachher` gesichert und nicht verändert – dann startet die Installation nur
+  über SetupComplete). `SetupComplete.cmd` ruft danach `okula-software.cmd` auf, falls es noch da ist (läuft vor der
+  ersten Anmeldung; nicht bei OEM-Schlüssel, B-013 – dann das Startskript). Agent für die Direktinstallation
+  unverändert (die Dateien laufen über den bestehenden Befehl `install`).
+
+**Ablauf am Gerät** (`software.SCRIPT`, PowerShell 5.1, UTF-8 mit BOM):
+1. `-Mode Start` (Startskript, SetupComplete, Audit-Modus): Skript nach `ProgramData\Okula\Software` kopieren,
+   Startskript löschen und Gruppenrichtlinie zurückbauen (wie I-039, gemeinsam mit *Windows anpassen*), dann eine
+   **einmalige geplante Aufgabe** „Okula Software installieren“ anlegen (`Register-ScheduledTask`, Konto SYSTEM
+   `S-1-5-18`, höchste Rechte, Auslöser beim Start, Ausführungszeit 12 h) und starten. Das Startskript wartet
+   höchstens **9 min** (`START_WAIT` 540 s) auf das Ende – kurze Installationen sind vor der Anmeldung fertig.
+   Lässt sich die Aufgabe nicht anlegen, installiert das Startskript direkt (Protokoll nennt die 10-min-Grenze).
+2. `-Mode Install` (Aufgabe): Mutex `Global\OkulaSoftware`; Programme in der gewählten Reihenfolge,
+   `Start-Process -WindowStyle Hidden -PassThru`, Arbeitsordner = Ordner des Installers, MSI über `msiexec /i`;
+   1618 (andere Installation läuft) → bis 10 Versuche im Abstand von 30 s; nach **60 min** je Programm wird der Prozess
+   beendet („wartet vermutlich auf eine Eingabe“). Erfolgreich = Rückgabewert in der Liste der Beschreibung; 3010/1641
+   merken. Jedes Programm in eigenem try/catch – ein Fehler stoppt die übrigen nicht; danach den Eintrag löschen.
+   „Nur kopieren“ → `CommonDesktopDirectory\Software\<Ordner>` (ersetzt).
+3. Am Ende: Skript und leere Ordner löschen, bei 3010 **ein** Neustart (`shutdown /r /t 60`), dann die Aufgabe
+   entfernen. Wird das Gerät mitten drin neu gestartet, setzt die Aufgabe beim nächsten Start fort (erledigte
+   Einträge sind gelöscht).
+Protokoll `C:\Windows\Temp\okula-software.log`: je Programm `Start`, `ok`/`FEHLER` mit Rückgabewert und Dauer, am Ende
+„Ende: N ok, M mit Fehler“.
+
+**10-Minuten-Grenze:** Windows wartet auf Gruppenrichtlinien-Skripte höchstens die Zeit der Richtlinie „Maximale
+Wartezeit für Gruppenrichtlinienskripts“ (`MaxGPOScriptWait`, Standard 600 s) und beendet die Skriptverarbeitung dann
+(Microsoft Learn, Richtlinie „Specify maximum wait time for Group Policy scripts“). Gewählt: Installation in einer
+geplanten Aufgabe, die das Startskript anlegt – sie läuft im Aufgabenplanungsdienst, unabhängig vom Startskript, mit
+eigener Ausführungszeit (Microsoft Learn „New-ScheduledTaskSettingsSet -ExecutionTimeLimit“, Standard 72 h, hier 12 h;
+„Register-ScheduledTask“, „New-ScheduledTaskPrincipal“). Verworfen: Wartezeit-Richtlinie für den Lauf setzen
+(Registry.pol bzw. Richtlinienwert, den das Skript selbst zurücknehmen müsste; verzögert zudem die Anmeldung beliebig
+lang), `SetupComplete.cmd` allein (läuft bei OEM-Schlüssel nicht, B-013; nicht nach dem Zurückspielen), eigener
+Prozess mit `Start-Process` aus dem Startskript (Prozesse des Skripts beendet Windows beim Ablauf mit, nicht belegt).
+
+**Master (Audit-Modus, I-038):** Mit *Für Master-Image (Audit-Modus)* läuft die Installation beim ersten Start im
+Audit-Modus: Im Durchgang auditUser ruft die erste RunSynchronous-Anweisung `SetupComplete.cmd` auf – erst Setup-
+Partition weg und C: vergrössern, dann Software (bis 9 min warten, Rest in der Aufgabe) – und erst danach wird
+`Panther\unattend.xml` gelöscht (sofort und nach 2 min). Läuft das Startskript der Gruppenrichtlinie schon vorher
+(Start in den Audit-Modus), installiert es, und der Aufruf aus SetupComplete findet nichts mehr. Ein Neustart nach
+3010 kann die nachgelagerte Löschung (2 min) verhindern; dann liegt die Antwortdatei noch da, der nächste Start im
+Audit-Modus läuft auditUser erneut und löscht sie (die Software ist dann schon erledigt) – am Gerät prüfen
+([TESTS.md](TESTS.md) Abschnitt 23).
+
+**Generalisiertes Image mit *Danach anpassen*:** Antwortdatei (Name, Key, CopyProfile, Ä-040) und Software sind
+unabhängig: CopyProfile wirkt in specialize, die Software installiert das Startskript als SYSTEM – bei einem frisch
+zurückgespielten Master erst, wenn Windows die Startskripte verarbeitet (nach bzw. während der Ersteinrichtung; wann
+genau, ist am Gerät zu prüfen). Per-Benutzer-Einstellungen der Programme landen damit nicht im Standardprofil.
+Windows anpassen (I-039) kann gleichzeitig ausstehen (siehe oben).
+
+**Im Tool:** Liste *Software installieren* (Häkchen, Suchfeld, Programm, Version, Grösse, Status; Gesamtgrösse) in
+*OS installieren …* (nur Windows), *Image zurückspielen* unter *Danach anpassen* und im Reiter *Automatisierung*
+(Schritt *Anpassen*, `Settings.install_software`, auch in Vorlagen; Rückfrage nennt die Anzahl). Wählbar sind nur
+„bereit“ und „nur kopieren“. Pflege im Reiter *Dateien* → **Software …** (Bearbeiten: Programm, Version, Art,
+Installer, Parameter, Rückgabewerte). Log des Auftrags nennt die Programme, Verlauf des Geräts „Software: … (wird beim
+ersten Start installiert)“. Das Ergebnis am Gerät liest das Tool nicht zurück. Demo-Gerät: drei erfundene
+Beispiel-Installer im Demo-Speicher, der Demo-Agent nimmt den Befehl an und meldet „fertig“.
+
+**Agent:** neuer Befehl `software` → **neuer Agent-Stick bzw. Netzwerkstart neu vorbereiten**.
+
 ## Automatisierung
 
 Erfasste Geräte mit eingeschalteter Automatisierung werden **neu aufgesetzt, sobald sie im LAN auftauchen** (Agent-Stick oder Netzwerkstart). Plan und Entscheide: [docs/AUTOMATISIERUNG.md](AUTOMATISIERUNG.md).

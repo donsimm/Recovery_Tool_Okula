@@ -60,4 +60,7 @@ Linux (später, falls nötig): öffentlicher Desktop gibt es nicht – Schreibti
 
 - Windows **ganz heruntergefahren** (kein Schnellstart, kein Ruhezustand) – sonst ist die Partition nicht beschreibbar.
 - **BitLocker:** verschlüsselte Partition ohne Wiederherstellungsschlüssel nicht beschreibbar.
-- Software wird nur kopiert, nicht installiert (automatische Installation beim nächsten Start wäre eine eigene Idee).
+- *Ordner senden* kopiert die Software nur, installiert nichts. Still installieren beim ersten Start: Liste
+  *Software installieren* (I-020) in *OS installieren …*, *Image zurückspielen* und Automatisierung – Details in
+  [TECHNIK.md](TECHNIK.md), „Software installieren“. Die versteckten Beschreibungen `.<Name>.okula.json` im Ordner
+  `Software` werden nicht mitgesendet.

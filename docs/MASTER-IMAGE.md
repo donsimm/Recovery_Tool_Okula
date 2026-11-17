@@ -21,6 +21,8 @@ Stand: **umgesetzt** (29.10.2026). Details in [TECHNIK.md](TECHNIK.md), Bedienun
    - VM-Zwilling: vor Sysprep im Reiter *Snapshots* → *Snapshot erstellen …* (z. B. „vor Sysprep“), damit sich
      der Stand für die nächste Master-Version zurückholen lässt.
 2. **Im Audit-Modus einrichten**
+   - Programme aus `Verteilen\Software` lassen sich schon in *OS installieren …* ankreuzen (Liste *Software
+     installieren*, I-020): sie werden beim ersten Start im Audit-Modus still installiert und landen so im Image.
    - Updates, Treiber, Programme, Einstellungen. Neustarts bleiben im Audit-Modus; das Sysprep-Fenster nach dem
      Start schliessen.
    - Office mit dem Office Deployment Tool (ODT) installieren, **nicht aktivieren**.

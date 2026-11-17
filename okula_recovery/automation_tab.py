@@ -147,6 +147,10 @@ class AutomationTab(Gtk.Box):
         self.copy_profile.set_tooltip_text(winunattend.COPY_PROFILE_TOOLTIP)
         self.copy_profile.connect("toggled", lambda _c: self._changed())
         s3.pack_start(self.copy_profile, False, False, 0)
+        # I-020: Software installieren – beim ersten Start nach der Ersteinrichtung (gleiche Liste wie im Dialog)
+        from okula_recovery.software_ui import SoftwareChooser
+        self.install_software = SoftwareChooser(on_change=self._changed, height=110)
+        s3.pack_start(self.install_software, False, False, 0)
 
         s4 = section("4", "Ordner senden", "Option – auf den Desktop für alle Benutzer, ersetzt vorhandene Ordner")
         r = Gtk.Box(spacing=12)
@@ -222,6 +226,7 @@ class AutomationTab(Gtk.Box):
             self.swiss.set_active(s.swiss)
             self.account.set_text(s.account)
             self.copy_profile.set_active(s.copy_profile)
+            self.install_software.load(self.main.root_for(self.dev), s.install_software)
             self.software.set_active(s.software)
             self.testfiles.set_active(s.testfiles)
             for child in self.projects_box.get_children():
@@ -310,6 +315,8 @@ class AutomationTab(Gtk.Box):
         s.swiss = self.swiss.get_active()
         s.account = self.account.get_text().strip()
         s.copy_profile = self.copy_profile.get_active()
+        if self.install_software.loaded:          # sonst gespeicherte Auswahl behalten (Ordner wird noch gelesen)
+            s.install_software = self.install_software.selected()
         s.software, s.testfiles = self.software.get_active(), self.testfiles.get_active()
         s.projects = [n for n, c in self.project_checks.items() if c.get_active()]
         s.finish = self.finish.get_active_id() or "reboot"

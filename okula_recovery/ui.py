@@ -1152,6 +1152,13 @@ class MainWindow(Gtk.ApplicationWindow):
                                 "Dateimanager hierher ziehen")
         bar.pack_start(upload, False, False, 0)
         self.file_buttons["Hochladen"] = upload
+        # I-020: Programme in Verteilen/Software – Typ, Status, Parameter für die stille Installation
+        soft = Gtk.Button(label="Software …")
+        soft.set_tooltip_text("Programme in NAS: /Verteilen/Software für „Software installieren“: erkannter "
+                              "Installer-Typ, Status, Parameter bearbeiten")
+        soft.connect("clicked", lambda _b: self.on_software_catalog())
+        bar.pack_start(soft, False, False, 0)
+        self.file_buttons["Software …"] = soft
         box.pack_start(bar, False, False, 0)
 
         # icon, Name, Grösse (Text), Geändert, Ordner?, Grösse (Byte)
@@ -1201,6 +1208,16 @@ class MainWindow(Gtk.ApplicationWindow):
         dlg.destroy()
         if paths:
             self.copy_to_nas(paths, self.files_rel)
+
+    def on_software_catalog(self) -> None:
+        """Reiter Dateien → „Software …“ (I-020): Katalog der Programme pflegen."""
+        root = self._nas_root()
+        if root is None:
+            self.status("NAS nicht eingehängt")
+            return
+        from okula_recovery.software_ui import SoftwareCatalogDialog
+        distribute.ensure(root)
+        SoftwareCatalogDialog(self, root)
 
     def copy_to_nas(self, paths: list[str], rel: str) -> None:
         """Dateien/Ordner vom Server in den NAS-Ordner rel kopieren (Fortschritt im eigenen Fenster)."""
@@ -1272,6 +1289,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.file_buttons["Umbenennen"].set_sensitive(root_ok and n == 1)
         self.file_buttons["Löschen"].set_sensitive(root_ok and n > 0)
         self.file_buttons["Hochladen"].set_sensitive(root_ok)
+        self.file_buttons["Software …"].set_sensitive(root_ok)
         self.btn_up.set_sensitive(bool(self.files_rel))
 
     def refresh_files(self) -> None:
@@ -3631,9 +3649,11 @@ class MainWindow(Gtk.ApplicationWindow):
                 customize = {"unattend": winunattend.master_unattend(dev.name, dev.windows_key[0], custom["swiss"],
                                                                      custom["account"], copy_profile),
                              "hostname": linuxsetup.hostname(dev.name), "copy_profile": copy_profile}
+            soft = {"nas_root": root, "names": list(custom["software"]), "device": dev.name} \
+                if custom is not None and custom.get("software") else None     # I-020
             if grow_gb and dev.is_vm:           # Ä-037: Snapshot erst nach dem Vergrössern (im Auftrag)
                 self._grow_restore(dev, image, source_disk, target, verify, shutdown, label, customize, grow_gb,
-                                   snapshot)
+                                   snapshot, soft)
                 return
             if snapshot and dev.is_vm:           # Häkchen „Vorher Snapshot“; Fehler → Dialog meldet, kein Auftrag
                 self.vm_auto_snapshot(dev, "Zurückspielen")
@@ -3641,10 +3661,12 @@ class MainWindow(Gtk.ApplicationWindow):
             def after(job, path, error) -> None:
                 GLib.idle_add(self._after_job, dev.id, job, f"Zurückspielen {label} → {target}", path, error,
                               shutdown)
+                if error is None and soft:
+                    GLib.idle_add(self._software_history, dev.id, soft)
 
             work = jobs.restore_work(agent.ip, self.key, agent.control_port, image, target, source_disk, verify,
                                      after, customize,
-                                     {"target_size": adapt, "nas_root": root} if adapt else None)
+                                     {"target_size": adapt, "nas_root": root} if adapt else None, soft)
             self.jobs.start(dev.id, "restore", target, f"Zurückspielen {label} → {target}", work)
             self.open_device(dev).show_jobs()
 
@@ -3657,7 +3679,8 @@ class MainWindow(Gtk.ApplicationWindow):
                       vm_info=vm_info)
 
     def _grow_restore(self, dev: devices.Device, image: str, source_disk: str | None, target: str, verify: bool,
-                      shutdown: bool, label: str, customize: dict | None, grow_gb: int, snapshot: bool) -> None:
+                      shutdown: bool, label: str, customize: dict | None, grow_gb: int, snapshot: bool,
+                      soft: dict | None = None) -> None:
         """Ä-037: Ein Auftrag „VM-Disk vergrössern und zurückspielen“ – VM herunterfahren → Disk vergrössern →
         Einschalten und Agent starten → ggf. Snapshot → Zurückspielen (Ablauf in jobs.grow_restore_work)."""
         name, key = dev.vm["name"], self.key
@@ -3674,8 +3697,10 @@ class MainWindow(Gtk.ApplicationWindow):
             def after(job_, path, error) -> None:
                 GLib.idle_add(self._after_job, dev.id, job_, f"Zurückspielen {label} → {target}", path, error,
                               shutdown)
+                if error is None and soft:
+                    GLib.idle_add(self._software_history, dev.id, soft)
             return jobs.restore_work(agent.ip, key, agent.control_port, image, target, source_disk, verify, after,
-                                     customize)
+                                     customize, None, soft)
 
         def grown(old: int, new: int) -> None:
             GLib.idle_add(self._vm_disk_grown, dev, old, new)
@@ -3737,7 +3762,10 @@ class MainWindow(Gtk.ApplicationWindow):
             iso = self._selected_iso()
             preselect = str(iso.path) if iso else None
 
-        def start(iso: oslib.IsoInfo, disk: dict, index: int | None, opts, snapshot: bool = False) -> None:
+        soft_root = self.root_for(dev)        # Demo-Gerät: Beispiel-Installer im Demo-Speicher
+
+        def start(iso: oslib.IsoInfo, disk: dict, index: int | None, opts, snapshot: bool = False,
+                  software: list[str] | None = None) -> None:
             if snapshot and dev.is_vm:           # Häkchen „Vorher Snapshot“; Fehler → Dialog meldet, kein Auftrag
                 self.vm_auto_snapshot(dev, "OS-Installation")
             if iso.family == "windows":
@@ -3749,21 +3777,43 @@ class MainWindow(Gtk.ApplicationWindow):
                 what = f"Linux-Installation {iso.title} → {disk['path']}"
                 kind = "linux"
 
+            soft = {"nas_root": soft_root, "names": list(software), "device": dev.name} \
+                if software and soft_root and kind == "install" else None
+
             def after(job, boot, error) -> None:
                 if error is None and getattr(opts, "unsupported_hardware", False):
                     GLib.idle_add(self._mark_win11_unsupported, dev)
                 GLib.idle_add(self._after_job, dev.id, job, what, boot, error, False)
+                if error is None and soft:
+                    GLib.idle_add(self._software_history, dev.id, soft)
 
             if kind == "install":
                 work = jobs.install_work(agent.ip, self.key, agent.control_port, str(iso.path), index, opts,
-                                         disk["path"], after)
+                                         disk["path"], after, soft)
             else:
                 work = jobs.linux_install_work(agent.ip, self.key, agent.control_port, str(iso.path), iso.meta,
                                                disk["path"], int(disk["size"]), opts, after)
             self.jobs.start(dev.id, kind, disk["path"], what, work)
             self.open_device(dev).show_jobs()
 
-        InstallDialog(parent, agent, isos, dev, start, preselect)
+        InstallDialog(parent, agent, isos, dev, start, preselect, nas_root=soft_root)
+
+    def _software_history(self, dev_id: str, soft: dict) -> bool:
+        """I-020: Verlauf „Software: VLC, … (wird beim ersten Start installiert)“."""
+        from okula_recovery import software
+        dev = self.store.devices.get(dev_id)
+        if dev is not None:
+            try:
+                chosen = software.resolve(software.scan(soft["nas_root"], write=False), soft["names"])[0]
+            except OSError:
+                chosen = []
+            text = software.history_text(chosen) if chosen else \
+                f"Software: {', '.join(soft['names'])} (wird beim ersten Start installiert)"
+            self.store.add_history(dev, "software", text, ok=True)
+            win = self.device_windows.get(dev_id)
+            if win:
+                win.refresh()
+        return False
 
     def _mark_win11_unsupported(self, dev: devices.Device) -> bool:
         """Windows 11 trotz „nicht tauglich“ installiert: am Gerät vermerken (Gerätefenster, Export, Verlauf)."""

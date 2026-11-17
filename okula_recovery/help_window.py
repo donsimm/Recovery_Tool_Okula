@@ -411,7 +411,9 @@ vergrössert, die Daten darauf sind unverändert. Gehen beide Wege nicht, bleibt
 •  Auch Images von Clonezilla funktionieren.
 •  Nach einem Abbruch ist die Zieldisk unvollständig.
 •  Bei einem Master-Image passt das Tool Windows danach an (Name, Schlüssel, auf Wunsch Einstellungen des
-    Administrators): Kapitel <i>Master-Image</i>."""),
+    Administrators): Kapitel <i>Master-Image</i>.
+•  Unter <i>Danach anpassen</i> steht die Liste <i>Software installieren</i>: Die gewählten Programme werden beim
+    ersten Start nach der Ersteinrichtung still installiert (Kapitel <i>Software installieren</i>)."""),
 
     ("Datei-Backup", """<big><b>Nur Dateien sichern (Datei-Backup)</b></big>
 
@@ -631,6 +633,8 @@ Mit der Automatisierung setzt das Tool ein Gerät selbst neu auf, sobald es mit 
     auf Wunsch <i>Region Schweiz</i> und ein <i>Lokales Konto</i> (Passwort beim ersten Anmelden setzen).
     <i>Einstellungen des Administrators übernehmen (Master)</i> (Standard an): Desktop, Explorer-Ansicht und
     Taskleiste aus dem Audit-Modus für alle Benutzer (Kapitel <i>Master-Image</i>).
+    Liste <i>Software installieren</i>: angekreuzte Programme werden beim ersten Start still installiert
+    (Kapitel <i>Software installieren</i>).
 5.  <b>Ordner senden</b> (Option): Software, Test Files, Content-Projekte.
 6.  <b>Abschluss</b>: Neustart, Herunterfahren oder nichts.
     Nur bei VMs: <i>Vorher Snapshot</i> (oben, Standard an) – direkt vor dem Start entsteht ein Snapshot der Disk
@@ -751,6 +755,69 @@ das Skript löscht sich beim Start als Erstes. Im Protokoll, im Log des Auftrags
     in Windows zurückstellen.
 •  Neuer Agent nötig: Agent-Stick bzw. Netzwerkstart nach dem Update neu erstellen (sonst „Agent zu alt“)."""),
 
+    ("Software installieren", """<big><b>Software installieren</b></big>
+
+Programme aus dem NAS-Ordner <i>Verteilen\\Software</i> werden auf dem Gerät <b>still und ohne Klicks</b>
+installiert – beim ersten Windows-Start, als SYSTEM. Die Liste <i>Software installieren</i> (Häkchen, Suchfeld,
+Spalten Programm, Version, Grösse, Status, darunter die Gesamtgrösse) gibt es an drei Stellen:
+•  <i>OS installieren …</i> (Windows) – auch mit <i>Für Master-Image (Audit-Modus)</i>: dann wird im Audit-Modus
+    installiert, die Programme landen im Master-Image (Kapitel <i>Windows / Linux installieren</i>).
+•  <i>Image zurückspielen …</i> unter <i>Danach anpassen</i> (Kapitel <i>Image zurückspielen</i>).
+•  Reiter <i>Automatisierung</i>, Schritt <b>Anpassen</b> – die Auswahl wird mit den übrigen Einstellungen und in
+    Vorlagen gespeichert (Kapitel <i>Automatisierung</i>).
+
+<b>Der Ordner Software</b>
+•  Installer (<tt>.exe</tt>, <tt>.msi</tt>) direkt in <i>Software</i>: je Datei ein Programm.
+•  Unterordner: ein Programm mit mehreren Dateien (z. B. „Barco Eventmaster Toolset“). Der ganze Ordner kommt
+    mit; einmal festlegen, welche Datei der Installer ist (liegt nur einer im Ordner, wählt das Tool ihn selbst).
+•  Sammelordner mit vielen kleinen Werkzeugen (z. B. „System Tools“): Art <i>Nur kopieren</i> – der Ordner landet
+    auf dem Desktop für alle Benutzer unter <i>Software</i>, installiert wird nichts.
+•  <b>Neue Software</b> einfach im Reiter <i>Dateien</i> in den Ordner legen – sie erscheint von selbst in der Liste.
+
+<b>Status</b>
+•  <b>bereit</b>: Installer-Typ erkannt bzw. Parameter hinterlegt – lässt sich ankreuzen.
+•  <b>Parameter fehlt</b>: Typ unbekannt (oder bei einem Ordner kein Installer gewählt) – nicht wählbar.
+•  <b>nur von Hand</b>: lässt sich nicht still installieren (z. B. Programme, die nur für den angemeldeten Benutzer
+    installieren) – nicht wählbar.
+•  <b>nur kopieren</b>: Ordner auf den Desktop (siehe oben).
+Erkannt werden MSI, NSIS, Inno Setup, InstallShield und WiX Burn – ohne die Datei auszuführen.
+
+<b>Parameter hinterlegen</b>
+1.  Rechts im Reiter <i>Dateien</i> auf <i>Software …</i> klicken.
+2.  Programm doppelklicken (oder markieren und <i>Bearbeiten …</i>).
+3.  <i>Art</i>, bei Ordnern den <i>Installer</i>, die <i>Parameter</i> für die stille Installation (z. B. <tt>/S</tt>) und
+    <i>Erfolgreich bei Rückgabewert</i> (Standard „0, 3010“; 3010 = Neustart nötig) eintragen, <i>Speichern</i>.
+    Bei MSI ergänzt das Tool <tt>msiexec /i</tt> und den Dateinamen. <tt>{ordner}</tt> steht für den Ordner des
+    Installers, z. B. für eine Antwortdatei.
+Die Angaben liegen in einer versteckten Beschreibung neben dem Installer auf dem NAS.
+
+<b>Neue Version</b>
+Gleicher Programmname, andere Version (z. B. <tt>vlc-3.0.24-win64.exe</tt> statt <tt>vlc-3.0.23-win64.exe</tt>):
+Die neue Datei übernimmt die Parameter der alten, auch wenn die alte schon gelöscht ist. Der Hinweis steht im
+Fenster <i>Software …</i>. Eine gespeicherte Auswahl (Automatisierung) nimmt dann die neue Version.
+
+<b>Ablauf am Gerät</b>
+1.  Die gewählten Programme kommen mit auf die Disk (<tt>C:\\ProgramData\\Okula\\Software</tt>), dazu ein
+    einmaliges Startskript wie bei <i>Windows anpassen</i>.
+2.  Beim ersten Windows-Start (bei einem Master-Image nach der Ersteinrichtung) legt das Startskript eine
+    einmalige geplante Aufgabe an. Diese installiert die Programme nacheinander still als SYSTEM – auch lange
+    Installationen werden nicht abgebrochen. Kurze Installationen sind fertig, bevor die Anmeldung erscheint.
+3.  Danach werden die Installer gelöscht. Meldet ein Programm „Neustart nötig“ (3010), startet das Gerät nach
+    dem letzten Programm <b>einmal</b> neu.
+Ein Fehler bei einem Programm hält die übrigen nicht auf.
+
+<b>Protokoll am Gerät:</b> <tt>C:\\Windows\\Temp\\okula-software.log</tt> – je Programm Start, Ende,
+Rückgabewert und „ok“ oder „FEHLER“. Im Tool nennt das Log des Auftrags die gewählten Programme, der Verlauf des
+Geräts z. B. „Software: VLC media player 3.0.24, … (wird beim ersten Start installiert)“. Ob die Installation am
+Gerät geklappt hat, zeigt nur das Protokoll am Gerät.
+
+<b>Gut zu wissen:</b>
+•  Ein Installer, der trotz Parametern auf eine Eingabe wartet, wird nach 60 Minuten beendet (Eintrag im
+    Protokoll) – Parameter prüfen.
+•  Erneut zurückspielen bzw. senden vor dem ersten Start ersetzt die noch nicht installierte Auswahl.
+•  Direktinstallation: Dateien über 4 GB gehen nicht (Setup-Partition FAT32).
+•  Neuer Agent nötig: Agent-Stick bzw. Netzwerkstart nach dem Update neu erstellen (sonst „Agent zu alt“)."""),
+
     ("Inventar, Garantie, Windows 11", """<big><b>Inventar, Garantie und Windows 11</b></big>
 
 Das Tool liest bei jedem Verbinden die Angaben des Geräts (Inventar).
@@ -859,6 +926,10 @@ Netzwerkstart mit dem aktuellen Tool). Geprüft wird nur lesend: Daten, Windows 
 4.  Einstellungen wählen: Benutzer, Passwort, bei Windows die Edition.
     Bei Linux auch die Software: zum Beispiel Desktop, SSH-Server (Fernzugriff) oder weitere Pakete.
     Bei Debian gibt es die ganze Auswahl wie im Debian-Installer.
+    Bei Windows unter <i>Windows-Anpassung</i> die Liste <i>Software installieren</i>: Programme aus dem NAS-Ordner
+    <i>Verteilen\\Software</i> ankreuzen – sie werden beim ersten Start still installiert, mit
+    <i>Für Master-Image (Audit-Modus)</i> im Audit-Modus, damit sie im Master-Image landen
+    (Kapitel <i>Software installieren</i>).
 5.  Starten. Das Gerät startet danach neu und installiert selbständig.
     Am Gerät wird nichts gefragt. Was nicht ausgewählt ist, wird nicht installiert.
     Nur bei VMs: <i>Vorher Snapshot</i> (Standard an) – direkt vor der Installation entsteht ein Snapshot der
@@ -1276,6 +1347,9 @@ Die Vorführung braucht <b>kein NAS</b>. Alle Demo-Daten liegen lokal auf dem Se
 •  Rechtsklick auf <i>Demo (lokal, nicht auf dem NAS)</i> → <i>Alle Images im Ordner prüfen …</i>
     zeigt die Zusammenfassung, zum Beispiel „3 Images geprüft: 2 ✔, 1 ✖“.
 •  Für den Ordner <i>Ordner senden</i> gibt es Beispielordner (Software, Test Files, drei Projekte).
+•  Für <i>Software installieren</i> liegen drei erfundene Beispiel-Installer im Demo-Speicher (zwei „bereit“, einer
+    „Parameter fehlt“). Auswahl und Auftrag lassen sich zeigen; am DEMO-PC wird nichts installiert, der Auftrag
+    meldet „fertig“.
 
 <b>Einen Fehler zeigen:</b>
 <i>Extras → Demo: nächster Auftrag mit Fehler</i>. Der nächste Auftrag bricht ab, der Balken wird rot.

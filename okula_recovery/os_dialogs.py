@@ -517,9 +517,11 @@ class InstallDialog(Gtk.Dialog):
     """Betriebssystem direkt auf ein Gerät installieren (über den Agent, ohne Stick): Windows, Ubuntu, Debian."""
 
     def __init__(self, parent: Gtk.Window, agent, isos: list[oslib.IsoInfo], device, start_job,
-                 preselect: str | None = None):
-        """start_job(iso, disk_info, edition_index|None, optionen, snapshot=…) – Optionen: WinOptions oder
-        LinuxOptions; snapshot: nur VMs, Häkchen „Vorher Snapshot“."""
+                 preselect: str | None = None, nas_root: str | None = None):
+        """start_job(iso, disk_info, edition_index|None, optionen, snapshot=…, software=[…]) – Optionen: WinOptions
+        oder LinuxOptions; snapshot: nur VMs, Häkchen „Vorher Snapshot“; software (I-020): gewählte Programme aus
+        Verteilen/Software (nur Windows)."""
+        from okula_recovery.software_ui import SoftwareChooser
         from okula_recovery import linuxsetup
         self.linuxsetup = linuxsetup
         super().__init__(title="OS installieren", transient_for=parent, modal=True)
@@ -607,6 +609,10 @@ class InstallDialog(Gtk.Dialog):
             else:
                 wbox.attach(Gtk.Label(label=a, xalign=0, margin_start=24), 0, i, 1, 1)
                 wbox.attach(b, 1, i, 1, 1)
+        # I-020: Software aus Verteilen/Software – mit Audit-Modus landet sie im Master-Image
+        self.software = SoftwareChooser(height=110)
+        wbox.attach(self.software, 0, len(rows), 3, 1)
+        self.software.load(nas_root)
         self.win.add(wbox)
         grid.attach(self.win, 0, r, 2, 1)
         r += 1
@@ -934,8 +940,10 @@ class InstallDialog(Gtk.Dialog):
                 self.w_user.grab_focus()
                 return
         try:
+            extra = {"software": self.software.selected()} if iso.family == "windows" and self.software.selected() \
+                else {}
             self.start_job(iso, disk, index, self.options(),
-                           snapshot=self.snapshot.get_visible() and self.snapshot.get_active())
+                           snapshot=self.snapshot.get_visible() and self.snapshot.get_active(), **extra)
         except Exception as e:
             self.status.set_text(f"Nicht gestartet: {e}")
             return

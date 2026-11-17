@@ -457,3 +457,41 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten und **Agent-Stick bzw.
 - [ ] **Windows 11** (VM): gleicher Ablauf – Windows startet normal, nichts kaputt; ob die Taskleiste übernommen
       wird, notieren (offen, [TECHNIK.md](TECHNIK.md) „Einstellungen des Administrators übernehmen“)
 - [ ] DEMO-PC: *Image zurückspielen* mit Häkchen → Log nennt „Taskleiste: Explorer, Microsoft Edge, VLC media player“
+
+### 23. Software installieren (I-020)
+Nach `git pull && sudo ./install.sh` das Tool neu starten und **Agent-Stick bzw. Netzwerkstart neu erstellen**
+(Agent geändert: neuer Befehl `software`). Auf dem NAS in `Verteilen\Software` z. B. `vlc-3.0.24-win64.exe` (NSIS),
+den Adobe Reader (`AcroRdrDC….exe` bzw. `.msi`), ein Programm unbekannten Typs und einen Ordner mit mehreren Dateien.
+- [ ] Reiter *Dateien* → **Software …**: alle Einträge erscheinen ohne weiteres Zutun; VLC „NSIS – bereit“,
+      MSI „bereit“, unbekanntes Programm **„Parameter fehlt“**; Ordner mit genau einem Installer „bereit“, sonst
+      „Installer im Ordner wählen“; auf dem NAS liegt je Eintrag eine versteckte `.<Name>.okula.json`
+- [ ] Programm mit „Parameter fehlt“: in *OS installieren …* nicht ankreuzbar (ausgegraut); in *Software …*
+      Parameter eintragen → danach „bereit“ und wählbar; *Nur von Hand* → nicht wählbar
+- [ ] **Neue Version**: `vlc-3.0.23-win64.exe` mit eigenen Parametern speichern, dann `vlc-3.0.24-win64.exe` dazulegen
+      (alte löschen) → neue Version zeigt „Parameter von „vlc-3.0.23-win64.exe“ übernommen (neue Version)“
+- [ ] **Direktinstallation (VM, Windows 10 oder 11)**: *OS installieren …* mit **VLC + Adobe Reader** → Log nennt die
+      Programme; `okula\install.log` auf der Setup-Partition: „Software kopiert“, „Startskript Software eingerichtet“;
+      nach dem ersten Start sind beide installiert, **ohne Klick**; `C:\Windows\Temp\okula-software.log` mit Start/ok
+      je Programm und „Ende: 2 ok, 0 mit Fehler“; `C:\ProgramData\Okula` gelöscht; Aufgabenplanung ohne
+      „Okula Software installieren“; `C:\Windows\System32\GroupPolicy` ohne `okula-software.*`
+- [ ] Notieren, **wann** installiert wurde: vor der ersten Anmeldung (SetupComplete bzw. Startskript) oder erst danach;
+      bei Rückgabewert 3010 genau **ein** Neustart nach dem letzten Programm
+- [ ] Direktinstallation mit **OEM-Schlüssel** (Gerät mit Schlüssel im BIOS): Installation trotzdem (Startskript der
+      Gruppenrichtlinie, B-013) – ggf. erst beim nächsten Start
+- [ ] **Master im Audit-Modus**: *OS installieren …* mit *Für Master-Image (Audit-Modus)* und VLC → Programme sind im
+      Audit-Modus installiert, `C:\Windows\Panther\unattend.xml` ist weg, Setup-Partition entfernt; danach Sysprep →
+      Image → zurückspielen: VLC ist im Master
+- [ ] **Zurückspielen mit *Danach anpassen*** (generalisiertes Master-Image): Liste *Software installieren* unter
+      *Danach anpassen*, VLC ankreuzen → Log „Software … abgelegt“, Verlauf „Software: VLC … (wird beim ersten Start
+      installiert)“; nach der Ersteinrichtung ist VLC installiert (notieren: schon vor der ersten Anmeldung oder erst
+      beim nächsten Start); zusammen mit Ä-040 (Einstellungen des Administrators) und I-039 (Windows anpassen vor dem
+      ersten Start senden) → beide Protokolle vollständig, lokale Gruppenrichtlinie danach wie vorher
+- [ ] **Lange Installation** (z. B. grosses Paket > 10 min oder Testprogramm, das 12 min wartet): wird nicht abgebrochen,
+      Protokoll „Installation läuft als geplante Aufgabe weiter“, danach „ok“
+- [ ] Programm mit falschen Parametern (wartet auf Eingabe) → nach 60 min „FEHLER … abgebrochen“, die übrigen laufen
+- [ ] **Automatisierung**: Schritt *Anpassen* mit Software → Auswahl bleibt nach Tool-Neustart und in Vorlagen;
+      Durchlauf → Log nennt die Programme, Verlauf mit „Software: …“
+- [ ] Ordner als *Nur kopieren* (z. B. „System Tools“) → liegt danach auf dem Desktop unter `Software\System Tools`
+- [ ] Alter Agent-Stick: Zurückspielen mit Software → „Zurückgespielt, aber Software nicht übertragen: Agent zu alt …“
+- [ ] DEMO-PC: Liste zeigt drei Beispiel-Installer (zwei bereit, einer „Parameter fehlt“), Zurückspielen mit
+      Software → Auftrag „fertig“

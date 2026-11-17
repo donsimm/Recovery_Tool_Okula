@@ -495,5 +495,35 @@ class AutomationSettingTest(unittest.TestCase):
         self.assertEqual(automation.Settings().install_software, [])
 
 
+def _gtk() -> bool:
+    from tests.test_wintweaks import gtk_available
+    return gtk_available()
+
+
+@unittest.skipUnless(_gtk(), "braucht GTK mit Bildschirm")
+class ChooserTest(unittest.TestCase):
+    def test_only_ready_selectable_and_missing_shown(self):
+        import time
+        from gi.repository import GLib
+        from okula_recovery.software_ui import SoftwareChooser
+        with tempfile.TemporaryDirectory() as tmp:
+            sw = distribute.ensure(tmp) / "Software"
+            (sw / "vlc-3.0.24-win64.exe").write_bytes(NSIS)
+            (sw / "unbekannt.exe").write_bytes(UNKNOWN)
+            changes = []
+            chooser = SoftwareChooser(on_change=lambda: changes.append(1))
+            chooser.load(tmp, ["vlc-3.0.24-win64.exe", "unbekannt.exe", "weg.exe"])
+            for _ in range(500):
+                if chooser.loaded:
+                    break
+                GLib.MainContext.default().iteration(False)
+                time.sleep(0.01)
+            self.assertTrue(chooser.loaded)
+            self.assertEqual(chooser.selected(), ["vlc-3.0.24-win64.exe", "weg.exe"])   # „Parameter fehlt“ nie
+            self.assertIn("Gewählt: 2 Programm(e)", chooser.total.get_text())
+            self.assertTrue(changes)
+            chooser.destroy()
+
+
 if __name__ == "__main__":
     unittest.main()
