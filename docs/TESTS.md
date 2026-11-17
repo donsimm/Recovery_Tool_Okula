@@ -495,3 +495,9 @@ den Adobe Reader (`AcroRdrDC….exe` bzw. `.msi`), ein Programm unbekannten Typs
 - [ ] Alter Agent-Stick: Zurückspielen mit Software → „Zurückgespielt, aber Software nicht übertragen: Agent zu alt …“
 - [ ] DEMO-PC: Liste zeigt drei Beispiel-Installer (zwei bereit, einer „Parameter fehlt“), Zurückspielen mit
       Software → Auftrag „fertig“
+
+### 24. Start ohne GRUB-Meldung (B-016)
+Nach `git pull && sudo ./install.sh` das Tool neu starten und **Agent-Stick neu erstellen** (GRUB-Konfiguration geändert).
+- [ ] **Start ohne GRUB-Meldung**: CompactPlayer 1 vom neuen Agent-Stick starten → keine Meldung
+      „error: file `/boot/grub/font.pf2' not found“, grafisches Menü mit Okula-Logo wie bisher, Agent startet normal
+- [ ] Zweites Gerät (UEFI, z. B. Laptop oder VM) vom selben Stick → ebenfalls ohne Meldung, Menü mit Logo

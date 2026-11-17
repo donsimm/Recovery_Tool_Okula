@@ -105,12 +105,20 @@ insmod fat
 search --no-floppy --label --set=root {label}
 
 # Grafisches Menue mit Okula-Logo; ohne Font/Grafik bleibt das Textmenue.
-# GRUB-Skript kennt keinen Oder-Operator, daher if/elif
+# GRUB-Skript kennt keinen Oder-Operator, daher verschachtelte if
 # (font.pf2 aus dem ISO bzw. fonts/unicode.pf2 von grub-install).
-if loadfont /boot/grub/font.pf2; then
-    set okula_font=1
-elif loadfont unicode; then
-    set okula_font=1
+# Erst Datei pruefen: ein fehlgeschlagenes loadfont zeigt sonst eine Fehlermeldung.
+if [ -f /boot/grub/font.pf2 ]; then
+    if loadfont /boot/grub/font.pf2; then
+        set okula_font=1
+    fi
+fi
+if [ -z "$okula_font" ]; then
+    if [ -f $prefix/fonts/unicode.pf2 ]; then
+        if loadfont $prefix/fonts/unicode.pf2; then
+            set okula_font=1
+        fi
+    fi
 fi
 if [ -n "$okula_font" ]; then
     insmod gfxterm

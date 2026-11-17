@@ -71,6 +71,28 @@ class LayoutTest(unittest.TestCase):
         self.assertNotIn("||", cfg)  # kennt das GRUB-Skript nicht
         self.assertTrue(cfg.isascii(), "Menü muss auch ohne Unicode-Font lesbar sein")
 
+    def test_grub_cfg_font_only_if_present(self):
+        """B-016: loadfont nur nach Dateiprüfung, sonst meldet GRUB „file not found“."""
+        lines = [l.strip() for l in stick.grub_cfg("vmlinuz", "initrd.img").splitlines()
+                 if l.strip() and not l.strip().startswith("#")]
+        loads = [i for i, l in enumerate(lines) if "loadfont" in l]
+        self.assertEqual(len(loads), 2)
+        for i in loads:
+            path = lines[i].split("loadfont", 1)[1].split(";")[0].strip()
+            self.assertEqual(lines[i - 1], f"if [ -f {path} ]; then")
+        self.assertIn("/boot/grub/font.pf2", lines[loads[0]])
+        self.assertIn("$prefix/fonts/unicode.pf2", lines[loads[1]])
+        self.assertNotIn("elif loadfont", "\n".join(lines))
+        # if/fi sauber verschachtelt
+        depth = 0
+        for l in lines:
+            if l.startswith("if "):
+                depth += 1
+            elif l == "fi":
+                depth -= 1
+            self.assertGreaterEqual(depth, 0)
+        self.assertEqual(depth, 0)
+
     def test_write_boot_config_copies_theme(self):
         stick.write_boot_config(self.root, "vmlinuz", "initrd.img")
         theme = self.root / "boot/grub/themes/okula"
