@@ -3,7 +3,7 @@
 Alles nur lesend. Für das Betriebssystem werden Partitionen kurz schreibgeschützt eingehängt;
 bei Journal-Dateisystemen ohne Journal-Wiedergabe (ext4 noload, xfs norecovery, btrfs
 nologreplay), damit wirklich kein Byte auf die Disk geschrieben wird. Nur stdlib + Werkzeuge
-(lsblk, smartctl, hivexget, mount), fehlende Werkzeuge = weniger Angaben, kein Fehler.
+(lsblk, smartctl, hivexget, mount, lspci), fehlende Werkzeuge = weniger Angaben, kein Fehler.
 """
 
 from __future__ import annotations
@@ -92,6 +92,179 @@ def network(base: Path = Path("/sys/class/net")) -> list[dict]:
                        "driver": Path(os.path.realpath(n / "device" / "driver")).name
                        if (n / "device" / "driver").exists() else ""})
     return result
+
+
+# ---------- Grafikkarten (I-037) ----------
+
+SYS_PCI = Path("/sys/bus/pci/devices")
+PCI_IDS = (Path("/usr/share/misc/pci.ids"), Path("/usr/share/hwdata/pci.ids"))
+# Kurzname je Hersteller-ID statt langer Firmennamen („NVIDIA Corporation“ → „NVIDIA“)
+GPU_VENDORS = {"10de": "NVIDIA", "1002": "AMD", "1022": "AMD", "8086": "Intel", "102b": "Matrox",
+               "1a03": "ASPEED", "15ad": "VMware", "1234": "QEMU", "1b36": "Red Hat", "1af4": "Red Hat",
+               "80ee": "VirtualBox", "1414": "Microsoft"}
+_NAME_ID = re.compile(r"^(.*?)\s*\[([0-9a-fA-F]{4})\]$")
+
+
+def _name_id(value: str) -> tuple[str, str]:
+    """„NVIDIA Corporation [10de]“ → („NVIDIA Corporation“, „10de“); ohne Datenbank heisst es nur „Device [0fc8]“."""
+    m = _NAME_ID.match(value.strip())
+    if not m:
+        return value.strip(), ""
+    name = m.group(1).strip()
+    return ("" if name in ("Device", "Vendor") else name), m.group(2).lower()
+
+
+def _gpu(slot: str, cls: str, vendor: str, device: str, sub_vendor: str = "", sub_device: str = "",
+         vendor_name: str = "", device_name: str = "", sub_vendor_name: str = "", sub_name: str = "",
+         driver: str = "") -> dict:
+    return {"slot": slot, "class": cls, "vendor": vendor, "device": device, "vendor_name": vendor_name,
+            "device_name": device_name, "subsystem_vendor": sub_vendor, "subsystem_device": sub_device,
+            "subsystem_vendor_name": sub_vendor_name, "subsystem_name": sub_name, "driver": driver}
+
+
+def parse_lspci(text: str) -> list[dict]:
+    """Grafikgeräte (PCI-Klasse 03xx: VGA, 3D, Display) aus `lspci -vmm -nn -D -k`; HDMI-Audio (04xx) nicht."""
+    found = []
+    for block in re.split(r"\n\s*\n", text or ""):
+        fields = {}
+        for line in block.splitlines():
+            key, sep, value = line.partition(":")
+            if sep and key.strip() not in fields:
+                fields[key.strip()] = value.strip()
+        _cls_name, cls = _name_id(fields.get("Class", ""))
+        if not cls.startswith("03") or not fields.get("Slot"):
+            continue
+        vendor_name, vendor = _name_id(fields.get("Vendor", ""))
+        device_name, device = _name_id(fields.get("Device", ""))
+        sub_vendor_name, sub_vendor = _name_id(fields.get("SVendor", ""))
+        sub_name, sub_device = _name_id(fields.get("SDevice", ""))
+        found.append(_gpu(fields["Slot"], cls, vendor, device, sub_vendor, sub_device, vendor_name, device_name,
+                          sub_vendor_name, sub_name, fields.get("Driver", "")))
+    return found
+
+
+def pci_names(ids_file: Path, wanted: set[tuple[str, str]]) -> tuple[dict, dict, dict]:
+    """Namen aus der pci.ids-Datenbank: Hersteller {id: Name}, Geräte {(v, d): Name},
+    Subsysteme {(v, d, sv, sd): Name} – nur für die gesuchten (Hersteller, Gerät)."""
+    vendors, devices, subs = {}, {}, {}
+    want_vendors = {v for v, _d in wanted}
+    try:
+        lines = ids_file.read_text(errors="replace").splitlines()
+    except OSError:
+        return vendors, devices, subs
+    vendor = device = ""
+    for line in lines:
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("C "):             # Klassenliste am Ende der Datei
+            break
+        if not line.startswith("\t"):
+            vendor, _sp, name = line.partition("  ")
+            vendor, device = vendor.lower(), ""
+            vendors[vendor] = name.strip()
+        elif line.startswith("\t\t"):
+            if (vendor, device) in wanted:
+                ids, _sp, name = line.strip().partition("  ")
+                sv, _s, sd = ids.partition(" ")
+                subs[(vendor, device, sv.lower(), sd.lower())] = name.strip()
+        elif vendor in want_vendors:
+            device, _sp, name = line.strip().partition("  ")
+            device = device.lower()
+            if (vendor, device) in wanted:
+                devices[(vendor, device)] = name.strip()
+    return vendors, devices, subs
+
+
+def _hex(path: Path) -> str:
+    value = _read(path).lower()
+    return value[2:] if value.startswith("0x") else value
+
+
+def _driver(dev: Path) -> str:
+    link = dev / "driver"
+    return Path(os.path.realpath(link)).name if link.exists() else ""
+
+
+def gpus_sysfs(base: Path = SYS_PCI, ids_files=PCI_IDS) -> list[dict]:
+    """Ohne lspci: IDs aus /sys/bus/pci/devices, Namen aus pci.ids (falls vorhanden), sonst nur die IDs."""
+    found = []
+    for dev in sorted(base.iterdir()) if base.is_dir() else []:
+        cls = _hex(dev / "class")
+        if not cls.startswith("03"):
+            continue
+        found.append(_gpu(dev.name, cls[:4], _hex(dev / "vendor"), _hex(dev / "device"),
+                          _hex(dev / "subsystem_vendor"), _hex(dev / "subsystem_device"), driver=_driver(dev)))
+    ids_file = next((Path(p) for p in ids_files if Path(p).is_file()), None)
+    if found and ids_file:
+        vendors, devices, subs = pci_names(ids_file, {(g["vendor"], g["device"]) for g in found})
+        for g in found:
+            g["vendor_name"] = vendors.get(g["vendor"], "")
+            g["device_name"] = devices.get((g["vendor"], g["device"]), "")
+            g["subsystem_vendor_name"] = vendors.get(g["subsystem_vendor"], "")
+            g["subsystem_name"] = subs.get((g["vendor"], g["device"], g["subsystem_vendor"],
+                                            g["subsystem_device"]), "")
+    return found
+
+
+def _lspci() -> str:
+    if not shutil.which("lspci"):
+        return ""
+    try:
+        r = subprocess.run(["lspci", "-vmm", "-nn", "-D", "-k"], capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return r.stdout if r.returncode == 0 else ""
+
+
+def gpus(lspci_out: str | None = None, base: Path = SYS_PCI, ids_files=PCI_IDS) -> list[dict]:
+    """Grafikkarten nach PCI-Adresse: Namen über lspci, ohne lspci aus /sys (+ pci.ids); fehlt alles → []."""
+    text = _lspci() if lspci_out is None else lspci_out
+    found = parse_lspci(text) if text.strip() else gpus_sysfs(base, ids_files)
+    for g in found:
+        if not g["driver"]:
+            g["driver"] = _driver(base / g["slot"])
+    return sorted(found, key=lambda g: g["slot"])
+
+
+def gpu_model(name: str) -> str:
+    """pci.ids schreibt „Chip [Verkaufsname]“: „GK107 [GeForce GT 740]“ → „GeForce GT 740 (GK107)“."""
+    m = re.match(r"^(.*?)\s*\[([^\]]+)\]$", (name or "").strip())
+    if not m:
+        return (name or "").strip()
+    return f"{m.group(2)} ({m.group(1)})" if m.group(1) else m.group(2)
+
+
+def _company(name: str) -> str:
+    return re.sub(r"[ ,]+(Corporation|Corp\.?|Inc\.?|Co\.?,? Ltd\.?|Ltd\.?|GmbH|AG|Limited)$", "", name or "").strip()
+
+
+def gpu_text(g: dict) -> str:
+    """Anzeige „NVIDIA GeForce GT 740 (GK107)“; ohne Namen „PCI 10de:0fc8“."""
+    vendor = GPU_VENDORS.get(g.get("vendor", "")) or _company(g.get("vendor_name", ""))
+    model = gpu_model(g.get("device_name", ""))
+    if not model:
+        ids = f"PCI {g.get('vendor', '?')}:{g.get('device', '?')}"
+        return f"{vendor} ({ids})" if vendor else ids
+    return model if not vendor or model.lower().startswith(vendor.lower()) else f"{vendor} {model}"
+
+
+def gpu_rows(inv: dict) -> list[tuple[str, str, str]]:
+    """Zeilen für die Übersicht: („Grafikkarte“ bzw. „Grafikkarte 1“ …, Text, Tooltip). Altes Inventar → keine."""
+    if "gpus" not in (inv or {}):
+        return []
+    cards = sorted(inv.get("gpus") or [], key=lambda g: g.get("slot", ""))
+    if not cards:
+        return [("Grafikkarte", "", "")]
+    rows = []
+    for i, g in enumerate(cards, 1):
+        label = "Grafikkarte" if len(cards) == 1 else f"Grafikkarte {i}"
+        card = _company(g.get("subsystem_vendor_name", ""))
+        tip = " · ".join(p for p in (f"PCI-Adresse {g.get('slot', '')}",
+                                     f"IDs {g.get('vendor', '')}:{g.get('device', '')}",
+                                     f"Karte von {card}" if card else "",
+                                     f"Treiber {g['driver']}" if g.get("driver") else "Kein Treiber geladen") if p)
+        rows.append((label, f"{gpu_text(g)}  ({g.get('slot', '')})", tip))
+    return rows
 
 
 def smart(path: str) -> dict:
@@ -259,6 +432,6 @@ def collect(with_os: bool = True, skip: set[str] = frozenset()) -> dict:
         d["smart"] = smart(d["path"])
     systems = operating_systems(disks, skip) if with_os else []
     return {"collected": time.strftime("%Y-%m-%dT%H:%M:%S"), "dmi": dmi(), "cpu": cpu(), "memory": memory(),
-            "batteries": batteries(), "network": network(), "disks": disks, "systems": systems,
+            "batteries": batteries(), "network": network(), "gpus": gpus(), "disks": disks, "systems": systems,
             "platform": platform(),
             "oem_key": oem_key()}

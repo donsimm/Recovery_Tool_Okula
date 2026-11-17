@@ -129,7 +129,7 @@ Sicherheitsfunktionen im Gerät. Windows 11 verlangt TPM 2.0 und Secure Boot.
 Der Selbsttest einer Disk. Er zeigt, ob die Disk gesund ist.
 
 <b>Inventar</b>
-Alle Angaben zu einem Gerät: Hersteller, Modell, Seriennummer, Prozessor, Arbeitsspeicher, Disks.
+Alle Angaben zu einem Gerät: Hersteller, Modell, Seriennummer, Prozessor, Arbeitsspeicher, Grafikkarte, Disks.
 
 <b>CSV</b>
 Eine einfache Tabellendatei, lässt sich mit Excel öffnen.
@@ -247,7 +247,13 @@ Doppelklick auf ein Gerät öffnet sein Fenster:
 •  Oben rechts <i>VM mit dieser Hardware erstellen …</i>: virtuelle Maschine mit der Hardware des Geräts
     (Kapitel <i>Virtuelle Maschinen</i>, Abschnitt „Digitaler Zwilling“).
 •  <i>Aufträge</i>: was gerade läuft, mit Fortschritt und Log.
-•  <i>Übersicht</i>: Hersteller, Modell, Seriennummer, Starttasten, Windows 11, Garantie bis, Windows-Schlüssel.
+•  <i>Übersicht</i>: Hersteller, Modell, Seriennummer, Starttasten, Prozessor, Arbeitsspeicher, Grafikkarte,
+    Windows 11, Garantie bis, Windows-Schlüssel.
+    <i>Grafikkarte</i>: Hersteller und Modell, z. B. „NVIDIA GeForce GT 740 (GK107)“, dahinter die PCI-Adresse.
+    Bei mehreren Karten (z. B. Video-Server) steht jede einzeln als <i>Grafikkarte 1</i>, <i>Grafikkarte 2</i> …
+    nach PCI-Adresse – so lassen sich gleiche Modelle unterscheiden. Der Tooltip zeigt IDs, Hersteller der Karte
+    und Treiber. Fehlt die Zeile, stammt das Inventar von einem älteren Agent-Stick: Stick neu erstellen und
+    <i>Inventar neu einlesen</i>.
 •  <i>Disks</i>: die Disks und ihr Zustand (SMART).
 •  <i>Images</i> und <i>Backups</i>: alle Sicherungen dieses Geräts.
 •  <i>Netzwerk</i>: Netzwerkstart, Einschalten aus der Ferne (Wake-on-LAN).
@@ -579,7 +585,8 @@ Firmware (Partitionstabelle GPT → UEFI, MBR → BIOS), Secure Boot und TPM. An
 Server-Kerne − 2, Arbeitsspeicher höchstens freier RAM des Servers − 4 GB, Netzwerkkarte immer Intel (Treiber
 in Windows), Gehäusetyp nur im Profil, NVMe-Modellname bleibt „QEMU NVMe Ctrl“. Die Leistung ist die der
 Server-CPU. Nicht übernommen: Windows-Schlüssel (Windows bleibt „nicht aktiviert“), Akku, WLAN, Grafik, Sound,
-SMART und Einstellungen des Hersteller-BIOS.
+SMART und Einstellungen des Hersteller-BIOS. Die Grafikkarte des Geräts steht nur als Hinweis in der Vorschau;
+die VM behält ihre Standard-Grafik.
 <b>Abgewandelte Identität:</b> Seriennummern bekommen <i>VM-</i> vorne (z. B. VM-5CG1234XYZ), die System-UUID
 beginnt mit <i>0c1a</i>, die Disk-Seriennummer mit <i>VM</i>, die MAC ist eigene. So hält das Tool Zwilling und
 Gerät auseinander und führt sie nie zusammen. In der Übersicht der VM steht <i>Zwilling von</i> mit dem Gerät

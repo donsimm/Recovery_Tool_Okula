@@ -12,8 +12,8 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
-from okula_recovery import (archive, bootkeys, demostore, devices, imagecheck, jobs, nas, pxelog,  # noqa: E402
-                            warranty, win11)
+from okula_recovery import (archive, bootkeys, demostore, devices, imagecheck, inventory, jobs, nas,  # noqa: E402
+                            pxelog, warranty, win11)
 from okula_recovery.bios_tab import BiosTab  # noqa: E402
 from okula_recovery.hw_tab import HwTab  # noqa: E402
 from okula_recovery.automation_tab import AutomationTab  # noqa: E402
@@ -409,6 +409,8 @@ class DeviceWindow(Gtk.Window):
         d, cpu = inv.get("dmi") or {}, inv.get("cpu") or {}
         systems = inv.get("systems") or []
         original = None             # VM als Zwilling: Originalgerät (Zeile „Zwilling von“)
+        gpus = inventory.gpu_rows(inv)                  # I-037: „Grafikkarte“ bzw. „Grafikkarte 1“ …
+        gpu_tips = {k: tip for k, _v, tip in gpus if tip}
         rows = [("Betriebssystem", "\n".join(f"{s['name']}  ({s.get('disk', '')}/{s.get('partition', '')})"
                                               for s in systems) or "nicht erkannt"),
                 ("Computername", ", ".join(s["hostname"] for s in systems if s.get("hostname")) or "–"),
@@ -423,6 +425,7 @@ class DeviceWindow(Gtk.Window):
                 ("Prozessor", f"{cpu.get('model', '')}  ({cpu.get('cores', '?')} Kerne / {cpu.get('threads', '?')} "
                               "Threads)" if cpu else ""),
                 ("Arbeitsspeicher", f"{inv['memory'] / 1024**3:.0f} GB" if inv.get("memory") else ""),
+                *[(k, v) for k, v, _tip in gpus],
                 ("Windows 11", win11.check(inv).text() + win11.unsupported_note(dev.win11_unsupported)),
                 ("TPM / Start", platform_text(inv.get("platform")))]
         for b in inv.get("batteries") or []:
@@ -447,6 +450,8 @@ class DeviceWindow(Gtk.Window):
             key = Gtk.Label(label=k, xalign=0, yalign=0)
             key.get_style_context().add_class("status-idle")
             val = Gtk.Label(label=v or "–", xalign=0, selectable=True, wrap=True)
+            if k in gpu_tips:
+                val.set_tooltip_text(gpu_tips[k])
             if k == "Zwilling von" and dev.is_vm and original is not None:     # anklickbar → Gerät öffnen
                 val = Gtk.Label(xalign=0)
                 val.set_markup(f'<a href="geraet">{GLib.markup_escape_text(original.name)}</a>')

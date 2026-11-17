@@ -41,7 +41,7 @@ from datetime import datetime
 from typing import Callable
 
 from okula_recovery import devices, textnorm
-from okula_recovery.inventory import CHASSIS
+from okula_recovery.inventory import CHASSIS, gpu_text
 
 URI = "qemu:///system"
 POOL = "okula"
@@ -823,6 +823,9 @@ def profile_from_inventory(inv: dict, server: ServerInfo, device_name: str = "")
         vendor = nic_vendor(driver)
         notes.append(f"Netzwerkkarte {(vendor + ' ') if vendor else ''}{driver} → Intel {nic_model}")
     notes.append("MAC-Adresse neu (eigene MAC der VM)")
+    # Grafikkarte nur als Information (I-037): die VM behält ihre Standard-Grafik
+    for g in sorted(inv.get("gpus") or [], key=lambda g: g.get("slot", "")):
+        notes.append(f"Grafikkarte {gpu_text(g)} nicht nachgebildet (Standard-Grafik der VM)")
 
     # SMBIOS genau, Identität abgewandelt; fehlende Werte leer (keine Okula-Vorgaben)
     def text(key: str) -> str:
@@ -921,7 +924,12 @@ def twin_rows(inv: dict, p: VmProfile) -> list[tuple[str, str, str, str]]:
                  f"Intel {p.nic.model} · eigene MAC", ADAPTED))
     rows.append(("Windows-Schlüssel (OEM)", "vorhanden" if inv.get("oem_key") else "keiner",
                  "nicht übernommen – Windows „nicht aktiviert“", SKIPPED))
-    rows.append(("Akku, WLAN, Grafik, Sound, SMART", "", "nicht nachbildbar", SKIPPED))
+    cards = sorted(inv.get("gpus") or [], key=lambda g: g.get("slot", ""))
+    if cards:
+        rows.append(("Grafikkarte", "\n".join(gpu_text(g) for g in cards), "Standard-Grafik der VM (nicht nachgebildet)",
+                     SKIPPED))
+    rows.append(("Akku, WLAN, Sound, SMART" if cards else "Akku, WLAN, Grafik, Sound, SMART", "", "nicht nachbildbar",
+                 SKIPPED))
     return rows
 
 

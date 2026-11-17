@@ -438,7 +438,7 @@ zurückgespielt“, Log erwähnt die vergrösserte Disk. `ui._grow_restore` merk
 
 Bootet ein Gerät vom Agent-Stick, sammelt der Agent einmal das **Inventar** und das Tool legt das Gerät an bzw. erkennt es wieder.
 
-- **Inventar:** Hersteller, Modell, Seriennummer, System-UUID, Gehäuse, Mainboard, BIOS, Prozessor, RAM, Akku (Zustand in %), Netzwerkkarten (MAC), Disks mit Seriennummer und SMART (Zustand, Betriebsstunden, Temperatur), BitLocker-Partitionen und das **installierte Betriebssystem** (Windows-Version und Computername aus der Registry, Linux aus `os-release`). Dafür hängt der Agent die Partitionen **nur lesend** ein (ext4 `noload`, NTFS `ro`, kein Journal-Replay); auf der Disk wird nichts verändert.
+- **Inventar:** Hersteller, Modell, Seriennummer, System-UUID, Gehäuse, Mainboard, BIOS, Prozessor, RAM, Grafikkarten (siehe [Grafikkarte](#grafikkarte-i-037)), Akku (Zustand in %), Netzwerkkarten (MAC), Disks mit Seriennummer und SMART (Zustand, Betriebsstunden, Temperatur), BitLocker-Partitionen und das **installierte Betriebssystem** (Windows-Version und Computername aus der Registry, Linux aus `os-release`). Dafür hängt der Agent die Partitionen **nur lesend** ein (ext4 `noload`, NTFS `ro`, kein Journal-Replay); auf der Disk wird nichts verändert.
 - **Wiedererkennung:** über die System-UUID, sonst Hersteller + Seriennummer, sonst MAC. Nach einem Board-Tausch hilft die Disk-Seriennummer. Eine MAC allein verbindet keine zwei Geräte mit verschiedener UUID (geteilter USB-Netzwerkadapter).
 - **Doppelt erfasst?** Einträge mit gleicher System-UUID (z. B. nach einem Import, wenn das Gerät auf dem neuen Server schon vorher gestartet wurde) führt das Tool beim Start und beim Import automatisch zusammen. Von Hand: Rechtsklick auf den doppelten Eintrag → **„Zusammenführen mit …“** → Gerät wählen. Name und Ordner des gewählten Geräts bleiben, Verlauf, Netzwerkkarten, Disks und Notizen werden übernommen, das Inventar kommt vom zuletzt verbundenen Eintrag. **Baugleiche Geräte (B-001):** Platzhalter ab Werk (z. B. UUID `03000200-0400-0500-0006-000700080009`, nur 0 bzw. F; Seriennummern wie „Default string“, „To be filled by O.E.M.“, Disk-Seriennummern aus Nullen) zählen nie als Identität, lokal vergebene MACs (zufällig, Tethering) nicht beim Wiedererkennen. Ist ein passender Eintrag gerade über einen anderen Agent verbunden, entsteht ein eigenes Gerät („Name (2)“); die gemeinsamen Kennungen stehen danach in `geraete/mehrdeutig.ids` und gelten nie mehr als eindeutig. Ein früher vereinter Eintrag wird dabei getrennt (MACs, Agent-ID, Disk des zweiten Geräts entfernt, Inventar neu geholt). Gleiche Agent-ID mit anderer Beacon-MAC führt das Tool als „ID@MAC“ – kein neuer Agent-Stick nötig.
 - **Name:** Windows-Computername bzw. Linux-Hostname, sonst Hersteller + Modell. Umbenennen per Stift-Knopf, Rechtsklick oder im Gerätefenster.
@@ -460,6 +460,24 @@ Bootet ein Gerät vom Agent-Stick, sammelt der Agent einmal das **Inventar** und
 ## Inventar, Garantie, Windows 11
 
 Das Tool liest bei jedem Verbinden das Inventar des Geräts (siehe [Geräte](#geräte)). Die Angaben stehen im Gerätefenster unter *Übersicht* und *Disks*; *Inventar neu einlesen* holt sie neu.
+
+### Grafikkarte (I-037)
+
+Der Agent erfasst die Grafikgeräte (PCI-Klasse `03xx`: VGA, 3D, Display) im Inventar unter `gpus` – je Gerät
+PCI-Adresse (`slot`), Klasse, Hersteller- und Geräte-ID (`vendor`, `device`, hex), Namen (`vendor_name`,
+`device_name`), Subsystem (`subsystem_vendor`/`_device`, `subsystem_vendor_name`, `subsystem_name` = Hersteller bzw.
+Modell der Karte) und den gebundenen Kernel-Treiber (`driver`). Quelle ist `lspci -vmm -nn -D -k` (Paket `pciutils`
+auf dem Agent-Stick, Datenbank `pci.ids` kommt über `libpci3` mit); fehlt `lspci`, liest der Agent
+`/sys/bus/pci/devices/*/{class,vendor,device,subsystem_vendor,subsystem_device}` und die Namen aus
+`/usr/share/misc/pci.ids` bzw. `/usr/share/hwdata/pci.ids` – ohne Datenbank nur die IDs. Zusatzfunktionen derselben
+Karte (HDMI-Audio, Klasse `04xx`) zählen nicht. Kein Grafikspeicher (VRAM): ohne Treiber nicht zuverlässig lesbar.
+
+Übersicht im Gerätefenster: Zeile **„Grafikkarte“** (mehrere: „Grafikkarte 1“, „Grafikkarte 2“ … nach PCI-Adresse),
+z. B. „NVIDIA GeForce GT 740 (GK107)  (0000:01:00.0)“. Hersteller als Kurzname (NVIDIA, AMD, Intel, Matrox, ASPEED …
+nach Hersteller-ID), Modell aus „Chip [Verkaufsname]“ → „Verkaufsname (Chip)“ (`inventory.gpu_text`, `gpu_rows`).
+Tooltip: PCI-Adresse, IDs, Hersteller der Karte, Treiber. Altes Inventar ohne `gpus` → keine Zeile; leere Liste → „–“.
+Nur Anzeige – keine Treiber-Empfehlung. Digitaler Zwilling: Grafikkarte nur als Hinweis und Zeile in der Vorschau
+(✖), die VM behält ihre Standard-Grafik.
 
 ### Windows 11
 

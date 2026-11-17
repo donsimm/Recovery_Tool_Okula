@@ -38,8 +38,9 @@ AGENT_MODULES = ("__init__.py", "agent.py", "biosread.py", "deploy.py", "discove
 # Debian-Paketen des Servers (gleiche Release) in den Agent-Layer entpackt
 # lz4/lzop/pigz/bzip2: zum Zurückspielen von Clonezilla-Images
 # smartmontools/libhivex-bin/ntfs-3g: Geräte-Erfassung (SMART, Windows-Version, NTFS lesend)
+# pciutils: Grafikkarten (lspci; die Datenbank pci.ids kommt als Abhängigkeit über libpci3 mit, ~0.5 MB)
 BUNDLED_PACKAGES = ("partclone", "zstd", "pigz", "lz4", "lzop", "bzip2", "xz-utils",
-                    "smartmontools", "libhivex-bin", "ntfs-3g",
+                    "smartmontools", "libhivex-bin", "ntfs-3g", "pciutils",
                     "efibootmgr", "dosfstools", "wimtools")  # Windows-Direktinstallation
 # Ohne Paketliste des ISO nie überlagern (Basis jedes Systems)
 NEVER_BUNDLE = ("libc6", "libgcc-s1", "libstdc++6", "gcc-")

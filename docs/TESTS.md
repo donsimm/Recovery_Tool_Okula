@@ -412,3 +412,19 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten und **Agent-Stick bzw.
       **nicht** erneut die Setup-Partition (kein zweiter Lauf von `install.cmd`), sondern das neue Windows. Falls
       möglich `okula\install.log` vor dem Aufräumen ansehen: „Windows Boot Manager an erste Stelle - Rueckgabe 0“ und
       `bcdedit /enum firmware` nachher mit `{bootmgr}` zuoberst in `displayorder` (dafür kein neuer Agent-Stick nötig)
+
+### 21. Grafikkarte im Inventar (I-037)
+Nach `git pull && sudo ./install.sh` das Tool neu starten und **Agent-Stick bzw. Netzwerkstart neu erstellen**
+(Agent geändert, neu mit `pciutils`). Grösse des Agent-Teils vorher/nachher notieren (erwartet: weniger als 1 MB mehr).
+- [ ] CompactPlayer (Master, NVIDIA GT 740): vom neuen Stick starten, *Inventar neu einlesen* → Übersicht zeigt
+      „Grafikkarte 1“ (Intel-Onboard, falls im BIOS aktiv) und „Grafikkarte 2“ „NVIDIA GeForce GT 740 (GK107)
+      (0000:01:00.0)“ bzw. bei nur einer Karte „Grafikkarte“; HDMI-Audio der Karte erscheint **nicht**; Tooltip
+      zeigt PCI-Adresse, IDs `10de:0fc8`, Hersteller der Karte und Treiber (z. B. nouveau)
+- [ ] Laptop mit Intel-Grafik: *Inventar neu einlesen* → eine Zeile „Grafikkarte“, z. B. „Intel … Graphics (…)“
+- [ ] VM (Agent in der VM): *Inventar neu einlesen* → Grafik der VM (z. B. „Red Hat …“ bzw. „QEMU …“), kein Fehler
+- [ ] Gerät mit altem Inventar (noch nicht neu eingelesen) → Übersicht ohne Zeile „Grafikkarte“, sonst unverändert
+- [ ] *VM mit dieser Hardware erstellen …* vom CompactPlayer → Vorschau zeigt Zeile „Grafikkarte“ mit ✖ „Standard-Grafik
+      der VM (nicht nachgebildet)“, die VM-Hardware ist wie bisher
+- [ ] DEMO-PC → Übersicht „Grafikkarte“ „Intel Iris Xe Graphics (TigerLake-LP GT2)  (0000:00:02.0)“
+- [ ] Video-Server mit mehreren GPUs (falls verfügbar): jede Karte einzeln, gleiche Modelle mit verschiedenen
+      PCI-Adressen, Reihenfolge nach Adresse
