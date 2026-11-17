@@ -1,6 +1,6 @@
 # B-014 – Direktinstallation: Windows-Partition nicht gefunden (mit Ä-039)
 
-Status: freigegeben · erstellt 17.11.2026 von der Projektleitung · Freigabe: Dominik 17.11.
+Status: umgesetzt (Commit 2137e64) · erstellt 17.11.2026 von der Projektleitung · Freigabe: Dominik 17.11.
 
 ## Rolle und Einstieg
 
