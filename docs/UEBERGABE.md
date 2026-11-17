@@ -1,52 +1,64 @@
-# Übergabe – 12.11.2026, ca. 12:00
+# Übergabe – 17.11.2026, ca. 14:15
 
 Sitzung „Okuli“ (Projektleitung). Nächste Sitzung: `CLAUDE.md` → `docs/PROJEKTLEITUNG.md` → diese Datei →
-`docs/EINGANG.md` → `~/okuli/UEBERGABE.md` (Leitstand: Sekretär, NAS, Projektor) → Dominik den Stand nennen.
+`docs/EINGANG.md` → `~/okuli/UEBERGABE.md` → Dominik den Stand nennen.
 
 ## Stand
 
-Alles committet und gepusht (zuletzt 9610b742). Keine Agenten laufen. Am Server installiert (Dominik 12.11.) bis inkl.
-B-012; **I-038 noch nicht installiert** (`git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick).
+Abgenommen, zusammengeführt und gepusht (zuletzt 62c2a2d5 + Übergabe-Commit):
+- **I-039** Windows anpassen … (Vorlagen Player/Laptop, automatische Anmeldung; Startskript der lokalen
+  Gruppenrichtlinie) – Test 19 offen.
+- **B-014** (mit Ä-039) Windows-Partition vor dem Formatieren an Anfang/Ende nullen, Prüfung nach dem Schreiben,
+  `install.cmd` sucht auch „OKULAWIN“, Diagnose im Fehlerfall – Test 20 offen.
+- **B-015** `install.cmd` setzt Windows Boot Manager an erste Stelle (AMI-Firmware des CompactPlayers legte „UEFI OS“
+  für die Setup-Partition davor) – Test 20 offen.
+- **I-037** Grafikkarte(n) im Inventar und in der Übersicht – Test 21: CompactPlayer ✔ (Dominik 17.11.), Rest offen.
+- **Ä-040** CopyProfile + Taskleiste (`LayoutModification.xml`) beim Zurückspielen eines Masters, Häkchen
+  „Einstellungen des Administrators übernehmen (Master)“ – Test 22 offen.
+- Dominik hat am Server installiert und den neuen Agent-Stick (Stand bis I-037) erstellt; **Ä-040 noch nicht
+  installiert** (nach I-020 alles zusammen: `git pull && sudo ./install.sh`, Tool neu starten, neuer Agent-Stick).
 
-- **B-012** (Windows-Konto „Benutzer“ = eingebaute Gruppe in deutschem Windows → OOBE-Schleife 0x80070563): abgenommen,
-  Standard jetzt „Okula“, reservierte Namen werden im Dialog abgefangen. Befund aus den Panther-Logs des VM-Zwillings
-  (Disk read-only mit `qemu-nbd --image-opts …locking=off` gelesen). Test TESTS.md 16 läuft gerade am CompactPlayer.
-- **I-038** (Häkchen „Für Master-Image (Audit-Modus)“ in *OS installieren …*): abgenommen (549 Tests, Antwortdatei
-  angesehen: nur `Reseal/Mode=Audit`, auditUser räumt Setup-Partition auf und löscht `Panther\unattend.xml`).
-  Am Gerät/VM ungeprüft → TESTS.md 17.
-- **Ä-039** neu 🟡 (Fehlerfall `install.cmd`: Laufwerksliste ins Protokoll, Hinweis „fährt nach Schliessen herunter“).
-- **B-013** neu 🟡 (OEM-Schlüssel → SetupComplete.cmd läuft laut Microsoft nicht → Setup-Partition bleibt?) → TESTS.md 18.
-- **VM-CompactPlayer-1** hart ausgeschaltet (Dominik 12.11.; hing in OOBE-Schleife, Windows darin kaputt).
+**Läuft:** Agent **I-020** (Software aus `Verteilen\Software` automatisch installieren; Prompt
+`docs/prompts/I-020-software.md`, opus high, gestartet ca. 14:05, Branch `agent/I-020`, Basis 62c2a2d5).
+Ergebnis: `~/.claude/agenten/auftraege.md` bzw. `holen.sh . I-020`.
+
+**Master CompactPlayer (Win10 Pro 22H2):** am CompactPlayer 1 gebaut (Audit-Modus, Updates, `master-einrichten.ps1`:
+Store-Apps/OneDrive weg, Windows Update aus, NVIDIA 474.82 Standard, VLC, Adobe Reader, Software + Test Files auf
+Public Desktop) – Dominik: „hat funktioniert“; spielt ihn gerade auf eine VM. Skript und Installer:
+NAS `Verteilen\Content\Installations Tools\`. Anordnung von Symbolen/Taskleiste ging verloren → Ä-040.
 
 ## Offen und als Nächstes
 
-1. **CompactPlayer 1:** Test B-012 (TESTS.md 16) – Ergebnis von Dominik abwarten. Zweiter Fehler „Windows-Partition :“
-   (install.cmd findet Marker `okula-<id>.target` nicht, Versuch 09:15): falls er wieder kommt, Editor **offen lassen**,
-   Shift+F10 → `diskpart` / `list volume` + `dir C:\ E:\ F:\ G:\` fotografieren lassen (Schliessen des Editors →
-   `wpeutil shutdown`). Danach ggf. eigener Bug.
-2. **Master-Image CompactPlayer** (Win10): Dominik will einen Master. Weg: I-038 installieren, am VM-Zwilling oder Gerät
-   mit Häkchen Audit-Modus → einrichten → Sysprep → Disk-Image → Master (TESTS.md 17). Alternative ohne Tool:
-   Microsoft-Stick bzw. VM „Von ISO“ + Ctrl+Shift+F3. Hinweis gegeben: Win10 ohne Support (nur ESU).
-3. Tests gesammelt offen: 16, 17, 18, 15 Gegenprobe EliteBook, 1, 12, 5, 13, 14, 2, 3, 7, 9–11.
-4. Hinweise des B-012-Agenten (nicht eingetragen, bei Bedarf als Ä): Kontoname = Computername wird nicht geprüft;
-   Konto im Master-Ablauf/Automatisierung (`master_unattend`) wird nicht geprüft.
-5. Danach laut Vorschlag: **I-005/I-006** brainstormen; klein: I-037, Ä-039.
-6. **SRV-002:** CPU-Tausch – Entscheid Dominik weiter offen. Neuer Agent-Stick (Stand vor B-011) weiter offen.
+1. **I-020 abnehmen**: Agent-Branch basiert auf 62c2a2d5, main hat danach den Übergabe-Commit (nur
+   `docs/UEBERGABE.md`) → vor `merge --ff-only` den Branch auf main rebasen (`git rebase claude/blissful-goldberg-mo3xda
+   agent/I-020`), Tests, Diff (v. a. 10-Minuten-Grenze der Startskripte, Erkennung der Installer), pushen, aufräumen.
+2. **B-016** (GRUB „font.pf2 not found“ beim Stick-Start, harmlos): in `AENDERUNGEN.md` eintragen (🐞, ⚪, Dominik
+   17.11.), Prompt `docs/prompts/B-016-grub-font.md` (freigegeben, noch **nicht committet**) committen, Agent starten
+   (Kurzname B-016, opus medium).
+3. Danach Dominik: `git pull && sudo ./install.sh`, Tool neu starten, **neuer Agent-Stick** (Ä-040, I-020, B-016).
+4. Tests am realen System offen: 16, 17, 18, 19, 20, 21 (Laptop/VM/Video-Server), 22, dazu ältere (1, 2, 3, 5, 7, 9–15).
+5. Vorschlag danach: I-005/I-006 (Aufbewahrung, zweite Kopie); B-013 (OEM-Schlüssel) prüfen, sobald ein Gerät mit
+   BIOS-Schlüssel da ist.
 
-## Entscheide dieser Sitzung (in AENDERUNGEN.md „📌 Entscheidungen“: nein – Umsetzungsdetails)
+## Entscheide dieser Sitzung (in AENDERUNGEN.md „📌 Entscheidungen“: ja)
 
-- B-012: Standardname „Okula“, reservierte Namen abfangen, nie still korrigieren (Dominik 12.11.).
-- I-038: Master über Direktinstallation im Audit-Modus, kein Sysprep-Knopf (Dominik 12.11. „planen und umsetzen“).
+- I-039 Windows anpassen: eigene Funktion, Startskript beim nächsten Start, Vorlagen fest, autologon dabei; riskante
+  TuningPack-Punkte bewusst nicht.
+- Ä-040: Master-Einstellungen ohne Skripte, im Tool (viele Master geplant).
+- I-020: Software-Ordner statt winget (feste Versionen, offline, Spezialsoftware; winget unter Win10 ohne Store kaum).
+- B-015: Setup-Einträge der Firmware nicht automatisch entfernen (Agent-Entscheid, Begründung in TECHNIK.md).
 
 ## Learnings
 
-- **install.cmd:** Schliessen des Editors mit `install.log` fährt das Gerät sofort herunter (`wpeutil shutdown`) – vorher
-  Shift+F10 für eine zweite Eingabeaufforderung (→ Ä-039).
-- **Direktinstallation ≠ Master:** Sie überspringt den OOBE-Bildschirm (kein Ctrl+Shift+F3); gilt auch für VMs. Für
-  Master: I-038 oder Microsoft-Stick/„Von ISO“.
-- **VM-Disk lesen ohne Eingriff:** `sudo modprobe nbd; sudo qemu-nbd -r -c /dev/nbd7 --image-opts
-  "driver=qcow2,file.driver=file,file.filename=<snap>.qcow2,file.locking=off,backing.driver=qcow2,backing.file.driver=file,backing.file.filename=<basis>.qcow2,backing.file.locking=off"`,
-  read-only mounten, danach `umount` + `qemu-nbd -d`. Windows-Protokolle: `Windows\Panther\UnattendGC\setuperr.log`.
-- Windows in OOBE-Fehlerschleife reagiert nicht auf `virsh shutdown` → nur `virsh destroy` (mit OK von Dominik).
-- Dominiks Bildschirmfotos im Chat können alt sein (Datei aus `~/Bilder/Bildschirmfotos`) – Datum im Bild prüfen.
-- Agenten dürfen `py_compile` und `mkdir /tmp/…` nicht – Okuli kompiliert und testet bei der Abnahme selbst.
+- **Dominik hat wenig Zeit für Fehlersuche am Gerät** („eigentlich hab ich gar keine Zeit für so zeugs“): kürzester
+  Weg zuerst (fertige Befehle), Diagnose nur wenn nötig; Fehlersuche lieber selbst an der VM.
+- WinPE-Umgehungen B-014/B-015 (falls alter Stick): `format C: /fs:ntfs /q /y`, `echo Okula > C:\okula-<id>.target`
+  (**.target nicht vergessen**), `D:\okula\install.cmd D`; Startreihenfolge: `bcdedit /set {fwbootmgr} displayorder
+  {bootmgr} /addfirst`. Editor mit install.log nie schliessen (fährt herunter); cmd über Datei → Öffnen → cmd.exe.
+- CompactPlayer: NVIDIA GT 740 (Kepler) → Standard-Treiber 474.82 (DCH braucht Store für die Systemsteuerung); Disk
+  vorher MBR/Legacy, jetzt UEFI/GPT.
+- Agenten-Kurznamen ohne Umlaut (`AE-040` für Ä-040), sonst lehnt `agent.sh` ab.
+- Agent kann am 5-h-Limit abbrechen („Fehler: True“ im Protokoll) → mit Session-ID fortsetzen (`agent.sh … <session-id>`).
+- Während ein Agent läuft, nichts committen (sonst kein `--ff-only`); Prompts vorher nur als Datei anlegen.
+- Okuli-Starter: Dash-Symbol „Okuli“ (`~/.local/share/applications/okuli.desktop` → `~/.local/bin/okuli-start`,
+  startet in `~/okuli` mit „sitzung lesen“); GNOME ohne Desktop-Icons-Erweiterung.
