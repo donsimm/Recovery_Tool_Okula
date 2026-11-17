@@ -46,6 +46,9 @@ class Plan:
     split: bool
     extra: dict[str, str] = field(default_factory=dict)  # weitere Dateien (Text)
     setup_size: int = 0
+    nas_files: list[tuple[str, int, Path]] = field(default_factory=list)  # I-020: (Pfad Setup-Partition, Grösse,
+    #                                                                       Quelle auf dem NAS) – Software
+    software: list = field(default_factory=list)                         # software.Entry – gewählte Programme
 
     @property
     def target_marker(self) -> str:
@@ -53,7 +56,8 @@ class Plan:
 
     def request(self, disk: str) -> dict:
         return {"cmd": "install", "disk": disk,
-                "files": [{"path": p, "size": e.size} for p, e in self.files],
+                "files": [{"path": p, "size": e.size} for p, e in self.files]
+                + [{"path": p, "size": size} for p, size, _src in self.nas_files],
                 "split": {"path": self.wim_path, "mb": SPLIT_MB} if self.split else None,
                 "extra": self.extra, "setup_size": self.setup_size, "target_marker": self.target_marker,
                 "boot_label": BOOT_LABEL, "min_disk": MIN_DISK, "reboot": True}
@@ -63,12 +67,34 @@ def _crlf(text: str) -> str:
     return text.replace("\r\n", "\n").replace("\n", "\r\n")
 
 
-def install_cmd(install_id: str, index: int, wim_path: str, split: bool, language: str) -> str:
+SOFTWARE_COPY = """\
+rem I-020: Software nach ProgramData kopieren, Startskript der lokalen Gruppenrichtlinie einrichten
+if not exist "%S%:\\okula\\software" goto ohnesoftware
+echo Okula: Software wird nach %W%:\\ProgramData\\Okula\\Software kopiert >> "%LOG%"
+xcopy "%S%:\\okula\\software" "%W%:\\ProgramData\\Okula\\Software\\" /e /i /h /k /y /q >> "%LOG%" 2>&1
+echo Okula: Software kopiert - Rueckgabe %ERRORLEVEL% >> "%LOG%"
+set OKGP=%W%:\\Windows\\System32\\GroupPolicy
+if exist "%OKGP%\\gpt.ini" copy /y "%OKGP%\\gpt.ini" "%OKGP%\\gpt.ini.okula-nachher" >> "%LOG%" 2>&1
+if exist "%OKGP%\\Machine\\Scripts\\scripts.ini" copy /y "%OKGP%\\Machine\\Scripts\\scripts.ini" \
+"%OKGP%\\Machine\\Scripts\\scripts.ini.okula-nachher" >> "%LOG%" 2>&1
+if exist "%OKGP%\\gpt.ini" (echo Okula: lokale Gruppenrichtlinie im Image vorhanden - Software startet ueber \
+SetupComplete >> "%LOG%") else (xcopy "%S%:\\okula\\gp" "%OKGP%\\" /e /i /h /k /y /q >> "%LOG%" 2>&1)
+xcopy "%S%:\\okula\\gp\\Machine\\Scripts\\Startup" "%OKGP%\\Machine\\Scripts\\Startup\\" /e /i /h /k /y /q \
+>> "%LOG%" 2>&1
+echo Okula: Startskript Software eingerichtet - Rueckgabe %ERRORLEVEL% >> "%LOG%"
+:ohnesoftware
+"""
+
+
+def install_cmd(install_id: str, index: int, wim_path: str, split: bool, language: str,
+                software: bool = False) -> str:
     """Läuft in der Windows-Setup-Umgebung (cmd, nur ASCII). %1 = Laufwerk der Setup-Partition.
 
     Windows-Partition: Markierung okula-<id>.target, sonst genau ein Laufwerk mit Bezeichnung OKULAWIN (B-014) –
-    nie ein Laufwerk auf Verdacht. Im Fehlerfall Laufwerksliste ins Protokoll und Hinweis oben im Editor (Ä-039)."""
+    nie ein Laufwerk auf Verdacht. Im Fehlerfall Laufwerksliste ins Protokoll und Hinweis oben im Editor (Ä-039).
+    software (I-020): Installer und Startskript von der Setup-Partition ins neue Windows kopieren."""
     win_path = wim_path.replace("/", "\\")
+    software_copy = SOFTWARE_COPY if software else ""
     if split:
         image = '/ImageFile:"%S%:\\sources\\install.swm" /SWMFile:"%S%:\\sources\\install*.swm"'
     else:
@@ -117,7 +143,7 @@ mkdir %W%:\\Windows\\Panther >nul 2>&1
 copy /y "%S%:\\okula\\unattend.xml" %W%:\\Windows\\Panther\\unattend.xml >> "%LOG%" 2>&1
 mkdir %W%:\\Windows\\Setup\\Scripts >nul 2>&1
 copy /y "%S%:\\okula\\SetupComplete.cmd" %W%:\\Windows\\Setup\\Scripts\\SetupComplete.cmd >> "%LOG%" 2>&1
-echo Okula: fertig >> "%LOG%"
+{software_copy}echo Okula: fertig >> "%LOG%"
 wpeutil reboot
 exit /b 0
 :fehler
@@ -170,8 +196,17 @@ goto :eof
 """)
 
 
-def setupcomplete_cmd(install_id: str) -> str:
-    """Läuft am Ende der Einrichtung im installierten Windows (als SYSTEM): Setup-Partition weg, C: vergrössern."""
+SOFTWARE_START = """\
+rem I-020: Software installieren - falls das Startskript noch nicht gelaufen ist (laeuft nur einmal)
+set "OKULA_SW=%WINDIR%\\System32\\GroupPolicy\\Machine\\Scripts\\Startup\\okula-software.cmd"
+if exist "%OKULA_SW%" cmd /c "%OKULA_SW%"
+"""
+
+
+def setupcomplete_cmd(install_id: str, software: bool = False) -> str:
+    """Läuft am Ende der Einrichtung im installierten Windows (als SYSTEM): Setup-Partition weg, C: vergrössern.
+    software (I-020): danach das Startskript „Software installieren“ (SetupComplete läuft vor der ersten Anmeldung;
+    mit OEM-Schlüssel nicht – dann übernimmt das Startskript der Gruppenrichtlinie, B-013)."""
     return _crlf(f"""@echo off
 rem Okula Recovery Tool - Aufraeumen nach der Direktinstallation ({install_id})
 set S=
@@ -186,7 +221,7 @@ if "%S%"=="" goto ende
 diskpart /s "%TEMP%\\okula-dp.txt" > "%WINDIR%\\Temp\\okula-aufraeumen.log" 2>&1
 del "%TEMP%\\okula-dp.txt"
 :ende
-""")
+""" + (SOFTWARE_START if software else ""))
 
 
 # I-038: Ob SetupComplete.cmd auch beim Start in den Audit-Modus läuft, sagt Microsoft nicht eindeutig („After Windows
@@ -211,9 +246,23 @@ def launch_command() -> str:
             f"call %i:\\okula\\install.cmd %i")
 
 
-def plan(iso_path: str | Path, index: int, opts: winunattend.WinOptions) -> Plan:
-    """Was auf die Setup-Partition kommt – Dateien aus der ISO plus Skripte und Antwortdateien."""
+def plan(iso_path: str | Path, index: int, opts: winunattend.WinOptions, software_plan=None,
+         device: str = "") -> Plan:
+    """Was auf die Setup-Partition kommt – Dateien aus der ISO plus Skripte und Antwortdateien.
+    software_plan (I-020, software.Plan): gewählte Programme vom NAS unter okula/software, Startskript unter okula/gp."""
+    from okula_recovery import software
     install_id = secrets.token_hex(4)
+    nas_files: list[tuple[str, int, Path]] = []
+    chosen = list(software_plan.entries) if software_plan is not None else []
+    soft_extra: dict[str, str] = {}
+    if chosen:
+        for kind, rel, size, _mtime, src in software_plan.files:
+            if kind != "file":
+                continue
+            if size > FAT32_MAX:
+                raise WinSetupError(f"Software-Datei grösser als 4 GB (Setup-Partition FAT32): {rel}")
+            nas_files.append((f"{software.SETUP_SOFTWARE}/{rel}", size, Path(src)))
+        soft_extra = software.setup_files(software.build_script(chosen, device))
     with udf.UdfImage.open(str(iso_path)) as img:
         entries = [(p, e) for p, e in img.walk() if not e.is_dir]
     wim = next(((p, e) for p, e in entries if p.lower() in ("sources/install.wim", "sources/install.esd")), None)
@@ -233,13 +282,15 @@ def plan(iso_path: str | Path, index: int, opts: winunattend.WinOptions) -> Plan
         # Setup sucht auf festen Disks in \sources des Mediums, auf Wechselmedien im Wurzelverzeichnis
         "sources/autounattend.xml": launcher,
         "autounattend.xml": launcher,
-        "okula/install.cmd": install_cmd(install_id, index, wim[0], split, language),
+        "okula/install.cmd": install_cmd(install_id, index, wim[0], split, language, software=bool(chosen)),
         "okula/unattend.xml": system_unattend(opts),
-        "okula/SetupComplete.cmd": setupcomplete_cmd(install_id),
+        "okula/SetupComplete.cmd": setupcomplete_cmd(install_id, software=bool(chosen)),
         f"okula/{install_id}.setup": install_id,
+        **soft_extra,
     }
-    size = sum(e.size for _p, e in files) + sum(len(t.encode()) for t in extra.values()) + SETUP_RESERVE
-    return Plan(install_id, files, wim[0], split, extra, size)
+    size = sum(e.size for _p, e in files) + sum(len(t.encode()) for t in extra.values()) + SETUP_RESERVE \
+        + sum(s for _p, s, _src in nas_files)
+    return Plan(install_id, files, wim[0], split, extra, size, nas_files, chosen)
 
 
 def describe(plan: Plan) -> list[str]:
@@ -248,4 +299,9 @@ def describe(plan: Plan) -> list[str]:
              f"({plan.setup_size / 1000**3:.1f} GB)"]
     if plan.split:
         lines.append("install.wim über 4 GB – der Agent teilt sie in install.swm-Teile")
+    if plan.software:
+        soft = sum(s for _p, s, _src in plan.nas_files)
+        lines.append(f"Software ({len(plan.nas_files)} Dateien, {soft / 1000**3:.2f} GB): "
+                     + ", ".join(e.label for e in plan.software)
+                     + " – wird beim ersten Start installiert")
     return lines

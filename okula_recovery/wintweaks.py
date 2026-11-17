@@ -317,6 +317,41 @@ $secret = $null
 """
 
 
+# Rückbau des Startmechanismus – gemeinsam mit „Software installieren“ (I-020, software.py). Stehen mehrere
+# Okula-Startskripte gleichzeitig aus, laufen sie beim selben Start nacheinander; erst das letzte (keine andere
+# okula-*.cmd mehr im Startup-Ordner) legt gpt.ini/scripts.ini von vorher zurück.
+RESTORE_START = r"""function Restore-OkulaStart {
+    # Weitere Okula-Startskripte noch offen (z. B. Software installieren): das letzte stellt den Stand her
+    $others = @(Get-ChildItem -LiteralPath $OkulaStartup -Filter 'okula-*.cmd' -Force -ErrorAction SilentlyContinue |
+                Where-Object { $_.BaseName -ne $OkulaName })
+    if (-not $others) {
+        # gpt.ini und scripts.ini: Stand von vorher (Version erhöht) bzw. löschen, wenn es sie vorher nicht gab
+        foreach ($file in (Join-Path $OkulaGp 'Machine\Scripts\scripts.ini'), (Join-Path $OkulaGp 'gpt.ini')) {
+            $saved = $file + '__AFTER__'
+            if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force }
+            if (Test-Path -LiteralPath $saved) { Move-Item -LiteralPath $saved -Destination $file -Force }
+        }
+        foreach ($sub in 'Machine\Scripts\Startup', 'Machine\Scripts', 'Machine') {
+            $folder = Join-Path $OkulaGp $sub
+            if ((Test-Path -LiteralPath $folder) -and -not @(Get-ChildItem -LiteralPath $folder -Force)) {
+                Remove-Item -LiteralPath $folder -Force
+            }
+        }
+    }
+    # Einträge, die Windows beim Verarbeiten der Richtlinie für dieses Startskript angelegt hat
+    $base = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy'
+    foreach ($list in "$base\Scripts\Startup", "$base\State\Machine\Scripts\Startup") {
+        if (-not (Test-Path -LiteralPath $list)) { continue }
+        foreach ($gpo in @(Get-ChildItem -LiteralPath $list)) {
+            foreach ($entry in @(Get-ChildItem -LiteralPath $gpo.PSPath)) {
+                $s = [string](Get-ItemProperty -LiteralPath $entry.PSPath -ErrorAction SilentlyContinue).Script
+                if ($s -like "*$OkulaName*") { Remove-Item -LiteralPath $entry.PSPath -Recurse -Force }
+            }
+            if (-not @(Get-ChildItem -LiteralPath $gpo.PSPath)) { Remove-Item -LiteralPath $gpo.PSPath -Recurse -Force }
+        }
+    }
+}"""
+
 HEADER = r"""# Okula Recovery Tool – Windows anpassen (I-039)
 # Erstellt: __CREATED__ · Gerät: __DEVICE__ · Vorlage: __TEMPLATE__
 # Einmaliges Startskript der lokalen Gruppenrichtlinie (läuft als SYSTEM vor der Anmeldung). Zuerst werden das
@@ -341,32 +376,7 @@ function Write-OkulaLog([string]$Text) {
 Remove-Item -LiteralPath (Join-Path $OkulaStartup "$OkulaName.ps1"), (Join-Path $OkulaStartup "$OkulaName.cmd") `
     -Force -ErrorAction SilentlyContinue
 
-function Restore-OkulaStart {
-    # gpt.ini und scripts.ini: Stand von vorher (Version erhöht) bzw. löschen, wenn es sie vorher nicht gab
-    foreach ($file in (Join-Path $OkulaGp 'Machine\Scripts\scripts.ini'), (Join-Path $OkulaGp 'gpt.ini')) {
-        $saved = $file + '__AFTER__'
-        if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force }
-        if (Test-Path -LiteralPath $saved) { Move-Item -LiteralPath $saved -Destination $file -Force }
-    }
-    foreach ($sub in 'Machine\Scripts\Startup', 'Machine\Scripts', 'Machine') {
-        $folder = Join-Path $OkulaGp $sub
-        if ((Test-Path -LiteralPath $folder) -and -not @(Get-ChildItem -LiteralPath $folder -Force)) {
-            Remove-Item -LiteralPath $folder -Force
-        }
-    }
-    # Einträge, die Windows beim Verarbeiten der Richtlinie für dieses Startskript angelegt hat
-    $base = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy'
-    foreach ($list in "$base\Scripts\Startup", "$base\State\Machine\Scripts\Startup") {
-        if (-not (Test-Path -LiteralPath $list)) { continue }
-        foreach ($gpo in @(Get-ChildItem -LiteralPath $list)) {
-            foreach ($entry in @(Get-ChildItem -LiteralPath $gpo.PSPath)) {
-                $s = [string](Get-ItemProperty -LiteralPath $entry.PSPath -ErrorAction SilentlyContinue).Script
-                if ($s -like "*$OkulaName*") { Remove-Item -LiteralPath $entry.PSPath -Recurse -Force }
-            }
-            if (-not @(Get-ChildItem -LiteralPath $gpo.PSPath)) { Remove-Item -LiteralPath $gpo.PSPath -Recurse -Force }
-        }
-    }
-}
+__RESTORE__
 
 function Invoke-OkulaStep([string]$Label, [scriptblock]$Action) {
     try {
@@ -528,7 +538,7 @@ def build_script(selected, user: str = "", password: str = "", device: str = "",
         raise TweakError(problem)
     stamp = time.strftime("%d.%m.%Y %H:%M", time.localtime(created if created is not None else time.time()))
     safe_device = re.sub(r"[^\w .-]", "", device)[:60] or "–"
-    head = (HEADER.replace("__CREATED__", stamp).replace("__DEVICE__", safe_device)
+    head = (HEADER.replace("__RESTORE__", RESTORE_START).replace("__CREATED__", stamp).replace("__DEVICE__", safe_device)
             .replace("__TEMPLATE__", template_label(template, selected)).replace("__LOG__", LOG_PATH)
             .replace("__NAME__", TWEAK_NAME).replace("__AFTER__", TWEAK_AFTER))
     order = [o for o in OPTIONS if o.key in selected and o.key not in APP_KEYS] + \

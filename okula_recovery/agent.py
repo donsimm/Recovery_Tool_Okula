@@ -290,7 +290,8 @@ def run_job(tls, addr, req: dict, kind: str) -> None:
     disk = str(req.get("disk") or "")
     label = {"image": "Disk-Image", "restore": "Zurückspielen", "install": "Windows-Installation",
              "bootprep": "Installation", "backup": "Backup", "filerestore": "Dateien zurückschreiben",
-             "customize": "Anpassen", "deliver": "Ordner senden", "tweak": "Windows anpassen"}[kind]
+             "customize": "Anpassen", "deliver": "Ordner senden", "tweak": "Windows anpassen",
+             "software": "Software installieren"}[kind]
     if not disk_locks.acquire(disk, kind):
         wire.send_json(tls, {"type": "error", "message": f"Auf {disk} läuft bereits ein Auftrag"})
         return
@@ -312,7 +313,8 @@ def run_job(tls, addr, req: dict, kind: str) -> None:
                  "filerestore": f"Dateien werden auf {disk} zurückgeschrieben",
                  "customize": f"System auf {disk} wird angepasst (Name, Key)",
                  "deliver": f"Ordner werden auf den Desktop gelegt ({disk})",
-                 "tweak": f"Windows-Einstellungen werden auf {disk} abgelegt"}[kind] + " – Maschine nicht ausschalten"
+                 "tweak": f"Windows-Einstellungen werden auf {disk} abgelegt",
+                 "software": f"Software wird auf {disk} abgelegt"}[kind] + " – Maschine nicht ausschalten"
         # Mehrere parallele Aufträge: keine Balken (würden sich überschreiben), nur Meldungen
         bar = ConsoleBar(console, title) if console and alone else None
         job_state.update(job, label, 0.0)
@@ -335,6 +337,8 @@ def run_job(tls, addr, req: dict, kind: str) -> None:
             deploy.deliver(tls, req, log, report)
         elif kind == "tweak":
             wire.send_json(tls, deploy.tweak(req, log))
+        elif kind == "software":
+            deploy.software(tls, req, log, report)
         elif kind in ("install", "bootprep"):
             entry = (wininstall.install if kind == "install" else wininstall.bootprep)(tls, req, log, report)
             wire.send_json(tls, {"type": "done", "boot": entry})
@@ -356,8 +360,10 @@ def run_job(tls, addr, req: dict, kind: str) -> None:
                                      "(abziehen, sobald die Installation läuft)",
                          "backup": "fertig", "filerestore": "fertig", "customize": "fertig",
                          "deliver": "fertig",
-                         "tweak": "fertig – wird beim nächsten Windows-Start umgesetzt"}[kind]
-            result = done_text if ok else ("abgebrochen" if kind in ("image", "customize", "deliver", "tweak")
+                         "tweak": "fertig – wird beim nächsten Windows-Start umgesetzt",
+                         "software": "fertig – wird beim nächsten Windows-Start installiert"}[kind]
+            result = done_text if ok else ("abgebrochen" if kind in ("image", "customize", "deliver", "tweak",
+                                                                     "software")
                                            else "abgebrochen – Disk ist unvollständig")
             bar.finish(f"» {label} auf {disk}: {result}")
         job_state.finish(job)
@@ -456,7 +462,7 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
                                      "disks": imaging.list_disks(), "tools": imaging.tool_status(),
                                      "busy": disk_locks.busy(), "active": disk_locks.active()})
             elif cmd in ("image", "restore", "install", "bootprep", "backup", "filerestore", "customize", "deliver",
-                         "tweak"):
+                         "tweak", "software"):
                 run_job(tls, addr, req, cmd)
             elif cmd in ("profiles", "browse", "estimate"):
                 # kurze Abfragen fürs Backup; hängen Partitionen lesend ein – nicht auf Disks mit Auftrag

@@ -53,6 +53,8 @@ class Settings:
     swiss: bool = True               # 3: Region Schweiz
     account: str = ""                #    lokales Konto (Passwort beim ersten Anmelden), leer = Windows fragt
     copy_profile: bool = True        #    Einstellungen des Administrators übernehmen (Ä-040: CopyProfile, Taskleiste)
+    install_software: list[str] = field(default_factory=list)   # Software installieren (I-020): Einträge aus
+    #                                                               Verteilen/Software, beim ersten Start installiert
     software: bool = False           # 4: Ordner senden
     testfiles: bool = False
     projects: list[str] = field(default_factory=list)
@@ -66,6 +68,8 @@ class Settings:
         names = {f.name for f in fields(cls)}
         s = cls(**{k: v for k, v in (data or {}).items() if k in names})
         s.projects = [str(p) for p in s.projects or [] if p]
+        s.install_software = [str(p) for p in s.install_software or [] if p] \
+            if isinstance(s.install_software, list) else []
         if s.image_mode not in ("master", "own"):
             s.image_mode = "master"
         if s.finish not in FINISH:
@@ -84,7 +88,7 @@ class Settings:
 
 # Was eine Vorlage enthält (ohne gerätebezogene Werte wie Zieldisk und Zustand)
 TEMPLATE_FIELDS = ("rearm", "backup", "backup_mode", "image_mode", "image", "adapt_smaller", "source_disk", "swiss",
-                   "account", "copy_profile", "software", "testfiles", "projects", "finish")
+                   "account", "copy_profile", "install_software", "software", "testfiles", "projects", "finish")
 
 
 def settings(dev) -> Settings:
@@ -157,6 +161,8 @@ def confirm_summary(dev, s: Settings, connected: bool, image_name: str = "") -> 
              "Backup vorher: " + (BACKUP_TEXT[s.backup_mode] if s.backup else "nein")]
     if getattr(dev, "is_vm", False):
         lines.append("Snapshot vorher: " + ("ja" if s.snapshot else "nein"))
+    if s.install_software:
+        lines.append(f"Software installieren: {len(s.install_software)} Programm(e) beim ersten Start")
     lines.append(f"Abschluss: {FINISH[s.finish]}")
     if s.rearm:
         lines.append(f"Nach dem Durchlauf in {REARM_LABEL} wieder aktiv.")
@@ -461,6 +467,8 @@ class Engine:
             run.phase = "done"
             self.store.add_history(dev, "automatisierung", "Automatisierung erfolgreich" +
                                    (f" – wird in {REARM_LABEL} wieder eingeschaltet" if s.rearm else ""), ok=True)
+            if error.get("software"):        # I-020
+                self.store.add_history(dev, "automatisierung", error["software"], ok=True)
         else:
             message = error.get("message") or (run.job.log[-1].split(" ", 1)[-1] if run.job and run.job.log
                                                else "unbekannter Fehler")
@@ -616,6 +624,13 @@ def automation_work(ip: str, key: bytes, port: int, dev, s: Settings, nas_root: 
                 jm.log(job, f"  {r['part']}: {what}")
                 if s.copy_profile and r["action"] == "unattend":
                     jm.log(job, f"  {r['part']}: {winunattend.taskbar_log(r)}")
+            # Software installieren (I-020): Installer und Startskript, installiert beim ersten Start
+            if s.install_software:
+                from okula_recovery import software
+                plan, _result = jobs.send_software(ip, key, port, target, nas_root, s.install_software, dev.name,
+                                                   lambda line: jm.log(job, line),
+                                                   lambda f: step(2, f, "Software wird übertragen"), job.cancel)
+                error["software"] = software.history_text(plan.entries)
 
             # 4 Ordner senden
             if s.items:

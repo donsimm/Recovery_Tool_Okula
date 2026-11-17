@@ -258,12 +258,45 @@ def image_work(ip: str, key: bytes, port: int, disk: dict, nas_root: str, machin
     return work
 
 
+SOFTWARE_LATER = ("Wird beim ersten Windows-Start als SYSTEM still installiert (bei einem Master-Image nach der "
+                  "Ersteinrichtung). Protokoll am Gerät: C:\\Windows\\Temp\\okula-software.log")
+
+
+def software_plan(nas_root: str, names: list[str], log: Callable[[str], None]):
+    """Gewählte Programme → software.Plan; Zeilen fürs Log. Nichts installierbar → Fehler."""
+    from okula_recovery import software
+    plan = software.plan(nas_root, names)
+    log(f"Software ({len(plan.entries)} Programm(e), {nas.format_size(plan.bytes)}):")
+    for line in plan.lines():
+        log("  · " + line)
+    if not plan.entries:
+        raise agentclient.AgentError("Keine der gewählten Programme ist installierbar – Reiter Dateien → Software …")
+    return plan
+
+
+def send_software(ip: str, key: bytes, port: int, disk: str, nas_root: str, names: list[str], device: str,
+                  log: Callable[[str], None], progress: Callable[[float], None], cancel: threading.Event):
+    """Software installieren (I-020) nach dem Zurückspielen bzw. in der Automatisierung: Installer und Skript ans
+    Gerät; gibt (Plan, Antwort des Agents) zurück."""
+    from okula_recovery import software
+    plan = software_plan(nas_root, names, log)
+    script = software.build_script(plan.entries, device)
+    result = agentclient.software(ip, key, disk, plan.names, plan.files, plan.bytes, script,
+                                  lambda ev: progress(ev.get("fraction", 0)) if ev.get("phase") == "data" else None,
+                                  cancel, port)
+    log(f"  Software auf {result.get('part', disk)} abgelegt ({result.get('files', 0)} Dateien)"
+        + (" – noch nicht installierte Auswahl von vorher ersetzt" if result.get("replaced") else ""))
+    log("  " + SOFTWARE_LATER)
+    return plan, result
+
+
 def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source_disk: str | None, verify: bool,
                  after: Callable[[Job, str | None, Exception | None], None], customize: dict | None = None,
-                 adapt: dict | None = None):
+                 adapt: dict | None = None, software: dict | None = None):
     """customize: {"unattend", "hostname", "copy_profile"} – danach Master-Image anpassen (Name, Key …; Ä-040:
     Einstellungen des Administrators, Taskleiste).
-    adapt: {"target_size", "nas_root"} – Image zuerst für die kleinere Zieldisk anpassen (neues Image)."""
+    adapt: {"target_size", "nas_root"} – Image zuerst für die kleinere Zieldisk anpassen (neues Image).
+    software: {"nas_root", "names", "device"} – danach Software installieren (I-020, beim ersten Start)."""
     def work(job: Job, jm: JobManager) -> str:
         def progress(ev: dict) -> None:
             phase = ev.get("phase")
@@ -319,11 +352,20 @@ def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source
                         "none": "nichts zu tun"}.get(r["action"], r.get("detail") or r["action"]))
                     if copy_profile and r["action"] == "unattend":
                         jm.log(job, f"  {r['part']}: {winunattend.taskbar_log(r)}")
+            if software and software.get("names"):
+                try:
+                    send_software(ip, key, port, target, software["nas_root"], list(software["names"]),
+                                  software.get("device", ""), lambda line: jm.log(job, line),
+                                  lambda f: jm.progress(job, 1.0, "Software wird übertragen", "Software", f),
+                                  job.cancel)
+                except Exception as e:
+                    raise agentclient.AgentError(f"Zurückgespielt, aber Software nicht übertragen: {e}") from None
         except Exception as e:
             after(job, None, e)
             raise
         after(job, image, None)
-        return f"{target} zurückgespielt" + (" und angepasst" if customize else "")
+        return f"{target} zurückgespielt" + (" und angepasst" if customize else "") \
+            + (", Software wird beim ersten Start installiert" if software and software.get("names") else "")
 
     return work
 
@@ -433,15 +475,19 @@ def grow_restore_work(virsh, name: str, grow_gb: int, target: str,
 
 
 def install_work(ip: str, key: bytes, port: int, iso: str, index: int, opts, disk: str,
-                 after: Callable[[Job, str | None, Exception | None], None]):
-    """Windows-Direktinstallation: Übertragen (1/2), Teilen der install.wim (2/2, falls nötig)."""
+                 after: Callable[[Job, str | None, Exception | None], None], software: dict | None = None):
+    """Windows-Direktinstallation: Übertragen (1/2), Teilen der install.wim (2/2, falls nötig).
+    software: {"nas_root", "names", "device"} – Programme kommen mit auf die Setup-Partition (I-020)."""
     from okula_recovery import winsetup, winunattend
 
     def work(job: Job, jm: JobManager) -> str:
         state = {"files": 0}
         try:
+            soft = None
+            if software and software.get("names"):
+                soft = software_plan(software["nas_root"], list(software["names"]), lambda line: jm.log(job, line))
             jm.log(job, "Windows-Medium auf dem NAS wird gelesen")
-            plan = winsetup.plan(iso, index, opts)
+            plan = winsetup.plan(iso, index, opts, soft, (software or {}).get("device", ""))
         except Exception as e:
             after(job, None, e)
             raise
@@ -462,8 +508,8 @@ def install_work(ip: str, key: bytes, port: int, iso: str, index: int, opts, dis
             elif phase == "data":
                 f = ev.get("fraction", 0)
                 jm.progress(job, f * (0.8 if plan.split else 1.0),
-                            f"{state['files']}/{len(plan.files)} Dateien · {ev.get('speed', 0) / 1e6:.0f} MB/s",
-                            phase_send, f)
+                            f"{state['files']}/{len(plan.files) + len(plan.nas_files)} Dateien · "
+                            f"{ev.get('speed', 0) / 1e6:.0f} MB/s", phase_send, f)
             elif phase == "split":
                 f = ev.get("fraction", 0)
                 if job.phase != "Teilen (2/2)":
@@ -478,6 +524,10 @@ def install_work(ip: str, key: bytes, port: int, iso: str, index: int, opts, dis
         except Exception as e:
             after(job, None, e)
             raise
+        if plan.software:
+            jm.log(job, "Software: " + ", ".join(e.label for e in plan.software) + " – " + (
+                "wird beim ersten Start im Audit-Modus installiert und landet so im Master-Image"
+                if getattr(opts, "audit_mode", False) else SOFTWARE_LATER))
         if getattr(opts, "audit_mode", False):  # I-038: was am Gerät als Nächstes zu tun ist
             jm.log(job, winunattend.AUDIT_NEXT_STEPS)
         after(job, boot, None)

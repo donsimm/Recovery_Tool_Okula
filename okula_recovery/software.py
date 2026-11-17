@@ -656,3 +656,266 @@ def summary(entries: list[Entry]) -> str:
 
 def history_text(entries: list[Entry]) -> str:
     return f"Software: {summary(entries)} (wird beim ersten Start installiert)"
+
+
+# ---------- Installationsskript (PowerShell 5.1, läuft beim ersten Windows-Start als SYSTEM) ----------
+#
+# Startmechanismus wie „Windows anpassen“ (I-039): einmaliges Startskript der lokalen Gruppenrichtlinie
+# (deploy.install_startup_script). Windows bricht Startskripte nach 10 Minuten ab (Richtlinie „Maximale Wartezeit
+# für Gruppenrichtlinienskripts“, Standard 600 s). Darum installiert nicht das Startskript selbst, sondern eine
+# einmalige geplante Aufgabe als SYSTEM, die es anlegt und startet (Ausführungszeit bis 12 h, läuft unabhängig vom
+# Startskript weiter). Das Startskript wartet höchstens 9 min auf das Ende – kurze Installationen sind vor der
+# Anmeldung fertig. Lässt sich die Aufgabe nicht anlegen, installiert das Startskript direkt (dann mit der 10-min-
+# Grenze, steht im Protokoll).
+
+TASK_NAME = "Okula Software installieren"
+START_WAIT = 540            # s – unter den 600 s, nach denen Windows Startskripte abbricht
+PROGRAM_TIMEOUT = 60        # min je Programm (wartet ein Installer auf eine Eingabe, hängt sonst alles)
+REBOOT_DELAY = 60           # s nach dem letzten Programm, wenn eines 3010 meldet
+
+SCRIPT = r"""# Okula Recovery Tool – Software installieren (I-020)
+# Erstellt: __CREATED__ · Gerät: __DEVICE__ · __COUNT__ Programm(e)
+# Einmaliges Startskript der lokalen Gruppenrichtlinie (als SYSTEM vor der Anmeldung); bei der Direktinstallation
+# zusätzlich aus SetupComplete.cmd bzw. im Audit-Modus aufgerufen – was zuerst kommt, gewinnt (das Startskript
+# löscht sich als Erstes). Ablauf:
+#   -Mode Start    Skript nach ProgramData kopieren, Startskript und Gruppenrichtlinie zurückbauen, einmalige
+#                  geplante Aufgabe (SYSTEM) anlegen und starten, höchstens __WAITMIN__ min auf das Ende warten.
+#                  Windows bricht Startskripte nach 10 min ab – die Aufgabe läuft davon unabhängig weiter.
+#   -Mode Install  (geplante Aufgabe) Programme nacheinander still installieren, Protokoll, Installer löschen,
+#                  Aufgabe entfernen; Rückgabewert 3010 → nach dem letzten Programm ein Neustart.
+# Protokoll: __LOG__
+param([string]$Mode = 'Start', [int]$RebootDelay = __REBOOT__)
+$ErrorActionPreference = 'Continue'
+$ProgressPreference = 'SilentlyContinue'
+$OkulaName = '__NAME__'
+$OkulaLog = Join-Path $env:SystemRoot "Temp\$OkulaName.log"
+$OkulaGp = Join-Path $env:SystemRoot 'System32\GroupPolicy'
+$OkulaStartup = Join-Path $OkulaGp 'Machine\Scripts\Startup'
+$OkulaDir = Join-Path $env:ProgramData 'Okula\Software'
+$OkulaRunner = Join-Path $OkulaDir "$OkulaName.ps1"
+$OkulaTask = '__TASK__'
+$OkulaWait = __WAIT__
+$OkulaTimeout = __TIMEOUT__
+$OkulaPrograms = @(
+__PROGRAMS__
+)
+$script:OkulaOk = 0
+$script:OkulaFailed = 0
+$script:OkulaReboot = $false
+
+function Write-OkulaLog([string]$Text) {
+    $line = '{0}  {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Text
+    try { Add-Content -LiteralPath $OkulaLog -Value $line -Encoding UTF8 -ErrorAction Stop } catch { }
+}
+
+__RESTORE__
+
+function Install-OkulaProgram($P) {
+    $ErrorActionPreference = 'Stop'
+    $item = Join-Path $OkulaDir $P.Item
+    if (-not (Test-Path -LiteralPath $item)) {
+        Write-OkulaLog ('--      {0}: Dateien fehlen (schon erledigt?) – übersprungen' -f $P.Name)
+        return
+    }
+    $t0 = Get-Date
+    try {
+        if ($P.Kind -eq 'copy') {
+            $desk = Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'Software'
+            New-Item -ItemType Directory -Path $desk -Force | Out-Null
+            $dest = Join-Path $desk $P.Item
+            if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }
+            Copy-Item -LiteralPath $item -Destination $dest -Recurse -Force
+            $script:OkulaOk++
+            Write-OkulaLog ('ok      {0}: auf den Desktop kopiert ({1})' -f $P.Name, $dest)
+            return
+        }
+        $file = Join-Path $OkulaDir $P.File
+        $folder = Split-Path -Parent $file
+        $arguments = $P.Args.Replace('{ordner}', $folder)
+        if ($P.Kind -eq 'msi') {
+            $exe = Join-Path $env:SystemRoot 'System32\msiexec.exe'
+            $arguments = ('/i "{0}" {1}' -f $file, $arguments).Trim()
+        } else {
+            $exe = $file
+        }
+        Write-OkulaLog ('Start   {0}: {1} {2}' -f $P.Name, $exe, $arguments)
+        $code = $null
+        for ($try = 1; $try -le 10; $try++) {
+            $start = @{ FilePath = $exe; WorkingDirectory = $folder; PassThru = $true; WindowStyle = 'Hidden' }
+            if ($arguments) { $start.ArgumentList = $arguments }
+            $proc = Start-Process @start
+            $null = $proc.Handle
+            if (-not $proc.WaitForExit($OkulaTimeout * 60000)) {
+                try { $proc.Kill() } catch { }
+                throw ('nach {0} min abgebrochen – wartet vermutlich auf eine Eingabe (Parameter prüfen)' -f $OkulaTimeout)
+            }
+            $proc.WaitForExit()
+            $code = $proc.ExitCode
+            if ($code -ne 1618) { break }
+            Write-OkulaLog ('        {0}: eine andere Installation läuft (1618) – neuer Versuch in 30 s' -f $P.Name)
+            Start-Sleep -Seconds 30
+        }
+        $took = [int]((Get-Date) - $t0).TotalSeconds
+        if ($P.Ok -contains $code) {
+            $script:OkulaOk++
+            $note = ''
+            if (@(3010, 1641) -contains $code) {
+                $script:OkulaReboot = $true
+                $note = ', Neustart nötig'
+            }
+            Write-OkulaLog ('ok      {0}: Rückgabewert {1}{2} ({3} s)' -f $P.Name, $code, $note, $took)
+        } else {
+            $script:OkulaFailed++
+            Write-OkulaLog ('FEHLER  {0}: Rückgabewert {1} ({2} s)' -f $P.Name, $code, $took)
+        }
+    } catch {
+        $script:OkulaFailed++
+        Write-OkulaLog ('FEHLER  {0}: {1}' -f $P.Name, $_.Exception.Message)
+    } finally {
+        Remove-Item -LiteralPath $item -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Install-Okula {
+    $mutex = New-Object System.Threading.Mutex($false, 'Global\OkulaSoftware')
+    if (-not $mutex.WaitOne(0)) {
+        Write-OkulaLog 'Installation läuft bereits – nichts zu tun'
+        return
+    }
+    try {
+        Write-OkulaLog ('----- Software installieren (Okula Recovery Tool): {0} Programm(e) -----' -f $OkulaPrograms.Count)
+        foreach ($p in $OkulaPrograms) { Install-OkulaProgram $p }
+        Write-OkulaLog ('----- Ende: {0} ok, {1} mit Fehler -----' -f $script:OkulaOk, $script:OkulaFailed)
+    } finally {
+        Remove-Item -LiteralPath $OkulaRunner -Force -ErrorAction SilentlyContinue
+        foreach ($d in $OkulaDir, (Split-Path -Parent $OkulaDir)) {
+            if ((Test-Path -LiteralPath $d) -and -not @(Get-ChildItem -LiteralPath $d -Force)) {
+                Remove-Item -LiteralPath $d -Force -ErrorAction SilentlyContinue
+            }
+        }
+        if ($script:OkulaReboot) {
+            Write-OkulaLog ('Neustart in {0} s (Rückgabewert 3010: Neustart nötig)' -f $RebootDelay)
+            & shutdown.exe /r /t $RebootDelay /c 'Okula Recovery Tool: Software installiert - Neustart' /d p:4:2 | Out-Null
+        }
+        $mutex.ReleaseMutex()
+        # zuletzt: die Aufgabe entfernt sich selbst (läuft diese Instanz gerade darin, ist alles erledigt)
+        Unregister-ScheduledTask -TaskName $OkulaTask -Confirm:$false -ErrorAction SilentlyContinue
+    }
+}
+
+function Start-Okula {
+    New-Item -ItemType Directory -Path $OkulaDir -Force | Out-Null
+    if ($PSCommandPath -and ($PSCommandPath -ne $OkulaRunner)) {
+        Copy-Item -LiteralPath $PSCommandPath -Destination $OkulaRunner -Force
+    }
+    # Startskript zuerst entfernen – so läuft es genau einmal, auch nach einem Fehler
+    Remove-Item -LiteralPath (Join-Path $OkulaStartup "$OkulaName.ps1"), (Join-Path $OkulaStartup "$OkulaName.cmd") `
+        -Force -ErrorAction SilentlyContinue
+    try {
+        $ErrorActionPreference = 'Stop'
+        Restore-OkulaStart
+        Write-OkulaLog 'ok      Startskript und Gruppenrichtlinie aufgeräumt'
+    } catch {
+        Write-OkulaLog ('FEHLER  Startskript und Gruppenrichtlinie aufräumen: {0}' -f $_.Exception.Message)
+    }
+    $ErrorActionPreference = 'Continue'
+    if (-not (Test-Path -LiteralPath $OkulaRunner)) {
+        Write-OkulaLog 'FEHLER  Skript liegt nicht in ProgramData – Installation direkt im Startskript'
+        Install-Okula
+        return
+    }
+    try {
+        $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $arg = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -Mode Install -RebootDelay {1}' -f `
+            $OkulaRunner, $RebootDelay
+        $action = New-ScheduledTaskAction -Execute $ps -Argument $arg
+        $trigger = New-ScheduledTaskTrigger -AtStartup
+        $principal = New-ScheduledTaskPrincipal -UserId 'S-1-5-18' -LogonType ServiceAccount -RunLevel Highest
+        $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 12) -AllowStartIfOnBatteries `
+            -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew
+        Register-ScheduledTask -TaskName $OkulaTask -Action $action -Trigger $trigger -Principal $principal `
+            -Settings $settings -Force -ErrorAction Stop | Out-Null
+        Start-ScheduledTask -TaskName $OkulaTask -ErrorAction Stop
+        Write-OkulaLog ('ok      Geplante Aufgabe „{0}“ angelegt und gestartet (SYSTEM, ohne 10-Minuten-Grenze)' -f $OkulaTask)
+    } catch {
+        $why = 'FEHLER  Geplante Aufgabe nicht angelegt: {0} – Installation direkt im Startskript' -f $_.Exception.Message
+        Write-OkulaLog ($why + ' (Windows bricht Startskripte nach 10 min ab)')
+        Install-Okula
+        return
+    }
+    $t0 = Get-Date
+    while (((Get-Date) - $t0).TotalSeconds -lt $OkulaWait) {
+        Start-Sleep -Seconds 5
+        $task = Get-ScheduledTask -TaskName $OkulaTask -ErrorAction SilentlyContinue
+        if (-not $task) { return }          # fertig – die Aufgabe entfernt sich am Ende selbst
+        if ((@('Running', 'Queued') -notcontains [string]$task.State) -and ((Get-Date) - $t0).TotalSeconds -gt 30) {
+            Write-OkulaLog ('FEHLER  Geplante Aufgabe läuft nicht (Zustand {0}) – neuer Versuch beim nächsten Start' -f `
+                $task.State)
+            return
+        }
+    }
+    Write-OkulaLog 'Installation läuft als geplante Aufgabe weiter – die Anmeldung ist schon möglich'
+}
+
+if ($Mode -eq 'Install') { Install-Okula } else { Start-Okula }
+"""
+
+
+def _ps(text: str) -> str:
+    from okula_recovery.wintweaks import ps_quote
+    return ps_quote(text)
+
+
+def program_line(e: Entry) -> str:
+    """Ein Eintrag der Liste $OkulaPrograms."""
+    kind = "copy" if e.mode == COPY else ("msi" if e.installer.lower().endswith(".msi") or e.kind == "msi"
+                                          else "exe")
+    file = e.name if not e.is_dir else f"{e.name}/{e.installer}" if e.mode != COPY else e.name
+    codes = ", ".join(str(c) for c in e.exit_codes)
+    return (f"    [pscustomobject]@{{ Name = {_ps(e.label)}; Item = {_ps(e.name)}; "
+            f"File = {_ps(file.replace('/', chr(92)))}; Kind = '{kind}'; Args = {_ps(e.args if kind != 'copy' else '')}; "
+            f"Ok = @({codes}) }}")
+
+
+def build_script(entries: list[Entry], device: str = "", created: float | None = None,
+                 reboot_delay: int = REBOOT_DELAY) -> str:
+    """PowerShell-Skript für die gewählten Programme (Reihenfolge wie gewählt)."""
+    import time
+    from okula_recovery import deploy, wintweaks
+    if not entries:
+        raise SoftwareError("Keine Software gewählt")
+    bad = [e.name for e in entries if not e.selectable]
+    if bad:
+        raise SoftwareError(f"Nicht installierbar ({', '.join(bad)}) – Parameter im Reiter Dateien hinterlegen")
+    stamp = time.strftime("%d.%m.%Y %H:%M", time.localtime(created if created is not None else time.time()))
+    safe_device = re.sub(r"[^\w .-]", "", device)[:60] or "–"
+    replace = {"__RESTORE__": wintweaks.RESTORE_START, "__AFTER__": deploy.TWEAK_AFTER, "__CREATED__": stamp,
+               "__DEVICE__": safe_device, "__COUNT__": str(len(entries)), "__LOG__": deploy.SOFTWARE_LOG,
+               "__NAME__": deploy.SOFTWARE_NAME, "__TASK__": TASK_NAME, "__WAIT__": str(START_WAIT),
+               "__WAITMIN__": str(START_WAIT // 60), "__TIMEOUT__": str(PROGRAM_TIMEOUT),
+               "__REBOOT__": str(int(reboot_delay)),
+               "__PROGRAMS__": ",\n".join(program_line(e) for e in entries)}
+    text = SCRIPT
+    for k, v in replace.items():   # Reihenfolge: __RESTORE__ zuerst (enthält __AFTER__)
+        text = text.replace(k, v)
+    return text
+
+
+# ---------- Direktinstallation: Dateien auf der Setup-Partition ----------
+
+SETUP_SOFTWARE = "okula/software"     # → C:\ProgramData\Okula\Software (install.cmd kopiert)
+SETUP_GP = "okula/gp"                 # → C:\Windows\System32\GroupPolicy (Startskript)
+
+
+def setup_files(script: str) -> dict[str, str]:
+    """Startskript für ein frisch aufgespieltes Windows (ohne lokale Gruppenrichtlinie) – Texte für die
+    Setup-Partition (Agent schreibt UTF-8; scripts.ini/gpt.ini nur ASCII, .ps1 mit BOM für PowerShell 5.1)."""
+    from okula_recovery import deploy
+    crlf = script.replace("\r\n", "\n").replace("\n", "\r\n")
+    start = f"{SETUP_GP}/Machine/Scripts/Startup"
+    return {
+        f"{SETUP_GP}/gpt.ini": deploy.gpt_edit("", 1, True)[0],
+        f"{SETUP_GP}/Machine/Scripts/scripts.ini": deploy.scripts_ini_add("", deploy.SOFTWARE_NAME + ".cmd"),
+        f"{start}/{deploy.SOFTWARE_NAME}.cmd": deploy.SOFTWARE_CMD_TEXT,
+        f"{start}/{deploy.SOFTWARE_NAME}.ps1": "\ufeff" + crlf,
+    }

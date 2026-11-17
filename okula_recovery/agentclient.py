@@ -514,23 +514,32 @@ def install_windows(ip: str, key: bytes, iso_path: str | Path, plan, disk: str, 
     """
     from okula_recovery import udf  # nur hier gebraucht
 
-    total = sum(e.size for _p, e in plan.files) or 1
+    nas_files = list(getattr(plan, "nas_files", []) or [])   # I-020: Software vom NAS
+    total = sum(e.size for _p, e in plan.files) + sum(s for _p, s, _src in nas_files) or 1
     sent = 0
     started = time.monotonic()
     sock = _connect(ip, key, port)
+
+    def nas_chunks(src):
+        with open(src, "rb") as fh:
+            while chunk := fh.read(wire.CHUNK):
+                yield chunk
+
     try:
         with udf.UdfImage.open(str(iso_path)) as img:
             sock.settimeout(1800)
             wire.send_json(sock, plan.request(disk))
             progress({"phase": "prepare"})
             _expect(sock, "ready")
-            for path, entry in plan.files:
+            sources = [(path, lambda e=entry: img.chunks(e, chunk=wire.CHUNK)) for path, entry in plan.files]
+            sources += [(path, lambda s=src: nas_chunks(s)) for path, _size, src in nas_files]
+            for path, chunks in sources:
                 progress({"phase": "file", "file": path})
                 h = hashlib.sha256()
                 size, last = 0, 0.0
                 try:
                     wire.send_json(sock, {"type": "file", "path": path})
-                    for chunk in img.chunks(entry, chunk=wire.CHUNK):
+                    for chunk in chunks():
                         if cancel.is_set():
                             raise AgentError("Abgebrochen – die Zieldisk ist jetzt leer bzw. unvollständig")
                         wire.send_data(sock, chunk)
@@ -652,10 +661,24 @@ def tweak(ip: str, key: bytes, disk: str, script: str, port: int = wire.PORT) ->
 def deliver(ip: str, key: bytes, disk: str, items: list[str], files, total: int, progress: Progress,
             cancel: threading.Event, port: int = wire.PORT) -> dict:
     """Ordner auf den öffentlichen Desktop: files liefert (Typ "file"/"dir", Pfad, Grösse, mtime, Quelle)."""
+    return _send_files(ip, key, port, {"cmd": "deliver", "disk": disk, "items": items, "bytes": total}, files,
+                       total, progress, cancel)
+
+
+def software(ip: str, key: bytes, disk: str, items: list[str], files, total: int, script: str,
+             progress: Progress, cancel: threading.Event, port: int = wire.PORT) -> dict:
+    """Software installieren (I-020): Installer nach ProgramData\\Okula\\Software und Startskript ablegen lassen.
+    Antwort: {part, state (installed | generalized), files, bytes, replaced, gpo, version}."""
+    return _send_files(ip, key, port, {"cmd": "software", "disk": disk, "items": items, "bytes": total,
+                                       "script": script}, files, total, progress, cancel)
+
+
+def _send_files(ip: str, key: bytes, port: int, request: dict, files, total: int, progress: Progress,
+                cancel: threading.Event) -> dict:
     sock = _connect(ip, key, port)
     try:
         sock.settimeout(900)
-        wire.send_json(sock, {"cmd": "deliver", "disk": disk, "items": items, "bytes": total})
+        wire.send_json(sock, request)
         msg = wire.recv_json(sock)
         if msg.get("type") != "ready":
             raise AgentError(_old_agent(str(msg.get("message", "Agent hat abgelehnt"))))

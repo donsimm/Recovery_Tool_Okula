@@ -24,6 +24,12 @@ MASTER = "DEMO-Master-Win11"
 BROKEN = "DEMO-Image-beschaedigt"
 PROJECTS = ("Projekt Alpha", "Projekt Beta", "Schulung 2026")
 TITLE = "Demo (lokal, nicht auf dem NAS)"
+# Beispiel-Installer für „Software installieren“ (I-020) – keine echten Programme, nur die Kennungen
+DEMO_INSTALLERS = {
+    "vlc-3.0.24-win64.exe": b"MZ Demo-Installer (erfunden) Nullsoft.NSIS.exehead",
+    "AcroRdrDC_de_DE.msi": b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1 Demo-MSI (erfunden)",
+    "Demo-Tool-Setup.exe": b"MZ Demo-Installer (erfunden) ohne bekannte Kennung",
+}
 
 
 def base() -> Path:
@@ -50,6 +56,12 @@ def ensure(root: Path | None = None) -> Path:
         if not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text, encoding="utf-8")
+    # Software installieren (I-020): kleine Beispiel-Installer mit den Kennungen, die die Erkennung sucht
+    for name, data in DEMO_INSTALLERS.items():
+        path = dist / "Software" / name
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
     master = images_dir(root) / MASTER
     if not (master / agentclient.IMAGE_META).is_file():
         make_image(master, "Master-Image für die Vorführung (Sysprep, erfunden)")

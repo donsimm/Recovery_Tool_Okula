@@ -8,6 +8,8 @@
 - tweak: „Windows anpassen“ (I-039) – ein vom Tool erzeugtes PowerShell-Skript als einmaliges Startskript der
   lokalen Gruppenrichtlinie ablegen (System32/GroupPolicy); vorhandene Richtlinien bleiben, das Skript stellt den
   vorherigen Stand beim Start selbst wieder her.
+- software: „Software installieren“ (I-020) – Installer nach ProgramData/Okula/Software und ein Startskript
+  (wie tweak), das sie beim nächsten Windows-Start als SYSTEM still installiert.
 - countdown: „Automatisierung startet in 30 s – Esc zum Abbrechen“ am Bildschirm; Esc direkt von der
   Tastatur (/dev/input), unabhängig davon, was auf tty1 läuft.
 """
@@ -237,6 +239,36 @@ def _item_name(name: str) -> PurePosixPath:
     return p
 
 
+def _receive_into(sock, stage: Path, items: list[PurePosixPath], total: int, report: Report) -> tuple[int, int]:
+    """Ordner/Dateien vom Tool in den Zwischenordner (nur unterhalb der gewählten Einträge). (Dateien, Bytes)."""
+    wire.send_json(sock, {"type": "ready"})
+    received = files = 0
+    while True:
+        msg = wire.recv_json(sock)
+        kind = msg.get("type")
+        if kind == "end":
+            return files, received
+        rel = PurePosixPath(str(msg.get("path") or ""))
+        if not any(rel == i or i in rel.parents for i in items):
+            raise ImagingError(f"Pfad gehört zu keinem gewählten Ordner: {rel}")
+        dest = filebackup._safe(stage, str(rel))
+        if kind == "dir":
+            dest.mkdir(parents=True, exist_ok=True)
+            continue
+        if kind != "file":
+            raise ImagingError(f"Unerwartete Nachricht: {kind}")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with open(dest, "wb") as out:
+            for chunk in imaging._frames(sock, {"file": str(rel)}):
+                out.write(chunk)
+                received += len(chunk)
+                report(min(1.0, received / total), str(rel), received)
+        mtime = int(msg.get("mtime") or 0)
+        if mtime:
+            os.utime(dest, (mtime, mtime))
+        files += 1
+
+
 def deliver(sock, req: dict, log: Callable[[str], None] = print, report: Report | None = None) -> None:
     """Ordner vom Tool empfangen und auf den öffentlichen Desktop legen.
 
@@ -254,32 +286,7 @@ def deliver(sock, req: dict, log: Callable[[str], None] = print, report: Report 
         try:
             for item in items:
                 (stage / item).mkdir(parents=True, exist_ok=True)
-            wire.send_json(sock, {"type": "ready"})
-            received = files = 0
-            while True:
-                msg = wire.recv_json(sock)
-                kind = msg.get("type")
-                if kind == "end":
-                    break
-                rel = PurePosixPath(str(msg.get("path") or ""))
-                if not any(rel == i or i in rel.parents for i in items):
-                    raise ImagingError(f"Pfad gehört zu keinem gewählten Ordner: {rel}")
-                dest = filebackup._safe(stage, str(rel))
-                if kind == "dir":
-                    dest.mkdir(parents=True, exist_ok=True)
-                    continue
-                if kind != "file":
-                    raise ImagingError(f"Unerwartete Nachricht: {kind}")
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                with open(dest, "wb") as out:
-                    for chunk in imaging._frames(sock, {"file": str(rel)}):
-                        out.write(chunk)
-                        received += len(chunk)
-                        report(min(1.0, received / total), str(rel), received)
-                mtime = int(msg.get("mtime") or 0)
-                if mtime:
-                    os.utime(dest, (mtime, mtime))
-                files += 1
+            files, received = _receive_into(sock, stage, items, total, report)
             # Alles angekommen: pro Ordner alten Stand weg, neuen an seinen Platz
             for item in items:
                 final = desktop / item
@@ -321,25 +328,43 @@ SCRIPTS_CSE = "{42B5FAAE-6536-11D2-AE5A-0000F87571E3}"     # Client-Erweiterung 
 SCRIPTS_TOOL = "{40B6664F-4972-11D1-A7CA-0000F87571E3}"    # Snap-in „Skripts (Start/Herunterfahren)“, Computer
 GUID_RE = re.compile(r"\{[0-9A-Fa-f-]{36}\}")
 
-# Nur ASCII (cmd liest die Datei in der OEM-Codepage). Die zweite Hälfte läuft nur, wenn PowerShell das Skript nicht
-# gestartet hat – sonst hat das Skript beide Dateien schon gelöscht und cmd findet die nächste Zeile nicht mehr.
-TWEAK_CMD_TEXT = "\r\n".join((
-    "@echo off",
-    "rem Okula Recovery Tool - Windows anpassen: einmaliges Startskript (entfernt sich selbst)",
-    '"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -NonInteractive '
-    f'-ExecutionPolicy Bypass -File "%~dp0{TWEAK_PS1}"',
-    "rem Nur erreicht, wenn PowerShell das Skript nicht gestartet hat: aufraeumen, damit nichts erneut laeuft",
-    f'del /f /q "%~dp0{TWEAK_PS1}" >nul 2>&1',
-    f'>>"%SystemRoot%\\Temp\\{TWEAK_NAME}.log" echo %DATE% %TIME%  FEHLER  PowerShell-Skript nicht gestartet '
-    "- Einstellungen nicht umgesetzt",
-    'set "OKULA_GP=%SystemRoot%\\System32\\GroupPolicy"',
-    'for %%F in ("%OKULA_GP%\\Machine\\Scripts\\scripts.ini" "%OKULA_GP%\\gpt.ini") do (',
-    '  attrib -r -h -s "%%~F" >nul 2>&1',
-    '  del /f /q "%%~F" >nul 2>&1',
-    f'  if exist "%%~F{TWEAK_AFTER}" move /y "%%~F{TWEAK_AFTER}" "%%~F" >nul',
-    ")",
-    'del /f /q "%~f0" >nul 2>&1',
-    ""))
+def startup_cmd_text(name: str, title: str, args: str = "", what: str = "Einstellungen") -> str:
+    """Startskript (.cmd) für <name>.ps1 im selben Ordner.
+
+    Nur ASCII (cmd liest die Datei in der OEM-Codepage). Die zweite Hälfte läuft nur, wenn PowerShell das Skript nicht
+    gestartet hat – sonst hat das Skript beide Dateien schon gelöscht und cmd findet die nächste Zeile nicht mehr.
+    Steht noch ein anderes Okula-Startskript aus (I-020: Software und Windows anpassen gleichzeitig), stellt erst
+    dieses die Gruppenrichtlinie wieder her."""
+    return "\r\n".join((
+        "@echo off",
+        f"rem Okula Recovery Tool - {title}: einmaliges Startskript (entfernt sich selbst)",
+        '"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -NonInteractive '
+        f'-ExecutionPolicy Bypass -File "%~dp0{name}.ps1"' + (f" {args}" if args else ""),
+        "rem Nur erreicht, wenn PowerShell das Skript nicht gestartet hat: aufraeumen, damit nichts erneut laeuft",
+        f'del /f /q "%~dp0{name}.ps1" >nul 2>&1',
+        f'>>"%SystemRoot%\\Temp\\{name}.log" echo %DATE% %TIME%  FEHLER  PowerShell-Skript nicht gestartet '
+        f"- {what} nicht umgesetzt",
+        'set "OKULA_ANDERE="',
+        'for %%F in ("%~dp0okula-*.cmd") do if /i not "%%~nxF"=="%~nx0" set "OKULA_ANDERE=1"',
+        "if defined OKULA_ANDERE goto ende",
+        'set "OKULA_GP=%SystemRoot%\\System32\\GroupPolicy"',
+        'for %%F in ("%OKULA_GP%\\Machine\\Scripts\\scripts.ini" "%OKULA_GP%\\gpt.ini") do (',
+        '  attrib -r -h -s "%%~F" >nul 2>&1',
+        '  del /f /q "%%~F" >nul 2>&1',
+        f'  if exist "%%~F{TWEAK_AFTER}" move /y "%%~F{TWEAK_AFTER}" "%%~F" >nul',
+        ")",
+        ":ende",
+        'del /f /q "%~f0" >nul 2>&1',
+        ""))
+
+
+TWEAK_CMD_TEXT = startup_cmd_text(TWEAK_NAME, "Windows anpassen")
+
+# I-020 Software installieren: Startskript wie oben, Installer unter ProgramData\Okula\Software
+SOFTWARE_NAME = "okula-software"
+SOFTWARE_LOG = r"C:\Windows\Temp\okula-software.log"
+SOFTWARE_REL = "ProgramData/Okula/Software"
+SOFTWARE_CMD_TEXT = startup_cmd_text(SOFTWARE_NAME, "Software installieren", "-Mode Start", "Software")
 
 
 def ini_decode(data: bytes) -> tuple[str, str]:
@@ -468,11 +493,14 @@ def _write_file(path: Path, data: bytes) -> None:
     tmp.replace(path)
 
 
-def install_startup_script(root: Path, script: str) -> dict:
+def install_startup_script(root: Path, script: str, name: str = TWEAK_NAME, cmd_text: str | None = None) -> dict:
     """Skript als einmaliges Startskript der lokalen Gruppenrichtlinie ablegen (root = Windows-Partition).
 
-    Ist schon ein noch nicht gelaufenes Okula-Startskript da, wird nur das Skript ersetzt (die gesicherten
-    Originale bleiben). Ergebnis: {"replaced", "gpo" (gab es vorher eine lokale Richtlinie), "version"}."""
+    Ist schon ein noch nicht gelaufenes Okula-Startskript gleichen Namens da, wird nur das Skript ersetzt (die
+    gesicherten Originale bleiben). Steht ein anderes Okula-Startskript aus (I-020: Software und Windows anpassen),
+    kommt nur der Eintrag in scripts.ini dazu – Originale und Version bleiben, das letzte Skript stellt sie her.
+    Ergebnis: {"replaced", "gpo" (gab es vorher eine lokale Richtlinie), "version"} (+ "shared": True)."""
+    cmd_name, ps1_name = name + ".cmd", name + ".ps1"
     windir = find_ci(root, "Windows")
     sys32 = find_ci(windir, "System32") if windir else None
     if sys32 is None:
@@ -489,12 +517,19 @@ def install_startup_script(root: Path, script: str) -> dict:
     gpt_bytes = gpt.read_bytes() if gpt.is_file() else b""
     gpt_text, gpt_enc = ini_decode(gpt_bytes) if gpt_bytes else ("", "latin-1")
     # Skript zuerst: PowerShell 5.1 liest UTF-8 nur mit BOM richtig
-    _write_file(startup / TWEAK_PS1, b"\xef\xbb\xbf" + script.replace("\r\n", "\n").replace("\n", "\r\n")
+    _write_file(startup / ps1_name, b"\xef\xbb\xbf" + script.replace("\r\n", "\n").replace("\n", "\r\n")
                 .encode("utf-8"))
-    _write_file(startup / TWEAK_CMD, TWEAK_CMD_TEXT.encode("ascii"))
-    if scripts_ini_has(ini_text) and SCRIPTS_CSE.lower() in gpt_text.lower():
-        return {"replaced": True, "gpo": (gp / ("gpt.ini" + TWEAK_AFTER)).exists(),
-                "version": gpt_edit(gpt_text, 0, False)[1]}
+    _write_file(startup / cmd_name, (cmd_text or startup_cmd_text(name, name)).encode("ascii"))
+    has_cse = SCRIPTS_CSE.lower() in gpt_text.lower()
+    saved_gpt = (find_ci(gp, gpt.name + TWEAK_AFTER) or gp / (gpt.name + TWEAK_AFTER)).exists()
+    if scripts_ini_has(ini_text, cmd_name) and has_cse:
+        return {"replaced": True, "gpo": saved_gpt, "version": gpt_edit(gpt_text, 0, False)[1]}
+    others = [p.name for p in startup.iterdir() if p.name.lower().startswith("okula-")
+              and p.name.lower().endswith(".cmd") and p.name.lower() != cmd_name.lower()
+              and scripts_ini_has(ini_text, p.name)]
+    if others and has_cse:
+        _write_file(ini, ini_encode(scripts_ini_add(ini_text, cmd_name), ini_enc))
+        return {"replaced": False, "gpo": saved_gpt, "version": gpt_edit(gpt_text, 0, False)[1], "shared": True}
     # Stand für nach dem Lauf: Originale (gpt.ini mit Version +2, damit Windows die Richtlinie neu verarbeitet)
     after_gpt, after_ini = gp / (gpt.name + TWEAK_AFTER), scripts / (ini.name + TWEAK_AFTER)
     if gpt_bytes:
@@ -508,7 +543,7 @@ def install_startup_script(root: Path, script: str) -> dict:
     # Erst gpt.ini, dann scripts.ini (scripts.ini mit Eintrag = „wartet auf den Start“)
     new_gpt, version = gpt_edit(gpt_text, 1, True)
     _write_file(gpt, ini_encode(new_gpt, gpt_enc))
-    _write_file(ini, ini_encode(scripts_ini_add(ini_text), ini_enc))
+    _write_file(ini, ini_encode(scripts_ini_add(ini_text, cmd_name), ini_enc))
     return {"replaced": False, "gpo": bool(gpt_bytes), "version": version}
 
 
@@ -549,6 +584,69 @@ def tweak(req: dict, log: Callable[[str], None] = print) -> dict:
     log(f"Windows anpassen {part}: Startskript " + ("ersetzt" if result["replaced"] else "abgelegt") +
         (" (lokale Gruppenrichtlinie ergänzt)" if result["gpo"] else ""))
     return {"type": "done", "part": part, "state": state, **result}
+
+
+# ---------- Software installieren (I-020): Installer nach ProgramData, Startskript ----------
+
+def _software_item(name: str) -> PurePosixPath:
+    p = PurePosixPath(name)
+    if not name or len(p.parts) != 1 or p.is_absolute() or name in (".", "..") or name.startswith(".") \
+            or name.lower() == SOFTWARE_NAME + ".ps1":
+        raise ImagingError(f"Ungültiger Eintrag: {name}")
+    return p
+
+
+def software_dir(root: Path) -> Path:
+    """ProgramData/Okula/Software auf der Windows-Partition (angelegt; Links werden abgelehnt)."""
+    cur = root
+    for part in PurePosixPath(SOFTWARE_REL).parts:
+        cur = _dir_ci(cur, part)
+        cur.mkdir(exist_ok=True)
+    return cur
+
+
+def software(sock, req: dict, log: Callable[[str], None] = print, report: Report | None = None) -> None:
+    """Gewählte Installer empfangen, nach ProgramData/Okula/Software legen und das Startskript ablegen.
+
+    Erst wenn alles angekommen ist, ersetzt die neue Auswahl eine noch nicht installierte von vorher (deren Reste
+    werden gelöscht – das neue Skript kennt sie nicht). Das Skript (vom Tool, software.build_script) installiert beim
+    nächsten Windows-Start als SYSTEM."""
+    report = report or (lambda f, p, n: None)
+    items = [_software_item(str(i)) for i in req.get("items") or []]
+    script = str(req.get("script") or "")
+    if not items:
+        raise ImagingError("Keine Software gewählt")
+    if not script.strip() or len(script) > MAX_SCRIPT:
+        raise ImagingError("Installationsskript fehlt oder ist zu gross")
+    total = int(req.get("bytes") or 0) or 1
+    with filebackup.Mounts(write=True) as m:
+        part, root = _windows_system(m, str(req.get("disk") or ""))
+        state = windows_state(root)
+        target = software_dir(root)
+        stage = target / f"{STAGE_PREFIX}{secrets.token_hex(4)}"
+        stage.mkdir()
+        try:
+            files, received = _receive_into(sock, stage, items, total, report)
+            for old in list(target.iterdir()):
+                if old == stage:
+                    continue
+                if old.is_dir() and not old.is_symlink():
+                    shutil.rmtree(old)
+                else:
+                    old.unlink()
+            for item in items:
+                src = stage / item
+                if not src.exists():
+                    raise ImagingError(f"{item} wurde nicht übertragen")
+                src.rename(target / item)
+            result = install_startup_script(root, script, SOFTWARE_NAME, SOFTWARE_CMD_TEXT)
+            subprocess.run(["sync"])
+        finally:
+            shutil.rmtree(stage, ignore_errors=True)
+    wire.send_json(sock, {"type": "done", "part": part, "state": state, "files": files, "bytes": received,
+                          **result})
+    log(f"Software {part}: {len(items)} Einträge ({files} Dateien) nach {SOFTWARE_REL}, Startskript "
+        + ("ersetzt" if result["replaced"] else "abgelegt"))
 
 
 # ---------- Countdown am Bildschirm ----------

@@ -226,5 +226,274 @@ class CatalogTest(unittest.TestCase):
                          "Software: AcroRdrDC de DE, VLC media player 3.0.24 (wird beim ersten Start installiert)")
 
 
+class ScriptTest(unittest.TestCase):
+    """Erzeugtes Installationsskript (PowerShell) und Startskript (cmd)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        sw = distribute.ensure(self.root) / "Software"
+        (sw / "vlc-3.0.24-win64.exe").write_bytes(NSIS)
+        (sw / "AcroRdrDC_de_DE.msi").write_bytes(MSI)
+        (sw / "System Tools").mkdir()
+        (sw / "System Tools/a.exe").write_bytes(UNKNOWN)
+        (sw / "Barco Tool 7.2").mkdir()
+        (sw / "Barco Tool 7.2/Setup.exe").write_bytes(INNO)
+        software.scan(self.root)
+        software.update(self.root, "System Tools", mode=software.COPY)
+        software.update(self.root, "AcroRdrDC_de_DE.msi", exit_codes="0, 3010, 1641")
+        self.entries = software.plan(self.root, ["vlc-3.0.24-win64.exe", "AcroRdrDC_de_DE.msi",
+                                                 "Barco Tool 7.2", "System Tools"]).entries
+        self.script = software.build_script(self.entries, "PC-1 „Test“", created=0)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_programs_in_order_with_codes(self):
+        s = self.script
+        vlc = s.index("Item = 'vlc-3.0.24-win64.exe'")
+        msi = s.index("Item = 'AcroRdrDC_de_DE.msi'")
+        barco = s.index("Item = 'Barco Tool 7.2'")
+        tools = s.index("Item = 'System Tools'")
+        self.assertLess(vlc, msi)
+        self.assertLess(msi, barco)
+        self.assertLess(barco, tools)
+        self.assertIn("Kind = 'exe'; Args = '/S'; Ok = @(0, 3010)", s)
+        self.assertIn("Kind = 'msi'; Args = '/qn /norestart'; Ok = @(0, 3010, 1641)", s)
+        self.assertIn("File = 'Barco Tool 7.2\\Setup.exe'; Kind = 'exe'; "
+                      "Args = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-'", s)
+        self.assertIn("Item = 'System Tools'; File = 'System Tools'; Kind = 'copy'", s)
+        self.assertIn("'/i \"{0}\" {1}' -f $file", s)              # MSI über msiexec /i
+
+    def test_log_cleanup_and_one_reboot(self):
+        s = self.script
+        self.assertIn("$OkulaLog = Join-Path $env:SystemRoot \"Temp\\$OkulaName.log\"", s)
+        self.assertIn("$OkulaName = 'okula-software'", s)
+        self.assertIn("Start   {0}", s)
+        self.assertIn("ok      {0}: Rückgabewert {1}{2} ({3} s)", s)
+        self.assertIn("FEHLER  {0}: Rückgabewert {1} ({2} s)", s)
+        self.assertIn("----- Ende: {0} ok, {1} mit Fehler -----", s)
+        # Fehler stoppt die übrigen nicht: jedes Programm in eigenem try/catch, Löschen im finally
+        body = s[s.index("function Install-OkulaProgram"):s.index("function Install-Okula {")]
+        self.assertIn("} catch {", body)
+        self.assertIn("} finally {\n        Remove-Item -LiteralPath $item -Recurse -Force", body)
+        self.assertIn("@(3010, 1641) -contains $code", body)
+        self.assertNotIn("shutdown.exe", body)                      # kein Neustart je Programm …
+        self.assertEqual(s.count("shutdown.exe /r"), 1)              # … sondern einer am Schluss
+        main = s[s.index("function Install-Okula {"):s.index("function Start-Okula")]
+        self.assertLess(main.index("foreach ($p in $OkulaPrograms)"), main.index("shutdown.exe /r"))
+        self.assertIn("if ($script:OkulaReboot)", main)
+        self.assertLess(main.index("shutdown.exe"), main.index("Unregister-ScheduledTask"))
+
+    def test_start_mode_task_and_ten_minutes(self):
+        s = self.script
+        start = s[s.index("function Start-Okula"):]
+        self.assertLess(start.index("Remove-Item -LiteralPath (Join-Path $OkulaStartup"),
+                        start.index("Restore-OkulaStart"))
+        self.assertIn("Register-ScheduledTask", start)
+        self.assertIn("-UserId 'S-1-5-18'", start)                   # SYSTEM
+        self.assertIn("-ExecutionTimeLimit (New-TimeSpan -Hours 12)", start)
+        self.assertIn("Install-Okula", start)                        # Ausweichweg ohne Aufgabe
+        self.assertLess(software.START_WAIT, 600)                    # Windows bricht Startskripte nach 600 s ab
+        self.assertIn(f"$OkulaWait = {software.START_WAIT}", s)
+        self.assertIn("if ($Mode -eq 'Install') { Install-Okula } else { Start-Okula }", s)
+        # gemeinsamer Rückbau mit „Windows anpassen“: nur das letzte Okula-Startskript stellt her
+        self.assertIn("Filter 'okula-*.cmd'", s)
+        self.assertIn("$saved = $file + '.okula-nachher'", s)
+        self.assertNotIn("__", s.replace("__RESTORE__", ""))          # alle Platzhalter ersetzt
+
+    def test_balance_and_quoting(self):
+        s = self.script
+        self.assertEqual(s.count("{"), s.count("}"))
+        self.assertEqual(s.count("("), s.count(")"))
+        self.assertIn("Gerät: PC-1 Test", s)
+        e = software.find(self.entries, "vlc-3.0.24-win64.exe")
+        e.meta["program"] = "O'Brien"
+        self.assertIn("Name = 'O''Brien 3.0.24'", software.program_line(e))
+
+    def test_missing_parameters_refused(self):
+        sw = self.root / "Verteilen/Software"
+        (sw / "unbekannt.exe").write_bytes(UNKNOWN)
+        entry = software.find(software.scan(self.root), "unbekannt.exe")
+        with self.assertRaisesRegex(software.SoftwareError, "Parameter"):
+            software.build_script([entry])
+        with self.assertRaises(software.SoftwareError):
+            software.build_script([])
+
+    def test_cmd_ascii_and_guard(self):
+        from okula_recovery import deploy
+        cmd = deploy.SOFTWARE_CMD_TEXT
+        self.assertTrue(cmd.isascii())
+        self.assertIn('-File "%~dp0okula-software.ps1" -Mode Start', cmd)
+        self.assertIn('if /i not "%%~nxF"=="%~nx0" set "OKULA_ANDERE=1"', cmd)
+        self.assertLess(cmd.index("if defined OKULA_ANDERE goto ende"), cmd.index("gpt.ini"))
+        self.assertTrue(deploy.TWEAK_CMD_TEXT.isascii())
+        files = software.setup_files(self.script)
+        for rel, text in files.items():
+            if not rel.endswith(".ps1"):
+                self.assertTrue(text.isascii(), rel)
+        self.assertTrue(files["okula/gp/Machine/Scripts/Startup/okula-software.ps1"].startswith("﻿"))
+        self.assertIn("0CmdLine=okula-software.cmd", files["okula/gp/Machine/Scripts/scripts.ini"])
+        self.assertIn(deploy.SCRIPTS_CSE, files["okula/gp/gpt.ini"])
+
+
+class SharedStartupTest(unittest.TestCase):
+    """Software und „Windows anpassen“ stehen gleichzeitig aus: ein Eintrag mehr, Originale bleiben."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        (self.root / "Windows/System32/config").mkdir(parents=True)
+        (self.root / "Windows/System32/config/SYSTEM").write_bytes(b"regf")
+        self.gp = self.root / "Windows/System32/GroupPolicy"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_second_script_shares(self):
+        from okula_recovery import deploy
+        (self.gp / "Machine/Scripts").mkdir(parents=True)
+        orig = b"[General]\r\nVersion=7\r\n"
+        (self.gp / "gpt.ini").write_bytes(orig)
+        first = deploy.install_startup_script(self.root, "A")                       # Windows anpassen
+        after = (self.gp / "gpt.ini.okula-nachher").read_bytes()
+        second = deploy.install_startup_script(self.root, "B", deploy.SOFTWARE_NAME, deploy.SOFTWARE_CMD_TEXT)
+        self.assertEqual((first["version"], second["version"], second.get("shared")), (8, 8, True))
+        self.assertEqual((self.gp / "gpt.ini.okula-nachher").read_bytes(), after)  # Original (Version +2) bleibt
+        ini = (self.gp / "Machine/Scripts/scripts.ini").read_bytes()[2:].decode("utf-16-le")
+        self.assertIn("0CmdLine=okula-windows-anpassen.cmd", ini)
+        self.assertIn("1CmdLine=okula-software.cmd", ini)
+        startup = self.gp / "Machine/Scripts/Startup"
+        self.assertEqual(sorted(p.name for p in startup.iterdir()),
+                         ["okula-software.cmd", "okula-software.ps1", "okula-windows-anpassen.cmd",
+                          "okula-windows-anpassen.ps1"])
+        # erneut senden ersetzt nur das Skript
+        third = deploy.install_startup_script(self.root, "C", deploy.SOFTWARE_NAME, deploy.SOFTWARE_CMD_TEXT)
+        self.assertTrue(third["replaced"])
+        self.assertEqual((self.gp / "Machine/Scripts/scripts.ini").read_bytes()[2:].decode("utf-16-le"), ini)
+
+
+class FakeMounts:
+    def __init__(self, roots):
+        self.roots = roots
+
+    def __call__(self, write=False):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_a):
+        return None
+
+    def get(self, dev):
+        return self.roots[dev]
+
+
+class AgentTransferTest(unittest.TestCase):
+    """Tool → Agent über ein Socket-Paar: Ablage auf einer Probe-Windows-Partition (Verzeichnis)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        base = Path(self.tmp.name)
+        self.nas = base / "nas"
+        self.win = base / "win"
+        (self.win / "Windows/System32/config").mkdir(parents=True)
+        (self.win / "Windows/System32/config/SYSTEM").write_bytes(b"regf")
+        sw = distribute.ensure(self.nas) / "Software"
+        (sw / "vlc-3.0.24-win64.exe").write_bytes(NSIS)
+        (sw / "Barco Tool").mkdir()
+        (sw / "Barco Tool/Setup.exe").write_bytes(INNO)
+        (sw / "Barco Tool/data").mkdir()
+        (sw / "Barco Tool/data/x.bin").write_bytes(b"x" * 5000)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def transfer(self, names):
+        import socket
+        import threading
+        from unittest import mock
+        from okula_recovery import agentclient, deploy, jobs
+        a, b = socket.socketpair()
+        errors = []
+
+        def agent_side():
+            try:
+                req = deploy.wire.recv_json(b)
+                deploy.software(b, req, log=lambda *_a: None)
+            except Exception as e:  # im Test sichtbar machen
+                errors.append(e)
+                deploy.wire.send_json(b, {"type": "error", "message": str(e)})
+
+        t = threading.Thread(target=agent_side, daemon=True)
+        parts = [{"path": "/dev/sda3", "fstype": "ntfs", "size": 1 << 35}]
+        lines = []
+        with mock.patch.object(deploy, "_candidates", lambda disk: parts), \
+                mock.patch.object(deploy.filebackup, "Mounts", FakeMounts({"/dev/sda3": self.win})), \
+                mock.patch.object(deploy.subprocess, "run"), \
+                mock.patch.object(agentclient, "_connect", lambda *_a: a):
+            t.start()
+            plan, result = jobs.send_software("127.0.0.1", b"k", 1, "/dev/sda", str(self.nas), names, "PC-1",
+                                              lines.append, lambda f: None, threading.Event())
+            t.join(10)
+        b.close()
+        self.assertEqual(errors, [])
+        return plan, result, lines
+
+    def test_files_and_startup_script_on_windows(self):
+        plan, result, lines = self.transfer(["vlc-3.0.24-win64.exe", "Barco Tool"])
+        target = self.win / "ProgramData/Okula/Software"
+        self.assertEqual((target / "vlc-3.0.24-win64.exe").read_bytes(), NSIS)
+        self.assertEqual((target / "Barco Tool/data/x.bin").read_bytes(), b"x" * 5000)
+        self.assertEqual(sorted(p.name for p in target.iterdir()), ["Barco Tool", "vlc-3.0.24-win64.exe"])
+        startup = self.win / "Windows/System32/GroupPolicy/Machine/Scripts/Startup"
+        ps1 = (startup / "okula-software.ps1").read_bytes()
+        self.assertTrue(ps1.startswith(b"\xef\xbb\xbf"))
+        self.assertIn("Item = 'Barco Tool'".encode(), ps1)
+        self.assertTrue((startup / "okula-software.cmd").read_bytes().isascii())
+        self.assertEqual((result["part"], result["state"], result["files"]), ("/dev/sda3", "installed", 3))
+        self.assertIn("ersten Windows-Start", "\n".join(lines))
+        # zweite Auswahl ersetzt die noch nicht installierte erste
+        self.transfer(["vlc-3.0.24-win64.exe"])
+        self.assertEqual([p.name for p in target.iterdir()], ["vlc-3.0.24-win64.exe"])
+
+    def test_bad_item_refused(self):
+        from okula_recovery import deploy
+        for bad in ("../x", "a/b", ".okula-x", "okula-software.ps1", ""):
+            with self.assertRaises(deploy.ImagingError):
+                deploy._software_item(bad)
+
+
+class DirectInstallTest(unittest.TestCase):
+    def test_install_cmd_and_setupcomplete(self):
+        from okula_recovery import winsetup
+        plain = winsetup.install_cmd("abcd", 1, "sources/install.wim", False, "de-DE")
+        self.assertNotIn("okula\\software", plain)
+        cmd = winsetup.install_cmd("abcd", 1, "sources/install.wim", False, "de-DE", software=True)
+        self.assertTrue(cmd.isascii())
+        self.assertIn('xcopy "%S%:\\okula\\software" "%W%:\\ProgramData\\Okula\\Software\\" /e /i /h /k /y /q', cmd)
+        self.assertLess(cmd.index("okula\\software"), cmd.index("echo Okula: fertig"))
+        self.assertLess(cmd.index("dism /Apply-Image"), cmd.index("okula\\software"))
+        self.assertIn('copy /y "%OKGP%\\gpt.ini" "%OKGP%\\gpt.ini.okula-nachher"', cmd)
+        sc = winsetup.setupcomplete_cmd("abcd", software=True)
+        self.assertTrue(sc.isascii())
+        self.assertLess(sc.index(":ende"), sc.index('if exist "%OKULA_SW%" cmd /c "%OKULA_SW%"'))
+        self.assertNotIn("okula-software", winsetup.setupcomplete_cmd("abcd"))
+        # Audit-Modus (I-038): auditUser ruft SetupComplete.cmd vor dem Löschen der Antwortdatei auf
+        self.assertTrue(winsetup.AUDIT_CLEANUP.endswith('SetupComplete.cmd"'))
+
+
+class AutomationSettingTest(unittest.TestCase):
+    def test_selection_saved_and_in_templates(self):
+        from okula_recovery import automation
+        s = automation.Settings.from_dict({"install_software": ["vlc.exe", "", 3]})
+        self.assertEqual(s.install_software, ["vlc.exe", "3"])
+        self.assertEqual(automation.Settings.from_dict(s.to_dict()).install_software, ["vlc.exe", "3"])
+        self.assertIn("install_software", automation.TEMPLATE_FIELDS)
+        self.assertEqual(automation.Settings.from_dict({"install_software": "kaputt"}).install_software, [])
+        self.assertEqual(automation.Settings().install_software, [])
+
+
 if __name__ == "__main__":
     unittest.main()

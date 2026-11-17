@@ -339,6 +339,16 @@ def deliver(sock, req: dict, log=print, report=None) -> None:
     log(f"Demo: Ordner auf den Desktop gelegt (simuliert): {', '.join(map(str, req.get('items') or []))}")
 
 
+def software(sock, req: dict, log=print, report=None) -> None:
+    """Software installieren (I-020): Installer und Skript annehmen, nichts ablegen."""
+    if not req.get("items") or not str(req.get("script") or "").strip():
+        raise ImagingError("Keine Software gewählt")
+    files = _receive_files(sock, req, report or (lambda f, p, n: None), ack=False)
+    wire.send_json(sock, {"type": "done", "part": f"{DEMO_DISK_PATH}p3", "state": "installed", "files": files,
+                          "bytes": int(req.get("bytes") or 0), "replaced": False, "gpo": False, "version": 1})
+    log(f"Demo: Software abgelegt (simuliert): {', '.join(map(str, req.get('items') or []))}")
+
+
 def tweak(req: dict, log=print) -> dict:
     """Windows anpassen: Skript annehmen, nichts ablegen (der Inhalt wird nicht protokolliert)."""
     if not str(req.get("script") or "").strip():
@@ -474,7 +484,7 @@ def install_fakes() -> None:
     filebackup.backup, filebackup.restore_files = backup, restore_files
     wininstall.install, wininstall.bootprep = install, bootprep
     wininstall.boot_status, wininstall.set_netfirst = boot_status, set_netfirst
-    deploy.customize, deploy.deliver, deploy.tweak = customize, deliver, tweak
+    deploy.customize, deploy.deliver, deploy.tweak, deploy.software = customize, deliver, tweak, software
     deploy.open_keyboards = lambda pattern="": []
     biosread.read, biosread.write = bios_read, bios_write
     hwtest.battery, hwtest.temperature_step, hwtest.smart_test = hw_battery, hw_temperature, hw_smart
