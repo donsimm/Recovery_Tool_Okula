@@ -1,6 +1,6 @@
 # I-037 – Grafikkarte im Inventar und im Gerätefenster
 
-Status: freigegeben · erstellt 17.11.2026 von der Projektleitung · Freigabe: Dominik 17.11.
+Status: umgesetzt (Commit c7e64b9) · erstellt 17.11.2026 von der Projektleitung · Freigabe: Dominik 17.11.
 
 ## Rolle und Einstieg
 
