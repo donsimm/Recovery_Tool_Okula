@@ -2,6 +2,7 @@
 
 - customize: Windows-Master-Image (mit Sysprep generalisiert) bekommt eine Antwortdatei
   Windows/Panther/unattend.xml (Computername, Key, Region …, vom Tool erstellt); Linux bekommt den Hostnamen.
+  Ä-040: auf Wunsch die Taskleiste des Administrators als LayoutModification.xml ins Standardprofil (winprofile).
 - deliver: Ordner (Software, Test Files, Content/Projekt …) auf den öffentlichen Desktop
   (Users/Public/Desktop); vorhandene Ordner gleichen Namens werden ersetzt – erst wenn alles da ist.
 - tweak: „Windows anpassen“ (I-039) – ein vom Tool erzeugtes PowerShell-Skript als einmaliges Startskript der
@@ -25,7 +26,7 @@ import time
 from pathlib import Path, PurePosixPath
 from typing import Callable
 
-from okula_recovery import filebackup, imaging, inventory, wire
+from okula_recovery import filebackup, imaging, inventory, winprofile, wire
 
 ImagingError = imaging.ImagingError
 Report = Callable[[float, str, int], None]
@@ -132,11 +133,43 @@ def write_unattend(root: Path, xml: str) -> Path:
     return target
 
 
+def adopt_taskbar(root: Path) -> dict:
+    """Ä-040: Taskleiste des Administrators ins Standardprofil (winprofile) – Fehler werden gemeldet, nie geworfen:
+    Name und Key sind dann schon gesetzt, das Anpassen gilt als gelungen."""
+    try:
+        return winprofile.adopt_taskbar(root)
+    except (OSError, winprofile.ProfileError) as e:
+        return {"profile": "", "pins": [], "order": "", "written": [], "copied": [], "reason": "",
+                "error": str(e)}
+
+
+def customize_root(root: Path, xml: str, hostname: str, copy_profile: bool = False) -> dict | None:
+    """Ein eingehängtes System anpassen. Ergebnis {system, action, …} oder None (kein Betriebssystem)."""
+    state = windows_state(root)
+    if state == "generalized":
+        if not xml:
+            return {"system": "windows", "action": "none"}
+        write_unattend(root, xml)
+        result = {"system": "windows", "action": "unattend"}
+        if copy_profile:
+            result["taskbar"] = adopt_taskbar(root)
+        return result
+    if state == "installed":
+        return {"system": "windows", "action": "not_generalized"}
+    if (root / "etc" / "os-release").is_file() or (root / "usr" / "lib" / "os-release").is_file():
+        if hostname:
+            return {"system": "linux", "action": "hostname", "old": set_linux_hostname(root, hostname)}
+        return {"system": "linux", "action": "none"}
+    return None
+
+
 def customize(req: dict, log: Callable[[str], None] = print) -> dict:
-    """Alle Systeme auf der Disk anpassen. Ergebnis je Partition: was gemacht wurde (oder warum nicht)."""
+    """Alle Systeme auf der Disk anpassen. Ergebnis je Partition: was gemacht wurde (oder warum nicht).
+    copy_profile (Ä-040): zusätzlich die Taskleiste des Administrators ins Standardprofil (Ergebnis „taskbar“)."""
     disk = str(req.get("disk") or "")
     xml = str(req.get("unattend") or "")
     hostname = str(req.get("hostname") or "")
+    copy_profile = bool(req.get("copy_profile"))
     if len(xml) > MAX_UNATTEND:
         raise ImagingError("Antwortdatei zu gross")
     results = []
@@ -147,24 +180,16 @@ def customize(req: dict, log: Callable[[str], None] = print) -> dict:
             except ImagingError as e:
                 results.append({"part": part["path"], "system": "", "action": "error", "detail": str(e)})
                 continue
-            state = windows_state(root)
-            if state == "generalized":
-                if xml:
-                    write_unattend(root, xml)
-                    results.append({"part": part["path"], "system": "windows", "action": "unattend"})
-                else:
-                    results.append({"part": part["path"], "system": "windows", "action": "none"})
-            elif state == "installed":
-                results.append({"part": part["path"], "system": "windows", "action": "not_generalized"})
-            elif (root / "etc" / "os-release").is_file() or (root / "usr" / "lib" / "os-release").is_file():
-                if hostname:
-                    old = set_linux_hostname(root, hostname)
-                    results.append({"part": part["path"], "system": "linux", "action": "hostname", "old": old})
-                else:
-                    results.append({"part": part["path"], "system": "linux", "action": "none"})
+            result = customize_root(root, xml, hostname, copy_profile)
+            if result is not None:
+                results.append({"part": part["path"], **result})
         subprocess.run(["sync"])
     for r in results:
         log(f"Anpassen {r['part']}: {r['system'] or '–'} → {r['action']}")
+        bar = r.get("taskbar")
+        if bar:
+            log(f"Anpassen {r['part']}: Taskleiste aus Profil „{bar.get('profile') or '–'}“: "
+                + (", ".join(bar.get("pins") or []) or bar.get("error") or bar.get("reason") or "–"))
     return {"type": "done", "results": results}
 
 

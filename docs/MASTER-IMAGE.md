@@ -24,6 +24,11 @@ Stand: **umgesetzt** (29.10.2026). Details in [TECHNIK.md](TECHNIK.md), Bedienun
    - Updates, Treiber, Programme, Einstellungen. Neustarts bleiben im Audit-Modus; das Sysprep-Fenster nach dem
      Start schliessen.
    - Office mit dem Office Deployment Tool (ODT) installieren, **nicht aktivieren**.
+   - **Symbole, Taskleiste, Ansicht einfach am Administrator einrichten** – das Tool übernimmt sie (Ä-040): Desktop-
+     Symbole anordnen, Programme an die Taskleiste heften (Reihenfolge zählt), Explorer-Ansicht, Hintergrund usw.
+     Keine Skripte, kein weiteres Konto anlegen (sonst nimmt CopyProfile evtl. das falsche Profil). Beim Zurückspielen
+     mit *Danach anpassen* und Häkchen **„Einstellungen des Administrators übernehmen (Master)“** (Standard an) bekommt
+     jeder neue Benutzer diesen Stand. Nicht übernommen: Kacheln im Startmenü, Standard-Apps; Windows 11 noch prüfen.
 3. **Vor Sysprep prüfen**
    - BitLocker aus (Windows 11 24H2 verschlüsselt oft automatisch): `manage-bde -status`, `manage-bde -off C:`
    - Store-Apps: nur für den Admin aktualisierte Apps lassen Sysprep abbrechen („package installed for a user but not
@@ -35,7 +40,9 @@ Stand: **umgesetzt** (29.10.2026). Details in [TECHNIK.md](TECHNIK.md), Bedienun
    C:\Windows\System32\Sysprep\sysprep.exe /generalize /oobe /shutdown
    ```
    `/generalize` entfernt SID, Computername und Aktivierung; `/oobe` startet beim nächsten Start die Ersteinrichtung.
-   Optional `CopyProfile=true` in einer Antwortdatei: Admin-Einstellungen werden Standard für neue Benutzer.
+   Keine eigene Antwortdatei nötig: `CopyProfile=true` (Admin-Einstellungen werden Standard für neue Benutzer)
+   schreibt das Tool beim Zurückspielen in seine Antwortdatei, die Taskleiste legt es zusätzlich als
+   `LayoutModification.xml` ins Standardprofil (Ä-040, Details [TECHNIK.md](TECHNIK.md)).
 5. **Image erstellen – Windows nicht mehr starten!**
    Direkt mit dem Okula Agent-Stick starten → „Disk-Image erstellen“, Name z. B. `Master-Win11-25H2-2026-10`.
 6. **Master aktualisieren**
@@ -49,7 +56,8 @@ Stand: **umgesetzt** (29.10.2026). Details in [TECHNIK.md](TECHNIK.md), Bedienun
 
 Quelle: Microsoft Learn – „Sysprep (Generalize) a Windows installation“, „Boot Windows to Audit Mode or OOBE“,
 „Mode (microsoft-windows-deployment-reseal-mode)“, „Windows Setup Automation Overview“ (implizite Suche,
-„you must delete the cached answer file in the %WINDIR%\panther directory“), „Add a Custom Script to Windows Setup“.
+„you must delete the cached answer file in the %WINDIR%\panther directory“), „Add a Custom Script to Windows Setup“,
+„CopyProfile“, „Customize the default user profile by using CopyProfile“, „Configure the Windows Taskbar Pinned Apps“.
 
 ## Funktion im Tool (umgesetzt)
 
@@ -58,6 +66,7 @@ Im Dialog **„Image zurückspielen“** ein Bereich *„Nach dem Zurückspielen
 - ☑ Gerätename aus dem Tool übernehmen
 - ☑ Windows-Key setzen (OEM aus dem BIOS oder pro Gerät hinterlegt)
 - ☐ Benutzer und Region Schweiz (de-CH, Tastatur Schweiz, Zeitzone Zürich)
+- ☑ Einstellungen des Administrators übernehmen (Master) – CopyProfile und Taskleiste (Ä-040)
 
 Ablauf (Idee):
 1. Image wie heute zurückspielen.

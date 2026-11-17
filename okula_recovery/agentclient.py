@@ -619,12 +619,18 @@ def _old_agent(message: str) -> str:
     return message
 
 
-def customize(ip: str, key: bytes, disk: str, unattend: str, hostname: str, port: int = wire.PORT) -> list[dict]:
+def customize(ip: str, key: bytes, disk: str, unattend: str, hostname: str, port: int = wire.PORT,
+              copy_profile: bool = False) -> list[dict]:
     """Systeme auf der Disk anpassen: Windows-Master (Sysprep) → unattend.xml, Linux → Hostname.
-    Ergebnis je Partition: {part, system, action} mit action unattend | hostname | not_generalized | none | error."""
+    Ergebnis je Partition: {part, system, action} mit action unattend | hostname | not_generalized | none | error.
+    copy_profile (Ä-040): Taskleiste des Administrators ins Standardprofil – Ergebnis „taskbar“ bei „unattend“
+    (fehlt bei einem älteren Agent)."""
     with _connect(ip, key, port) as sock:
         sock.settimeout(300)
-        wire.send_json(sock, {"cmd": "customize", "disk": disk, "unattend": unattend, "hostname": hostname})
+        req = {"cmd": "customize", "disk": disk, "unattend": unattend, "hostname": hostname}
+        if copy_profile:
+            req["copy_profile"] = True
+        wire.send_json(sock, req)
         reply = wire.recv_json(sock)
     if reply.get("type") != "done":
         raise AgentError(_old_agent(str(reply.get("message", "Agent hat abgelehnt"))))

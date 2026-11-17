@@ -326,7 +326,11 @@ def restore_files(sock, req: dict, log=print, report=None) -> None:
 def customize(req: dict, log=print) -> dict:
     time.sleep(2)
     log("Demo: Antwortdatei (Name, Key) geschrieben (simuliert)")
-    return {"type": "done", "results": [{"part": f"{DEMO_DISK_PATH}p3", "system": "windows", "action": "unattend"}]}
+    result = {"part": f"{DEMO_DISK_PATH}p3", "system": "windows", "action": "unattend"}
+    if req.get("copy_profile"):        # Ä-040: Taskleiste des Administrators (simuliert)
+        result["taskbar"] = {"profile": "Administrator", "pins": ["Explorer", "Microsoft Edge", "VLC media player"],
+                             "order": "registry", "written": [], "copied": [], "reason": ""}
+    return {"type": "done", "results": [result]}
 
 
 def deliver(sock, req: dict, log=print, report=None) -> None:

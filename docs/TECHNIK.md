@@ -590,15 +590,92 @@ Ein Master-Image ist ein vorbereitetes Windows für viele Geräte. Beim Zurücks
 
 **Vorbereiten (am Referenzgerät):**
 1. Windows frisch installieren, sodass es im **Audit-Modus** startet (ohne Benutzer): im Tool *OS installieren …* mit Häkchen **„Für Master-Image (Audit-Modus)“** (I-038, siehe „Betriebssystem direkt auf ein Gerät installieren“) oder von Hand beim ersten Einrichtungsbildschirm **Ctrl+Shift+F3**. Bei einer VM vor Sysprep einen Snapshot erstellen (Reiter *Snapshots*).
-2. Updates, Treiber und Programme installieren. Kein Microsoft-Konto, keine Domäne. BitLocker ausschalten.
+2. Updates, Treiber und Programme installieren. Kein Microsoft-Konto, keine Domäne. BitLocker ausschalten. Desktop-Symbole, Taskleiste, Explorer-Ansicht usw. direkt am eingebauten Administrator einrichten – das Tool übernimmt sie (Ä-040, unten). Kein weiteres lokales Konto anlegen.
 3. Sysprep als Administrator starten: `C:\Windows\System32\Sysprep\sysprep.exe /generalize /oobe /shutdown`
 4. Windows **nicht mehr starten**, direkt mit dem Agent-Stick starten und *Disk-Image erstellen …* (Name z. B. „Master-Win11-2026-10“).
 
 **Im Tool:**
 - **Markieren:** Rechtsklick auf das Image → **„Als Master-Image markieren“** (bzw. „Master-Markierung entfernen“). Die Liste zeigt „★ Master“. Die Markierung ist die Datei `okula-master.json` im Image-Ordner (Okula- und Clonezilla-Images).
-- **Anpassen:** Im Dialog „Image zurückspielen“ ist bei einem Master-Image **„Danach anpassen“** vorgewählt: Gerätename (aus dem Tool), Windows-Schlüssel (hinterlegt oder aus dem BIOS), optional Region Schweiz und ein lokales Konto (Passwort beim ersten Anmelden – wird nirgends gespeichert).
+- **Anpassen:** Im Dialog „Image zurückspielen“ ist bei einem Master-Image **„Danach anpassen“** vorgewählt: Gerätename (aus dem Tool), Windows-Schlüssel (hinterlegt oder aus dem BIOS), optional Region Schweiz und ein lokales Konto (Passwort beim ersten Anmelden – wird nirgends gespeichert), dazu „Einstellungen des Administrators übernehmen (Master)“ (Standard an, Ä-040, unten).
 - **Wie:** Nach dem Zurückspielen hängt der Agent die Windows-Partition ein und legt `Windows\Panther\unattend.xml` ab. Windows richtet sich beim ersten Start damit ohne Fragen ein. Ob das Image generalisiert ist, erkennt der Agent an `Windows\Setup\State\State.ini` (`IMAGE_STATE_GENERALIZE_RESEAL_TO_OOBE`). Ein nicht generalisiertes Windows wird **nicht** verändert (Hinweis im Log). Linux bekommt den Hostnamen (`/etc/hostname`, `/etc/hosts`).
 - Ein Image eines UEFI-Geräts läuft nur auf UEFI-Geräten.
+
+### Einstellungen des Administrators übernehmen (Ä-040)
+
+Sysprep `/generalize` lässt das Profil des eingebauten Administrators liegen, neue Benutzer bekommen aber das
+Standardprofil (`Users\Default`). Ohne weiteres fehlen ihnen Anordnung der Desktop-Symbole, Explorer-Ansicht und
+Taskleiste aus dem Audit-Modus (Befund Master CompactPlayer 17.11.2026). Das Tool löst das ohne Skripte im Master:
+
+- **Option:** Häkchen **„Einstellungen des Administrators übernehmen (Master)“** im Dialog *Image zurückspielen*
+  unter *Danach anpassen* (Standard an, nicht gespeichert – wie Region/Konto) und in der Automatisierung, Schritt
+  *Anpassen* (`automation.Settings.copy_profile`, Standard an, auch in Vorlagen). Texte in
+  `winunattend.COPY_PROFILE_LABEL/TOOLTIP`.
+- **CopyProfile:** `winunattend.master_unattend(…, copy_profile=True)` schreibt in **specialize**
+  `Microsoft-Windows-Shell-Setup/CopyProfile = true` (nach `ComputerName`, Reihenfolge wie Windows SIM). Nie bei der
+  Direktinstallation im Audit-Modus (`_audit_opts`). Ohne Option ist die Antwortdatei unverändert.
+- **Taskleiste (Agent, `winprofile.py`, Befehl `customize` mit `copy_profile`):** nur bei generalisiertem Windows,
+  nachdem `Panther\unattend.xml` geschrieben ist.
+  1. Quellprofil: `Users\Administrator` (bzw. `Administrator.*`), sonst das **einzige** Profil mit angehefteten
+     Symbolen; nie Default, Public, All Users. Mehrere Kandidaten ohne Administrator → nichts, Grund im Log.
+  2. Pins: `AppData\Roaming\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\*.lnk`. **Reihenfolge** aus
+     `NTUSER.DAT` → `Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband\Favorites` (REG_BINARY; Position des
+     Dateinamens in UTF-16). Eigener, rein lesender regf-Leser (`winprofile.Hive`, nk/vk/lf/lh/li/ri/db) – kein
+     Werkzeug nötig, kein Hive wird geschrieben. Store-Apps ohne `.lnk` (z. B. Microsoft Store, Mail) werden über ihre
+     AppUserModelID im selben Blob erkannt (`Name_<13 Zeichen>!App`, heuristisch; doppelt mit einer Verknüpfung, die
+     dieselbe ID trägt → nur die Verknüpfung). Ist die Registrierung nicht lesbar: Reihenfolge nach Datum der
+     `.lnk`, ohne Store-Apps (Hinweis im Log).
+  3. Zuordnung: Ziel `explorer.exe` → `DesktopApplicationID="Microsoft.Windows.Explorer"`, `msedge.exe` → `"MSEdge"`
+     (IDs aus den Microsoft-Beispielen), Store-App → `taskbar:UWA AppUserModelID`, übrige → `DesktopApplicationLinkPath`
+     auf eine Verknüpfung im Startmenü für alle (`%ALLUSERSPROFILE%\Microsoft\Windows\Start Menu\Programs\…`): zuerst
+     eine vorhandene mit gleichem Ziel (LinkInfo bzw. EnvironmentVariableDataBlock der `.lnk`), dann gleicher
+     Dateiname, sonst Kopie nach `…\Programs\Okula\` (Microsoft: Verknüpfungen für Drittprogramme müssen vor dem
+     ersten Start in einem Startmenü-Ordner liegen).
+  4. Datei `LayoutModification.xml` (`CustomTaskbarLayoutCollection PinListPlacement="Replace"`, Reihenfolge wie beim
+     Administrator) nach `Users\Default\AppData\Local\Microsoft\Windows\Shell\` **und** in denselben Ordner des
+     Quellprofils – CopyProfile ersetzt das Standardprofil durch das des Administrators, so ist die Datei in beiden
+     Fällen da. Ein vorhandenes gültiges Startlayout in der Datei bleibt (nur die Taskleiste wird ersetzt, Position nach
+     XSD-Reihenfolge); eine ungültige Datei bleibt als `LayoutModification.xml.okula-vorher` daneben.
+  5. Keine Pins oder Option aus → nichts geschrieben. Fehler beim Schreiben brechen das Anpassen nicht ab (Name und
+     Key sind gesetzt), sie stehen im Log.
+- **Log:** „Einstellungen des Administrators werden übernommen – Taskleiste: VLC media player, Explorer …“
+  (`winunattend.taskbar_log`), bei altem Agent „… Agent zu alt“. Nicht generalisiertes Windows: wie bisher nur
+  „nicht mit Sysprep vorbereitet“, nichts geändert.
+- **Agent betroffen:** neues Modul `winprofile.py` in `stick.AGENT_MODULES` → **neuer Agent-Stick** bzw. Netzwerkstart
+  neu vorbereiten.
+
+**Belegt (Microsoft Learn, abgerufen 17.11.2026):**
+- „CopyProfile“ (Unattend-Referenz): *„CopyProfile runs during the specialize configuration pass. It should be used
+  after customize the built-in administrator profile.“* Gültiger Durchgang nur **specialize**. *„On the reference
+  computer, use only the built-in administrator account. Creating multiple accounts might cause you to copy the wrong
+  user profile“*; keine Domänenkonten; *„some customizations to the default user profile are not copied, such as items
+  that are pinned to the task bar“*; Standard-Apps (Hash pro Benutzer) werden nicht unterstützt.
+- „Customize the default user profile by using CopyProfile“: im Audit-Modus am eingebauten Administrator einrichten;
+  *„Using CopyProfile to customize the Start menu isn't supported“* (Windows 10: `LayoutModification.xml`); Ablauf
+  mit `sysprep /generalize /oobe /unattend:…`; Troubleshooting: CopyProfile nur einmal setzen, keine weiteren Konten.
+- „Configure the Windows Taskbar Pinned Apps“ / „Customize the Taskbar“: Format `LayoutModificationTemplate`,
+  `PinListPlacement="Replace"` entfernt die Standard-Pins, Reihenfolge der Liste = Reihenfolge auf der Taskleiste,
+  Explorer als `DesktopApplicationID="Microsoft.Windows.Explorer"`, Edge als `"MSEdge"`.
+- „Customize the Start layout for managed Windows devices“: `.lnk` für Drittprogramme vor dem ersten Start in einen
+  Startmenü-Ordner (`%ALLUSERSPROFILE%\Microsoft\Windows\Start Menu\Programs\`), Umgebungsvariablen erlaubt.
+
+**Nicht belegt / offen (am Gerät prüfen, [TESTS.md](TESTS.md) Abschnitt 22):**
+- Format von `Taskband\Favorites` ist nicht dokumentiert; Reihenfolge und Store-Apps werden nur über die Position der
+  Namen im Blob bestimmt.
+- Die Antwortdatei des Tools wird **nach** `/generalize` abgelegt (Microsoft beschreibt `/unattend` beim Sysprep-Aufruf).
+  Da CopyProfile in specialize läuft und Setup dort `Panther\unattend.xml` liest (wie bisher Name und Key), sollte es
+  wirken – Microsoft belegt diese Variante nicht ausdrücklich.
+- Ablageort `Users\Default\…\Shell\LayoutModification.xml` für die Taskleiste: üblicher Ort (dorthin schreibt auch
+  `Import-StartLayout`), in den OEM-Seiten verweist Microsoft für die Taskleiste auf `LayoutXMLPath` (Registrierung im
+  Image, vor specialize) – das würde ein Schreiben in den Hive `SOFTWARE` verlangen und ist bewusst nicht umgesetzt.
+- **Windows 11:** gleiche Datei wird geschrieben (schadet nicht); ob Windows 11 sie für die Taskleiste liest, ist zu
+  prüfen. Startmenü von Windows 11 (`LayoutModification.json`, nur über Richtlinie bzw. ab 24H2) ist nicht umgesetzt.
+- **Startmenü-Kacheln (Windows 10)** werden nicht übernommen: Das Layout liegt pro Benutzer in einer binären
+  Datenbank (CloudStore/TileDataLayer) und lässt sich aus dem Profil nicht zuverlässig ableiten; CopyProfile
+  unterstützt das Startmenü laut Microsoft nicht.
+- Microsoft empfiehlt nach CopyProfile, im Standardprofil `…\Shell\Associations\FileAssociationsUpdateVersion`,
+  `…\Shell\Associations\UrlAssociations` und `…\Explorer\FileExts` zu löschen, sonst setzt Windows Standard-Apps evtl.
+  zurück (Meldung „App-Standardeinstellung wurde zurückgesetzt“). Das passiert erst nach CopyProfile beim ersten
+  Start und ist nicht umgesetzt (bräuchte einen Befehl nach CopyProfile vor der ersten Anmeldung).
 
 ## Betriebssysteme (ISOs) und Boot-Sticks
 

@@ -428,3 +428,32 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten und **Agent-Stick bzw.
 - [ ] DEMO-PC → Übersicht „Grafikkarte“ „Intel Iris Xe Graphics (TigerLake-LP GT2)  (0000:00:02.0)“
 - [ ] Video-Server mit mehreren GPUs (falls verfügbar): jede Karte einzeln, gleiche Modelle mit verschiedenen
       PCI-Adressen, Reihenfolge nach Adresse
+
+### 22. Einstellungen aus dem Audit-Modus (Ä-040)
+Nach `git pull && sudo ./install.sh` das Tool neu starten und **Agent-Stick bzw. Netzwerkstart neu erstellen**
+(Agent geändert: neues Modul `winprofile.py`). Am besten an einer VM mit Windows 10 (Snapshot „vor Sysprep“).
+- [ ] VM im Audit-Modus (I-038): Desktop-Symbole anordnen, **VLC** und **Explorer** an die Taskleiste heften (Edge
+      lösen, Reihenfolge merken), Explorer-Ansicht ändern (z. B. Details, Dateiendungen ein), Hintergrund ändern;
+      kein weiteres Konto anlegen → Sysprep `/generalize /oobe /shutdown` → *Disk-Image erstellen …* → als Master markieren
+- [ ] *Image zurückspielen*: unter *Danach anpassen* steht **„Einstellungen des Administrators übernehmen (Master)“**,
+      angehakt, Tooltip erklärt es; mit *Danach anpassen* aus ist das Häkchen ausgegraut
+- [ ] Log des Auftrags: „Anpassen: Gerätename und Windows-Schlüssel, Einstellungen des Administrators (Master-Image)“
+      und „Einstellungen des Administrators werden übernommen – Taskleiste: VLC media player, Explorer“ (Reihenfolge
+      wie am Administrator)
+- [ ] Erster Start, Konto anlegen bzw. lokales Konto aus dem Dialog → Benutzer hat Symbol-Anordnung, Explorer-Ansicht,
+      Hintergrund und die Taskleiste (VLC, Explorer in dieser Reihenfolge, Edge nicht mehr)
+- [ ] Zweiten neuen Benutzer anlegen und anmelden → gleiche Einstellungen und Taskleiste
+- [ ] Am Gerät: `C:\Users\Default\AppData\Local\Microsoft\Windows\Shell\LayoutModification.xml` enthält die Pins;
+      `C:\Windows\Panther\setupact.log` bzw. `UnattendGC\setupact.log`: CopyProfile ohne Fehler; ob Windows meldet
+      „Eine App-Standardeinstellung wurde zurückgesetzt“ (Hinweis Microsoft, nicht umgesetzt) – notieren
+- [ ] Gegenprobe Häkchen aus: neuer Benutzer hat Standard-Taskleiste und Standard-Desktop, keine
+      `LayoutModification.xml` im Standardprofil
+- [ ] Gegenprobe normales Image (ohne Sysprep): Log „nicht mit Sysprep vorbereitet“, Windows unverändert
+- [ ] Gegenprobe alter Agent-Stick: Log „… Taskleiste nicht übernommen: Agent zu alt“, Name/Key trotzdem gesetzt
+- [ ] Automatisierung: Schritt *Anpassen* zeigt das Häkchen (Standard an), Wert bleibt nach Tool-Neustart und in
+      Vorlagen; Durchlauf → gleiche Logzeilen wie oben
+- [ ] Programm ohne Eintrag im Startmenü (z. B. portable `.exe` angeheftet) → liegt nach dem Zurückspielen als
+      Verknüpfung unter Startmenü → *Okula* und ist auf der Taskleiste
+- [ ] **Windows 11** (VM): gleicher Ablauf – Windows startet normal, nichts kaputt; ob die Taskleiste übernommen
+      wird, notieren (offen, [TECHNIK.md](TECHNIK.md) „Einstellungen des Administrators übernehmen“)
+- [ ] DEMO-PC: *Image zurückspielen* mit Häkchen → Log nennt „Taskleiste: Explorer, Microsoft Edge, VLC media player“

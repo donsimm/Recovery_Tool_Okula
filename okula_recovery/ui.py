@@ -3627,9 +3627,10 @@ class MainWindow(Gtk.ApplicationWindow):
             customize = None
             if custom is not None:
                 from okula_recovery import linuxsetup, winunattend
+                copy_profile = bool(custom.get("copy_profile"))     # Ä-040
                 customize = {"unattend": winunattend.master_unattend(dev.name, dev.windows_key[0], custom["swiss"],
-                                                                     custom["account"]),
-                             "hostname": linuxsetup.hostname(dev.name)}
+                                                                     custom["account"], copy_profile),
+                             "hostname": linuxsetup.hostname(dev.name), "copy_profile": copy_profile}
             if grow_gb and dev.is_vm:           # Ä-037: Snapshot erst nach dem Vergrössern (im Auftrag)
                 self._grow_restore(dev, image, source_disk, target, verify, shutdown, label, customize, grow_gb,
                                    snapshot)

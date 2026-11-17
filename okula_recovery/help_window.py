@@ -410,7 +410,8 @@ vergrössert, die Daten darauf sind unverändert. Gehen beide Wege nicht, bleibt
 •  Zeigte die letzte Prüfung „beschädigt“, steht im Dialog ein roter Hinweis. Zurückspielen geht trotzdem.
 •  Auch Images von Clonezilla funktionieren.
 •  Nach einem Abbruch ist die Zieldisk unvollständig.
-•  Bei einem Master-Image passt das Tool Windows danach an: Kapitel <i>Master-Image</i>."""),
+•  Bei einem Master-Image passt das Tool Windows danach an (Name, Schlüssel, auf Wunsch Einstellungen des
+    Administrators): Kapitel <i>Master-Image</i>."""),
 
     ("Datei-Backup", """<big><b>Nur Dateien sichern (Datei-Backup)</b></big>
 
@@ -458,6 +459,9 @@ seinen eigenen Namen, seinen Windows-Schlüssel und auf Wunsch Region Schweiz un
 2.  Updates, Treiber und Programme installieren. Kein Microsoft-Konto, keine Domäne.
     Bei einer VM vorher einen Snapshot erstellen (Reiter <i>Snapshots</i> → <i>Snapshot erstellen …</i>,
     z. B. „vor Sysprep“) – so lässt sich der Stand vor Sysprep jederzeit zurückholen.
+    Desktop-Symbole anordnen, Programme an die Taskleiste heften, Explorer-Ansicht und Hintergrund einstellen –
+    einfach am Administrator im Audit-Modus, ohne Skripte. Das Tool übernimmt das beim Zurückspielen für alle
+    Benutzer (Häkchen <i>Einstellungen des Administrators übernehmen (Master)</i>). Kein weiteres Konto anlegen.
 3.  BitLocker ausschalten.
 4.  Sysprep starten (als Administrator):
     <tt>C:\\Windows\\System32\\Sysprep\\sysprep.exe /generalize /oobe /shutdown</tt>
@@ -472,7 +476,21 @@ Kapitel <i>Virtuelle Maschinen</i>).
     Es bekommt einen Stern ★.
 2.  Beim Zurückspielen ist dann <i>Danach anpassen</i> eingeschaltet:
     Das Gerät bekommt seinen Namen aus dem Tool und den Windows-Schlüssel.
+    Darunter <i>Einstellungen des Administrators übernehmen (Master)</i> (Standard an): Was im Audit-Modus am
+    Administrator eingerichtet wurde, wird Standard für jeden neuen Benutzer.
 3.  Beim ersten Start richtet sich Windows damit selbst ein.
+
+<b>Einstellungen des Administrators übernehmen</b>
+•  Windows kopiert beim ersten Start das Profil des Administrators ins Standardprofil (<tt>CopyProfile</tt>):
+    Anordnung der Desktop-Symbole, Explorer-Ansicht, Hintergrund und weitere Benutzereinstellungen.
+•  Die an die Taskleiste angehefteten Programme kopiert Windows dabei nicht. Das Tool liest sie aus dem Profil
+    des Administrators (gleiche Reihenfolge) und legt sie als Vorgabe für neue Benutzer ab. Das Log nennt sie:
+    „Einstellungen des Administrators werden übernommen – Taskleiste: VLC media player, Explorer …“.
+•  Gilt für jeden neuen Benutzer, also auch für ein zweites Konto. Ein normales Image (ohne Sysprep) bleibt
+    unverändert.
+•  Nicht übernommen: Kacheln im Startmenü und die Standard-Apps (welches Programm welche Dateien öffnet).
+    Unter Windows 11 die Taskleiste am Gerät prüfen.
+•  Für die Taskleiste ist ein aktueller Agent-Stick nötig; ein alter meldet im Log „Agent zu alt“.
 
 <b>Gut zu wissen:</b>
 •  Den Windows-Schlüssel liest das Tool aus dem BIOS. Ein eigener Schlüssel lässt sich im Gerätefenster
@@ -611,6 +629,8 @@ Mit der Automatisierung setzt das Tool ein Gerät selbst neu auf, sobald es mit 
     Ist die Zieldisk kleiner: <i>Image dafür anpassen</i> anhaken (Kapitel <i>Image zurückspielen</i>).
 4.  <b>Anpassen</b> (läuft immer, nur bei Master-Images): Gerätename und Windows-Schlüssel,
     auf Wunsch <i>Region Schweiz</i> und ein <i>Lokales Konto</i> (Passwort beim ersten Anmelden setzen).
+    <i>Einstellungen des Administrators übernehmen (Master)</i> (Standard an): Desktop, Explorer-Ansicht und
+    Taskleiste aus dem Audit-Modus für alle Benutzer (Kapitel <i>Master-Image</i>).
 5.  <b>Ordner senden</b> (Option): Software, Test Files, Content-Projekte.
 6.  <b>Abschluss</b>: Neustart, Herunterfahren oder nichts.
     Nur bei VMs: <i>Vorher Snapshot</i> (oben, Standard an) – direkt vor dem Start entsteht ein Snapshot der Disk

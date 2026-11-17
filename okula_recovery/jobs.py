@@ -261,7 +261,8 @@ def image_work(ip: str, key: bytes, port: int, disk: dict, nas_root: str, machin
 def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source_disk: str | None, verify: bool,
                  after: Callable[[Job, str | None, Exception | None], None], customize: dict | None = None,
                  adapt: dict | None = None):
-    """customize: {"unattend", "hostname"} – danach Master-Image anpassen (Name, Key …).
+    """customize: {"unattend", "hostname", "copy_profile"} – danach Master-Image anpassen (Name, Key …; Ä-040:
+    Einstellungen des Administrators, Taskleiste).
     adapt: {"target_size", "nas_root"} – Image zuerst für die kleinere Zieldisk anpassen (neues Image)."""
     def work(job: Job, jm: JobManager) -> str:
         def progress(ev: dict) -> None:
@@ -305,13 +306,19 @@ def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source
             agentclient.restore_image(ip, key, current["path"], target, progress, job.cancel, port, verify,
                                       current["disk"])
             if customize:
-                jm.log(job, "Anpassen: Gerätename und Windows-Schlüssel (Master-Image)")
-                for r in agentclient.customize(ip, key, target, customize["unattend"], customize["hostname"], port):
+                from okula_recovery import winunattend
+                copy_profile = bool(customize.get("copy_profile"))
+                jm.log(job, "Anpassen: Gerätename und Windows-Schlüssel"
+                       + (", Einstellungen des Administrators" if copy_profile else "") + " (Master-Image)")
+                for r in agentclient.customize(ip, key, target, customize["unattend"], customize["hostname"], port,
+                                               copy_profile=copy_profile):
                     jm.log(job, f"  {r['part']}: " + {
                         "unattend": "Windows (Master) – Name/Key gesetzt, richtet sich beim ersten Start ein",
                         "hostname": f"Linux – Hostname {customize['hostname']}",
                         "not_generalized": "Windows ist nicht mit Sysprep vorbereitet – Name und Key NICHT gesetzt",
                         "none": "nichts zu tun"}.get(r["action"], r.get("detail") or r["action"]))
+                    if copy_profile and r["action"] == "unattend":
+                        jm.log(job, f"  {r['part']}: {winunattend.taskbar_log(r)}")
         except Exception as e:
             after(job, None, e)
             raise

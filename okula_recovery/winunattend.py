@@ -49,6 +49,7 @@ class WinOptions:
     product_key: str = ""              # nur Direktinstallation: wird beim ersten Start gesetzt
     unsupported_hardware: bool = False  # Direktinstallation: Windows 11 trotz „nicht tauglich“ (am Gerät vermerken)
     audit_mode: bool = False           # I-038: für ein Master-Image – startet im Audit-Modus, kein Konto/Name/Key
+    copy_profile: bool = False         # Ä-040: nur Master-Image zurückspielen – CopyProfile in specialize
 
 
 # I-038: Text für Dialog, Log und Verlauf
@@ -186,7 +187,8 @@ def _audit_opts(opts: WinOptions) -> WinOptions:
     """I-038: Audit-Modus hat Vorrang – kein Konto, kein Computername, kein Schlüssel (gehören ins Zurückspielen)."""
     if not opts.audit_mode:
         return opts
-    return dataclasses.replace(opts, local_account="", password="", computer_name="", product_key="")
+    return dataclasses.replace(opts, local_account="", password="", computer_name="", product_key="",
+                               copy_profile=False)
 
 
 def build(opts: WinOptions, pe: bool = True, system: bool = True, launch: str | None = None,
@@ -220,6 +222,10 @@ def build(opts: WinOptions, pe: bool = True, system: bool = True, launch: str | 
     name = computer_name(opts.computer_name)
     if name:
         b.sub(shell, "ComputerName", name)
+    if opts.copy_profile:
+        # Ä-040: Profil des eingebauten Administrators (Audit-Modus) wird Standardprofil – Microsoft Learn,
+        # „CopyProfile“: gültig nur in specialize, läuft dort; Reihenfolge wie Windows SIM (alphabetisch)
+        b.sub(shell, "CopyProfile", "true")
     if opts.product_key:
         b.sub(shell, "ProductKey", opts.product_key)
     if opts.swiss_region:
@@ -313,13 +319,40 @@ def summary(opts: WinOptions) -> list[str]:
     return lines
 
 
-def master_unattend(computer: str, product_key: str = "", swiss_region: bool = True, account: str = "") -> str:
+def master_unattend(computer: str, product_key: str = "", swiss_region: bool = True, account: str = "",
+                    copy_profile: bool = False) -> str:
     """Antwortdatei für ein zurückgespieltes Master-Image (Sysprep): Windows/Panther/unattend.xml.
 
     Computername und Key immer; Region Schweiz und lokales Konto optional. Ohne Konto fragt Windows beim ersten
     Start nach einem Benutzer; mit Konto ohne Passwort wird das Passwort beim ersten Anmelden gesetzt (es wird
-    nirgends gespeichert)."""
+    nirgends gespeichert). copy_profile (Ä-040): Einstellungen des Administrators aus dem Audit-Modus werden
+    Standard für alle neuen Benutzer (CopyProfile in specialize)."""
     opts = WinOptions(bypass_requirements=False, local_account=account, password="", skip_privacy=True,
                       no_bitlocker=True, swiss_region=swiss_region, ui_language="", computer_name=computer,
-                      skip_network=bool(account), product_key=product_key)
+                      skip_network=bool(account), product_key=product_key, copy_profile=copy_profile)
     return build(opts, pe=False, system=True)
+
+
+# Ä-040: Häkchen im Dialog „Image zurückspielen“ (Danach anpassen) und in der Automatisierung (Schritt Anpassen)
+COPY_PROFILE_LABEL = "Einstellungen des Administrators übernehmen (Master)"
+COPY_PROFILE_TOOLTIP = ("Was im Audit-Modus am eingebauten Administrator eingerichtet wurde – Anordnung der "
+                        "Desktop-Symbole, Explorer-Ansicht, Hintergrund und weitere Benutzereinstellungen – wird "
+                        "Standard für alle neuen Benutzer (CopyProfile). Die an die Taskleiste angehefteten Symbole "
+                        "übernimmt das Tool zusätzlich. Wirkt nur bei Master-Images mit Sysprep; ein normales Image "
+                        "bleibt unverändert.")
+COPY_PROFILE_LOG = "Einstellungen des Administrators werden übernommen"
+
+
+def taskbar_log(result: dict) -> str:
+    """Logzeile zum Anpassen-Ergebnis eines generalisierten Windows bei eingeschalteter Option (Ä-040)."""
+    bar = result.get("taskbar")
+    if bar is None:
+        return (f"{COPY_PROFILE_LOG} – Taskleiste nicht übernommen: Agent zu alt (Agent-Stick bzw. Netzwerkstart "
+                "mit dem aktuellen Tool neu erstellen)")
+    if bar.get("error"):
+        return f"{COPY_PROFILE_LOG} – Taskleiste nicht übernommen: {bar['error']}"
+    if not bar.get("pins"):
+        return f"{COPY_PROFILE_LOG} – Taskleiste: {bar.get('reason') or 'keine angehefteten Symbole gefunden'}, " \
+               "unverändert"
+    extra = " (Reihenfolge nach Datum – Registrierung nicht lesbar)" if bar.get("order") == "date" else ""
+    return f"{COPY_PROFILE_LOG} – Taskleiste: {', '.join(bar['pins'])}{extra}"

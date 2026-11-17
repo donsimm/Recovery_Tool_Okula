@@ -143,6 +143,10 @@ class AutomationTab(Gtk.Box):
         r.pack_start(self.account, False, False, 0)
         r.pack_start(_hint("Passwort beim ersten Anmelden setzen (wird nirgends gespeichert)"), False, False, 0)
         s3.pack_start(r, False, False, 0)
+        self.copy_profile = Gtk.CheckButton(label=winunattend.COPY_PROFILE_LABEL)     # Ä-040
+        self.copy_profile.set_tooltip_text(winunattend.COPY_PROFILE_TOOLTIP)
+        self.copy_profile.connect("toggled", lambda _c: self._changed())
+        s3.pack_start(self.copy_profile, False, False, 0)
 
         s4 = section("4", "Ordner senden", "Option – auf den Desktop für alle Benutzer, ersetzt vorhandene Ordner")
         r = Gtk.Box(spacing=12)
@@ -217,6 +221,7 @@ class AutomationTab(Gtk.Box):
                 self.disk.set_active_id(s.disk_key)
             self.swiss.set_active(s.swiss)
             self.account.set_text(s.account)
+            self.copy_profile.set_active(s.copy_profile)
             self.software.set_active(s.software)
             self.testfiles.set_active(s.testfiles)
             for child in self.projects_box.get_children():
@@ -304,6 +309,7 @@ class AutomationTab(Gtk.Box):
             s.disk_key, s.disk_label = key, automation.disk_label(disk) if disk else s.disk_label
         s.swiss = self.swiss.get_active()
         s.account = self.account.get_text().strip()
+        s.copy_profile = self.copy_profile.get_active()
         s.software, s.testfiles = self.software.get_active(), self.testfiles.get_active()
         s.projects = [n for n, c in self.project_checks.items() if c.get_active()]
         s.finish = self.finish.get_active_id() or "reboot"

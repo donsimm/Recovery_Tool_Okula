@@ -52,6 +52,7 @@ class Settings:
     disk_label: str = ""             #    Anzeige, z. B. „Samsung SSD 256 GB (S6ABC123)“
     swiss: bool = True               # 3: Region Schweiz
     account: str = ""                #    lokales Konto (Passwort beim ersten Anmelden), leer = Windows fragt
+    copy_profile: bool = True        #    Einstellungen des Administrators übernehmen (Ä-040: CopyProfile, Taskleiste)
     software: bool = False           # 4: Ordner senden
     testfiles: bool = False
     projects: list[str] = field(default_factory=list)
@@ -82,8 +83,8 @@ class Settings:
 
 
 # Was eine Vorlage enthält (ohne gerätebezogene Werte wie Zieldisk und Zustand)
-TEMPLATE_FIELDS = ("rearm", "backup", "backup_mode", "image_mode", "image", "adapt_smaller", "source_disk", "swiss", "account", "software",
-                   "testfiles", "projects", "finish")
+TEMPLATE_FIELDS = ("rearm", "backup", "backup_mode", "image_mode", "image", "adapt_smaller", "source_disk", "swiss",
+                   "account", "copy_profile", "software", "testfiles", "projects", "finish")
 
 
 def settings(dev) -> Settings:
@@ -600,9 +601,11 @@ def automation_work(ip: str, key: bytes, port: int, dev, s: Settings, nas_root: 
                                       source_disk)
 
             # 3 Anpassen (immer)
-            begin(2, f"Name „{dev.name}“" + (", Windows-Schlüssel" if dev.windows_key[0] else ""))
-            xml = winunattend.master_unattend(dev.name, dev.windows_key[0], s.swiss, s.account)
-            for r in agentclient.customize(ip, key, target, xml, linuxsetup.hostname(dev.name), port):
+            begin(2, f"Name „{dev.name}“" + (", Windows-Schlüssel" if dev.windows_key[0] else "")
+                  + (", Einstellungen des Administrators" if s.copy_profile else ""))
+            xml = winunattend.master_unattend(dev.name, dev.windows_key[0], s.swiss, s.account, s.copy_profile)
+            for r in agentclient.customize(ip, key, target, xml, linuxsetup.hostname(dev.name), port,
+                                           copy_profile=s.copy_profile):
                 what = {"unattend": f"Windows (Master): Name {winunattend.computer_name(dev.name)}"
                                     + (", Key gesetzt" if dev.windows_key[0] else "") + " – richtet sich beim "
                                     "ersten Start ein",
@@ -611,6 +614,8 @@ def automation_work(ip: str, key: bytes, port: int, dev, s: Settings, nas_root: 
                                            "(Master-Image mit Sysprep erstellen)",
                         "none": "nichts zu tun", "error": r.get("detail", "Fehler")}.get(r["action"], r["action"])
                 jm.log(job, f"  {r['part']}: {what}")
+                if s.copy_profile and r["action"] == "unattend":
+                    jm.log(job, f"  {r['part']}: {winunattend.taskbar_log(r)}")
 
             # 4 Ordner senden
             if s.items:
