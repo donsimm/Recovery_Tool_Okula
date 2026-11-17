@@ -93,6 +93,8 @@ def plan(nas_root: str | Path, items: list[str]) -> Plan:
                 p.entries.append(("dir", str(PurePosixPath(item) / full.relative_to(src).as_posix()), 0, 0, None))
             dirnames[:] = [d for d in sorted(dirnames) if not (here / d).is_symlink()]
             for f in sorted(filenames):
+                if f.startswith(".") and f.endswith(".okula.json"):
+                    continue      # Beschreibung eines Programms (Software installieren, I-020) – bleibt auf dem NAS
                 full = here / f
                 try:
                     st = full.lstat()
