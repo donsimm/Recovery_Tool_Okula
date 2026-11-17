@@ -1,6 +1,6 @@
 # B-016 – Agent-Stick: GRUB meldet „file `/boot/grub/font.pf2' not found“
 
-Status: freigegeben · erstellt 17.11.2026 von der Projektleitung · Freigabe: Dominik 17.11. (nach I-020 starten)
+Status: umgesetzt (Commit 1acfed0) · erstellt 17.11.2026 von der Projektleitung · Freigabe: Dominik 17.11. (nach I-020 starten)
 
 ## Rolle und Einstieg
 
