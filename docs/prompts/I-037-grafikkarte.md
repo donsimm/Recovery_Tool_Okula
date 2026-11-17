@@ -1,6 +1,6 @@
 # I-037 – Grafikkarte im Inventar und im Gerätefenster
 
-Status: umgesetzt (Commit c7e64b9) · erstellt 17.11.2026 von der Projektleitung · Freigabe: Dominik 17.11.
+Status: abgenommen (Commit c7e64b9, Okuli 17.11.; gpus() am Server geprüft: RTX 2070 erkannt; Anzeige und Stick ungeprüft → TESTS.md 21)
 
 ## Rolle und Einstieg
 
