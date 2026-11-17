@@ -1,6 +1,6 @@
 # I-039 – Windows anpassen … (Einstellungen nach der Installation)
 
-Status: freigegeben · erstellt 17.11.2026 von der Projektleitung · Freigabe: Dominik 17.11.
+Status: umgesetzt (Commit 7442001) · erstellt 17.11.2026 von der Projektleitung · Freigabe: Dominik 17.11.
 
 ## Rolle und Einstieg
 
