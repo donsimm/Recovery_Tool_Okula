@@ -416,7 +416,7 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten und **Agent-Stick bzw.
 ### 21. Grafikkarte im Inventar (I-037)
 Nach `git pull && sudo ./install.sh` das Tool neu starten und **Agent-Stick bzw. Netzwerkstart neu erstellen**
 (Agent geändert, neu mit `pciutils`). Grösse des Agent-Teils vorher/nachher notieren (erwartet: weniger als 1 MB mehr).
-- [ ] CompactPlayer (Master, NVIDIA GT 740): vom neuen Stick starten, *Inventar neu einlesen* → Übersicht zeigt
+- [x] ✔ 17.11. (Dominik: Grafikkarte wird gelesen) CompactPlayer (Master, NVIDIA GT 740): vom neuen Stick starten, *Inventar neu einlesen* → Übersicht zeigt
       „Grafikkarte 1“ (Intel-Onboard, falls im BIOS aktiv) und „Grafikkarte 2“ „NVIDIA GeForce GT 740 (GK107)
       (0000:01:00.0)“ bzw. bei nur einer Karte „Grafikkarte“; HDMI-Audio der Karte erscheint **nicht**; Tooltip
       zeigt PCI-Adresse, IDs `10de:0fc8`, Hersteller der Karte und Treiber (z. B. nouveau)

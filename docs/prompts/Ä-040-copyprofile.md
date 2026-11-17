@@ -1,6 +1,6 @@
 # Ä-040 – Master-Image: Einstellungen aus dem Audit-Modus übernehmen (CopyProfile, Taskleiste)
 
-Status: umgesetzt (Commit abdcb51) · erstellt 17.11.2026 von der Projektleitung · Freigabe: Dominik 17.11.
+Status: abgenommen (Commit abdcb51, Okuli 17.11.; am Gerät ungeprüft → TESTS.md 22)
 
 ## Rolle und Einstieg
 
