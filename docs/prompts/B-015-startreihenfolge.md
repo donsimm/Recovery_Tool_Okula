@@ -1,6 +1,6 @@
 # B-015 – Direktinstallation: Gerät startet nach der Installation wieder die Setup-Partition
 
-Status: freigegeben · erstellt 17.11.2026 von der Projektleitung · Freigabe: Dominik 17.11. (Nachtrag zu B-014)
+Status: umgesetzt (Commit fecfc81) · erstellt 17.11.2026 von der Projektleitung · Freigabe: Dominik 17.11. (Nachtrag zu B-014)
 
 ## Rolle und Einstieg
 
