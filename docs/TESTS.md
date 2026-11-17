@@ -384,3 +384,9 @@ Windows ganz heruntergefahren, dann mit dem Agent starten.
       ab – Protokoll muss „Ende“ zeigen)
 - [ ] Alter Agent (Stick vor I-039) → Meldung „Agent zu alt …“
 - [ ] DEMO-PC: *Windows anpassen …* → Auftrag nach wenigen Sekunden „fertig“
+
+### 20. Direktinstallation auf Disk mit altem Windows (B-014)
+Nach der Korrektur von B-014. Am CompactPlayer 1 (bzw. VM mit installiertem, hart ausgeschaltetem Windows).
+- [ ] *OS installieren …* auf eine Disk, auf der schon ein Windows aus einer früheren Direktinstallation liegt →
+      `install.cmd` findet die Windows-Partition, Installation läuft ohne Eingriff durch
+- [ ] Zweiter Versuch direkt hintereinander (ohne Windows zu starten) → ebenfalls ohne Fehler
