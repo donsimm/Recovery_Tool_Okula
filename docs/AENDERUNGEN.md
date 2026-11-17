@@ -17,7 +17,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 |---|---|---|---|
 | 🐞 Bugs | 2 | 0 | 0 |
 | 🔧 Änderungen | 7 | 0 | 0 |
-| 💡 Ideen | 23 | 0 | 0 |
+| 💡 Ideen | 24 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 Erledigt 31.10. (Reihenfolge): Ä-014 ✔ → Ä-011 ✔ → I-024 ✔ → Ä-002 ✔ → I-025 ✔ → I-013 ✔ – **ein neuer Agent-Stick** (Version 0.2.0, für I-024 und Ä-002) und `sudo ./install.sh` (Garantie-Helfer, python3-reportlab).
@@ -71,12 +71,19 @@ Vorschlag Reihenfolge (Analyse 31.10.): ~~Ä-007~~ ✔ → ~~B-012~~ ✔ → **I
 | I-035 | ⚪ | offen | Okuli | **Hinweis bei VM-Disk grösser als freier Platz:** Ä-037 bietet „VM-Disk auf 1001 GB vergrössern“ an, obwohl der Server nur 889 GB frei hat (Befund 10.11., Probe-VM). Zum Zurückspielen reicht es (qcow2 wächst nur mit den belegten Daten), füllt sich die VM später, läuft der Server voll. Vorschlag: Hinweis „⚠ Disk grösser als der freie Platz auf dem Server (… GB)“ im Prüftext, ohne zu sperren |
 | I-036 | ⚪ | offen | Okuli | **Hardware-Fehler (MCE/WHEA) anzeigen:** Der Agent liest Kernel-Meldungen `mce: [Hardware Error]` (bzw. `rasdaemon`) und meldet sie im Tool (Gerätefenster, Verlauf, Hinweis in der Liste). Anlass B-010 (CPU 3 meldet laufend Fehler). Passt zu I-033 Hardware-Test |
 | I-037 | ⚪ | offen | Dominik | **Grafikkarte im Inventar und im Gerätefenster (Übersicht):** Heute erfasst das Inventar keine Grafikkarte (`inventory.py`: dmi, cpu, memory, batteries, network, disks, systems). Agent liest Grafikkarten aus `/sys/bus/pci/devices/*/class` (0x03xxxx) bzw. `lspci -mm` (Hersteller, Modell, ggf. Speicher), Anzeige in der Übersicht; neuer Agent-Stick nötig. Hilft auch bei VM-Zwilling/Treibern | 11.11. (Cockpit-Idee ID-0002) |
+| I-039 | 🟡 | offen | Dominik | **Windows anpassen … (Einstellungen nach der Installation, wie *Ordner senden*):** Dialog mit Gruppen und Häkchen (Apps, Updates, Betrieb, Datenschutz, Explorer und Desktop, Dienste, automatische Anmeldung), vorgegebene Vorlagen „Player“ und „Laptop“. Agent legt ein einmaliges Startskript auf die Windows-Partition; Windows führt es beim nächsten Start als SYSTEM aus, Protokoll unter `C:\Windows\Temp`. Optionen aus dem TGF-TuningPack 4.3 ausgewählt (riskante Punkte bewusst nicht, siehe Prompt). Prompt `docs/prompts/I-039-windows-anpassen.md` | 17.11. |
 
 Umgesetzte Ideen: Windows-Master-Image mit Sysprep ([MASTER-IMAGE.md](MASTER-IMAGE.md)), Ordner an Geräte senden
 ([ORDNER-SENDEN.md](ORDNER-SENDEN.md)), Automatisierung ([AUTOMATISIERUNG.md](AUTOMATISIERUNG.md)),
 Gerätename = Name im Tool.
 
 ## 📌 Entscheidungen
+
+- **Windows anpassen (I-039, Entscheid Dominik 17.11.2026):** eigene Funktion wie *Ordner senden* (später als Häkchen
+  in *Danach anpassen*, Direktinstallation und Automatisierung); Umsetzung über ein einmaliges Startskript beim nächsten
+  Windows-Start; Vorlagen „Player“ und „Laptop“ fest vorgegeben; automatische Anmeldung gehört dazu. Bewusst **nicht**
+  aus dem TuningPack: Utilman durch CMD ersetzen, Sicherheitscenter/Defender aus, Microsoft-Server sperren,
+  Zeitsynchronisation aus, Admin-Freigaben aus, Gaming-/TCP-Tweaks, Entwicklermodus, Core Parking.
 
 - **Rückfrage beim Einschalten der Automatisierung (Ä-007, Entscheid Dominik 10.11.2026, Variante B):** bei jedem
   Einschalten von Hand (Häkchen *Auto*, Schalter im Reiter), egal ob verbunden. Keine Rückfrage beim Wieder-Einschalten
