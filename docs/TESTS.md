@@ -65,6 +65,7 @@ bestätigt.
 | Demo ohne NAS: ganzer Vorführablauf (Image, Prüfen ✔/✖, Zurückspielen, Backup, Ordner senden, Automatisierung) ohne NAS; mit NAS bleibt das NAS unverändert; Sperren Demo ↔ echt; Zurücksetzen | A, V | echter Demo-Prozess, Snapshot des NAS-Ordners |
 | Gerätefenster passt sich der Übersicht an (1920×1080 ganz sichtbar, 1366×768 begrenzt) | A, V | |
 | Garantie-Abfrage: Dell/HP/Lenovo-Antworten, Farben grün/gelb/rot, Schlüssel 0600 nur beim Root-Helfer | A, V | gemockte Antworten – Hersteller-Server waren gesperrt |
+| Ä-043 Installer-Erkennung: Typ, Parameter, Name/Version/Hersteller der 37 Installer in `Verteilen\Software` (nur gelesen) | A | 18.11.2026, Umsetzungs-Agent; Oberfläche (GTK) ohne Bildschirm nicht geprüft |
 
 ## Offen – am realen System testen
 
@@ -535,3 +536,27 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (**kein** neuer Agent-
       `C:\ProgramData\Okula\Software\vlc-3.0.24\…`, Installation wie in Abschnitt 23
 - [ ] **Demo:** Demo-Gerät an, *Extras → Software-Bibliothek …* → Text oben nennt „Ablage: Demo (lokal, nicht auf dem NAS)“, drei
       Beispiel-Einträge; laden/löschen dort ändert das NAS nicht
+
+**Installer-Typen erkennen (Ä-043)** – nach `git pull && sudo ./install.sh` das Tool neu starten (**kein** neuer
+Agent-Stick nötig).
+- [ ] **Araneo, schon geladen:** Eintrag `AraneoInstaller` markieren → *Neu erkennen* (ohne Rückfrage, wenn nicht von Hand
+      geändert) → Zeile „Araneo · 1.10.2 · Luminex Network Intelligence · Qt Installer Framework · `install --root
+      "C:\Program Files\Araneo" --accept-licenses --accept-messages --default-answer --confirm-command` · 0 · bereit“
+- [ ] **Araneo an der VM:** Windows-VM zurückspielen mit *Danach anpassen* und Software „Araneo“ → nach dem ersten Start
+      `C:\Program Files\Araneo` vorhanden, Araneo im Startmenü; `C:\Windows\Temp\okula-software.log`: „ok Araneo 1.10.2:
+      Rückgabewert 0“, kein Fenster blieb offen
+- [ ] **Weiterer neuer Typ an der VM:** z. B. `Event Master Toolset Rev 10.2.0.4128 Installer.exe` (InstallBuilder,
+      `--mode unattended --unattendedmodeui none`) oder `Kards-1.3.1-windows-x64.exe` (electron-builder, `/S /allusers` –
+      danach für einen normalen Benutzer im Startmenü sichtbar) → im Protokoll „ok …“
+- [ ] **Neu erkennen mit Änderung von Hand:** Parameter eines Eintrags ändern, dann *Neu erkennen* → Rückfrage
+      „… neu erkennen?“; *Abbrechen* lässt die Parameter, *Überschreiben* setzt die erkannten
+- [ ] Rechtsklick auf eine Zeile → Menü *Bearbeiten …*, *Neu erkennen*, *Löschen*
+- [ ] **Hersteller:** Spalte *Hersteller* gefüllt (z. B. MSI `RODECaster App (2.0.111).msi` → „RØDE Microphones“), in der
+      Zelle änderbar
+- [ ] **Parameter fehlt mit Hinweis:** `epson665751eu.exe` laden → Typ „InstallShield (InstallScript)“, unter der Liste
+      „Was tun: InstallScript braucht eine Antwortdatei …“; `Firefox Installer.exe` → „7-Zip-SFX (selbstentpackend)“
+      mit Hinweis; unbekannter Installer (z. B. `OKULA-Monitor-Setup.exe`) → „unbekannt“ mit Hinweis Herstellerdoku/VM
+- [ ] **MSIX/MSU:** eine `.msix` bzw. `.msixbundle` (z. B. aus dem Microsoft Store für Unternehmen) und ein `.msu`
+      (Windows-Update aus dem Microsoft-Update-Katalog) laden → „bereit“; an der VM installiert (App für einen neuen
+      Benutzer vorhanden bzw. Update unter *Installierte Updates*), Protokoll „ok …“ (MSU schon installiert →
+      Rückgabewert 2359302 gilt als ok)

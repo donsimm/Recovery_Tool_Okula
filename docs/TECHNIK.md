@@ -1051,7 +1051,8 @@ Programme aus der **Software-Bibliothek** des Tools werden auf dem Gerät **stil
 ersten Windows-Start als SYSTEM. Quelle sind feste, getestete Versionen (bewusst nicht winget, Entscheid 17.11.).
 Bis Ä-041 (18.11.) war die Quelle `NAS/Verteilen/Software`; dieser Ordner gehört jetzt nur noch zu *Ordner senden*
 (Werkzeug-Ordner für Geräte unterwegs) und wird vom Katalog weder gelesen noch beschrieben.
-Module: `software.py` (Bibliothek, Erkennung, Skript – ohne GTK), `software_ui.py` (Liste *Software installieren*,
+Module: `software.py` (Bibliothek, Erkennung, Skript – ohne GTK), `installerinfo.py` (Leser für PE, Versionsinfo,
+Qt-Ressourcen, NSIS-Kopf, Compound File/MSI, MSIX – Ä-043), `software_ui.py` (Liste *Software installieren*,
 Fenster *Software-Bibliothek*), Agent-Befehl `software` (`deploy.software`), `jobs.send_software`/`software_plan`,
 Direktinstallation in `winsetup.py`.
 
@@ -1060,13 +1061,15 @@ beim ersten Laden angelegt; im Demo-Speicher entsprechend `…/demo/Software-Bib
 `<key>-<version>` (z. B. `vlc-3.0.24`, ohne Version nur `<key>`; belegt → `-2`, `-3` …) mit dem Installer bzw. dem
 Inhalt des geladenen Ordners und der Beschreibung `.okula.json` (`format: okula-software`, Felder wie I-020):
 Programmname, Version, Schlüssel für neue Versionen, erkannter und gewählter Installer-Typ, Parameter, erfolgreiche
-Rückgabewerte (Standard 0, 3010), Art (`install`/`copy`/`manual`), Installer relativ zum Eintrag, Grösse, Zeit und
-SHA-256 des Installers; neu `source` (`file`/`folder`), `content_sha256` (Datei: deren SHA-256; Ordner: SHA-256 über
+Rückgabewerte (je Typ, sonst 0, 3010), Art (`install`/`copy`/`manual`), Installer relativ zum Eintrag, Grösse, Zeit und
+SHA-256 des Installers; seit Ä-043 `publisher` (Hersteller), `detected_args` (Vorschlag der Erkennung), `hint`
+(Hinweis bei „Parameter fehlt“), `redetected` (Zeit von *Neu erkennen*); neu `source` (`file`/`folder`), `content_sha256` (Datei: deren SHA-256; Ordner: SHA-256 über
 alle relativen Pfade und deren SHA-256), `loaded_from`, `loaded`. Der Name des Eintrags ist die Auswahl (gespeichert in
 Automatisierung/Vorlagen) und der Ordnername am Gerät. Ein von Hand hineinkopierter Ordner ohne Beschreibung erhält
 beim Lesen eine neue (als Ordner-Eintrag). Ordner `.…partial` und Links werden übersprungen.
 
-**Laden** (`software.inspect` → `software.load`): Datei (`.exe`/`.msi`) oder Ordner prüfen (Umfang, Namen wie beim
+**Laden** (`software.inspect` → `software.load`): Datei (`software.INSTALLER_EXT`: `.exe`, `.msi`, seit Ä-043 auch
+`.msp`, `.msu`, `.msix`, `.msixbundle`, `.appx`, `.appxbundle`) oder Ordner prüfen (Umfang, Namen wie beim
 Hochladen in den Reiter *Dateien*, Installer-Kandidaten; Links/Sonderdateien übersprungen; nichts aus der Bibliothek
 selbst), freien Platz prüfen (Reserve 1 GB), dann nach `Software-Bibliothek/.<zufällig>.partial/` kopieren – Fortschritt
 je 8 MB, Abbruch jederzeit, SHA-256 beim Kopieren. Gleicher `content_sha256` schon in der Bibliothek → Kopie löschen,
@@ -1086,9 +1089,12 @@ wird automatisch in die Bibliothek übernommen.
 **Fenster** *Extras → Software-Bibliothek …* (`SoftwareLibraryWindow`): oben *Ins Tool laden …* (Dateiwahl mit Filter
 .exe/.msi, mehrere möglich), *Ordner laden …* und Ziehen und Ablegen aufs Fenster (Warteschlange, nacheinander);
 Fortschritt mit *Abbrechen* (Schliessen während des Ladens = Abbrechen; das Hauptfenster fragt beim Beenden wie bei
-Kopien aufs NAS). Darunter die Liste (Programm, Version, Typ, Parameter, Rückgabewerte, Status, Grösse; sortierbar,
-Suchfeld): Programm, Version, Parameter und Rückgabewerte direkt in der Zelle (`software.update`), Art und Installer
-über *Bearbeiten …* (`SoftwareEditDialog` von I-020), *Löschen*/Entf mit Rückfrage. Der frühere Knopf *Software …* im
+Kopien aufs NAS). Darunter die Liste (Programm, Version, Hersteller, Typ, Parameter, Rückgabewerte, Status, Grösse;
+sortierbar, Suchfeld): Programm, Version, Hersteller, Parameter und Rückgabewerte direkt in der Zelle
+(`software.update`), Art und Installer über *Bearbeiten …* (`SoftwareEditDialog` von I-020, mit Hersteller und dem
+erkannten Typ samt Vorschlag), *Neu erkennen* (Knopf und Rechtsklick-Menü, Ä-043), *Löschen*/Entf mit Rückfrage.
+Unter der Liste die Angaben des markierten Eintrags (`software_ui.detail_markup`: Typ, Hersteller, Installer, Status,
+bei „Parameter fehlt“ „Was tun: …“). Der frühere Knopf *Software …* im
 Reiter *Dateien* ist entfallen. Läuft das Demo-Gerät, öffnet das Fenster die Bibliothek im Demo-Speicher.
 
 **Sammelordner** („System Tools“): als Ordner geladen ist er ein Eintrag. Für Ordner mit vielen kleinen Werkzeugen
@@ -1097,21 +1103,81 @@ Begründung: eine Zeile je Ordner hält die Liste kurz, Werkzeuge sind meist por
 installiert. Einzelne Dateien eines Sammelordners zu wählen, wurde verworfen (Baumansicht in drei Dialogen, unklare
 Reihenfolge).
 
-**Erkennung ohne Ausführen** (`software.detect`, erste 8 MB der Datei):
+**Erkennung ohne Ausführen** (Ä-043; `software.detect` → `_detect_blob`, Typen in `software.KINDS`, Leser in
+`installerinfo.py`, ohne neue Abhängigkeit). Gelesen werden nur Teile der Datei (`installerinfo.Blob`): die ersten
+8 MB, der PE-Kopf mit Abschnitten und Datenverzeichnissen, die Ressourcen Versionsinfo (RT_VERSION) und Manifest
+(RT_MANIFEST) – auch wenn sie hinter 8 MB liegen –, die ersten 64 kB der **angehängten Daten** (Overlay = hinter dem
+letzten Abschnitt, ohne Authenticode-Signatur) und je nach Typ gezielt mehr (Qt-Ressourcen bis 8 MB, Abschnitt
+`.rdata`, entpackter NSIS-Kopf bis 4 MB, MSI-Tabellen bis 16 MB). Kaputte Dateien ergeben „unbekannt“, nie einen
+Fehler. Reihenfolge: Endung/Kopf (MSP, MSU, MSIX/APPX, MSI) → `.wixburn` → Qt IFW → Inno → NSIS → InstallBuilder →
+InstallShield → übrige Kennungen → Squirrel → SFX-Archive → unbekannt.
 
-| Typ | Kennung | Parameter | Quelle |
+| Typ | Kennung | Parameter (Rückgabewerte „ok“) | Quelle |
 |---|---|---|---|
-| MSI | Endung `.msi` bzw. OLE-Kopf `D0 CF 11 E0` | `msiexec /i "<Datei>" /qn /norestart` | Microsoft Learn „msiexec“, „Standard Installer Command-Line Options“ |
-| NSIS | „Nullsoft.NSIS“ (Manifest), „NullsoftInst“ (Kopf der Daten) | `/S` | NSIS-Handbuch 3.2.1 „Common Options“ / 4.12 „Silent Installers“ |
-| Inno Setup | „Inno Setup Setup Data“, „JR.Inno.Setup“, „Inno Setup“ (Versionsinfo) | `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-` | Inno-Setup-Hilfe „Setup Command Line Parameters“ |
-| InstallShield | „InstallShield“ (ASCII/UTF-16) | `/s /v"/qn /norestart"` | Revenera „Setup.exe and Update.exe Command-Line Parameters“ |
-| WiX Burn | PE-Abschnitt `.wixburn` | `/quiet /norestart` | WiX Toolset „Burn Command Line“ |
-| Squirrel | „Squirrel“ | – („nur von Hand“) | Squirrel.Windows: installiert nach `%LocalAppData%` des angemeldeten Benutzers – als SYSTEM nutzlos |
+| MSI | Endung `.msi` bzw. Compound-Kopf `D0 CF 11 E0 A1 B1 1A E1` | `msiexec /i "<Datei>" /qn /norestart` (0, 1641, 3010) | Microsoft Learn „msiexec“, „Standard Installer Command-Line Options“ ¹ |
+| MSP (Patch) | Endung `.msp` | `msiexec /p "<Datei>" /qn /norestart` (0, 1641, 3010) | Microsoft Learn „msiexec“ ¹ |
+| MSU (Windows-Update) | Endung `.msu` bzw. Cabinet-Kopf `MSCF` | `wusa.exe "<Datei>" /quiet /norestart` (0, 3010, 2359302 = 0x240006 schon installiert) | Microsoft Learn „wusa.exe“ ¹ |
+| MSIX/APPX, Bündel | Endung `.msix`/`.appx`/`.msixbundle`/`.appxbundle` bzw. ZIP mit `AppxManifest.xml` / `AppxMetadata/AppxBundleManifest.xml` | `Add-AppxProvisionedPackage -Online -PackagePath "<Datei>" -SkipLicense` (kein Rückgabewert; Fehler = Ausnahme) | Microsoft Learn „Add-AppxProvisionedPackage“ ¹ |
+| NSIS | Manifest „Nullsoft.NSIS.exehead“, „NullsoftInst“ am Anfang der angehängten Daten | `/S` (0, 3010) | NSIS-Handbuch 3.2.1 „Common Options“ / 4.12 „Silent Installers“ ¹ |
+| electron-builder (NSIS) | NSIS, im entpackten Skript `app-64.7z`/`app-32.7z`/`app-arm64.7z` | `/S /allusers` – sonst nur für das Konto SYSTEM installiert (0, 3010) | electron-builder „NSIS“ (per-machine, `/allusers`) ¹; an Companion, Kards, Reolink geprüft |
+| Inno Setup | Manifest „JR.Inno.Setup“, „Inno Setup Setup Data“, „Inno Setup“ | `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-` (0, 3010) | Inno-Setup-Hilfe „Setup Command Line Parameters“ ¹ |
+| InstallShield (MSI) | „InstallShield“, „ISSetup.dll“, „ISSetupStream“ ohne `setup.inx` | `/s /v"/qn /norestart"` (0, 1641, 3010) | Revenera „Setup.exe and Update.exe Command-Line Parameters“ ¹ |
+| InstallShield (InstallScript) | wie oben, dazu `setup.inx` (übersetztes InstallScript) | – Parameter fehlt: Antwortdatei an einer VM aufzeichnen (`setup.exe /r /f1"C:\setup.iss"`), Installer und `setup.iss` als Ordner laden, `/s /f1"{ordner}\setup.iss"` | Revenera (wie oben) ¹; an `epson665751eu.exe` geprüft |
+| WiX Burn | PE-Abschnitt `.wixburn` | `/quiet /norestart` (0, 1641, 3010) | WiX Toolset „Burn Command Line“ ¹ |
+| Microsoft-Bootstrapper | `.wixburn` und CompanyName „Microsoft …“ (VC++ Redistributable, .NET-Runtime) | `/install /quiet /norestart` (0, 1638 = neuere Version da, 1641, 3010) | Microsoft Learn „Visual C++ Redistributable“ (Befehlszeile) ¹ |
+| Qt Installer Framework | angehängte Qt-Ressourcen („qres“) mit `config.xml` (`<Installer>`) bzw. „Built with Qt Installer Framework x.y.z“ (Kopf oder `.rdata`) | ab 4.0: `install --root "<TargetDir>" --accept-licenses --accept-messages --default-answer --confirm-command` (0); `<TargetDir>`: `@ApplicationsDirX64@` → `C:\Program Files`, `@ApplicationsDirX86@` → `C:\Program Files (x86)`, `@ApplicationsDir@` je nach 32/64 Bit, `@RootDir@` → `C:\`; andere Variablen (z. B. `@HomeDir@`) bzw. vor 4.0 (nur mit Steuerskript `--script`) → Parameter fehlt | Qt-IFW-Doku „Using Command Line Interface“, „Configuration File“ ¹; an `AraneoInstaller.exe` (IFW 4.6.1) geprüft |
+| Advanced Installer | „Caphyon“, „Advanced Installer“, „AI_SETUPEXEPATH“ | `/exenoui /qn /norestart` (0, 1641, 3010) | Advanced Installer „EXE setup file command line“ ¹ |
+| InstallAware | „InstallAware“ | `/s` (0, 3010) | InstallAware „Command Line Parameters“ ¹ |
+| Wise Installation | „WiseMain“, „Wise Installation“, „Wise Solutions“ | `/s` (0, 3010) | Wise-Handbuch ¹ |
+| InstallBuilder (BitRock/VMware) | Manifest „BitRock Installer“, „InstallBuilder“ | `--mode unattended --unattendedmodeui none` (0, 3010) | InstallBuilder-Handbuch „Unattended Installations“ ¹; an Barco Event Master Toolset geprüft |
+| Setup Factory | „Setup Factory“, „Indigo Rose“, „irsetup.exe“ | – Parameter fehlt, Hinweis „meist /S“ | ¹ (Parameter je nach Version unsicher) |
+| Clickteam Install Creator | „Clickteam“, „Install Creator“ | – Parameter fehlt, Hinweis „/S nur Pro-Version“ | ¹ |
+| Smart Install Maker | „Smart Install Maker“ | – Parameter fehlt, Hinweis „vermutlich /s“ | ¹ |
+| Actual Installer | „Actual Installer“ | – Parameter fehlt, Hinweis „vermutlich /S“ | ¹ |
+| CreateInstall | „CreateInstall“ | – Parameter fehlt, Hinweis „vermutlich -silent“ | ¹ |
+| Ghost Installer | „Ghost Installer“, „GhostInstaller“, „Ethalone“ | – Parameter fehlt, Hinweis „vermutlich -s“ | ¹ |
+| Squirrel | „Squirrel“ bzw. Versionsinfo `SquirrelAwareVersion` | – „nur von Hand“ | Squirrel.Windows: installiert nach `%LocalAppData%` des angemeldeten Benutzers – als SYSTEM nutzlos |
+| IExpress | Versionsinfo `OriginalFilename`/`InternalName` „WEXTRACT“, „IExpress“ | – Parameter fehlt, Hinweis `/Q` (still nur, wenn das enthaltene Programm still läuft) | ¹ |
+| 7-Zip-SFX | angehängte Daten mit `;!@Install@!UTF-8!` bzw. `7z BC AF 27 1C`, Manifest „7-Zip Self-extracting“ | – Parameter fehlt: Inhalt prüfen, entpackten Ordner laden | ¹; an `Firefox Installer.exe` geprüft |
+| WinRAR-SFX | `Rar!\x1a\x07` in den angehängten Daten, „WinRAR SFX“ | – Parameter fehlt (wie 7-Zip-SFX) | ¹ |
+| unbekannt | – | – Parameter fehlt: Herstellerdoku („silent install“, „unattended“), an einer VM testen | – |
 
-Unbekannt → **„Parameter fehlt“**, nicht wählbar. Programmname und Version kommen aus der Versionsinfo
-(VS_VERSIONINFO, `ProductName`/`ProductVersion`), sonst aus dem Dateinamen. Reine InstallScript-Projekte von
-InstallShield brauchen eine Antwortdatei (`/s /f1"{ordner}\setup.iss"`) – `{ordner}` setzt das Skript ein. Die
-Erkennung beruht auf den Herstellerangaben (Stand Wissen des Umsetzungs-Agenten, am 17.11. nicht neu abgerufen).
+¹ **Quelle nicht abgerufen:** Angabe aus dem Gedächtnis des Umsetzungs-Agenten (Ä-043, 18.11.2026), nicht neu in der
+Herstellerdoku nachgelesen (kein Internetzugriff im Auftrag). Darum bleiben Typen, deren Parameter nicht sicher
+belegbar sind, „Parameter fehlt“ und nennen den vermuteten Parameter nur im Hinweis – ein falscher Parameter liesse
+den Installer am Gerät auf eine Eingabe warten (Abbruch erst nach 60 min). Die Kennungen und das Ergebnis sind an den
+37 Installern in `NAS/Verteilen/Software` geprüft (Stand 18.11.2026).
+
+**Name, Version, Hersteller** (`publisher`, neu in der Beschreibung): Windows-Programme aus der Versionsinfo
+(VS_VERSIONINFO über das Ressourcenverzeichnis, `installerinfo.parse_version_resource`: `ProductName` bzw.
+`FileDescription`, `ProductVersion` bzw. `FileVersion` bzw. die Zahlen aus VS_FIXEDFILEINFO, `CompanyName`); ohne
+Ressourcenverzeichnis wie bisher Suche im Kopf. NSIS ohne Versionsinfo: feste Texte nach `DisplayName`,
+`DisplayVersion`, `Publisher` im entpackten Skript (Registry der Deinstallation; nur plausible Werte – kein
+Registry-Name wie „NoModify“, Version mit Punkt, keine Variablen). MSI: Tabelle `Property` (`ProductName`,
+`ProductVersion`, `Manufacturer`) mit eigenem Leser für Compound Files ([MS-CFB]: Header, DIFAT, FAT, Mini-FAT,
+Verzeichnis) und MSI-Tabellen (Namen der Datenströme kodiert, `_StringPool`/`_StringData`, Codepage, 2- bzw.
+3-Byte-Verweise, Spalten hintereinander; Aufbau wie Wine `msi/table.c`, `msi/string.c` ¹) – `msiinfo`/`msidump` werden
+nicht gebraucht. Qt IFW: `config.xml` (`Name`, `Version`, `Publisher`, `TargetDir`) und `Updates.xml`
+(`ApplicationName`, `ApplicationVersion`) aus den angehängten Qt-Ressourcen (rcc Version 1–3, zlib-gepackte Einträge
+entpackt; zstd nicht). MSIX/APPX: `Identity` (`Name`, `Version`, `Publisher` → CN/O) und `Properties`
+(`DisplayName`, `PublisherDisplayName`). MSU: „Windows-Update“ und KB-Nummer aus dem Dateinamen. Vorrang: Name aus der
+Datei vor dem Datei-/Ordnernamen; Version aus dem Dateinamen, ausser bei MSI, MSP, MSU, MSIX und Qt IFW (Datei
+massgebend) oder wenn der Dateiname nur eine Zahl ohne Punkt hat (`companion-satellite-x64-701-…` → 3.3.1 statt 701).
+„Setup“/„Installer“ am Ende des Namens fallen weg (`AraneoInstaller` → `Araneo`, `OBS Studio Installer` → `OBS Studio`,
+`clean_program`); der Schlüssel für neue Versionen (`key`) bleibt unverändert.
+
+**Hinweis bei „Parameter fehlt“** (`hint` in der Beschreibung, `Entry.hint`): je Typ aus `KINDS` bzw. bei Qt IFW
+genauer (Version des Frameworks, Zielordner); bei „unbekannt“ der Verweis auf Herstellerdoku und VM-Test. Er steht
+im Fenster unter der Liste („Was tun:“), im Tooltip der Zeile und im Dialog *Bearbeiten …* und verschwindet, sobald
+Parameter eingetragen sind. Ältere Einträge ohne `hint` erhalten den Hinweis ihres Typs.
+
+**Neu erkennen** (`software.redetect`, Knopf und Kontextmenü im Fenster): wendet die Erkennung erneut auf den Installer
+eines Eintrags an – wie beim Laden (`_fresh_meta`), mit dem ursprünglichen Datei-/Ordnernamen aus `loaded_from`.
+Ordnername, Schlüssel (`key`, gespeicherte Auswahlen), Installer im Ordner, `content_sha256`, Herkunft bleiben;
+`redetected` hält die Zeit fest. Findet die Erkennung keine Parameter, übernimmt der Eintrag sie wie beim Laden von
+einer anderen Version (`_adopt`). Wurde der Eintrag von Hand geändert (`edited`), wirft `redetect` `EditedError`; das
+Fenster fragt dann („… neu erkennen?“, *Überschreiben*) und ruft mit `overwrite_edited=True` auf – danach ist
+`edited` wieder `false`.
 
 **Neue Version** (`split_name`, `_adopt`): Schlüssel = Datei-/Ordnername ohne Version, Architektur und Füllwörter
 (`vlc-3.0.24-win64.exe` → `vlc`, `AcroRdrDC2400221005_de_DE.exe` → `acrordrdc-de-de`), zusätzlich der Programmname.
@@ -1150,7 +1216,10 @@ bei einer einzelnen Datei; die Beschreibung bleibt auf dem NAS) und das Startskr
    höchstens **9 min** (`START_WAIT` 540 s) auf das Ende – kurze Installationen sind vor der Anmeldung fertig.
    Lässt sich die Aufgabe nicht anlegen, installiert das Startskript direkt (Protokoll nennt die 10-min-Grenze).
 2. `-Mode Install` (Aufgabe): Mutex `Global\OkulaSoftware`; Programme in der gewählten Reihenfolge,
-   `Start-Process -WindowStyle Hidden -PassThru`, Arbeitsordner = Ordner des Installers, MSI über `msiexec /i`;
+   `Start-Process -WindowStyle Hidden -PassThru`, Arbeitsordner = Ordner des Installers, MSI über `msiexec /i`,
+   MSP über `msiexec /p`, MSU über `System32\wusa.exe "<Datei>"` (Ä-043; `software.script_kind` nach der Endung);
+   MSIX/APPX ohne Prozess über `Add-AppxProvisionedPackage -Online -PackagePath … [-SkipLicense]` (für alle Benutzer,
+   auch künftige; Fehler = Ausnahme → „FEHLER“, Abhängigkeiten wie VCLibs nicht automatisch – als eigene Einträge davor);
    1618 (andere Installation läuft) → bis 10 Versuche im Abstand von 30 s; nach **60 min** je Programm wird der Prozess
    beendet („wartet vermutlich auf eine Eingabe“). Erfolgreich = Rückgabewert in der Liste der Beschreibung; 3010/1641
    merken. Jedes Programm in eigenem try/catch – ein Fehler stoppt die übrigen nicht; danach den Eintrag löschen.
@@ -1195,8 +1264,9 @@ ersten Start installiert)“. Das Ergebnis am Gerät liest das Tool nicht zurüc
 Beispiel-Installer in der Bibliothek des Demo-Speichers (`demostore.ensure_software`, nur solange sie leer ist; frühere
 Beispiele in `demo/Verteilen/Software` werden entfernt), der Demo-Agent nimmt den Befehl an und meldet „fertig“.
 
-**Agent:** neuer Befehl `software` (I-020) → **neuer Agent-Stick bzw. Netzwerkstart neu vorbereiten**. Ä-041 ändert am
-Agent nichts (kein neuer Stick).
+**Agent:** neuer Befehl `software` (I-020) → **neuer Agent-Stick bzw. Netzwerkstart neu vorbereiten**. Ä-041 und Ä-043
+ändern am Agent nichts (kein neuer Stick): Erkennung und Installationsskript entstehen im Tool, der Agent überträgt
+nur Dateien und prüft keine Endungen.
 
 ## Automatisierung
 

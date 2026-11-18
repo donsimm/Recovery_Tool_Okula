@@ -1,6 +1,6 @@
 # Ä-043 – Software-Bibliothek: alle gängigen Installer-Typen erkennen
 
-Status: freigegeben · erstellt 18.11.2026 von der Projektleitung · Freigabe: Dominik 18.11.
+Status: umgesetzt (Commit ed2ce0d) · erstellt 18.11.2026 von der Projektleitung · Freigabe: Dominik 18.11.
 
 ## Rolle und Einstieg
 
