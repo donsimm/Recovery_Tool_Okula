@@ -771,34 +771,73 @@ Stellen:
     Vorlagen gespeichert (Kapitel <i>Automatisierung</i>).
 
 <b>Die Software-Bibliothek</b> (<i>Extras → Software-Bibliothek …</i>)
-Oben wird geladen, darunter steht direkt die Liste mit Programm, Version, Typ, Parameter, Rückgabewerte, Status
-und Grösse (Suchfeld oben rechts).
-•  <i>Ins Tool laden …</i>: einen Installer (<tt>.exe</tt>, <tt>.msi</tt>) wählen – von der Server-Disk, einem
+Oben wird geladen, darunter steht direkt die Liste mit Programm, Version, Hersteller, Typ, Parameter,
+Rückgabewerte, Status und Grösse (Suchfeld oben rechts). Unter der Liste stehen Typ, Hersteller, Installer und
+Status des markierten Eintrags, bei „Parameter fehlt“ zusätzlich <b>Was tun</b>.
+•  <i>Ins Tool laden …</i>: einen Installer wählen (<tt>.exe</tt>, <tt>.msi</tt>, <tt>.msp</tt>, <tt>.msu</tt>,
+    <tt>.msix</tt>, <tt>.appx</tt>, <tt>.msixbundle</tt>, <tt>.appxbundle</tt>) – von der Server-Disk, einem
     USB-Datenträger oder dem NAS (auch aus <i>Verteilen\\Software</i>). Er wird in die Bibliothek kopiert.
 •  <i>Ordner laden …</i>: für Installer, die ihre Dateien daneben brauchen (z. B. <tt>YSUSB_V213_Win</tt> mit
     <tt>setup.exe</tt>). Der ganze Ordner wird kopiert und kommt mit aufs Gerät. Liegen mehrere Installer im
     Ordner, fragt das Tool, welcher es ist.
 •  Oder Dateien und Ordner aus dem Dateimanager ins Fenster ziehen.
 •  Ein Balken zeigt das Kopieren; <i>Abbrechen</i> lässt nichts Halbes in der Bibliothek zurück.
-•  Danach erkennt das Tool den Installer-Typ und trägt die Parameter ein. Liegt derselbe Inhalt schon in der
-    Bibliothek (gleiche SHA-256-Prüfsumme), wird nichts doppelt abgelegt – die Meldung nennt den Eintrag.
+•  Danach erkennt das Tool den Installer-Typ und trägt Parameter, Rückgabewerte, Programmname, Version und
+    Hersteller ein (Abschnitt <i>Erkannte Installer-Typen</i>). Liegt derselbe Inhalt schon in der Bibliothek
+    (gleiche SHA-256-Prüfsumme), wird nichts doppelt abgelegt – die Meldung nennt den Eintrag.
 •  Sammelordner mit vielen kleinen Werkzeugen (z. B. „System Tools“): als Ordner laden, Art <i>Nur kopieren</i> –
     der Ordner landet auf dem Desktop für alle Benutzer unter <i>Software</i>, installiert wird nichts.
+•  <i>Neu erkennen</i> (Knopf unter der Liste oder Rechtsklick auf die Zeile): Erkennung erneut auf den Installer
+    anwenden – z. B. für Einträge, die vor einer neueren Version des Tools geladen wurden. Wurden Angaben von Hand
+    geändert, fragt das Tool vorher, ob sie überschrieben werden sollen.
 •  <i>Löschen</i> (oder Taste Entf): Eintrag mit allen Dateien nach Rückfrage entfernen.
 Läuft das Demo-Gerät, zeigt das Fenster die Bibliothek im Demo-Speicher (Kapitel <i>Demo-Gerät</i>).
 
 <b>Status</b>
 •  <b>bereit</b>: Installer-Typ erkannt bzw. Parameter hinterlegt – lässt sich ankreuzen.
-•  <b>Parameter fehlt</b>: Typ unbekannt (oder bei einem Ordner kein Installer gewählt) – nicht wählbar.
+•  <b>Parameter fehlt</b>: Typ unbekannt oder ohne sicheren stillen Weg (oder bei einem Ordner kein Installer
+    gewählt) – nicht wählbar. Unter der Liste steht, was zu tun ist.
 •  <b>nur von Hand</b>: lässt sich nicht still installieren (z. B. Programme, die nur für den angemeldeten Benutzer
     installieren) – nicht wählbar.
 •  <b>nur kopieren</b>: Ordner auf den Desktop (siehe oben).
-Erkannt werden MSI, NSIS, Inno Setup, InstallShield und WiX Burn – ohne die Datei auszuführen.
+
+<b>Erkannte Installer-Typen</b> (ohne die Datei auszuführen – das Tool liest nur)
+•  MSI: <tt>msiexec /i … /qn /norestart</tt>, Name, Version und Hersteller aus der MSI-Datei
+•  MSP (Patch): <tt>msiexec /p … /qn /norestart</tt> · MSU (Windows-Update): <tt>wusa.exe … /quiet
+    /norestart</tt>, Rückgabewert 2359302 = schon installiert
+•  MSIX/APPX und Bündel: für alle Benutzer bereitgestellt (<tt>Add-AppxProvisionedPackage -SkipLicense</tt>);
+    nötige Frameworks (z. B. VCLibs) als eigene Einträge davor wählen
+•  NSIS: <tt>/S</tt> · electron-builder (NSIS): <tt>/S /allusers</tt> – für alle Benutzer statt nur für SYSTEM
+•  Inno Setup: <tt>/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-</tt>
+•  InstallShield (MSI): <tt>/s /v"/qn /norestart"</tt>
+•  WiX Burn: <tt>/quiet /norestart</tt> · Microsoft-Bootstrapper (VC++ Redistributable, .NET-Runtime):
+    <tt>/install /quiet /norestart</tt>, Rückgabewert 1638 = neuere Version schon da
+•  Qt Installer Framework ab 4.0 (z. B. Luminex Araneo): <tt>install --root "&lt;Zielordner&gt;"
+    --accept-licenses --accept-messages --default-answer --confirm-command</tt>, Zielordner aus dem Installer
+    (<tt>C:\\Program Files\\…</tt>)
+•  Advanced Installer: <tt>/exenoui /qn /norestart</tt> · InstallAware: <tt>/s</tt> · Wise: <tt>/s</tt>
+•  InstallBuilder (BitRock/VMware, z. B. Barco Event Master Toolset): <tt>--mode unattended
+    --unattendedmodeui none</tt>
+•  Nur erkannt, Parameter fehlt (mit Hinweis): InstallShield mit InstallScript (Antwortdatei nötig), Qt Installer
+    Framework vor 4.0, Setup Factory, Clickteam Install Creator, Smart Install Maker, Actual Installer,
+    CreateInstall, Ghost Installer, selbstentpackende Archive (IExpress, 7-Zip-SFX, WinRAR-SFX)
+•  Squirrel: nur von Hand
+Name, Version und Hersteller kommen aus der Versionsinfo des Installers, aus der MSI-Datei, aus den Angaben des
+Qt Installer Framework bzw. des App-Pakets, sonst aus dem Dateinamen (ohne „Setup“, „Installer“).
+
+<b>Parameter fehlt – was tun</b>
+1.  Eintrag markieren: unter der Liste stehen der erkannte Typ und <i>Was tun</i>.
+2.  Bei einem bekannten Typ den genannten Parameter prüfen, sonst in der Herstellerdoku nach „silent install“
+    bzw. „unattended“ suchen.
+3.  An einer VM testen (Installer mit den Parametern in einer Eingabeaufforderung als Administrator starten – es
+    darf kein Fenster erscheinen), dann die Parameter in der Liste eintragen.
+4.  Selbstentpackende Archive mit 7-Zip öffnen: liegt darin ein bekannter Installer, den entpackten Ordner mit
+    <i>Ordner laden …</i> laden.
 
 <b>Parameter hinterlegen</b>
 1.  <i>Extras → Software-Bibliothek …</i> öffnen.
-2.  Zeile markieren und in die Zelle <i>Programm</i>, <i>Version</i>, <i>Parameter</i> oder <i>Rückgabewerte</i>
-    klicken, Wert eintragen, Enter – gespeichert wird sofort. <i>Parameter</i> sind die Angaben für die stille
+2.  Zeile markieren und in die Zelle <i>Programm</i>, <i>Version</i>, <i>Hersteller</i>, <i>Parameter</i> oder
+    <i>Rückgabewerte</i> klicken, Wert eintragen, Enter – gespeichert wird sofort. <i>Parameter</i> sind die Angaben für die stille
     Installation (z. B. <tt>/S</tt>), <i>Rückgabewerte</i> die Werte für „erfolgreich“ (Standard „0, 3010“;
     3010 = Neustart nötig).
 3.  <i>Art</i> (still installieren, nur kopieren, nur von Hand) und bei Ordnern den <i>Installer</i>: Zeile markieren,

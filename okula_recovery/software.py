@@ -5,7 +5,7 @@ Ablage auf dem NAS im eigenen Ordner neben „Verteilen“ (gesichert, für alle
         .okula.json                           Beschreibung (Format „okula-software“ wie I-020)
         <Installer> bzw. Inhalt des geladenen Ordners
     Software-Bibliothek/.<…>.partial/         während des Ladens – ein Abbruch hinterlässt nichts Halbes
-Einträge entstehen nur über „Ins Tool laden …“ (eine .exe/.msi) bzw. „Ordner laden …“ (Installer, der seine Dateien
+Einträge entstehen nur über „Ins Tool laden …“ (ein Installer, INSTALLER_EXT) bzw. „Ordner laden …“ (Installer, der seine Dateien
 daneben braucht, z. B. YSUSB_V213_Win/setup.exe): Kopie in die Bibliothek, danach Erkennung. Gleicher Inhalt
 (SHA-256) wird nicht doppelt abgelegt. Sammelordner (z. B. „System Tools“) lassen sich als „nur kopieren“ markieren:
 der Ordner landet auf dem öffentlichen Desktop unter Software\\<Eintrag>, installiert wird nichts.
@@ -13,16 +13,18 @@ der Ordner landet auf dem öffentlichen Desktop unter Software\\<Eintrag>, insta
 Der Ordner Verteilen/Software gehört nur noch zu *Ordner senden*; der Katalog liest und schreibt ihn nicht.
 Die Beschreibungen „.<Name>.okula.json“, die I-020 dort angelegt hat, räumt cleanup_distribute weg.
 
-Beschreibung: Programmname, Version, Installer-Typ, Parameter für die stille Installation, erwartete Rückgabewerte,
-Art (installieren, nur kopieren, nur von Hand), Installer (relativ), Grösse und SHA-256 des Installers, dazu
-SHA-256 des ganzen Inhalts (Doppel erkennen) und woher der Eintrag geladen wurde.
+Beschreibung: Programmname, Version, Hersteller, Installer-Typ, Parameter für die stille Installation, erwartete
+Rückgabewerte, Art (installieren, nur kopieren, nur von Hand), Installer (relativ), Grösse und SHA-256 des
+Installers, dazu SHA-256 des ganzen Inhalts (Doppel erkennen) und woher der Eintrag geladen wurde.
 
-Erkennung ohne Ausführen (Kennungen in den ersten MB der Datei, Quellen in docs/TECHNIK.md):
-- .msi → msiexec /i … /qn /norestart
-- NSIS („Nullsoft“) → /S · Inno Setup → /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- ·
-  InstallShield → /s /v"/qn /norestart" · WiX Burn (PE-Abschnitt .wixburn) → /quiet /norestart
+Erkennung ohne Ausführen (Ä-043; Leser in installerinfo.py, Typen in KINDS, Quellen in docs/TECHNIK.md):
+- MSI/MSP (Compound File), MSU (Cabinet), MSIX/APPX (ZIP) – an Endung und Kopf
+- Windows-Programme: Kennungen im Kopf, im Manifest und in den angehängten Daten (NSIS, Inno Setup, Qt Installer
+  Framework, InstallShield, WiX Burn, Advanced Installer, InstallBuilder, SFX-Archive …)
+- Name, Version, Hersteller: Versionsinfo, MSI-Tabelle Property, Qt-IFW-config.xml, AppxManifest, NSIS-Skript
 - Squirrel installiert nur für den angemeldeten Benutzer → „nur von Hand“
-- sonst „Parameter fehlt“ – nicht wählbar, bis Parameter hinterlegt sind.
+- sonst „Parameter fehlt“ mit Hinweis (erkannter Typ bzw. unbekannt, was zu tun ist) – nicht wählbar, bis
+  Parameter hinterlegt sind. „Neu erkennen“ (redetect) wendet die Erkennung auf schon geladene Einträge an.
 
 Neue Version: gleicher Programmname (aus dem Datei-/Ordnernamen ohne Version und Architektur, z. B.
 vlc-3.0.24-win64.exe ↔ vlc-3.0.23-win64.exe) → Parameter, Art und Rückgabewerte der vorigen Version in der
@@ -45,7 +47,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Callable
 
-from okula_recovery import distribute
+from okula_recovery import distribute, installerinfo
 
 LIBRARY_DIR = "Software-Bibliothek"   # auf dem NAS neben „Verteilen“
 LIB_META = ".okula.json"              # Beschreibung im Ordner des Eintrags
@@ -54,10 +56,12 @@ SOFTWARE_DIR = "Software"             # Verteilen/Software – nur noch für Ord
 META_SUFFIX = ".okula.json"
 META_FORMAT = "okula-software"
 META_VERSION = 1
-INSTALLER_EXT = (".exe", ".msi")
+APPX_EXT = (".msix", ".msixbundle", ".appx", ".appxbundle")     # App-Pakete (Ä-043)
+INSTALLER_EXT = (".exe", ".msi", ".msp", ".msu") + APPX_EXT
 HEAD_BYTES = 8 * 1024 * 1024          # Kennungen stehen im Programmteil vor den gepackten Daten
 MAX_ARGS = 1000
 DEFAULT_EXIT_CODES = (0, 3010)
+MSI_EXIT_CODES = (0, 1641, 3010)      # Windows Installer: 1641/3010 = Neustart eingeleitet bzw. nötig
 REBOOT_CODES = (3010, 1641)           # ERROR_SUCCESS_REBOOT_REQUIRED, ERROR_SUCCESS_REBOOT_INITIATED
 
 # Art des Eintrags
@@ -66,23 +70,88 @@ MODES = (INSTALL, COPY, MANUAL)
 # Status in der Liste (Texte wie in der Oberfläche)
 READY, MISSING, HAND, COPY_ONLY = "bereit", "Parameter fehlt", "nur von Hand", "nur kopieren"
 
-# Installer-Typ → (Anzeige, Parameter für die stille Installation)
-KINDS: dict[str, tuple[str, str]] = {
-    "msi": ("MSI (Windows Installer)", "/qn /norestart"),
-    "nsis": ("NSIS", "/S"),
-    "inno": ("Inno Setup", "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-"),
-    "installshield": ("InstallShield", '/s /v"/qn /norestart"'),
-    "wix": ("WiX Burn", "/quiet /norestart"),
-    "squirrel": ("Squirrel", ""),
-    "": ("unbekannt", ""),
+UNKNOWN_HINT = ("Installer-Typ unbekannt – Parameter für die stille Installation in der Herstellerdoku nachsehen "
+                "(Stichwort „silent install“ bzw. „unattended“), an einer VM testen und hier eintragen")
+SFX_HINT = ("selbstentpackendes Archiv – Inhalt prüfen (z. B. mit 7-Zip öffnen): liegt darin ein bekannter Installer, "
+            "den entpackten Ordner mit „Ordner laden …“ laden")
+VM_TEST = " – an einer VM testen und hier eintragen"
+IFW_TARGET = "<Zielordner>"
+IFW_ARGS = f'install --root "{IFW_TARGET}" --accept-licenses --accept-messages --default-answer --confirm-command'
+
+# Installer-Typ → (Anzeige, Parameter für die stille Installation, erfolgreiche Rückgabewerte, Hinweis bei
+# „Parameter fehlt“). Quellen: docs/TECHNIK.md („Software installieren“, Tabelle). „Quelle nicht abgerufen“ =
+# Angabe aus dem Gedächtnis des Umsetzungs-Agenten (Ä-043, 18.11.2026), nicht neu in der Herstellerdoku
+# nachgelesen. Typen ohne belegbare Parameter bleiben „Parameter fehlt“ und nennen den vermuteten Parameter im
+# Hinweis – ein falscher Parameter liesse den Installer am Gerät auf eine Eingabe warten (Abbruch nach 60 min).
+KINDS: dict[str, tuple[str, str, tuple[int, ...], str]] = {
+    # Microsoft Learn „msiexec“, „Standard Installer Command-Line Options“ (Quelle nicht abgerufen)
+    "msi": ("MSI (Windows Installer)", "/qn /norestart", MSI_EXIT_CODES, ""),
+    "msp": ("MSP (Patch für Windows Installer)", "/qn /norestart", MSI_EXIT_CODES, ""),
+    # Microsoft Learn „wusa.exe“; 2359302 = 0x240006 WU_S_ALREADY_INSTALLED (Quelle nicht abgerufen)
+    "msu": ("MSU (Windows-Update-Paket)", "/quiet /norestart", (0, 3010, 2359302), ""),
+    # Microsoft Learn „Add-AppxProvisionedPackage“ (Quelle nicht abgerufen)
+    "msix": ("MSIX/APPX (App-Paket)", "-SkipLicense", (0,), ""),
+    # NSIS-Handbuch 3.2.1 „Common Options“ / 4.12 „Silent Installers“ (Quelle nicht abgerufen)
+    "nsis": ("NSIS", "/S", DEFAULT_EXIT_CODES, ""),
+    # electron-builder „NSIS“: /allusers = für alle Benutzer, sonst nur für das Konto SYSTEM (Quelle nicht abgerufen)
+    "electron": ("electron-builder (NSIS)", "/S /allusers", DEFAULT_EXIT_CODES, ""),
+    # Inno-Setup-Hilfe „Setup Command Line Parameters“ (Quelle nicht abgerufen)
+    "inno": ("Inno Setup", "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-", DEFAULT_EXIT_CODES, ""),
+    # Revenera „Setup.exe and Update.exe Command-Line Parameters“ (Quelle nicht abgerufen)
+    "installshield": ("InstallShield (MSI)", '/s /v"/qn /norestart"', MSI_EXIT_CODES, ""),
+    "installscript": ("InstallShield (InstallScript)", "", DEFAULT_EXIT_CODES,
+                      "InstallScript braucht eine Antwortdatei: an einer VM „setup.exe /r /f1\"C:\\setup.iss\"“ "
+                      "ausführen und durchklicken, Installer und setup.iss zusammen als Ordner laden, Parameter "
+                      "/s /f1\"{ordner}\\setup.iss\" eintragen"),
+    # WiX Toolset „Burn Command Line“ (Quelle nicht abgerufen)
+    "wix": ("WiX Burn", "/quiet /norestart", MSI_EXIT_CODES, ""),
+    # Microsoft-Bootstrapper (VC++ Redistributable, .NET-Runtime) sind Burn-Pakete; 1638 = neuere Version schon da
+    "msburn": ("Microsoft-Bootstrapper (Burn)", "/install /quiet /norestart", (0, 1638, 1641, 3010), ""),
+    "squirrel": ("Squirrel", "", DEFAULT_EXIT_CODES, ""),
+    # Qt Installer Framework „Using Command Line Interface“ (ab 4.0; Quelle nicht abgerufen, an Araneo geprüft)
+    "qtifw": ("Qt Installer Framework", IFW_ARGS, (0,),
+              "Qt Installer Framework vor 4.0 kennt keine Befehle zum stillen Installieren – nur mit Steuerskript "
+              "(--script <Datei>.qs); Installer und Skript zusammen als Ordner laden" + VM_TEST),
+    # Advanced Installer „EXE setup file“: /exenoui = ohne Oberfläche, Rest geht an msiexec (Quelle nicht abgerufen)
+    "advinst": ("Advanced Installer", "/exenoui /qn /norestart", MSI_EXIT_CODES, ""),
+    # InstallAware „Command Line Parameters“ /s (Quelle nicht abgerufen)
+    "installaware": ("InstallAware", "/s", DEFAULT_EXIT_CODES, ""),
+    # Wise Installation System /s (Quelle nicht abgerufen)
+    "wise": ("Wise Installation", "/s", DEFAULT_EXIT_CODES, ""),
+    # InstallBuilder „Unattended Installations“ (BitRock, später VMware; Quelle nicht abgerufen)
+    "installbuilder": ("InstallBuilder (BitRock/VMware)", "--mode unattended --unattendedmodeui none",
+                       DEFAULT_EXIT_CODES, ""),
+    "setupfactory": ("Setup Factory", "", DEFAULT_EXIT_CODES,
+                     "Setup Factory: stille Installation laut Hersteller meist mit /S (je nach Version)" + VM_TEST),
+    "clickteam": ("Clickteam Install Creator", "", DEFAULT_EXIT_CODES,
+                  "Install Creator: /S nur bei der Pro-Version" + VM_TEST),
+    "smartinstall": ("Smart Install Maker", "", DEFAULT_EXIT_CODES,
+                     "Smart Install Maker: Parameter für die stille Installation (vermutlich /s) in der "
+                     "Herstellerdoku nachsehen" + VM_TEST),
+    "actual": ("Actual Installer", "", DEFAULT_EXIT_CODES,
+               "Actual Installer: stille Installation vermutlich mit /S" + VM_TEST),
+    "createinstall": ("CreateInstall", "", DEFAULT_EXIT_CODES,
+                      "CreateInstall: Parameter für die stille Installation (vermutlich -silent) in der "
+                      "Herstellerdoku nachsehen" + VM_TEST),
+    "ghost": ("Ghost Installer", "", DEFAULT_EXIT_CODES,
+              "Ghost Installer: Parameter für die stille Installation (vermutlich -s) in der Herstellerdoku "
+              "nachsehen" + VM_TEST),
+    "iexpress": ("IExpress (selbstentpackend)", "", DEFAULT_EXIT_CODES,
+                 "IExpress-Paket: /Q entpackt still und startet das enthaltene Programm – still nur, wenn dieses "
+                 "selbst still läuft; " + SFX_HINT),
+    "7zsfx": ("7-Zip-SFX (selbstentpackend)", "", DEFAULT_EXIT_CODES, SFX_HINT),
+    "winrar": ("WinRAR-SFX (selbstentpackend)", "", DEFAULT_EXIT_CODES, SFX_HINT),
+    "": ("unbekannt", "", DEFAULT_EXIT_CODES, UNKNOWN_HINT),
 }
+# Typen mit sicherem Namen und Version aus der Datei selbst (gehen dem Datei-/Ordnernamen vor)
+AUTHORITATIVE = ("msi", "msp", "msu", "msix", "qtifw")
 SQUIRREL_NOTE = "Squirrel installiert nur für den angemeldeten Benutzer – von Hand installieren"
 FOLDER_NOTE = "Installer im Ordner wählen"
 
 # Wörter ohne Bedeutung für den Programmnamen (Version, Architektur, „Setup“ …)
 NOISE = {"setup", "install", "installer", "installation", "win", "win32", "win64", "windows", "x64", "x86", "x32",
          "amd64", "arm64", "64bit", "32bit", "bit", "full", "offline", "online", "web", "release", "final", "stable",
-         "v", "x", "msi", "exe", "x86_64", "64", "32"}
+         "v", "x", "msi", "exe", "x86_64", "64", "32", "msp", "msu", "msix", "appx", "msixbundle", "appxbundle"}
 
 
 class SoftwareError(Exception):
@@ -110,16 +179,15 @@ def _pe_sections(data: bytes) -> list[str]:
     return names
 
 
-def _has(data: bytes, *texts: str) -> bool:
-    """Kennung als ASCII oder UTF-16 (Ressourcen, Versionsinfo) enthalten?"""
-    return any(t.encode() in data or t.encode("utf-16-le") in data for t in texts)
+_has = installerinfo.has_text           # Kennung als ASCII oder UTF-16 enthalten?
 
-
-VERSION_KEYS = ("ProductName", "ProductVersion", "FileVersion", "FileDescription", "CompanyName")
+VERSION_KEYS = ("ProductName", "ProductVersion", "FileVersion", "FileDescription", "CompanyName", "InternalName",
+                "OriginalFilename")
 
 
 def version_info(data: bytes) -> dict[str, str]:
-    """Texte aus der Versionsinfo (VS_VERSIONINFO → StringFileInfo) – ohne die Datei auszuführen.
+    """Texte aus der Versionsinfo (VS_VERSIONINFO → StringFileInfo) durch Suchen im Kopf der Datei – nur noch für
+    Programme ohne lesbares Ressourcenverzeichnis (sonst installerinfo.parse_version_resource).
 
     Aufbau je Eintrag: wLength, wValueLength (Zeichen inkl. Abschluss), wType=1, Schlüssel (UTF-16, mit 0),
     Auffüllen auf 32 Bit ab Beginn des Eintrags, Wert (UTF-16, mit 0)."""
@@ -142,47 +210,205 @@ def version_info(data: bytes) -> dict[str, str]:
     return out
 
 
-def detect_bytes(data: bytes, filename: str) -> dict:
-    """Installer-Typ aus dem Anfang der Datei: {kind, args, mode, note, program, version}."""
-    info = {"kind": "", "args": "", "mode": INSTALL, "note": "", "program": "", "version": ""}
-    lower = filename.lower()
-    if lower.endswith(".msi") or data[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
-        info.update(kind="msi", args=KINDS["msi"][1])
-        return info
-    sections = _pe_sections(data)
-    if not sections and data[:2] != b"MZ":
-        return info
-    vi = version_info(data)
-    info["program"] = vi.get("ProductName") or vi.get("FileDescription") or ""
-    info["version"] = vi.get("ProductVersion") or vi.get("FileVersion") or ""
-    if ".wixburn" in sections:
-        kind = "wix"
-    elif _has(data, "Inno Setup Setup Data", "JR.Inno.Setup", "Inno Setup"):
-        kind = "inno"
-    elif _has(data, "Nullsoft.NSIS", "NullsoftInst", "Nullsoft Install System"):
-        kind = "nsis"
-    elif _has(data, "InstallShield"):
-        kind = "installshield"
-    elif _has(data, "Squirrel"):
-        kind = "squirrel"
-    else:
-        kind = ""
-    info["kind"] = kind
-    info["args"] = KINDS[kind][1]
+def _result(kind: str = "", args: str | None = None, **extra) -> dict:
+    """Ergebnis der Erkennung: {kind, args, exit_codes, mode, note, hint, program, version, publisher,
+    authoritative}. args None = Parameter des Typs; hint nur, wenn keine Parameter (→ „Parameter fehlt“)."""
+    label, default_args, codes, hint = KINDS[kind]
+    args = default_args if args is None else args
+    info = {"kind": kind, "args": args, "exit_codes": list(codes), "mode": INSTALL, "note": "",
+            "hint": "" if args else hint, "program": "", "version": "", "publisher": "",
+            "authoritative": kind in AUTHORITATIVE}
     if kind == "squirrel":
-        info.update(mode=MANUAL, note=SQUIRREL_NOTE)
+        info.update(mode=MANUAL, note=SQUIRREL_NOTE, hint="")
+    info.update({k: v for k, v in extra.items() if v is not None})
     return info
 
 
+VERSION_RE_STRICT = re.compile(r"\d+(?:\.\d+){1,3}(?:[-+][0-9A-Za-z.]+)?")
+# Namen von Registry-Werten der Deinstallation – folgen im NSIS-Skript oft direkt aufeinander (kein Hersteller)
+NSIS_NAMES = {"DisplayName", "DisplayVersion", "DisplayIcon", "Publisher", "UninstallString", "QuietUninstallString",
+              "InstallLocation", "URLInfoAbout", "URLUpdateInfo", "HelpLink", "EstimatedSize", "NoModify", "NoRepair",
+              "VersionMajor", "VersionMinor", "Comments", "Contact", "Readme"}
+
+
+def _nsis_text(header: bytes, name: str) -> str:
+    """Fester Wert eines Registry-Eintrags aus dem NSIS-Skript, nur wenn plausibel."""
+    value = installerinfo.nsis_value(header, name)
+    if not value or value in NSIS_NAMES or re.fullmatch(r"[A-Z][a-z]+[A-Z]\w*", value) or "\\" in value \
+            or value.lower().startswith(("http", "www.")):
+        return ""
+    if name == "DisplayVersion" and not VERSION_RE_STRICT.fullmatch(value):
+        return ""
+    return value
+
+
+def _pe_version(vi: dict[str, str]) -> str:
+    for key in ("ProductVersion", "FileVersion", "#ProductVersion", "#FileVersion"):
+        value = vi.get(key, "")
+        if value and value != "0.0.0.0" and re.search(r"\d", value):
+            return value
+    return ""
+
+
+def ifw_target(target: str, is64: bool = True) -> str:
+    """Zielordner aus <TargetDir> von Qt IFW: @ApplicationsDirX64@ → C:\\Program Files usw.; „“, wenn eine andere
+    Variable (z. B. @HomeDir@ – als SYSTEM sinnlos) übrig bleibt."""
+    repl = {"@ApplicationsDirX64@": r"C:\Program Files", "@ApplicationsDirX86@": r"C:\Program Files (x86)",
+            "@ApplicationsDir@": r"C:\Program Files" if is64 else r"C:\Program Files (x86)", "@RootDir@": "C:\\"}
+    for k, v in repl.items():
+        target = target.replace(k, v)
+    target = re.sub(r"\\{2,}", r"\\", target.replace("/", "\\")).rstrip("\\")
+    if "@" in target or '"' in target or not re.fullmatch(r"[A-Za-z]:\\[^\x00-\x1f]*", target):
+        return ""
+    return target
+
+
+def _qt_ifw(blob: installerinfo.Blob, pe: installerinfo.PE, head: bytes, overlay: bytes) -> dict | None:
+    """Qt Installer Framework: config.xml/Updates.xml aus den angehängten Qt-Ressourcen, Version des Frameworks aus
+    dem Text „Built with Qt Installer Framework x.y.z“ (Kopf bzw. Abschnitt .rdata)."""
+    files: dict[str, bytes] = {}
+    if overlay[:4] == b"qres":
+        data = blob.read(pe.image_end, 8 << 20)
+        pos = 0
+        for _ in range(8):
+            i = data.find(b"qres", pos)
+            if i < 0:
+                break
+            for k, v in installerinfo.rcc_files(data[i:], {"config.xml", "Updates.xml"}).items():
+                files.setdefault(k, v)
+            if len(files) == 2:
+                break
+            pos = i + 4
+    config = files.get("config.xml", b"").decode("utf-8", errors="replace")
+    updates = files.get("Updates.xml", b"").decode("utf-8", errors="replace")
+    rx = re.compile(rb"Qt Installer Framework (\d+)\.(\d+)(?:\.(\d+))?")
+    m = rx.search(head) or rx.search(installerinfo.section_bytes(blob, pe, ".rdata"))
+    if "<Installer>" not in config and m is None:
+        return None
+    cfg = installerinfo.xml_tags(config, "Name", "Version", "Title", "Publisher", "TargetDir")
+    upd = installerinfo.xml_tags(updates, "ApplicationName", "ApplicationVersion")
+    program = cfg.get("Name") or upd.get("ApplicationName") or cfg.get("Title") or ""
+    version = cfg.get("Version") or upd.get("ApplicationVersion") or ""
+    framework = tuple(int(x) for x in m.groups() if x is not None) if m else ()
+    target = ifw_target(cfg.get("TargetDir", ""), pe.is64)
+    hint = ""
+    if not framework:
+        hint = ("Qt Installer Framework, Version des Frameworks nicht erkannt – ab 4.0: "
+                + IFW_ARGS.replace(IFW_TARGET, target or "C:\\Program Files\\…") + VM_TEST)
+    elif framework < (4, 0):
+        hint = KINDS["qtifw"][3]
+    elif not target:
+        hint = (f"Qt Installer Framework: Zielordner „{cfg.get('TargetDir', '')}“ nicht eindeutig – Parameter "
+                + IFW_ARGS + " mit dem Zielordner eintragen")
+    args = IFW_ARGS.replace(IFW_TARGET, target) if not hint else ""
+    note = f"Qt Installer Framework {'.'.join(map(str, framework))}" if framework else ""
+    return _result("qtifw", args, hint=hint or None, note=note, program=program, version=version,
+                   publisher=cfg.get("Publisher", ""))
+
+
+def _detect_pe(blob: installerinfo.Blob, head: bytes) -> dict:
+    """Windows-Programm: Typ aus Abschnitten, Manifest, Kopf und angehängten Daten; Angaben aus der Versionsinfo."""
+    pe = installerinfo.pe_info(blob)
+    vi: dict[str, str] = {}
+    manifest, overlay, sections = "", b"", []
+    if pe is not None:
+        res = installerinfo.resources(blob, pe, 16, limit=1)
+        vi = installerinfo.parse_version_resource(res[0]) if res else {}
+        manifest = installerinfo.manifest_text(blob, pe)
+        overlay = blob.read(pe.image_end, 1 << 16) if pe.image_end else b""
+        sections = pe.names
+    if not any(k in vi for k in VERSION_KEYS):
+        vi.update(version_info(head))            # ohne Ressourcenverzeichnis: Suche im Kopf (wie bis Ä-041)
+    marks = head + b"\0" + manifest.encode("utf-8", errors="replace") + b"\0" + overlay
+    meta = {"program": vi.get("ProductName") or vi.get("FileDescription") or "", "version": _pe_version(vi),
+            "publisher": vi.get("CompanyName", "")}
+    company = meta["publisher"].lower()
+    original = (vi.get("OriginalFilename", "") + " " + vi.get("InternalName", "")).lower()
+
+    if ".wixburn" in sections:
+        return _result("msburn" if "microsoft" in company else "wix", **meta)
+    if pe is not None and (overlay[:4] == b"qres" or _has(head, "Qt Installer Framework")):
+        ifw = _qt_ifw(blob, pe, head, overlay)
+        if ifw is not None:
+            for k, v in meta.items():
+                ifw[k] = ifw[k] or v
+            return ifw
+    if _has(marks, "Inno Setup Setup Data", "JR.Inno.Setup", "Inno Setup"):
+        return _result("inno", **meta)
+    if _has(marks, "Nullsoft.NSIS", "NullsoftInst", "Nullsoft Install System"):
+        header = installerinfo.nsis_header(blob, pe, head)
+        if not meta["program"]:
+            meta["program"] = re.sub(r"\s+v?\d+(?:\.\d+)+$", "", _nsis_text(header, "DisplayName"))
+        meta["version"] = meta["version"] or _nsis_text(header, "DisplayVersion")
+        meta["publisher"] = meta["publisher"] or _nsis_text(header, "Publisher")
+        electron = _has(header, "app-64.7z", "app-32.7z", "app-arm64.7z")
+        return _result("electron" if electron else "nsis", **meta)
+    if _has(marks, "BitRock", "InstallBuilder"):
+        return _result("installbuilder", **meta)
+    if _has(marks, "InstallShield", "ISSetup.dll", "ISSetupStream"):
+        # setup.inx = übersetztes InstallScript (InstallScript- bzw. InstallScript-MSI-Projekt) → Antwortdatei nötig
+        script = _has(marks, "setup.inx", "Setup.inx", "SETUP.INX")
+        return _result("installscript" if script else "installshield", **meta)
+    simple = (("advinst", ("Caphyon", "Advanced Installer", "AI_SETUPEXEPATH")),
+              ("installaware", ("InstallAware",)),
+              ("wise", ("WiseMain", "Wise Installation", "Wise Solutions")),
+              ("setupfactory", ("Setup Factory", "Indigo Rose", "irsetup.exe")),
+              ("clickteam", ("Clickteam", "Install Creator")),
+              ("smartinstall", ("Smart Install Maker",)),
+              ("actual", ("Actual Installer",)),
+              ("createinstall", ("CreateInstall",)),
+              ("ghost", ("Ghost Installer", "GhostInstaller", "Ethalone")))
+    for kind, texts in simple:
+        if _has(marks, *texts):
+            return _result(kind, **meta)
+    if _has(marks, "Squirrel") or "SquirrelAwareVersion" in vi:
+        return _result("squirrel", **meta)
+    if original.startswith("wextract") or _has(marks, "IExpress"):
+        return _result("iexpress", **meta)
+    if b";!@Install@!UTF-8!" in overlay or overlay.startswith(b"7z\xbc\xaf\x27\x1c") \
+            or _has(marks, "7-Zip Self-extracting", "7zS.sfx"):
+        return _result("7zsfx", **meta)
+    if b"Rar!\x1a\x07" in overlay[:4096] or _has(marks, "WinRAR SFX", "WinRAR self-extracting"):
+        return _result("winrar", **meta)
+    return _result("", **meta)
+
+
+def _detect_blob(blob: installerinfo.Blob, filename: str) -> dict:
+    lower = filename.lower()
+    head = blob.read(0, HEAD_BYTES)
+    if lower.endswith(".msp"):
+        return _result("msp")
+    if lower.endswith(".msu") or (head[:4] == b"MSCF" and not lower.endswith(".exe")):
+        kb = re.search(r"kb(\d{6,8})", lower)
+        return _result("msu", program="Windows-Update" if kb else None, version=f"KB{kb.group(1)}" if kb else None)
+    if lower.endswith(APPX_EXT) or (head[:4] == b"PK\x03\x04" and not lower.endswith(".exe")):
+        m = installerinfo.appx_manifest(blob)
+        return _result("msix", program=m.get("DisplayName") or m.get("Name"), version=m.get("Version"),
+                       publisher=m.get("PublisherDisplayName") or installerinfo.publisher_cn(m.get("Publisher", "")))
+    if lower.endswith(".msi") or head[:8] == installerinfo.CFB_MAGIC:
+        p = installerinfo.msi_properties(blob)
+        return _result("msi", program=p.get("ProductName"), version=p.get("ProductVersion"),
+                       publisher=p.get("Manufacturer"))
+    if head[:2] != b"MZ":
+        return _result("")
+    return _detect_pe(blob, head)
+
+
+def detect_bytes(data: bytes, filename: str) -> dict:
+    """Installer-Typ und Angaben aus den Bytes einer Datei (Tests, Proben) – siehe detect."""
+    with installerinfo.Blob(data) as blob:
+        return _detect_blob(blob, filename)
+
+
 def detect(path: str | Path) -> dict:
-    """Installer-Typ einer Datei (liest nur den Anfang)."""
+    """Installer-Typ, Parameter, Rückgabewerte und Name/Version/Hersteller einer Datei – nur lesend, ohne sie
+    auszuführen: {kind, args, exit_codes, mode, note, hint, program, version, publisher, authoritative}."""
     path = Path(path)
     try:
-        with open(path, "rb") as f:
-            data = f.read(HEAD_BYTES)
+        with installerinfo.Blob(path) as blob:
+            return _detect_blob(blob, path.name)
     except OSError:
-        data = b""
-    return detect_bytes(data, path.name)
+        return _result("")
 
 
 # ---------- Programmname und Version aus dem Namen ----------
@@ -198,16 +424,29 @@ def split_name(name: str) -> tuple[str, str, str]:
     („AcroRdrDC“, „2400221005“, „acrordrdc-de-de“); „Firefox Setup 120.0.1.exe“ → („Firefox Setup“, „120.0.1“,
     „firefox“). Schlüssel ohne Version, Architektur und „Setup“ – leer bei Namen wie „setup.exe“."""
     stem = name
-    if stem.lower().endswith(INSTALLER_EXT):
-        stem = stem[:-4]
+    ext = next((x for x in INSTALLER_EXT if stem.lower().endswith(x)), "")
+    if ext:
+        stem = stem[:-len(ext)]
     m = VERSION_RE.search(stem) or NUMBER_RE.search(stem)
     if m:
         before, version, after = stem[:m.start()], m.group(0).replace("_", "."), stem[m.end():]
     else:
         before, version, after = stem, "", ""
-    program = re.sub(r"\s+v$", "", re.sub(r"[\s._-]+", " ", before).strip()).strip() \
+    program = re.sub(r"\s+v$", "", re.sub(r"[\s._-]+", " ", before).strip(), flags=re.IGNORECASE).strip() \
         or re.sub(r"[\s._-]+", " ", stem).strip()
-    return program, version, name_key(before + " " + after)
+    return clean_program(program), version, name_key(before + " " + after)
+
+
+SETUP_WORDS_RE = re.compile(r"(?:[\s._-]+(?:setup|installer|install|installation))+$", re.IGNORECASE)
+SETUP_CAMEL_RE = re.compile(r"(?<=[a-z0-9])(?:Setup|Installer|Install)$")
+
+
+def clean_program(name: str) -> str:
+    """Programmname ohne „Setup“/„Installer“ am Ende („AraneoInstaller“ → „Araneo“, „OBS Studio Installer“ →
+    „OBS Studio“); bleibt nichts übrig, der Name wie er war."""
+    text = name.strip()
+    cleaned = SETUP_CAMEL_RE.sub("", SETUP_WORDS_RE.sub("", text)).strip(" ._-")
+    return cleaned or text
 
 
 def name_key(text: str) -> str:
@@ -314,8 +553,30 @@ class Entry:
         return str(self.meta.get("program_version") or "")
 
     @property
+    def publisher(self) -> str:
+        """Hersteller (Ä-043) – aus Versionsinfo, MSI, Qt IFW, App-Paket oder von Hand."""
+        return str(self.meta.get("publisher") or "")
+
+    @property
     def kind(self) -> str:
         return str(self.meta.get("kind") or "")
+
+    @property
+    def detected_label(self) -> str:
+        """Erkannter Typ (unabhängig von einer Änderung von Hand)."""
+        return KINDS.get(str(self.meta.get("detected") or ""), KINDS[""])[0]
+
+    @property
+    def detected_args(self) -> str:
+        """Parameter, die die Erkennung vorschlägt (bei Qt IFW mit Zielordner)."""
+        return str(self.meta.get("detected_args") or KINDS.get(str(self.meta.get("detected") or ""), KINDS[""])[1])
+
+    @property
+    def hint(self) -> str:
+        """Was bei „Parameter fehlt“ zu tun ist (Typ-Hinweis bzw. „unbekannt“) – leer, sobald Parameter da sind."""
+        if self.mode != INSTALL or self.args.strip() or self.installer not in self.candidates:
+            return ""
+        return str(self.meta.get("hint") or KINDS.get(self.kind, KINDS[""])[3] or UNKNOWN_HINT)
 
     @property
     def kind_label(self) -> str:
@@ -372,14 +633,16 @@ class Entry:
 
     @property
     def note(self) -> str:
-        """Hinweis für die Liste (neue Version, Squirrel, Installer wählen)."""
+        """Hinweis für die Liste (neue Version, Squirrel, Installer wählen, was bei „Parameter fehlt“ zu tun ist)."""
         notes = []
         if self.adopted_from:
             notes.append(f"Parameter von „{self.adopted_from}“ übernommen (neue Version)")
         if self.mode == INSTALL and self.installer not in self.candidates:
-            notes.append(FOLDER_NOTE if self.candidates else "Kein Installer (.exe/.msi) im Ordner")
+            notes.append(FOLDER_NOTE if self.candidates else "Kein Installer (.exe, .msi, .msix …) im Ordner")
         if self.meta.get("note"):
             notes.append(str(self.meta["note"]))
+        if self.hint:
+            notes.append(self.hint)
         return " · ".join(notes)
 
     @property
@@ -390,7 +653,7 @@ class Entry:
 
 
 def _folder_info(path: Path) -> tuple[int, list[str], list[tuple[str, os.stat_result]]]:
-    """Grösse, Installer-Kandidaten (.exe/.msi, relativ) und alle Dateien eines Ordners (ohne Links)."""
+    """Grösse, Installer-Kandidaten (INSTALLER_EXT, relativ) und alle Dateien eines Ordners (ohne Links)."""
     size, candidates, files = 0, [], []
     for dirpath, dirnames, filenames in os.walk(path):
         here = Path(dirpath)
@@ -426,9 +689,9 @@ def _fresh_meta(folder: Path, source_name: str, is_dir: bool, candidates: list[s
     Datei. folder: Ordner, in dem die Dateien liegen (Eintrag bzw. .partial)."""
     program, version, key = split_name(source_name)
     meta = {"format": META_FORMAT, "version": META_VERSION, "program": program, "program_version": version,
-            "key": key, "kind": "", "detected": "", "args": "", "exit_codes": list(DEFAULT_EXIT_CODES),
-            "mode": INSTALL, "installer": "", "note": "", "adopted_from": "", "edited": False,
-            "source": "folder" if is_dir else "file"}
+            "publisher": "", "key": key, "kind": "", "detected": "", "args": "", "detected_args": "",
+            "exit_codes": list(DEFAULT_EXIT_CODES), "mode": INSTALL, "installer": "", "note": "", "hint": "",
+            "adopted_from": "", "edited": False, "source": "folder" if is_dir else "file"}
     pick = installer if installer is not None else (pick_installer(candidates) if is_dir else source_name)
     meta["installer"] = pick if pick in candidates else ""
     if meta["installer"]:
@@ -439,13 +702,19 @@ def _fresh_meta(folder: Path, source_name: str, is_dir: bool, candidates: list[s
 
 
 def _apply_detection(meta: dict, installer: Path) -> None:
+    """Erkennung übernehmen: Typ, Parameter, Rückgabewerte, Art, Hinweise, Hersteller; Name aus der Datei geht dem
+    Datei-/Ordnernamen vor. Version: aus dem Namen, ausser die Datei ist massgebend (MSI, Qt IFW, App-Paket, MSU)
+    bzw. der Name hat nur eine Zahl ohne Punkt (z. B. Build „701“ statt 3.3.1)."""
     found = detect(installer)
-    meta.update(kind=found["kind"], detected=found["kind"], args=found["args"], mode=found["mode"],
-                note=found["note"])
-    if found["program"] and not re.fullmatch(r"[\d.\s]*", found["program"]):
-        meta["program"] = found["program"]
-    if found["version"] and not meta.get("program_version"):
-        meta["program_version"] = found["version"]
+    meta.update(kind=found["kind"], detected=found["kind"], args=found["args"], detected_args=found["args"],
+                exit_codes=list(found["exit_codes"]), mode=found["mode"], note=found["note"], hint=found["hint"],
+                publisher=found["publisher"][:120])
+    program = clean_program(found["program"])
+    if program and not re.fullmatch(r"[\d.\s]*", program):
+        meta["program"] = program[:120]
+    version, current = found["version"][:60], str(meta.get("program_version") or "")
+    if version and (not current or found["authoritative"] or ("." not in current and "." in version)):
+        meta["program_version"] = version
     _stamp(meta, installer)
 
 
@@ -527,7 +796,7 @@ def find(entries: list[Entry], name: str) -> Entry | None:
 
 def update(nas_root: str | Path, name: str, *, program: str | None = None, version: str | None = None,
            args: str | None = None, exit_codes: str | list[int] | None = None, mode: str | None = None,
-           installer: str | None = None) -> Entry:
+           installer: str | None = None, publisher: str | None = None) -> Entry:
     """Beschreibung von Hand ändern (Extras → Software-Bibliothek …) und speichern."""
     entries = scan(nas_root)
     entry = find(entries, name)
@@ -536,7 +805,7 @@ def update(nas_root: str | Path, name: str, *, program: str | None = None, versi
     meta = dict(entry.meta)
     if installer is not None and entry.is_dir:
         if installer and installer not in entry.candidates:
-            raise SoftwareError(f"„{installer}“ ist keine .exe/.msi im Ordner")
+            raise SoftwareError(f"„{installer}“ ist kein Installer im Ordner")
         if installer != meta.get("installer"):
             meta["installer"] = installer
             if installer:
@@ -551,6 +820,8 @@ def update(nas_root: str | Path, name: str, *, program: str | None = None, versi
         meta["program"] = program.strip()[:120]
     if version is not None:
         meta["program_version"] = version.strip()[:60]
+    if publisher is not None:
+        meta["publisher"] = publisher.strip()[:120]
     if args is not None:
         meta["args"] = check_args(args)
     if exit_codes is not None:
@@ -563,6 +834,41 @@ def update(nas_root: str | Path, name: str, *, program: str | None = None, versi
         if mode == INSTALL and meta.get("kind") == "squirrel":
             meta["note"] = ""
     meta["edited"] = True
+    if not _write_meta(entry.path, meta):
+        raise SoftwareError("Beschreibung konnte nicht gespeichert werden (Ordner auf dem NAS schreibgeschützt?)")
+    entry.meta = meta
+    return entry
+
+
+class EditedError(SoftwareError):
+    """„Neu erkennen“ würde von Hand geänderte Angaben überschreiben – erst nach Rückfrage (overwrite_edited)."""
+
+
+KEEP_ON_REDETECT = ("key", "source", "content_sha256", "loaded_from", "loaded")
+
+
+def redetect(nas_root: str | Path, name: str, overwrite_edited: bool = False) -> Entry:
+    """„Neu erkennen“ (Ä-043): Erkennung erneut auf den Installer eines Eintrags anwenden – Typ, Parameter,
+    Rückgabewerte, Art, Name, Version, Hersteller wie beim Laden. Ordner, Schlüssel (gespeicherte Auswahlen),
+    Installer im Ordner und Herkunft bleiben. Von Hand geänderte Angaben („edited“) nur mit overwrite_edited,
+    sonst EditedError. Findet die Erkennung keine Parameter, übernimmt der Eintrag sie wie beim Laden von einer
+    anderen Version desselben Programms (_adopt)."""
+    entries = scan(nas_root)
+    entry = find(entries, name)
+    if entry is None:
+        raise SoftwareError(f"„{name}“ liegt nicht (mehr) in der Software-Bibliothek")
+    if entry.meta.get("edited") and not overwrite_edited:
+        raise EditedError(f"„{entry.label}“ wurde von Hand geändert")
+    source_name = Path(entry.loaded_from).name if entry.loaded_from else \
+        (entry.installer if not entry.is_dir and entry.installer else entry.name)
+    installer = entry.installer if entry.installer in entry.candidates else None
+    meta = _fresh_meta(entry.path, source_name, entry.is_dir, entry.candidates, installer)
+    for k in KEEP_ON_REDETECT:
+        if k in entry.meta:
+            meta[k] = entry.meta[k]
+    if meta.get("mode") == INSTALL and not str(meta.get("args") or "").strip():
+        _adopt(meta, entry.name, {e.name: e.meta for e in entries}, entry.candidates)
+    meta["redetected"] = time.strftime("%Y-%m-%d %H:%M:%S")
     if not _write_meta(entry.path, meta):
         raise SoftwareError("Beschreibung konnte nicht gespeichert werden (Ordner auf dem NAS schreibgeschützt?)")
     entry.meta = meta
@@ -598,7 +904,7 @@ class LoadResult:
 
 
 def inspect(source: str | Path, nas_root: str | Path | None = None) -> Source:
-    """Datei (.exe/.msi) oder Ordner prüfen, bevor etwas kopiert wird."""
+    """Datei (Installer, INSTALLER_EXT) oder Ordner prüfen, bevor etwas kopiert wird."""
     from okula_recovery import nasfiles
     src = Path(source)
     if src.is_symlink() or not src.exists():
@@ -609,7 +915,8 @@ def inspect(source: str | Path, nas_root: str | Path | None = None) -> Source:
             raise SoftwareError("Liegt schon in der Software-Bibliothek")
     if src.is_file():
         if not src.name.lower().endswith(INSTALLER_EXT):
-            raise SoftwareError(f"„{src.name}“ ist kein Installer (.exe, .msi) – Ordner mit „Ordner laden …“ laden")
+            raise SoftwareError(f"„{src.name}“ ist kein Installer ({', '.join(INSTALLER_EXT)}) – Ordner mit "
+                                "„Ordner laden …“ laden")
         size = src.stat().st_size
         return Source(src, False, [(src.name, src, size)], size, [src.name])
     if not src.is_dir():
@@ -678,8 +985,8 @@ def load(nas_root: str | Path, source: str | Path | Source, progress: Callable[[
     cancel = cancel or threading.Event()
     base = ensure_library(nas_root)
     if installer is not None and installer and installer not in src.candidates:
-        raise SoftwareError(f"„{installer}“ ist keine .exe/.msi im Ordner")
-    free = shutil.disk_usage(base).free
+        raise SoftwareError(f"„{installer}“ ist kein Installer im Ordner")
+    free =shutil.disk_usage(base).free
     if free < src.bytes + SPACE_RESERVE:
         raise SoftwareError(f"Zu wenig Platz auf dem NAS: {free / 1000**3:.1f} GB frei, "
                             f"nötig {src.bytes / 1000**3:.1f} GB")
@@ -951,9 +1258,25 @@ function Install-OkulaProgram($P) {
         $file = Join-Path $OkulaDir $P.File
         $folder = Split-Path -Parent $file
         $arguments = $P.Args.Replace('{ordner}', $folder)
+        if ($P.Kind -eq 'msix') {
+            # App-Paket (MSIX/APPX, auch Bündel) für alle Benutzer bereitstellen – kein Prozess, kein Rückgabewert
+            Write-OkulaLog ('Start   {0}: Add-AppxProvisionedPackage -Online -PackagePath "{1}" {2}' -f $P.Name, $file, $arguments)
+            $provision = @{ Online = $true; PackagePath = $file; ErrorAction = 'Stop' }
+            if ($arguments -match 'SkipLicense') { $provision.SkipLicense = $true }
+            Add-AppxProvisionedPackage @provision | Out-Null
+            $script:OkulaOk++
+            Write-OkulaLog ('ok      {0}: für alle Benutzer bereitgestellt ({1} s)' -f $P.Name, [int]((Get-Date) - $t0).TotalSeconds)
+            return
+        }
         if ($P.Kind -eq 'msi') {
             $exe = Join-Path $env:SystemRoot 'System32\msiexec.exe'
             $arguments = ('/i "{0}" {1}' -f $file, $arguments).Trim()
+        } elseif ($P.Kind -eq 'msp') {
+            $exe = Join-Path $env:SystemRoot 'System32\msiexec.exe'
+            $arguments = ('/p "{0}" {1}' -f $file, $arguments).Trim()
+        } elseif ($P.Kind -eq 'msu') {
+            $exe = Join-Path $env:SystemRoot 'System32\wusa.exe'
+            $arguments = ('"{0}" {1}' -f $file, $arguments).Trim()
         } else {
             $exe = $file
         }
@@ -1085,10 +1408,23 @@ def _ps(text: str) -> str:
     return ps_quote(text)
 
 
+def script_kind(e: Entry) -> str:
+    """Wie das Skript am Gerät installiert: copy, msi (msiexec /i), msp (msiexec /p), msu (wusa.exe),
+    msix (Add-AppxProvisionedPackage) oder exe (Installer selbst starten)."""
+    if e.mode == COPY:
+        return "copy"
+    low = e.installer.lower()
+    if low.endswith(APPX_EXT):
+        return "msix"
+    for ext in ("msi", "msp", "msu"):
+        if low.endswith("." + ext):
+            return ext
+    return "msi" if e.kind == "msi" else "exe"
+
+
 def program_line(e: Entry) -> str:
     """Ein Eintrag der Liste $OkulaPrograms."""
-    kind = "copy" if e.mode == COPY else ("msi" if e.installer.lower().endswith(".msi") or e.kind == "msi"
-                                          else "exe")
+    kind = script_kind(e)
     file = f"{e.name}/{e.installer}" if e.mode != COPY else e.name
     codes = ", ".join(str(c) for c in e.exit_codes)
     return (f"    [pscustomobject]@{{ Name = {_ps(e.label)}; Item = {_ps(e.name)}; "

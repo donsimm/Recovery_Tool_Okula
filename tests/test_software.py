@@ -85,7 +85,10 @@ class NameTest(unittest.TestCase):
         self.assertEqual(software.split_name("vlc-3.0.23-win64.exe")[2], "vlc")
         self.assertEqual(software.split_name("AcroRdrDC2400221005_de_DE.exe"),
                          ("AcroRdrDC", "2400221005", "acrordrdc-de-de"))
-        self.assertEqual(software.split_name("Firefox Setup 120.0.1.exe"), ("Firefox Setup", "120.0.1", "firefox"))
+        self.assertEqual(software.split_name("Firefox Setup 120.0.1.exe"), ("Firefox", "120.0.1", "firefox"))
+        self.assertEqual(software.split_name("AraneoInstaller.exe")[:2], ("Araneo", ""))           # Ä-043
+        self.assertEqual(software.split_name("PB_Installer_V10.0.0-beta.128.exe")[:2], ("PB", "10.0.0"))
+        self.assertEqual(software.split_name("App 2.1.msixbundle"), ("App", "2.1", "app"))
         self.assertEqual(software.split_name("npp.8.6.2.Installer.x64.exe")[::2], ("npp", "npp"))
         self.assertEqual(software.split_name("7z2301-x64.exe"), ("7z", "2301", "7z"))
         self.assertEqual(software.split_name("Tool v1.2.msi"), ("Tool", "1.2", "tool"))
