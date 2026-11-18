@@ -80,7 +80,9 @@ Gerätename = Name im Tool.
   (die OEM-Datei ergänzt nur bis zu 4+4 Kacheln, ersetzt die Microsoft-Platzhalter nicht und gilt nur für neue
   Benutzer) und statt `start2.bin` (binär, nicht dokumentiert). Bewusst **nicht**: Bereich „Empfohlen“ ausblenden
   (`HideRecommendedSection` – nimmt auch die zuletzt geöffneten Dateien), Rechner/Editor/Paint/Fotos/Snipping
-  Tool/Terminal/Edge entfernen, Store-Apps nachinstallieren. Nachlauf als einmalige geplante Aufgabe 30 min nach der
+  Tool/Terminal/Edge über Apps-Häkchen oder Vorlagen entfernen (Ergänzung 18.11., Entscheid Dominik: nur über die Gruppe
+  *Windows-Programme*, Standard aus, in keiner Vorlage; Edge, Einstellungen, Suche, Sicherheit nie), Store-Apps
+  nachinstallieren. Nachlauf als einmalige geplante Aufgabe 30 min nach der
   ersten Anmeldung (läuft einmal, nicht dauerhaft). Laptop entfernt Kurznotizen, Audiorecorder und Schnellhilfe wie
   die übrigen Apps (Prompt: „wie die übrigen Apps behandeln“). Ä-040 (`LayoutModification.xml` der Taskleiste)
   bleibt unberührt – die Richtlinie betrifft nur die Startmenü-Kacheln.
@@ -216,6 +218,15 @@ Neueste zuoberst.
   Telemetrie, Werbe-ID, Fehlerberichte, Bing-Suche); „Player“ und „Laptop“ um neue Apps, Startmenü und Nachlauf
   ergänzt. Hilfe (F1) Kapitel *Windows anpassen*: Platzhalter-Kacheln, Clean, was bleibt. Tests `tests/test_wintweaks.py`.
   **Kein neuer Agent-Stick nötig** (Skript entsteht im Tool). Prüfung [TESTS.md](TESTS.md) Abschnitt 26.
+  **Ergänzung 18.11. (Entscheid Dominik): Gruppe „Windows-Programme“** – 13 Häkchen, Standard aus und in keiner
+  Vorlage: Rechner, Editor, Paint, Fotos, Snipping Tool, Terminal, Medienwiedergabe (`Microsoft.ZuneMusic`; „Groove/Filme
+  & TV“ heisst jetzt „Filme & TV“ und entfernt nur noch `Microsoft.ZuneVideo`), Medien-Erweiterungen (Warnung im Tooltip)
+  als Store-Apps; WordPad, Schrittaufzeichnung, Windows Media Player (klassisch), Internet Explorer 11 (auch IE-Modus),
+  Math-Eingabe als Windows-Funktionen (`Remove-WindowsCapability`, Namen aus Microsoft Learn „Available features on
+  demand“, WMP aus Microsoft Q&A); Editor, Paint, Snipping Tool entfernen unter Windows 10 auch die gleichnamige
+  Windows-Funktion. Schutzliste zweistufig: `PROTECTED_ALWAYS` (Edge, Einstellungen, Suche, Sicherheit, App-Installer,
+  Shell, Frameworks, Treiber-Apps) nie; Rechner/Editor/Paint/Fotos/Snipping/Terminal/Medienwiedergabe/Codecs nur über
+  ihr eigenes Häkchen (`-Explicit`) – per Test abgesichert. Hilfe, TECHNIK, TESTS Abschnitt 26 ergänzt.
 - **Ä-043 – Software-Bibliothek: alle gängigen Installer-Typen erkennen** (Von: Dominik, 18.11.; Anlass: Luminex
   Araneo 1.10.2 = Qt Installer Framework 4.6.1 nicht erkannt, Name „AraneoInstaller“, Version leer). Neuer Baustein
   `installerinfo.py` (nur lesend, ohne neue Abhängigkeit): PE-Kopf mit Abschnitten und angehängten Daten, Ressourcen

@@ -22,7 +22,10 @@ from dataclasses import dataclass
 from okula_recovery.deploy import TWEAK_AFTER, TWEAK_LOG, TWEAK_NAME
 
 LOG_PATH = TWEAK_LOG
-GROUPS = ("Apps", "Updates", "Betrieb", "Datenschutz", "Explorer und Desktop", "Dienste", "Anmeldung")
+GROUPS = ("Apps", "Windows-Programme", "Updates", "Betrieb", "Datenschutz", "Explorer und Desktop", "Dienste",
+          "Anmeldung")
+WIN_GROUP = "Windows-Programme"
+WIN_HEADING = "Entfernen (Standard aus, in keiner Vorlage):"
 AUTOLOGON = "autologon"
 LATER = "later_cleanup"           # Nachlauf (Ä-042) – Baustein entsteht in build_script aus den gewählten Apps
 START_CLEAN = "start_clean"
@@ -37,16 +40,22 @@ LATER_FILE = "okula-windows-anpassen-nachlauf.ps1"     # unter %ProgramData%\Oku
 LATER_DELAY_MIN = 30                                    # Minuten nach der Anmeldung
 LATER_DAYS = 30                                         # läuft bis dahin nie → Windows löscht die Aufgabe
 
-# Pakete, die keine Option je entfernt (Ä-042: Rechner, Editor, Paint, Fotos, Snipping Tool, Terminal, Edge,
-# Sicherheit, App-Installer, Frameworks, Codecs, Treiber-Apps) – steht auch im Skript ($OkulaKeep, -like)
-PROTECTED = (
-    "Microsoft.WindowsCalculator", "Microsoft.WindowsNotepad", "Microsoft.Paint", "Microsoft.Windows.Photos",
-    "Microsoft.ScreenSketch", "Microsoft.WindowsTerminal", "Microsoft.MicrosoftEdge*", "Microsoft.SecHealthUI",
-    "Microsoft.DesktopAppInstaller", "Microsoft.Windows.ShellExperienceHost",
+# Pakete, die keine Option je entfernt – auch nicht die Gruppe „Windows-Programme“: Edge, Einstellungen, Suche,
+# Sicherheit, App-Installer, Shell, Frameworks, Treiber-Apps. Im Skript $OkulaKeepAlways (-like).
+PROTECTED_ALWAYS = (
+    "Microsoft.MicrosoftEdge*", "windows.immersivecontrolpanel", "Microsoft.Windows.Search", "Microsoft.Windows.Cortana",
+    "Microsoft.SecHealthUI", "Microsoft.DesktopAppInstaller", "Microsoft.Windows.ShellExperienceHost",
     "Microsoft.Windows.StartMenuExperienceHost", "MicrosoftWindows.Client.CBS", "MicrosoftWindows.Client.Core",
-    "*VCLibs*", "*NET.Native*", "Microsoft.NET.*", "*UI.Xaml*", "*WindowsAppRuntime*", "Microsoft.*Extension*",
+    "*VCLibs*", "*NET.Native*", "Microsoft.NET.*", "*UI.Xaml*", "*WindowsAppRuntime*",
     "*NVIDIA*", "*Realtek*", "*Intel*", "AdvancedMicroDevices*", "*Dolby*", "*Synaptics*", "*Waves*",
 )
+# Windows-Programme (Ergänzung Ä-042): nur über die ausdrücklichen Häkchen der Gruppe „Windows-Programme“
+# entfernbar, nie über andere Optionen oder Vorlagen
+PROTECTED_WINDOWS = (
+    "Microsoft.WindowsCalculator", "Microsoft.WindowsNotepad", "Microsoft.Paint", "Microsoft.Windows.Photos",
+    "Microsoft.ScreenSketch", "Microsoft.WindowsTerminal", "Microsoft.ZuneMusic", "Microsoft.*Extension*",
+)
+PROTECTED = PROTECTED_ALWAYS + PROTECTED_WINDOWS          # im Skript $OkulaKeep
 
 # Startmenü Windows 11 (Ä-042): Richtlinie Start/ConfigureStartPins – Kacheln in dieser Reihenfolge; fehlt eine App,
 # zeigt Windows die Kachel erst, wenn sie installiert ist (Microsoft Learn, „Customize the Start layout“).
@@ -80,14 +89,27 @@ class Option:
     sub: str = ""           # Unterüberschrift im Dialog (Store-Apps, Dienste)
     patterns: tuple[str, ...] = ()   # Store-Apps: Name-Muster (Get-AppxPackage -like)
     tooltip: str = ""
+    capabilities: tuple[str, ...] = ()   # Windows-Funktionen: Name-Muster (Get-WindowsCapability -like)
 
 
-def _apps(*patterns: str) -> str:
-    return "Remove-OkulaApps @(" + ", ".join(f"'{p}'" for p in patterns) + ")"
+def _apps(*patterns: str, explicit: bool = False) -> str:
+    return "Remove-OkulaApps @(" + ", ".join(f"'{p}'" for p in patterns) + ")" + (" -Explicit" if explicit else "")
 
 
 def _app(key: str, label: str, *patterns: str) -> Option:
     return Option(key, "Apps", label, _apps(*patterns), APPS_HEADING, patterns)
+
+
+def _win(key: str, label: str, apps: tuple[str, ...] = (), caps: tuple[str, ...] = (), tooltip: str = "") -> Option:
+    """Windows-Programm (Ergänzung Ä-042): Store-App(s) mit -Explicit (nur $OkulaKeepAlways gilt) und/oder
+    Windows-Funktion(en) per Remove-WindowsCapability."""
+    lines = []
+    if apps:
+        lines.append(f"$a = {_apps(*apps, explicit=True)}")
+    if caps:
+        lines.append("$c = Remove-OkulaCapabilities @(" + ", ".join(f"'{c}'" for c in caps) + ")")
+    lines.append("(@(" + ", ".join(v for v, on in (("$a", apps), ("$c", caps)) if on) + ") -join '; ')")
+    return Option(key, WIN_GROUP, label, "\n".join(lines), WIN_HEADING, apps, tooltip, caps)
 
 
 def _services(*names: str) -> str:
@@ -108,7 +130,8 @@ OPTIONS: tuple[Option, ...] = (
     # Apps – Store-Apps je Gruppe (Name-Muster); Frameworks, NonRemovable, PROTECTED und Treiber-Apps nie
     _app("apps_xbox", "Xbox", "Microsoft.Xbox*", "Microsoft.GamingApp"),
     _app("apps_bing", "Bing (Wetter, News, Bing Search …)", "Microsoft.Bing*"),
-    _app("apps_zune", "Groove/Filme & TV", "Microsoft.ZuneMusic", "Microsoft.ZuneVideo"),
+    # Microsoft.ZuneMusic (Groove-Musik bzw. Medienwiedergabe) nur noch unter „Windows-Programme“ (keine Doppelung)
+    _app("apps_zune", "Filme & TV", "Microsoft.ZuneVideo"),
     _app("apps_solitaire", "Solitaire", "Microsoft.MicrosoftSolitaireCollection"),
     _app("apps_people", "Kontakte", "Microsoft.People"),
     _app("apps_phone", "Smartphone-Link", "Microsoft.YourPhone"),
@@ -180,6 +203,35 @@ $users = Invoke-OkulaAllUsers {{
 }}
 (@($notes) + "Autostart entfernt: $users") -join ', '"""),
     Option("cortana", "Apps", "Cortana aus", f"Set-OkulaReg '{POL}\\Windows\\Windows Search' 'AllowCortana' 0"),
+    # Windows-Programme (Ergänzung Ä-042) – Standard aus, in keiner Vorlage. Store-Apps und Windows-Funktionen
+    # (Features on Demand, Microsoft Learn „Available features on demand“); unter Windows 10 sind Editor, Paint und
+    # Snipping Tool teils noch Windows-Funktionen statt Store-Apps
+    _win("win_calc", "Rechner", ("Microsoft.WindowsCalculator",)),
+    _win("win_notepad", "Editor", ("Microsoft.WindowsNotepad",),
+         ("Microsoft.Windows.Notepad~~~~*", "Microsoft.Windows.Notepad.System~~~~*")),
+    _win("win_paint", "Paint", ("Microsoft.Paint",), ("Microsoft.Windows.MSPaint~~~~*",)),
+    _win("win_photos", "Fotos", ("Microsoft.Windows.Photos",)),
+    _win("win_snip", "Snipping Tool", ("Microsoft.ScreenSketch",), ("Microsoft.Windows.SnippingTool~~~~*",)),
+    _win("win_terminal", "Terminal", ("Microsoft.WindowsTerminal",)),
+    _win("win_media", "Medienwiedergabe (Groove-Musik)", ("Microsoft.ZuneMusic",),
+         tooltip="App „Medienwiedergabe“ (Windows 11) bzw. „Groove-Musik“ (Windows 10). „Filme & TV“ ist ein "
+                 "eigenes Häkchen unter Apps."),
+    _win("win_codecs", "Medien-Erweiterungen (HEVC, HEIF, WebP, VP9, AV1, RAW …)",
+         ("Microsoft.*VideoExtension*", "Microsoft.*ImageExtension", "Microsoft.WebMediaExtensions"),
+         tooltip="Achtung: Fotos, Medienwiedergabe, Explorer-Vorschaubilder und andere Programme brauchen diese "
+                 "Codecs u. U. – danach lassen sich z. B. HEIC-Fotos oder HEVC-Videos nicht mehr öffnen."),
+    _win("win_wordpad", "WordPad", caps=("Microsoft.Windows.WordPad~~~~*",),
+         tooltip="Windows-Funktion. Ab Windows 11 24H2 gibt es WordPad nicht mehr (dann „nicht vorhanden“)."),
+    _win("win_steps", "Schrittaufzeichnung", caps=("App.StepsRecorder~~~~*",),
+         tooltip="Windows-Funktion „Steps Recorder“ (psr.exe), von Microsoft abgekündigt."),
+    _win("win_wmp", "Windows Media Player (klassisch)", caps=("Media.WindowsMediaPlayer~~~~*",),
+         tooltip="Windows-Funktion „Windows Media Player Legacy“. Die App „Medienwiedergabe“ ist ein eigenes Häkchen."),
+    _win("win_ie", "Internet Explorer 11 (auch IE-Modus in Edge)", caps=("Browser.InternetExplorer~~~~*",),
+         tooltip="Windows-Funktion Internet Explorer 11. Danach funktioniert der IE-Modus in Edge nicht mehr "
+                 "(Microsoft: Voraussetzung „Internet Explorer 11 enabled in Windows Features“)."),
+    _win("win_math", "Math-Eingabe (Math Recognizer)", caps=("MathRecognizer~~~~*",),
+         tooltip="Windows-Funktion für die Erkennung handgeschriebener Formeln (Stift); unter Windows 10 bis 2004 "
+                 "auch der Mathematik-Eingabebereich."),
     # Updates
     Option("wu_off", "Updates", "Windows Update aus",
            f"Set-OkulaReg '{POL}\\Windows\\WindowsUpdate\\AU' 'NoAutoUpdate' 1"),
@@ -316,10 +368,11 @@ $notes -join '; '""",
 BY_KEY = {o.key: o for o in OPTIONS}
 KEYS = tuple(BY_KEY)
 APP_KEYS = tuple(o.key for o in OPTIONS if o.key.startswith("apps_"))
+WIN_KEYS = tuple(o.key for o in OPTIONS if o.group == WIN_GROUP)      # Standard aus, in keiner Vorlage
 
 # Vorlagen fest im Code (keine eigenen Vorlagen); „Keine“ = nichts gewählt
 TEMPLATES: dict[str, frozenset[str]] = {
-    "Player": frozenset(KEYS) - {"apps_camera", "svc_spooler"},
+    "Player": frozenset(KEYS) - {"apps_camera", "svc_spooler"} - set(WIN_KEYS),
     "Laptop": frozenset(set(APP_KEYS) - {"apps_camera", "apps_store"}
                         | {"no_reinstall", "cortana",
                            "fastboot_off", "tips_off", "sticky_off",
@@ -332,6 +385,7 @@ TEMPLATES: dict[str, frozenset[str]] = {
                        | {LATER, "no_reinstall", "onedrive", "cortana", START_CLEAN, "tips_off",
                           "telemetry", "adid_off", "wer_off", "bing_search_off"}),
 }
+assert not any(set(WIN_KEYS) & keys for keys in TEMPLATES.values()), "Windows-Programme nie in Vorlagen"
 NO_TEMPLATE = "Keine"
 TEMPLATE_NAMES = (*TEMPLATES, NO_TEMPLATE)
 
@@ -399,7 +453,7 @@ def describe_lines(selected, user: str = "") -> list[str]:
             lines.append(f"  Anmeldung: automatisch als „{user.strip()}“ (Passwort wird nicht protokolliert)")
             continue
         names = [o.label for o in opts]
-        heading = {"Apps": "Store-Apps entfernen: ", "Dienste": "abschalten: "}.get(group, "")
+        heading = {"Apps": "Store-Apps entfernen: ", WIN_GROUP: "entfernen: ", "Dienste": "abschalten: "}.get(group, "")
         apps = [n for o, n in zip(opts, names) if o.sub]
         rest = [n for o, n in zip(opts, names) if not o.sub]
         text = ((heading + ", ".join(apps)) if apps else "")
@@ -500,6 +554,7 @@ Invoke-OkulaStep 'Startskript und Gruppenrichtlinie aufräumen' {
 
 # Gemeinsam mit dem Nachlauf: Schutzliste, Zähler, Protokoll
 COMMON = r"""$OkulaKeep = @(__KEEP__)
+$OkulaKeepAlways = @(__KEEPALWAYS__)
 $script:OkulaOk = 0
 $script:OkulaFailed = 0
 
@@ -607,8 +662,10 @@ function Disable-OkulaServices([string[]]$Names) {
     return 'nicht vorhanden'
 }
 
-function Test-OkulaKeep([string]$Name) {
-    foreach ($k in $OkulaKeep) { if ($Name -like $k) { return $true } }
+function Test-OkulaKeep([string]$Name, [bool]$Explicit = $false) {
+    # $OkulaKeepAlways gilt immer; Rechner, Editor, Paint … ($OkulaKeep) nur ausdrücklich (Gruppe Windows-Programme)
+    $list = if ($Explicit) { $OkulaKeepAlways } else { $OkulaKeep }
+    foreach ($k in $list) { if ($Name -like $k) { return $true } }
     return $false
 }
 
@@ -625,7 +682,7 @@ function Get-OkulaPackages([string]$Type) {
     return $script:OkulaPkgs[$Type]
 }
 
-function Remove-OkulaApps([string[]]$Patterns) {
+function Remove-OkulaApps([string[]]$Patterns, [switch]$Explicit) {
     # installierte Pakete (alle Benutzer) und vorinstallierte (sonst kommen sie bei neuen Konten wieder und ein
     # späteres Sysprep bricht ab); Frameworks, NonRemovable, Schutzliste und Treiber-Apps nie
     if (-not $script:OkulaGone) { $script:OkulaGone = @{} }
@@ -634,7 +691,8 @@ function Remove-OkulaApps([string[]]$Patterns) {
     foreach ($pat in $Patterns) {
         foreach ($type in 'Bundle', 'Main') {
             foreach ($p in @(Get-OkulaPackages $type | Where-Object { $_.Name -like $pat })) {
-                if ($p.NonRemovable -or (Test-OkulaKeep $p.Name) -or $script:OkulaGone.ContainsKey($p.Name)) { continue }
+                if ($p.NonRemovable -or (Test-OkulaKeep $p.Name $Explicit.IsPresent) -or
+                    $script:OkulaGone.ContainsKey($p.Name)) { continue }
                 try {
                     Remove-AppxPackage -Package $p.PackageFullName -AllUsers -ErrorAction Stop
                     $script:OkulaGone[$p.Name] = $true
@@ -645,7 +703,9 @@ function Remove-OkulaApps([string[]]$Patterns) {
             }
         }
         foreach ($p in @(Get-OkulaPackages 'Provisioned' | Where-Object { $_.DisplayName -like $pat })) {
-            if ((Test-OkulaKeep $p.DisplayName) -or $script:OkulaGone.ContainsKey($p.PackageName)) { continue }
+            if ((Test-OkulaKeep $p.DisplayName $Explicit.IsPresent) -or $script:OkulaGone.ContainsKey($p.PackageName)) {
+                continue
+            }
             try {
                 Remove-AppxProvisionedPackage -Online -PackageName $p.PackageName -ErrorAction Stop | Out-Null
                 $script:OkulaGone[$p.PackageName] = $true
@@ -659,6 +719,32 @@ function Remove-OkulaApps([string[]]$Patterns) {
     $names = @($removed | Sort-Object -Unique)
     if ($names) { return ($names -join ', ') + ' entfernt' }
     return 'nicht vorhanden'
+}
+
+function Remove-OkulaCapabilities([string[]]$Patterns) {
+    # Windows-Funktionen (Features on Demand): nur installierte, Liste einmal lesen
+    if ($null -eq $script:OkulaCaps) { $script:OkulaCaps = @(Get-WindowsCapability -Online -ErrorAction Stop) }
+    $removed = @()
+    $errors = @()
+    $restart = $false
+    foreach ($pat in $Patterns) {
+        foreach ($c in @($script:OkulaCaps | Where-Object { $_.Name -like $pat -and [string]$_.State -eq 'Installed' })) {
+            try {
+                $r = Remove-WindowsCapability -Online -Name $c.Name -ErrorAction Stop
+                if ($r.RestartNeeded) { $restart = $true }
+                $removed += ($c.Name -split '~')[0]
+            } catch {
+                $errors += '{0}: {1}' -f $c.Name, $_.Exception.Message
+            }
+        }
+    }
+    if ($errors) { throw ($errors -join '; ') }
+    if ($removed) {
+        $text = 'Windows-Funktion ' + (($removed | Sort-Object -Unique) -join ', ') + ' entfernt'
+        if ($restart) { $text += ' (wirkt nach einem Neustart)' }
+        return $text
+    }
+    return 'Windows-Funktion nicht vorhanden'
 }
 """
 
@@ -720,13 +806,14 @@ def _indent(code: str) -> str:
     return "\n".join(("    " + line) if line.strip() else "" for line in code.strip("\n").splitlines())
 
 
-def _keep_list() -> str:
-    return ", ".join(f"'{k}'" for k in PROTECTED)
+def _keep_list(items=PROTECTED) -> str:
+    return ", ".join(f"'{k}'" for k in items)
 
 
 def _fill(text: str, **values: str) -> str:
     # gemeinsame Teile zuerst (enthalten selbst Platzhalter)
-    text = text.replace("__COMMON__", COMMON).replace("__FUNCTIONS__", FUNCTIONS).replace("__KEEP__", _keep_list())
+    text = (text.replace("__COMMON__", COMMON).replace("__FUNCTIONS__", FUNCTIONS)
+            .replace("__KEEPALWAYS__", _keep_list(PROTECTED_ALWAYS)).replace("__KEEP__", _keep_list()))
     for k, v in values.items():
         text = text.replace(f"__{k}__", v)
     return text
@@ -734,6 +821,7 @@ def _fill(text: str, **values: str) -> str:
 
 def _step(o: Option, body: str) -> str:
     label = f"Store-Apps entfernen: {o.label}" if o.key in APP_KEYS else \
+        f"Windows-Programm entfernen: {o.label}" if o.group == WIN_GROUP else \
         f"Dienst abschalten: {o.label}" if o.group == "Dienste" else o.label
     return f"Invoke-OkulaStep {ps_quote(label)} {{\n{_indent(body)}\n}}"
 
@@ -775,8 +863,10 @@ def build_script(selected, user: str = "", password: str = "", device: str = "",
     head = _fill(HEADER.replace("__RESTORE__", RESTORE_START), CREATED=stamp, DEVICE=safe_device,
                  TEMPLATE=template_label(template, selected), LOG=LOG_PATH, NAME=TWEAK_NAME, AFTER=TWEAK_AFTER)
     chosen = [o for o in OPTIONS if o.key in selected]
-    order = [o for o in chosen if o.key not in APP_KEYS and o.key != LATER] + \
-            [o for o in chosen if o.key in APP_KEYS] + [o for o in chosen if o.key == LATER]
+    removal = set(APP_KEYS) | set(WIN_KEYS)
+    order = [o for o in chosen if o.key not in removal and o.key != LATER] + \
+            [o for o in chosen if o.key in APP_KEYS] + [o for o in chosen if o.key in WIN_KEYS] + \
+            [o for o in chosen if o.key == LATER]
     steps = []
     for o in order:
         body = autologon_body(user, password) if o.key == AUTOLOGON else \

@@ -709,7 +709,8 @@ beim <b>nächsten Start selbst</b> um, vor der Anmeldung. Geht nach einer Instal
 
 <b>Vorlagen</b> (setzen die Häkchen; danach lässt sich jedes Häkchen ändern – dann steht
 „Vorlage: Player (geändert)“):
-•  <b>Player</b>: alles an ausser <i>Kamera</i> und <i>Druckwarteschlange</i>, mit automatischer Anmeldung.
+•  <b>Player</b>: alles an ausser <i>Kamera</i>, <i>Druckwarteschlange</i> und der Gruppe <i>Windows-Programme</i>,
+    mit automatischer Anmeldung.
 •  <b>Laptop</b>: Store-Apps ausser <i>Kamera</i> und <i>Microsoft Store</i> (auch Kurznotizen, Audiorecorder,
     Schnellhilfe), Nachlauf, Wiederinstallation sperren, Cortana aus; Updates bleiben; Betrieb nur Schnellstart,
     Tipps und Einrastfunktion aus; Datenschutz und Explorer alles (mit Startmenü); Dienste nur Xbox-Dienste und
@@ -717,19 +718,26 @@ beim <b>nächsten Start selbst</b> um, vor der Anmeldung. Geht nach einer Instal
 •  <b>Clean</b>: Windows 11 ohne Werbung – alle Häkchen unter <i>Apps</i> ausser <i>Kamera</i> und
     <i>Microsoft Store</i> (beide bleiben installiert, lassen sich aber dazu wählen), <i>Startmenü: Werbe-Kacheln
     entfernen</i>, Tipps aus, Telemetrie minimal, Werbe-ID, Fehlerberichte und Bing-Suche aus. Updates, Energie,
-    Explorer-Ansicht, Dienste und Anmeldung bleiben, wie sie sind.
+    Explorer-Ansicht, Dienste, Anmeldung und die <i>Windows-Programme</i> bleiben, wie sie sind.
 •  <b>Keine</b>: alle Häkchen weg.
 
 <b>Die Einstellungen:</b>
-•  <b>Apps</b>: Store-Apps entfernen (Xbox, Bing (Wetter, News, Bing Search …), Groove/Filme &amp; TV, Solitaire,
+•  <b>Apps</b>: Store-Apps entfernen (Xbox, Bing (Wetter, News, Bing Search …), Filme &amp; TV, Solitaire,
     Kontakte, Smartphone-Link, Kamera, Office/Office-Hub, 3D-Viewer/Paint 3D/Mixed Reality, Feedback-Hub/Tipps/Hilfe,
     Microsoft Store, Outlook (neu)/Mail und Kalender, Teams, Clipchamp, Audiorecorder, Kurznotizen, To Do, Journal,
     Karten, Uhr (Wecker), Family, Schnellhilfe, Power Automate, Dev Home, Copilot, Widgets, Werbe-Apps (WhatsApp,
-    LinkedIn, Spotify …)) – für alle Benutzer und auch für später angelegte Konten. <b>Nie entfernt</b> werden
-    Rechner, Editor, Paint, Fotos, Snipping Tool, Terminal, Edge, Windows-Sicherheit, App-Installer, Codecs,
-    Treiber-Apps (NVIDIA, Realtek, Intel, AMD, Dolby …) und Bausteine, die andere Apps brauchen. Dazu: Später
-    nachgeladene Apps nochmals entfernen (nach der Anmeldung), Wiederinstallation von Werbe-Apps sperren, OneDrive
-    entfernen, Cortana aus.
+    LinkedIn, Spotify …)) – für alle Benutzer und auch für später angelegte Konten. Rechner, Editor, Paint, Fotos,
+    Snipping Tool, Terminal, Medienwiedergabe und Codecs bleiben hier immer (nur die Gruppe <i>Windows-Programme</i>
+    entfernt sie). Dazu: Später nachgeladene Apps nochmals entfernen (nach der Anmeldung), Wiederinstallation von
+    Werbe-Apps sperren, OneDrive entfernen, Cortana aus.
+•  <b>Windows-Programme</b> (Standard aus, in <b>keiner</b> Vorlage – nur gezielt anhaken): Rechner, Editor, Paint,
+    Fotos, Snipping Tool, Terminal, Medienwiedergabe (Groove-Musik), Medien-Erweiterungen (HEVC, HEIF, WebP, VP9,
+    AV1, RAW … – Achtung: andere Programme brauchen sie u. U., danach lassen sich z. B. HEIC-Fotos nicht mehr
+    öffnen), WordPad, Schrittaufzeichnung, Windows Media Player (klassisch), Internet Explorer 11 (danach geht auch
+    der IE-Modus in Edge nicht mehr), Math-Eingabe (Math Recognizer). Die letzten fünf sind Windows-Funktionen; gibt
+    es eine nicht (z. B. WordPad ab Windows 11 24H2), steht „nicht vorhanden“ im Protokoll. Manche wirken erst nach
+    einem Neustart. <b>Nie entfernt</b> werden Edge, Einstellungen, Suche, Windows-Sicherheit, App-Installer,
+    Treiber-Apps (NVIDIA, Realtek, Intel, AMD, Dolby …) und Bausteine, die andere Apps brauchen.
 •  <b>Updates</b>: Windows Update aus, keine Treiber über Windows Update, keine automatischen App-Updates.
 •  <b>Betrieb</b>: Energieplan Höchstleistung, Bildschirm und Standby nie ausschalten, Ruhezustand aus,
     Schnellstart aus, Sperrbildschirm aus, Tipps, Vorschläge und Benachrichtigungen aus, Einrastfunktion und

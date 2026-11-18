@@ -21,7 +21,7 @@ PASSWORD = "Geh'eim‘Pass„1“"   # mit Anführungszeichen, die PowerShell al
 EXPECTED = {
     "apps_xbox": ["'Microsoft.Xbox*'", "'Microsoft.GamingApp'"],
     "apps_bing": ["'Microsoft.Bing*'"],
-    "apps_zune": ["'Microsoft.ZuneMusic'", "'Microsoft.ZuneVideo'"],
+    "apps_zune": ["'Microsoft.ZuneVideo'"],
     "apps_solitaire": ["'Microsoft.MicrosoftSolitaireCollection'"],
     "apps_people": ["'Microsoft.People'"],
     "apps_phone": ["'Microsoft.YourPhone'"],
@@ -48,6 +48,22 @@ EXPECTED = {
     "apps_widgets": ["'MicrosoftWindows.Client.WebExperience'"],
     "apps_ads": ["'5319275A.WhatsAppDesktop'", "'7EE7776C.LinkedInforWindows'", "'SpotifyAB.SpotifyMusic'",
                  "'BytedancePte.Ltd.TikTok'", "'king.com.*'"],
+    # Ergänzung Ä-042: Windows-Programme (ausdrücklich, -Explicit)
+    "win_calc": ["Remove-OkulaApps @('Microsoft.WindowsCalculator') -Explicit"],
+    "win_notepad": ["@('Microsoft.WindowsNotepad') -Explicit", "'Microsoft.Windows.Notepad~~~~*'",
+                    "'Microsoft.Windows.Notepad.System~~~~*'"],
+    "win_paint": ["@('Microsoft.Paint') -Explicit", "'Microsoft.Windows.MSPaint~~~~*'"],
+    "win_photos": ["@('Microsoft.Windows.Photos') -Explicit"],
+    "win_snip": ["@('Microsoft.ScreenSketch') -Explicit", "'Microsoft.Windows.SnippingTool~~~~*'"],
+    "win_terminal": ["@('Microsoft.WindowsTerminal') -Explicit"],
+    "win_media": ["@('Microsoft.ZuneMusic') -Explicit"],
+    "win_codecs": ["'Microsoft.*VideoExtension*'", "'Microsoft.*ImageExtension'", "'Microsoft.WebMediaExtensions'",
+                   "-Explicit"],
+    "win_wordpad": ["Remove-OkulaCapabilities @('Microsoft.Windows.WordPad~~~~*')"],
+    "win_steps": ["Remove-OkulaCapabilities @('App.StepsRecorder~~~~*')"],
+    "win_wmp": ["Remove-OkulaCapabilities @('Media.WindowsMediaPlayer~~~~*')"],
+    "win_ie": ["Remove-OkulaCapabilities @('Browser.InternetExplorer~~~~*')"],
+    "win_math": ["Remove-OkulaCapabilities @('MathRecognizer~~~~*')"],
     "later_cleanup": ["Register-ScheduledTask -TaskName 'Okula Windows anpassen Nachlauf'", "-AtLogOn",
                       "$trigger.Delay = 'PT30M'", "FromBase64String"],
     "start_clean": ["MDM_Policy_Config01_Start02", "ConfigureStartPins = $json", "Build -lt 22000",
@@ -107,7 +123,7 @@ class OptionsTemplatesTest(unittest.TestCase):
 
     def test_templates(self):
         player = wintweaks.template_keys("Player")
-        self.assertEqual(set(wintweaks.KEYS) - player, {"apps_camera", "svc_spooler"})
+        self.assertEqual(set(wintweaks.KEYS) - player, {"apps_camera", "svc_spooler"} | set(wintweaks.WIN_KEYS))
         self.assertIn(wintweaks.AUTOLOGON, player)
         laptop = wintweaks.template_keys("Laptop")
         self.assertEqual({k for k in laptop if k.startswith("apps_")}, set(wintweaks.APP_KEYS) - {"apps_camera",
@@ -139,22 +155,47 @@ class OptionsTemplatesTest(unittest.TestCase):
 
     def test_protected_apps_never_removed(self):
         import fnmatch
-        protected = ["Microsoft.WindowsCalculator", "Microsoft.WindowsNotepad", "Microsoft.Paint",
-                     "Microsoft.Windows.Photos", "Microsoft.ScreenSketch", "Microsoft.WindowsTerminal",
-                     "Microsoft.MicrosoftEdge.Stable", "Microsoft.MicrosoftEdge", "Microsoft.SecHealthUI",
-                     "Microsoft.DesktopAppInstaller", "Microsoft.VCLibs.140.00.UWPDesktop", "Microsoft.UI.Xaml.2.8",
-                     "Microsoft.WindowsAppRuntime.1.5", "Microsoft.NET.Native.Framework.2.2",
-                     "Microsoft.NET.Native.Runtime.2.2", "Microsoft.HEVCVideoExtension", "Microsoft.WebpImageExtension",
-                     "RealtekSemiconductorCorp.RealtekAudioControl", "NVIDIACorp.NVIDIAControlPanel",
-                     "AppUp.IntelGraphicsExperience", "DolbyLaboratories.DolbyAccess",
-                     "MicrosoftWindows.Client.CBS", "Microsoft.Windows.StartMenuExperienceHost"]
-        patterns = [p for o in wintweaks.OPTIONS for p in o.patterns]
-        self.assertGreater(len(patterns), 40)
-        for name in protected:
-            hits = [p for p in patterns if fnmatch.fnmatchcase(name.lower(), p.lower())]
-            self.assertEqual(hits, [], f"{name} würde entfernt: {hits}")
-            keep = [k for k in wintweaks.PROTECTED if fnmatch.fnmatchcase(name.lower(), k.lower())]
-            self.assertTrue(keep, f"{name} fehlt auf der Schutzliste")
+
+        def hits(name, patterns):
+            return [p for p in patterns if fnmatch.fnmatchcase(name.lower(), p.lower())]
+
+        # nie – auch nicht über die Gruppe „Windows-Programme“
+        always = ["Microsoft.MicrosoftEdge.Stable", "Microsoft.MicrosoftEdge", "Microsoft.SecHealthUI",
+                  "windows.immersivecontrolpanel", "Microsoft.Windows.Search", "Microsoft.Windows.Cortana",
+                  "Microsoft.DesktopAppInstaller", "Microsoft.VCLibs.140.00.UWPDesktop", "Microsoft.UI.Xaml.2.8",
+                  "Microsoft.WindowsAppRuntime.1.5", "Microsoft.NET.Native.Framework.2.2",
+                  "Microsoft.NET.Native.Runtime.2.2", "RealtekSemiconductorCorp.RealtekAudioControl",
+                  "NVIDIACorp.NVIDIAControlPanel", "AppUp.IntelGraphicsExperience", "DolbyLaboratories.DolbyAccess",
+                  "Microsoft.DolbyAudioExtensions", "MicrosoftWindows.Client.CBS",
+                  "Microsoft.Windows.StartMenuExperienceHost"]
+        # nur über das eigene Häkchen der Gruppe „Windows-Programme“
+        windows = {"Microsoft.WindowsCalculator": "win_calc", "Microsoft.WindowsNotepad": "win_notepad",
+                   "Microsoft.Paint": "win_paint", "Microsoft.Windows.Photos": "win_photos",
+                   "Microsoft.ScreenSketch": "win_snip", "Microsoft.WindowsTerminal": "win_terminal",
+                   "Microsoft.ZuneMusic": "win_media", "Microsoft.HEVCVideoExtension": "win_codecs",
+                   "Microsoft.HEIFImageExtension": "win_codecs", "Microsoft.WebpImageExtension": "win_codecs",
+                   "Microsoft.VP9VideoExtensions": "win_codecs", "Microsoft.AV1VideoExtension": "win_codecs",
+                   "Microsoft.RawImageExtension": "win_codecs", "Microsoft.WebMediaExtensions": "win_codecs"}
+        all_patterns = [p for o in wintweaks.OPTIONS for p in o.patterns]
+        other = [p for o in wintweaks.OPTIONS if o.group != wintweaks.WIN_GROUP for p in o.patterns]
+        self.assertGreater(len(other), 40)
+        for name in always:
+            self.assertEqual(hits(name, all_patterns), [], f"{name} würde entfernt")
+            self.assertTrue(hits(name, wintweaks.PROTECTED_ALWAYS), f"{name} fehlt auf der Schutzliste")
+        for name, key in windows.items():
+            self.assertEqual(hits(name, other), [], f"{name} würde von einer anderen Option entfernt")
+            owners = [o.key for o in wintweaks.OPTIONS if hits(name, o.patterns)]
+            self.assertEqual(owners, [key], name)
+            self.assertTrue(hits(name, wintweaks.PROTECTED), f"{name} fehlt auf der Schutzliste")
+            self.assertFalse(hits(name, wintweaks.PROTECTED_ALWAYS), f"{name} wäre gar nicht entfernbar")
+        # ausdrücklich nur mit -Explicit (dann gilt nur $OkulaKeepAlways)
+        for o in wintweaks.OPTIONS:
+            if o.patterns:
+                self.assertEqual("-Explicit" in o.body, o.group == wintweaks.WIN_GROUP, o.key)
+        # Windows-Programme: Standard aus, in keiner Vorlage
+        self.assertEqual(len(wintweaks.WIN_KEYS), 13)
+        for name in wintweaks.TEMPLATES:
+            self.assertFalse(wintweaks.template_keys(name) & set(wintweaks.WIN_KEYS), name)
         # Store nur über das eigene Häkchen; neue Pakete (Bing Search, Widgets) über ihre Gruppe
         store = [o.key for o in wintweaks.OPTIONS if any(fnmatch.fnmatchcase("microsoft.windowsstore", p.lower())
                                                        for p in o.patterns)]
@@ -245,7 +286,9 @@ class ScriptTest(unittest.TestCase):
         self.assertRegex(self.script, r"catch \{\n\s+\$script:OkulaFailed\+\+\n\s+Write-OkulaLog \"FEHLER")
         labels = list(self.steps)
         first_app = next(i for i, lbl in enumerate(labels) if lbl.startswith("Store-Apps entfernen"))
-        self.assertTrue(all(lbl.startswith("Store-Apps entfernen") for lbl in labels[first_app:-1]))
+        first_win = next(i for i, lbl in enumerate(labels) if lbl.startswith("Windows-Programm entfernen"))
+        self.assertTrue(all(lbl.startswith("Store-Apps entfernen") for lbl in labels[first_app:first_win]))
+        self.assertTrue(all(lbl.startswith("Windows-Programm entfernen") for lbl in labels[first_win:-1]))
         self.assertEqual(labels[-1], wintweaks.BY_KEY["later_cleanup"].label)             # Nachlauf ganz am Schluss
         # Paketlisten nur einmal lesen (10-Minuten-Grenze der Startskripte)
         self.assertEqual(self.script.count("Get-AppxProvisionedPackage -Online"), 1)
@@ -256,6 +299,13 @@ class ScriptTest(unittest.TestCase):
                      "Microsoft.WindowsCalculator", "Microsoft.Paint", "Microsoft.MicrosoftEdge*"):
             self.assertIn(f"'{keep}'", self.script)
         self.assertIn("$p.NonRemovable", self.script)
+        always = ", ".join(f"'{k}'" for k in wintweaks.PROTECTED_ALWAYS)
+        self.assertIn(f"$OkulaKeepAlways = @({always})", self.script)
+        self.assertIn("$list = if ($Explicit) { $OkulaKeepAlways } else { $OkulaKeep }", self.script)
+        self.assertIn("Test-OkulaKeep $p.Name $Explicit.IsPresent", self.script)
+        self.assertIn("Remove-WindowsCapability -Online -Name $c.Name", self.script)
+        self.assertEqual(self.script.count("Get-WindowsCapability -Online"), 1)         # einmal gelesen
+        self.assertIn("[string]$_.State -eq 'Installed'", self.script)
         self.assertIn("Remove-AppxPackage -Package $p.PackageFullName -AllUsers", self.script)
         self.assertIn("Remove-AppxProvisionedPackage -Online", self.script)
 
@@ -621,6 +671,8 @@ class DialogTest(unittest.TestCase):
             self.assertEqual(dlg.selected(), set(wintweaks.template_keys("Clean")))
             self.assertTrue(dlg.btn.get_sensitive())
             self.assertIn("Enterprise", dlg.checks["no_reinstall"].get_tooltip_text())
+            self.assertFalse(dlg.checks["win_calc"].get_active())                     # Windows-Programme aus
+            self.assertIn("Achtung", dlg.checks["win_codecs"].get_tooltip_text())
             dlg.combo.set_active_id("Keine")
             self.assertEqual(dlg.selected(), set())
             self.assertFalse(dlg.btn.get_sensitive())

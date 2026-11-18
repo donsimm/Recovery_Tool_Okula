@@ -987,7 +987,7 @@ im Protokoll, der nächste Baustein läuft; Store-Apps zuletzt, weil am langsams
 
 | Gruppe | Option | Umsetzung |
 |---|---|---|
-| Apps | Store-Apps: Xbox · Bing … · Groove/Filme & TV · Solitaire · Kontakte · Smartphone-Link · Kamera · Office/Office-Hub · 3D-Viewer/Paint 3D/Mixed Reality · Feedback-Hub/Tipps/Hilfe · Microsoft Store | je Gruppe Name-Muster (z. B. `Microsoft.Xbox*`, `Microsoft.Bing*`, `Microsoft.MSPaint` = Paint 3D); `Remove-AppxPackage -AllUsers` (erst Bundle, dann Main) **und** `Remove-AppxProvisionedPackage -Online`; nie: `NonRemovable`, `*VCLibs*`, `*NET.Native*`, `*UI.Xaml*`, `*NVIDIA*`, `*Realtek*`, `*Intel*` |
+| Apps | Store-Apps: Xbox · Bing … · Filme & TV (`Microsoft.ZuneVideo`; `Microsoft.ZuneMusic` seit der Ergänzung nur unter Windows-Programme) · Solitaire · Kontakte · Smartphone-Link · Kamera · Office/Office-Hub · 3D-Viewer/Paint 3D/Mixed Reality · Feedback-Hub/Tipps/Hilfe · Microsoft Store | je Gruppe Name-Muster (z. B. `Microsoft.Xbox*`, `Microsoft.Bing*`, `Microsoft.MSPaint` = Paint 3D); `Remove-AppxPackage -AllUsers` (erst Bundle, dann Main) **und** `Remove-AppxProvisionedPackage -Online`; nie: `NonRemovable`, `*VCLibs*`, `*NET.Native*`, `*UI.Xaml*`, `*NVIDIA*`, `*Realtek*`, `*Intel*` |
 | Apps (Ä-042) | Outlook (neu)/Mail und Kalender · Teams · Clipchamp · Audiorecorder · Kurznotizen · To Do · Journal · Karten · Uhr (Wecker) · Family · Schnellhilfe · Power Automate · Dev Home · Copilot · Widgets · Werbe-Apps | `Microsoft.OutlookForWindows`, `microsoft.windowscommunicationsapps` · `MSTeams`, `MicrosoftTeams` · `Clipchamp.Clipchamp` · `Microsoft.WindowsSoundRecorder` · `Microsoft.MicrosoftStickyNotes` · `Microsoft.Todos` · `Microsoft.MicrosoftJournal` · `Microsoft.WindowsMaps` · `Microsoft.WindowsAlarms` · `MicrosoftCorporationII.MicrosoftFamily` · `MicrosoftCorporationII.QuickAssist` · `Microsoft.PowerAutomateDesktop` · `Microsoft.Windows.DevHome` · `Microsoft.Copilot`, `Microsoft.Windows.Ai.Copilot.Provider` · `MicrosoftWindows.Client.WebExperience` · `5319275A.WhatsAppDesktop`, `7EE7776C.LinkedInforWindows`, `AdobeSystemsIncorporated.Adobe*Express*`, `SpotifyAB.SpotifyMusic`, `Disney.37853FC22B2CE`, `Facebook.*` (Facebook, Instagram, Messenger), `BytedancePte.Ltd.TikTok`, `AmazonVideo.PrimeVideo`, `4DF9E0F8.Netflix`, `king.com.*` (Candy Crush). „Bing (Wetter, News, Bing Search …)“ = `Microsoft.Bing*` (auch `Microsoft.BingSearch`) |
 | Apps (Ä-042) | Später nachgeladene Apps nochmals entfernen (nach der Anmeldung) | Nachlauf, siehe unten |
 | Apps | Wiederinstallation von Werbe-Apps sperren | `Policies\…\CloudContent\DisableWindowsConsumerFeatures=1` (wirkt laut Policy CSP *Experience/AllowWindowsConsumerFeatures* **nur Enterprise/Education**, nicht Pro – Protokoll nennt die Edition, Tooltip im Dialog); ContentDeliveryManager `SilentInstalledAppsEnabled`, `PreInstalledAppsEnabled`, `PreInstalledAppsEverEnabled`, `OemPreInstalledAppsEnabled` = 0 (alle Benutzer, wirkt auch bei Pro) |
@@ -1010,22 +1010,63 @@ Richtlinie entfernt nur Werte, die sie selbst gesetzt hat. **„Alle Benutzer“
 mit SID `S-1-5-21-…` aus `ProfileList` (geladen: `HKU\<SID>`, sonst `NTUSER.DAT` mit `reg load HKU\OkulaAnpassen`
 laden und wieder entladen) und das Standardprofil (`ProfileList\Default`, sonst `%SystemDrive%\Users\Default`).
 
-**Vorlagen** (fest, `wintweaks.TEMPLATES`): *Player* = alles ausser Kamera und Druckwarteschlange, mit automatischer
-Anmeldung; *Laptop* = Store-Apps ausser Kamera/Store (auch Kurznotizen, Audiorecorder, Schnellhilfe), Nachlauf,
+**Vorlagen** (fest, `wintweaks.TEMPLATES`): *Player* = alles ausser Kamera, Druckwarteschlange und Windows-Programme,
+mit automatischer Anmeldung; *Laptop* = Store-Apps ausser Kamera/Store (auch Kurznotizen, Audiorecorder, Schnellhilfe), Nachlauf,
 Wiederinstallation sperren, Cortana aus, Betrieb nur Schnellstart/Tipps/Einrastfunktion, Datenschutz und Explorer alles
 (mit Startmenü), Dienste Xbox und Remote-Registrierung; *Clean* (Ä-042) = alle Häkchen der Gruppe Apps ausser Kamera
 und Store, Startmenü, Tipps aus, Telemetrie, Werbe-ID, Fehlerberichte, Bing-Suche – Updates, Betrieb, Explorer-Ansicht,
 Dienste und Anmeldung unverändert; *Keine* = nichts. Danach einzeln änderbar, Anzeige „Vorlage: Player (geändert)“.
 Keine eigenen Vorlagen.
 
-**Schutzliste** (`wintweaks.PROTECTED`, im Skript `$OkulaKeep`, Vergleich mit `-like`): Rechner
-`Microsoft.WindowsCalculator`, Editor `Microsoft.WindowsNotepad`, Paint `Microsoft.Paint` (nicht Paint 3D
-`Microsoft.MSPaint`), Fotos `Microsoft.Windows.Photos`, Snipping Tool `Microsoft.ScreenSketch`, Terminal
-`Microsoft.WindowsTerminal`, Edge `Microsoft.MicrosoftEdge*`, Sicherheit `Microsoft.SecHealthUI`, App-Installer
-`Microsoft.DesktopAppInstaller`, Shell-Pakete, Frameworks (`*VCLibs*`, `*NET.Native*`, `Microsoft.NET.*`, `*UI.Xaml*`,
-`*WindowsAppRuntime*`), Codecs `Microsoft.*Extension*`, Treiber-Apps (`*NVIDIA*`, `*Realtek*`, `*Intel*`,
-`AdvancedMicroDevices*`, `*Dolby*`, `*Synaptics*`, `*Waves*`); dazu wie bisher `NonRemovable`. Der Store hat sein eigenes
-Häkchen. `tests/test_wintweaks.py` prüft, dass kein Muster eines dieser Pakete trifft. Die Paketlisten
+**Schutzliste** in zwei Stufen (Vergleich mit `-like`; dazu wie bisher `NonRemovable`):
+- **Immer** (`wintweaks.PROTECTED_ALWAYS`, im Skript `$OkulaKeepAlways`): Edge `Microsoft.MicrosoftEdge*`, Einstellungen
+  `windows.immersivecontrolpanel`, Suche `Microsoft.Windows.Search`/`Microsoft.Windows.Cortana` (Windows-10-Suche, nicht
+  die Cortana-App), Sicherheit `Microsoft.SecHealthUI`, App-Installer `Microsoft.DesktopAppInstaller`, Shell-Pakete
+  (`ShellExperienceHost`, `StartMenuExperienceHost`, `MicrosoftWindows.Client.CBS`/`.Core`), Frameworks (`*VCLibs*`,
+  `*NET.Native*`, `Microsoft.NET.*`, `*UI.Xaml*`, `*WindowsAppRuntime*`), Treiber-Apps (`*NVIDIA*`, `*Realtek*`,
+  `*Intel*`, `AdvancedMicroDevices*`, `*Dolby*`, `*Synaptics*`, `*Waves*`).
+- **Nur ausdrücklich** (`wintweaks.PROTECTED_WINDOWS`; im Skript zusammen mit der ersten Stufe `$OkulaKeep`): Rechner
+  `Microsoft.WindowsCalculator`, Editor `Microsoft.WindowsNotepad`, Paint `Microsoft.Paint` (nicht Paint 3D
+  `Microsoft.MSPaint`), Fotos `Microsoft.Windows.Photos`, Snipping Tool `Microsoft.ScreenSketch`, Terminal
+  `Microsoft.WindowsTerminal`, Medienwiedergabe `Microsoft.ZuneMusic`, Codecs `Microsoft.*Extension*`. Nur die Häkchen
+  der Gruppe *Windows-Programme* rufen `Remove-OkulaApps … -Explicit` auf; dann gilt nur `$OkulaKeepAlways`.
+Der Store hat sein eigenes Häkchen. `tests/test_wintweaks.py` prüft: kein Muster trifft ein Paket der ersten Stufe;
+Pakete der zweiten Stufe trifft genau ihr eigenes Häkchen; nur die Gruppe *Windows-Programme* nutzt `-Explicit`; keine
+Vorlage enthält ein Häkchen dieser Gruppe.
+
+**Windows-Programme (Ergänzung Ä-042, Entscheid Dominik 18.11.2026)** – Gruppe zwischen *Apps* und *Updates*, Standard
+aus, in keiner Vorlage (`wintweaks.WIN_KEYS`, Prüfung beim Laden des Moduls). Bausteine laufen nach den Store-Apps und
+vor dem Nachlauf; der Nachlauf entfernt sie nicht nochmals.
+
+| Häkchen | Store-App (`Remove-OkulaApps -Explicit`) | Windows-Funktion (`Remove-WindowsCapability -Online`) |
+|---|---|---|
+| Rechner | `Microsoft.WindowsCalculator` | – |
+| Editor | `Microsoft.WindowsNotepad` | `Microsoft.Windows.Notepad~~~~*` (Windows 10 2004), `Microsoft.Windows.Notepad.System~~~~*` (klassischer Editor neben der App) |
+| Paint | `Microsoft.Paint` | `Microsoft.Windows.MSPaint~~~~*` (klassisches Paint, Windows 10 2004) |
+| Fotos | `Microsoft.Windows.Photos` | – |
+| Snipping Tool | `Microsoft.ScreenSketch` | `Microsoft.Windows.SnippingTool~~~~*` (wo die App nicht vorinstalliert ist) |
+| Terminal | `Microsoft.WindowsTerminal` | – |
+| Medienwiedergabe (Groove-Musik) | `Microsoft.ZuneMusic` (Windows 11 „Medienwiedergabe“, Windows 10 „Groove-Musik“); „Filme & TV“ `Microsoft.ZuneVideo` bleibt unter Apps – keine Doppelung | – |
+| Medien-Erweiterungen | `Microsoft.*VideoExtension*` (HEVC, VP9, AV1, MPEG-2 …), `Microsoft.*ImageExtension` (HEIF, WebP, RAW), `Microsoft.WebMediaExtensions`; Tooltip warnt | – |
+| WordPad | – | `Microsoft.Windows.WordPad~~~~*` (ab Windows 11 24H2 entfernt → „nicht vorhanden“) |
+| Schrittaufzeichnung | – | `App.StepsRecorder~~~~*` |
+| Windows Media Player (klassisch) | – | `Media.WindowsMediaPlayer~~~~*` |
+| Internet Explorer 11 (auch IE-Modus in Edge) | – | `Browser.InternetExplorer~~~~*` |
+| Math-Eingabe (Math Recognizer) | – | `MathRecognizer~~~~*` |
+
+`Remove-OkulaCapabilities`: `Get-WindowsCapability -Online` einmal lesen, nur `State = Installed` entfernen; meldet
+`RestartNeeded` („wirkt nach einem Neustart“); keine passende Funktion → „Windows-Funktion nicht vorhanden“. Bewusst
+**nicht**: `Disable-WindowsOptionalFeature` (optionale Features), Legacy-Konsole, VBScript, WMIC, PowerShell ISE,
+Windows-Fax und -Scan (nicht verlangt). Microsoft rät OEMs, die vorinstallierten FODs nicht aus dem Abbild zu entfernen
+(„Don't remove these FODs from the Windows image“) – darum Standard aus.
+
+Quellen Ergänzung (abgerufen 18.11.2026): Microsoft Learn „Available features on demand“ (Capability-Namen WordPad,
+Steps Recorder, Internet Explorer, Math Recognizer, Notepad, Notepad (system), Paint, Snipping Tool mit Verfügbarkeit),
+„Deprecated features in the Windows client“ (WordPad ab Windows 11 24H2 entfernt, Steps Recorder abgekündigt), „What is
+Internet Explorer mode?“ (Voraussetzung „Internet Explorer 11 enabled in Windows Features“); `Media.WindowsMediaPlayer`
+nur in Microsoft Q&A (learn.microsoft.com/answers, `dism /online /remove-capability
+/capabilityname:Media.WindowsMediaPlayer~~~~0.0.12.0`), nicht in der offiziellen FOD-Liste – darum Wildcard ab `~~~~`.
+Paketnamen der Medien-Erweiterungen und `Microsoft.ZuneMusic` aus dem Gedächtnis (Wildcards). Die Paketlisten
 (`Get-AppxPackage -AllUsers` je Bundle/Main, `Get-AppxProvisionedPackage -Online`) werden einmal gelesen und
 zwischengespeichert – ein Aufruf je Muster dauerte bei rund 45 Mustern mehrere Minuten (10-Minuten-Grenze).
 

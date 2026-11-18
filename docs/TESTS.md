@@ -586,3 +586,18 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (**kein** neuer Agent-
       abmelden, anmelden → bleibt angeheftet (nur ab 24H2 mit KB5062660; sonst setzt Windows die Liste neu – notieren)
 - [ ] **Neuer Benutzer** anlegen und anmelden → gleiches Startmenü, keine Werbe-Apps
 - [ ] Windows 10 VM, Vorlage „Clean“ → Protokoll „Startmenü …: Windows 10 – ohne Wirkung“, sonst wie Abschnitt 19
+
+**Windows-Programme (Ergänzung 18.11.)**
+- [ ] Dialog: Gruppe *Windows-Programme* zwischen *Apps* und *Updates*, alle Häkchen aus; Vorlagen „Player“, „Laptop“,
+      „Clean“ setzen dort **kein** Häkchen; Mauszeiger auf *Medien-Erweiterungen* → Warnung, auf *Internet Explorer 11*
+      → Hinweis IE-Modus
+- [ ] Nach „Clean“ (oben): Rechner, Editor, Paint, Fotos, Snipping Tool, Terminal, Medienwiedergabe und die
+      Medien-Erweiterungen (`Get-AppxPackage -AllUsers *Extension*`) sind noch da
+- [ ] Win11-VM nur *Rechner*, *Paint*, *Medienwiedergabe*, *WordPad*, *Schrittaufzeichnung*, *Windows Media Player
+      (klassisch)*, *Math-Eingabe* anhaken → senden → Neustart: Protokoll „ok Windows-Programm entfernen: Rechner
+      (Microsoft.WindowsCalculator entfernt)“, Paint („… entfernt“, Windows-Funktion MSPaint „nicht vorhanden“),
+      WordPad „Windows-Funktion nicht vorhanden“ (24H2) bzw. „entfernt“; `Get-WindowsCapability -Online | ? State -eq
+      Installed` ohne StepsRecorder, WindowsMediaPlayer, MathRecognizer; Edge, Einstellungen, Suche und
+      Windows-Sicherheit funktionieren; nach einem weiteren Neustart nichts zurück
+- [ ] Win10-VM *Editor*, *Paint*, *Internet Explorer 11* → klassischer Editor bzw. Paint entfernt (Windows-Funktion),
+      IE11 weg (`Get-WindowsCapability -Online -Name Browser.InternetExplorer*` → NotPresent)

@@ -100,3 +100,30 @@ Win11, die erst beim Klick bzw. später im Hintergrund installiert werden. Ausse
 2. In dieser Datei oben `Status: umgesetzt (Commit <hash>)` setzen.
 3. Abschlussmeldung: Änderungen, Commits, Testergebnis, gewählte Lösung Startmenü mit Quellen, Liste der Pakete je
    Häkchen, neuer Agent-Stick ja/nein, offene Punkte.
+
+## Ergänzung 18.11.: Windows-Programme
+
+Entscheid Dominik 18.11., gleiche Kopie/Branch `agent/AE-042`, auf dem Stand von Commit 3802458 aufbauend.
+
+Ziel: Windows-eigene Programme lassen sich mit *Windows anpassen* gezielt entfernen.
+
+1. Neue Gruppe „Windows-Programme“ mit je einem Häkchen (Paketnamen bzw. Weg belegen, Microsoft Learn):
+   - Store-Apps: Rechner (`Microsoft.WindowsCalculator`), Editor (`Microsoft.WindowsNotepad`), Paint (`Microsoft.Paint`),
+     Fotos (`Microsoft.Windows.Photos`), Snipping Tool (`Microsoft.ScreenSketch`), Terminal (`Microsoft.WindowsTerminal`),
+     Medienwiedergabe (`Microsoft.ZuneMusic` – Abgrenzung zu „Groove/Filme & TV“, keine Doppelung), Medien-Erweiterungen
+     (HEVC/HEIF/WebP/VP9/AV1/RawImage … mit Warnhinweis im Tooltip).
+   - Windows-Funktionen (Capabilities, `Remove-WindowsCapability -Online`): WordPad, Schrittaufzeichnung, klassischer
+     Windows Media Player, IE-Modus/Internet Explorer, Math-Eingabe – nur was es auf Win10/Win11 gibt, Namen mit
+     Wildcard belegt.
+2. Standard: alle Häkchen dieser Gruppe aus – auch in den Vorlagen „Clean“, „Player“, „Laptop“ nicht enthalten.
+3. Nie entfernbar: Edge, Einstellungen, Suche, Windows-Sicherheit, Store-Frameworks (VCLibs, WindowsAppRuntime,
+   UI.Xaml, .NET), System-/NonRemovable-Pakete. Rechner/Editor/Paint/Fotos/Snipping/Terminal nur durch die neuen,
+   ausdrücklichen Häkchen entfernbar, nie durch andere Optionen oder Vorlagen (Test).
+4. Tests, Hilfe (F1, Kapitel *Windows anpassen*), `TECHNIK.md`, `TESTS.md` Abschnitt Ä-042, `AENDERUNGEN.md` (Protokoll
+   Ä-042), dieser Abschnitt.
+5. Ein Commit `Ä-042: Gruppe Windows-Programme (Standard aus)`, lokal, nicht pushen.
+
+Umsetzung (Umsetzungs-Agent 18.11.): 13 Häkchen; Schutzliste zweistufig (`PROTECTED_ALWAYS` / `PROTECTED_WINDOWS`,
+`Remove-OkulaApps -Explicit`); „Groove/Filme & TV“ → „Filme & TV“ (`Microsoft.ZuneVideo`), `Microsoft.ZuneMusic` nur unter
+„Medienwiedergabe“; Editor, Paint, Snipping Tool entfernen unter Windows 10 auch die gleichnamige Windows-Funktion.
+Details und Quellen in `TECHNIK.md`, *Windows anpassen*.
