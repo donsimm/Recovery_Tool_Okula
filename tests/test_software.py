@@ -1,9 +1,12 @@
-"""I-020 Software installieren: Katalog, Erkennung der Installer, neue Version, Auswahl."""
+"""I-020 Software installieren und Ä-041 Software-Bibliothek: Laden, Erkennung der Installer, neue Version,
+Auswahl, Aufräumen von Verteilen/Software."""
 
+import hashlib
 import json
 import os
 import struct
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -37,6 +40,8 @@ WIX = pe(sections=(".text", ".rdata", ".wixburn", ".rsrc"))
 ISHIELD = pe(body="InstallShield (R)".encode("utf-16-le"))
 SQUIRREL = pe(body=b"SquirrelSetup Update.exe --install")
 UNKNOWN = pe(body=b"just some program")
+PE_OTHER = pe(body=b"another program")
+PE_THIRD = pe(body=b"a third program")
 MSI = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + bytes(1024)
 
 
@@ -99,170 +104,324 @@ class NameTest(unittest.TestCase):
         self.assertEqual(software.check_args("  /S  "), "/S")
 
 
-class CatalogTest(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
-        self.sw = distribute.ensure(self.root) / "Software"
+class Library:
+    """Probe-NAS (root) und Quell-Ordner (src) für die Software-Bibliothek (Ä-041)."""
 
-    def tearDown(self):
-        self.tmp.cleanup()
+    def __init__(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        base = Path(self.tmp.name)
+        self.root = base / "nas"
+        self.src = base / "quelle"
+        self.root.mkdir()
+        self.src.mkdir()
+        self.lib = software.library_dir(self.root)
 
     def put(self, rel: str, data: bytes) -> Path:
-        path = self.sw / rel
+        path = self.src / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
         return path
 
-    def test_new_file_appears_with_hidden_description(self):
-        self.put("vlc-3.0.24-win64.exe", NSIS)
-        self.put("AcroRdrDC_de_DE.msi", MSI)
-        self.put("Liesmich.txt", b"kein Installer")
-        self.put("Unbekannt-Setup.exe", UNKNOWN)
-        entries = {e.name: e for e in software.scan(self.root)}
-        self.assertEqual(set(entries), {"vlc-3.0.24-win64.exe", "AcroRdrDC_de_DE.msi", "Unbekannt-Setup.exe"})
-        vlc = entries["vlc-3.0.24-win64.exe"]
+    def load(self, rel: str, data: bytes | None = None, **kw) -> software.Entry:
+        path = self.put(rel, data) if data is not None else self.src / rel
+        return software.load(self.root, path, **kw).entry
+
+
+class CountingCancel(threading.Event):
+    """Abbruch nach n Abfragen (mitten im Kopieren)."""
+
+    def __init__(self, n: int):
+        super().__init__()
+        self.n = n
+
+    def is_set(self) -> bool:
+        self.n -= 1
+        return self.n < 0
+
+
+class CatalogTest(unittest.TestCase):
+    def setUp(self):
+        self.l = Library()
+        self.root, self.lib = self.l.root, self.l.lib
+
+    def tearDown(self):
+        self.l.tmp.cleanup()
+
+    def test_load_file_with_description(self):
+        progress = []
+        res = software.load(self.root, self.l.put("vlc-3.0.24-win64.exe", NSIS), lambda *a: progress.append(a))
+        vlc = res.entry
+        self.assertFalse(res.duplicate)
+        self.assertEqual((vlc.name, vlc.is_dir, vlc.installer), ("vlc-3.0.24", False, "vlc-3.0.24-win64.exe"))
         self.assertEqual((vlc.program, vlc.version, vlc.kind, vlc.args, vlc.status, vlc.selectable),
                          ("VLC media player", "3.0.24", "nsis", "/S", software.READY, True))
-        self.assertEqual(entries["AcroRdrDC_de_DE.msi"].status, software.READY)
-        unknown = entries["Unbekannt-Setup.exe"]
-        self.assertEqual((unknown.status, unknown.selectable), (software.MISSING, False))
-        meta = json.loads((self.sw / ".vlc-3.0.24-win64.exe.okula.json").read_text())
-        self.assertEqual((meta["kind"], meta["args"], meta["exit_codes"], meta["size"]), ("nsis", "/S", [0, 3010],
-                                                                                         len(NSIS)))
-        self.assertEqual(len(meta["sha256"]), 64)
-        # Beschreibungen erscheinen nicht als Einträge, Ordner senden nimmt sie nicht mit
-        self.assertEqual(len(software.scan(self.root)), 3)
-        names = [rel for _k, rel, *_r in distribute.plan(self.root, ["Software"]).entries]
-        self.assertFalse(any(n.endswith(".okula.json") for n in names))
+        self.assertEqual((self.lib / "vlc-3.0.24/vlc-3.0.24-win64.exe").read_bytes(), NSIS)
+        meta = json.loads((self.lib / "vlc-3.0.24/.okula.json").read_text())
+        self.assertEqual((meta["format"], meta["kind"], meta["args"], meta["exit_codes"], meta["size"], meta["mode"],
+                          meta["installer"]),
+                         ("okula-software", "nsis", "/S", [0, 3010], len(NSIS), "install", "vlc-3.0.24-win64.exe"))
+        self.assertEqual(meta["sha256"], hashlib.sha256(NSIS).hexdigest())
+        self.assertEqual(meta["content_sha256"], meta["sha256"])
+        self.assertEqual(meta["loaded_from"], str(self.l.src / "vlc-3.0.24-win64.exe"))
+        self.assertEqual(progress[-1], (len(NSIS), len(NSIS), ""))
+        again = software.scan(self.root)
+        self.assertEqual([(e.name, e.size, e.status) for e in again], [("vlc-3.0.24", len(NSIS), software.READY)])
+        self.assertEqual(sorted(p.name for p in self.lib.iterdir()), ["vlc-3.0.24"])   # kein .partial
 
-    def test_missing_parameters_become_selectable_after_edit(self):
-        self.put("Unbekannt-Setup.exe", UNKNOWN)
-        software.scan(self.root)
-        plan = software.plan(self.root, ["Unbekannt-Setup.exe"])
-        self.assertEqual((plan.entries, plan.blocked), ([], [("Unbekannt-Setup.exe", software.MISSING)]))
-        entry = software.update(self.root, "Unbekannt-Setup.exe", args="/silent", exit_codes="0, 3010, 1641")
-        self.assertEqual((entry.status, entry.exit_codes), (software.READY, [0, 3010, 1641]))
-        again = software.find(software.scan(self.root), "Unbekannt-Setup.exe")
-        self.assertEqual((again.args, again.meta["edited"]), ("/silent", True))
-        self.assertEqual(software.plan(self.root, ["Unbekannt-Setup.exe"]).names, ["Unbekannt-Setup.exe"])
-        software.update(self.root, "Unbekannt-Setup.exe", mode=software.MANUAL)
-        hand = software.find(software.scan(self.root), "Unbekannt-Setup.exe")
-        self.assertEqual((hand.status, hand.selectable), (software.HAND, False))
+    def test_msi_unknown_and_not_installer(self):
+        self.assertEqual(self.l.load("AcroRdrDC_de_DE.msi", MSI).status, software.READY)
+        unknown = self.l.load("Unbekannt-Setup.exe", UNKNOWN)
+        self.assertEqual((unknown.name, unknown.status, unknown.selectable), ("unbekannt", software.MISSING, False))
+        with self.assertRaisesRegex(software.SoftwareError, "kein Installer"):
+            self.l.load("Liesmich.txt", b"kein Installer")
         with self.assertRaises(software.SoftwareError):
-            software.update(self.root, "Unbekannt-Setup.exe", mode=software.COPY)   # nur Ordner
+            software.inspect(self.lib / "unbekannt", self.root)   # liegt schon in der Bibliothek
 
-    def test_new_version_adopts_parameters(self):
-        self.put("vlc-3.0.23-win64.exe", UNKNOWN)
-        software.scan(self.root)
-        software.update(self.root, "vlc-3.0.23-win64.exe", args="/S /L=1031", exit_codes="0")
-        # neue Version dazu, alte gelöscht – Parameter kommen trotzdem aus der alten Beschreibung
-        (self.sw / "vlc-3.0.23-win64.exe").unlink()
-        self.put("vlc-3.0.24-win64.exe", NSIS)
-        new = software.find(software.scan(self.root), "vlc-3.0.24-win64.exe")
-        self.assertEqual((new.args, new.exit_codes, new.adopted_from), ("/S /L=1031", [0], "vlc-3.0.23-win64.exe"))
-        self.assertIn("übernommen", new.note)
-        self.assertEqual(new.status, software.READY)
-        # gespeicherte Auswahl (Automatisierung) mit dem alten Namen → neue Version
-        p = software.plan(self.root, ["vlc-3.0.23-win64.exe"])
-        self.assertEqual((p.names, p.renamed), (["vlc-3.0.24-win64.exe"],
-                                                [("vlc-3.0.23-win64.exe", "vlc-3.0.24-win64.exe")]))
+    def test_duplicate_by_sha256(self):
+        first = self.l.load("vlc-3.0.24-win64.exe", NSIS)
+        res = software.load(self.root, self.l.put("anders/vlc-kopie.exe", NSIS))
+        self.assertTrue(res.duplicate)
+        self.assertEqual(res.entry.name, first.name)
+        self.assertEqual(sorted(p.name for p in self.lib.iterdir()), ["vlc-3.0.24"])
+        # Ordner: gleicher Inhalt → Doppel, andere Datei im Ordner → neuer Eintrag
+        self.l.put("Tool 1.0/setup.exe", INNO)
+        self.assertFalse(software.load(self.root, self.l.src / "Tool 1.0").duplicate)
+        self.assertTrue(software.load(self.root, self.l.src / "Tool 1.0").duplicate)
+        self.l.put("Tool 1.0/liesmich.txt", b"neu")
+        self.assertFalse(software.load(self.root, self.l.src / "Tool 1.0").duplicate)
+        self.assertEqual(sorted(p.name for p in self.lib.iterdir()), ["tool-1.0", "tool-1.0-2", "vlc-3.0.24"])
 
-    def test_unrelated_program_not_adopted(self):
-        self.put("vlc-3.0.23-win64.exe", UNKNOWN)
-        software.scan(self.root)
-        software.update(self.root, "vlc-3.0.23-win64.exe", args="/S")
-        self.put("setup.exe", UNKNOWN)
-        self.put("7z2301-x64.exe", UNKNOWN)
-        entries = {e.name: e for e in software.scan(self.root)}
-        self.assertEqual(entries["setup.exe"].status, software.MISSING)
-        self.assertEqual(entries["7z2301-x64.exe"].args, "")
+    def test_same_name_other_content_gets_own_entry(self):
+        self.l.load("tool-1.0.exe", UNKNOWN)
+        other = self.l.load("b/tool-1.0.exe", INNO)
+        self.assertEqual(other.name, "tool-1.0-2")
+        self.assertEqual(software.find(software.scan(self.root), "tool-1.0").kind, "")
 
-    def test_folder_installer_choice_and_copy(self):
-        self.put("Barco Eventmaster Toolset 7.2/Setup.exe", INNO)
-        self.put("Barco Eventmaster Toolset 7.2/data/lib.dll", b"x" * 100)
-        self.put("System Tools/a.exe", UNKNOWN)
-        self.put("System Tools/b.msi", MSI)
-        self.put("System Tools/sub/c.txt", b"c")
-        entries = {e.name: e for e in software.scan(self.root)}
-        barco = entries["Barco Eventmaster Toolset 7.2"]
-        self.assertEqual((barco.installer, barco.kind, barco.status, barco.size), ("Setup.exe", "inno", software.READY,
-                                                                                    len(INNO) + 100))
-        tools = entries["System Tools"]
-        self.assertEqual((tools.status, tools.candidates), (software.MISSING, ["a.exe", "b.msi"]))
+    def test_cancel_leaves_nothing(self):
+        self.l.put("Gross/setup.exe", INNO)
+        self.l.put("Gross/daten.bin", b"x" * 1000)
+        for n in (0, 1, 2):
+            with self.subTest(n=n), self.assertRaisesRegex(software.SoftwareError, "Abgebrochen"):
+                software.load(self.root, self.l.src / "Gross", cancel=CountingCancel(n))
+            self.assertEqual(list(self.lib.iterdir()), [])
+        self.assertEqual(software.scan(self.root), [])
+
+    def test_folder_installer_unique_choice_and_copy(self):
+        self.l.put("YSUSB_V213_Win/setup.exe", INNO)
+        self.l.put("YSUSB_V213_Win/driver/ysusb.sys", b"x" * 100)
+        yamaha = software.load(self.root, self.l.src / "YSUSB_V213_Win").entry
+        self.assertEqual((yamaha.is_dir, yamaha.installer, yamaha.kind, yamaha.status, yamaha.size),
+                         (True, "setup.exe", "inno", software.READY, len(INNO) + 100))
+        self.assertEqual((self.lib / yamaha.name / "driver/ysusb.sys").read_bytes(), b"x" * 100)
+        self.l.put("System Tools/a.exe", UNKNOWN)
+        self.l.put("System Tools/b.msi", MSI)
+        self.l.put("System Tools/sub/c.txt", b"c")
+        src = software.inspect(self.l.src / "System Tools")
+        self.assertEqual((src.candidates, src.installer, src.bytes), (["a.exe", "b.msi"], "",
+                                                                      len(UNKNOWN) + len(MSI) + 1))
+        with self.assertRaises(software.SoftwareError):
+            software.load(self.root, src, installer="gibtsnicht.exe")
+        tools = software.load(self.root, src).entry          # nicht eindeutig, keiner gewählt
+        self.assertEqual((tools.name, tools.status), ("system-tools", software.MISSING))
         self.assertIn("Installer im Ordner wählen", tools.note)
-        with self.assertRaises(software.SoftwareError):
-            software.update(self.root, "System Tools", installer="gibtsnicht.exe")
-        chosen = software.update(self.root, "System Tools", installer="b.msi")
+        chosen = software.update(self.root, "system-tools", installer="b.msi")
         self.assertEqual((chosen.kind, chosen.status), ("msi", software.READY))
-        copy = software.update(self.root, "System Tools", mode=software.COPY)
+        copy = software.update(self.root, "system-tools", mode=software.COPY)
         self.assertEqual((copy.status, copy.selectable, copy.kind_label), (software.COPY_ONLY, True, "Ordner"))
-        p = software.plan(self.root, ["Barco Eventmaster Toolset 7.2", "System Tools", "weg.exe"])
+        p = software.plan(self.root, [yamaha.name, "system-tools", "weg.exe"])
         self.assertEqual(p.missing, ["weg.exe"])
         rels = [(k, rel) for k, rel, *_r in p.files]
-        self.assertIn(("dir", "Barco Eventmaster Toolset 7.2/data"), rels)
-        self.assertIn(("file", "Barco Eventmaster Toolset 7.2/data/lib.dll"), rels)
-        self.assertIn(("dir", "System Tools/sub"), rels)
-        self.assertLess(rels.index(("dir", "System Tools/sub")), rels.index(("file", "System Tools/sub/c.txt")))
+        self.assertIn(("dir", f"{yamaha.name}/driver"), rels)
+        self.assertIn(("file", f"{yamaha.name}/driver/ysusb.sys"), rels)
+        self.assertIn(("dir", "system-tools/sub"), rels)
+        self.assertLess(rels.index(("dir", "system-tools/sub")), rels.index(("file", "system-tools/sub/c.txt")))
+        self.assertFalse(any(r.endswith(".okula.json") for _k, r in rels))       # Beschreibung bleibt auf dem NAS
         self.assertEqual(p.bytes, len(INNO) + 100 + len(UNKNOWN) + len(MSI) + 1)
 
-    def test_replaced_file_detected_again(self):
-        path = self.put("tool.exe", UNKNOWN)
-        self.assertEqual(software.find(software.scan(self.root), "tool.exe").kind, "")
-        path.write_bytes(NSIS)
-        os.utime(path, (1, 1))
-        self.assertEqual(software.find(software.scan(self.root), "tool.exe").kind, "nsis")
+    def test_folder_with_chosen_installer(self):
+        self.l.put("Sammlung/a.exe", UNKNOWN)
+        self.l.put("Sammlung/b.msi", MSI)
+        entry = software.load(self.root, self.l.src / "Sammlung", installer="b.msi").entry
+        self.assertEqual((entry.installer, entry.kind, entry.status), ("b.msi", "msi", software.READY))
+
+    def test_missing_parameters_become_selectable_after_edit(self):
+        name = self.l.load("Unbekannt-Setup.exe", UNKNOWN).name
+        plan = software.plan(self.root, [name])
+        self.assertEqual((plan.entries, plan.blocked), ([], [(name, software.MISSING)]))
+        entry = software.update(self.root, name, args="/silent", exit_codes="0, 3010, 1641", program="Tool X",
+                                version="2.0")
+        self.assertEqual((entry.status, entry.exit_codes, entry.label), (software.READY, [0, 3010, 1641], "Tool X 2.0"))
+        again = software.find(software.scan(self.root), name)
+        self.assertEqual((again.args, again.meta["edited"]), ("/silent", True))
+        self.assertEqual(software.plan(self.root, [name]).names, [name])
+        software.update(self.root, name, mode=software.MANUAL)
+        hand = software.find(software.scan(self.root), name)
+        self.assertEqual((hand.status, hand.selectable), (software.HAND, False))
+        with self.assertRaises(software.SoftwareError):
+            software.update(self.root, name, mode=software.COPY)   # nur Ordner
+        with self.assertRaises(software.SoftwareError):
+            software.update(self.root, "gibtsnicht", args="/S")
+
+    def test_new_version_adopts_parameters_old_stays(self):
+        old = self.l.load("vlc-3.0.23-win64.exe", UNKNOWN)
+        software.update(self.root, old.name, args="/S /L=1031", exit_codes="0")
+        new = self.l.load("vlc-3.0.24-win64.exe", NSIS)
+        self.assertEqual((new.name, new.args, new.exit_codes, new.adopted_from),
+                         ("vlc-3.0.24", "/S /L=1031", [0], "vlc-3.0.23"))
+        self.assertIn("übernommen", new.note)
+        self.assertEqual(new.status, software.READY)
+        self.assertEqual([e.name for e in software.scan(self.root)], ["vlc-3.0.23", "vlc-3.0.24"])   # alte bleibt
+        # alte gelöscht: gespeicherte Auswahl (Automatisierung) nimmt über den key die neue Version
+        software.delete(self.root, "vlc-3.0.23")
+        p = software.plan(self.root, ["vlc-3.0.23"])
+        self.assertEqual((p.names, p.renamed), (["vlc-3.0.24"], [("vlc-3.0.23", "vlc-3.0.24")]))
+
+    def test_saved_selection_resolved_by_key(self):
+        self.l.load("vlc-3.0.24-win64.exe", NSIS)
+        self.l.put("System Tools/a.exe", UNKNOWN)
+        software.load(self.root, self.l.src / "System Tools")
+        # Namen aus der Zeit von Verteilen\Software (I-020) und ein gelöschter Eintrag
+        chosen, missing, renamed = software.resolve(software.scan(self.root),
+                                                    ["vlc-3.0.23-win64.exe", "System Tools", "setup.exe", "weg.exe"])
+        self.assertEqual([e.name for e in chosen], ["vlc-3.0.24", "system-tools"])
+        self.assertEqual(missing, ["setup.exe", "weg.exe"])        # nicht still übersprungen, sondern gemeldet
+        self.assertEqual(renamed, [("vlc-3.0.23-win64.exe", "vlc-3.0.24"), ("System Tools", "system-tools")])
+        p = software.plan(self.root, ["weg.exe"])
+        self.assertEqual(p.missing, ["weg.exe"])
+        self.assertIn("weg.exe: fehlt in der Software-Bibliothek – übersprungen", p.lines())
+
+    def test_unrelated_program_not_adopted(self):
+        old = self.l.load("vlc-3.0.23-win64.exe", UNKNOWN)
+        software.update(self.root, old.name, args="/S")
+        self.assertEqual(self.l.load("setup.exe", PE_OTHER).status, software.MISSING)
+        self.assertEqual(self.l.load("7z2301-x64.exe", PE_THIRD).args, "")
+
+    def test_catalog_reads_only_library(self):
+        sw = distribute.ensure(self.root) / "Software"
+        (sw / "vlc-3.0.24-win64.exe").write_bytes(NSIS)
+        (sw / "Tool").mkdir()
+        (sw / "Tool/setup.exe").write_bytes(INNO)
+        self.assertEqual(software.scan(self.root), [])
+        self.assertEqual(sorted(p.name for p in sw.iterdir()), ["Tool", "vlc-3.0.24-win64.exe"])   # nichts angelegt
+        self.assertEqual(software.plan(self.root, ["vlc-3.0.24-win64.exe"]).missing, ["vlc-3.0.24-win64.exe"])
+        # aus Verteilen\Software laden geht (Kopie), der Ordner bleibt unverändert
+        entry = software.load(self.root, sw / "vlc-3.0.24-win64.exe").entry
+        self.assertEqual(entry.path.parent, self.lib)
+        self.assertEqual(sorted(p.name for p in sw.iterdir()), ["Tool", "vlc-3.0.24-win64.exe"])
+
+    def test_cleanup_distribute_only_i020_descriptions(self):
+        sw = distribute.ensure(self.root) / "Software"
+        i020 = {"format": "okula-software", "version": 1, "program": "VLC"}
+        (sw / ".vlc.exe.okula.json").write_text(json.dumps(i020))
+        (sw / ".OBS & plugin.okula.json").write_text(json.dumps(i020))
+        (sw / ".fremd.okula.json").write_text(json.dumps({"format": "okula-os"}))
+        (sw / ".kaputt.okula.json").write_text("{kein json")
+        (sw / ".vlc.exe.okula.json.tmp").write_text(json.dumps(i020))
+        (sw / "vlc.exe").write_bytes(NSIS)
+        (sw / "Ordner").mkdir()
+        (sw / "Ordner/.innen.okula.json").write_text(json.dumps(i020))
+        (sw / ".link.okula.json").symlink_to(sw / ".fremd.okula.json")
+        removed = software.cleanup_distribute(self.root)
+        self.assertEqual(removed, [".OBS & plugin.okula.json", ".vlc.exe.okula.json"])
+        self.assertEqual(sorted(p.name for p in sw.iterdir()),
+                         [".fremd.okula.json", ".kaputt.okula.json", ".link.okula.json", ".vlc.exe.okula.json.tmp",
+                          "Ordner", "vlc.exe"])
+        self.assertTrue((sw / "Ordner/.innen.okula.json").exists())
+        self.assertEqual(software.cleanup_distribute(self.root), [])
+        self.assertEqual(software.cleanup_distribute(self.root / "gibtsnicht"), [])
+
+    def test_delete(self):
+        name = self.l.load("vlc-3.0.24-win64.exe", NSIS).name
+        software.delete(self.root, name)
+        self.assertEqual(list(self.lib.iterdir()), [])
+        for bad in ("", "..", "../nas", ".x", "a/b", "gibtsnicht"):
+            with self.subTest(bad=bad), self.assertRaises(software.SoftwareError):
+                software.delete(self.root, bad)
+
+    def test_hand_copied_folder_and_partial(self):
+        (self.lib / "Manuell 1.0").mkdir(parents=True)
+        (self.lib / "Manuell 1.0/setup.exe").write_bytes(INNO)
+        (self.lib / ".abc.partial").mkdir()
+        (self.lib / ".abc.partial/x.exe").write_bytes(NSIS)
+        (self.lib / "lose.exe").write_bytes(NSIS)
+        entries = software.scan(self.root)
+        self.assertEqual([(e.name, e.kind, e.status) for e in entries], [("Manuell 1.0", "inno", software.READY)])
+        self.assertTrue((self.lib / "Manuell 1.0/.okula.json").is_file())
+        self.assertEqual(software.cleanup_partial(self.root), 0)              # zu jung – Laden läuft evtl. noch
+        self.assertEqual(software.cleanup_partial(self.root, older_than=-1), 1)
+        self.assertFalse((self.lib / ".abc.partial").exists())
 
     def test_symlinks_ignored(self):
-        self.put("echt.exe", NSIS)
-        (self.sw / "link.exe").symlink_to(self.sw / "echt.exe")
-        self.assertEqual([e.name for e in software.scan(self.root)], ["echt.exe"])
+        self.assertEqual(self.l.load("echt.exe", NSIS).name, "echt-3.0.24")      # Version aus der Versionsinfo
+        (self.lib / "link").symlink_to(self.lib / "echt-3.0.24")
+        self.assertEqual([e.name for e in software.scan(self.root)], ["echt-3.0.24"])
+        self.l.put("Mit Link/setup.exe", INNO)
+        (self.l.src / "Mit Link/link.exe").symlink_to(self.l.src / "echt.exe")
+        src = software.inspect(self.l.src / "Mit Link")
+        self.assertEqual((src.candidates, src.skipped), (["setup.exe"], ["link.exe"]))
 
     def test_texts(self):
-        self.put("vlc-3.0.24-win64.exe", NSIS)
-        self.put("AcroRdrDC_de_DE.msi", MSI)
+        self.l.load("vlc-3.0.24-win64.exe", NSIS)
+        self.l.load("AcroRdrDC_de_DE.msi", MSI)
         entries = software.scan(self.root)
         self.assertEqual(software.history_text(entries),
                          "Software: AcroRdrDC de DE, VLC media player 3.0.24 (wird beim ersten Start installiert)")
+
+
+class DemoLibraryTest(unittest.TestCase):
+    def test_demo_library_without_nas(self):
+        from unittest import mock
+        from okula_recovery import demostore
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": tmp}):
+            old = Path(tmp) / "okula-recovery/demo/Verteilen/Software"
+            old.mkdir(parents=True)
+            (old / "vlc-3.0.24-win64.exe").write_bytes(demostore.DEMO_INSTALLERS["vlc-3.0.24-win64.exe"])
+            (old / ".vlc-3.0.24-win64.exe.okula.json").write_text(json.dumps({"format": "okula-software"}))
+            root = demostore.ensure()
+            entries = {e.name: e.status for e in software.scan(root)}
+            self.assertEqual(entries, {"vlc-3.0.24": software.READY, "acrordrdc-de-de": software.READY,
+                                       "demo-tool": software.MISSING})
+            self.assertEqual(sorted(p.name for p in old.iterdir()), ["Demo-Installer.txt"])
+            demostore.ensure()                                        # zweites Mal: nichts doppelt
+            self.assertEqual(len(software.scan(root)), 3)
 
 
 class ScriptTest(unittest.TestCase):
     """Erzeugtes Installationsskript (PowerShell) und Startskript (cmd)."""
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
-        sw = distribute.ensure(self.root) / "Software"
-        (sw / "vlc-3.0.24-win64.exe").write_bytes(NSIS)
-        (sw / "AcroRdrDC_de_DE.msi").write_bytes(MSI)
-        (sw / "System Tools").mkdir()
-        (sw / "System Tools/a.exe").write_bytes(UNKNOWN)
-        (sw / "Barco Tool 7.2").mkdir()
-        (sw / "Barco Tool 7.2/Setup.exe").write_bytes(INNO)
-        software.scan(self.root)
-        software.update(self.root, "System Tools", mode=software.COPY)
-        software.update(self.root, "AcroRdrDC_de_DE.msi", exit_codes="0, 3010, 1641")
-        self.entries = software.plan(self.root, ["vlc-3.0.24-win64.exe", "AcroRdrDC_de_DE.msi",
-                                                 "Barco Tool 7.2", "System Tools"]).entries
+        self.l = Library()
+        self.root = self.l.root
+        self.l.load("vlc-3.0.24-win64.exe", NSIS)
+        self.l.load("AcroRdrDC_de_DE.msi", MSI)
+        self.l.put("System Tools/a.exe", UNKNOWN)
+        self.l.load("System Tools")
+        self.l.put("Barco Tool 7.2/Setup.exe", INNO)
+        self.l.load("Barco Tool 7.2")
+        software.update(self.root, "system-tools", mode=software.COPY)
+        software.update(self.root, "acrordrdc-de-de", exit_codes="0, 3010, 1641")
+        self.entries = software.plan(self.root, ["vlc-3.0.24", "acrordrdc-de-de", "barco-tool-7.2",
+                                                 "system-tools"]).entries
         self.script = software.build_script(self.entries, "PC-1 „Test“", created=0)
 
     def tearDown(self):
-        self.tmp.cleanup()
+        self.l.tmp.cleanup()
 
     def test_programs_in_order_with_codes(self):
         s = self.script
-        vlc = s.index("Item = 'vlc-3.0.24-win64.exe'")
-        msi = s.index("Item = 'AcroRdrDC_de_DE.msi'")
-        barco = s.index("Item = 'Barco Tool 7.2'")
-        tools = s.index("Item = 'System Tools'")
+        vlc = s.index("Item = 'vlc-3.0.24'")
+        msi = s.index("Item = 'acrordrdc-de-de'")
+        barco = s.index("Item = 'barco-tool-7.2'")
+        tools = s.index("Item = 'system-tools'")
         self.assertLess(vlc, msi)
         self.assertLess(msi, barco)
         self.assertLess(barco, tools)
-        self.assertIn("Kind = 'exe'; Args = '/S'; Ok = @(0, 3010)", s)
-        self.assertIn("Kind = 'msi'; Args = '/qn /norestart'; Ok = @(0, 3010, 1641)", s)
-        self.assertIn("File = 'Barco Tool 7.2\\Setup.exe'; Kind = 'exe'; "
+        self.assertIn("File = 'vlc-3.0.24\\vlc-3.0.24-win64.exe'; Kind = 'exe'; Args = '/S'; Ok = @(0, 3010)", s)
+        self.assertIn("File = 'acrordrdc-de-de\\AcroRdrDC_de_DE.msi'; Kind = 'msi'; Args = '/qn /norestart'; "
+                      "Ok = @(0, 3010, 1641)", s)
+        self.assertIn("File = 'barco-tool-7.2\\Setup.exe'; Kind = 'exe'; "
                       "Args = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-'", s)
-        self.assertIn("Item = 'System Tools'; File = 'System Tools'; Kind = 'copy'", s)
+        self.assertIn("Item = 'system-tools'; File = 'system-tools'; Kind = 'copy'", s)
         self.assertIn("'/i \"{0}\" {1}' -f $file", s)              # MSI über msiexec /i
 
     def test_log_cleanup_and_one_reboot(self):
@@ -307,14 +466,12 @@ class ScriptTest(unittest.TestCase):
         self.assertEqual(s.count("{"), s.count("}"))
         self.assertEqual(s.count("("), s.count(")"))
         self.assertIn("Gerät: PC-1 Test", s)
-        e = software.find(self.entries, "vlc-3.0.24-win64.exe")
+        e = software.find(self.entries, "vlc-3.0.24")
         e.meta["program"] = "O'Brien"
         self.assertIn("Name = 'O''Brien 3.0.24'", software.program_line(e))
 
     def test_missing_parameters_refused(self):
-        sw = self.root / "Verteilen/Software"
-        (sw / "unbekannt.exe").write_bytes(UNKNOWN)
-        entry = software.find(software.scan(self.root), "unbekannt.exe")
+        entry = self.l.load("unbekannt.exe", PE_OTHER)
         with self.assertRaisesRegex(software.SoftwareError, "Parameter"):
             software.build_script([entry])
         with self.assertRaises(software.SoftwareError):
@@ -400,12 +557,14 @@ class AgentTransferTest(unittest.TestCase):
         self.win = base / "win"
         (self.win / "Windows/System32/config").mkdir(parents=True)
         (self.win / "Windows/System32/config/SYSTEM").write_bytes(b"regf")
-        sw = distribute.ensure(self.nas) / "Software"
-        (sw / "vlc-3.0.24-win64.exe").write_bytes(NSIS)
-        (sw / "Barco Tool").mkdir()
-        (sw / "Barco Tool/Setup.exe").write_bytes(INNO)
-        (sw / "Barco Tool/data").mkdir()
-        (sw / "Barco Tool/data/x.bin").write_bytes(b"x" * 5000)
+        self.nas.mkdir()
+        src = base / "quelle"
+        (src / "Barco Tool/data").mkdir(parents=True)
+        (src / "vlc-3.0.24-win64.exe").write_bytes(NSIS)
+        (src / "Barco Tool/Setup.exe").write_bytes(INNO)
+        (src / "Barco Tool/data/x.bin").write_bytes(b"x" * 5000)
+        software.load(self.nas, src / "vlc-3.0.24-win64.exe")
+        software.load(self.nas, src / "Barco Tool")
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -442,21 +601,23 @@ class AgentTransferTest(unittest.TestCase):
         return plan, result, lines
 
     def test_files_and_startup_script_on_windows(self):
-        plan, result, lines = self.transfer(["vlc-3.0.24-win64.exe", "Barco Tool"])
+        plan, result, lines = self.transfer(["vlc-3.0.24", "barco-tool"])
         target = self.win / "ProgramData/Okula/Software"
-        self.assertEqual((target / "vlc-3.0.24-win64.exe").read_bytes(), NSIS)
-        self.assertEqual((target / "Barco Tool/data/x.bin").read_bytes(), b"x" * 5000)
-        self.assertEqual(sorted(p.name for p in target.iterdir()), ["Barco Tool", "vlc-3.0.24-win64.exe"])
+        self.assertEqual((target / "vlc-3.0.24/vlc-3.0.24-win64.exe").read_bytes(), NSIS)
+        self.assertEqual((target / "barco-tool/data/x.bin").read_bytes(), b"x" * 5000)
+        self.assertEqual(sorted(p.name for p in target.iterdir()), ["barco-tool", "vlc-3.0.24"])
+        self.assertFalse((target / "vlc-3.0.24/.okula.json").exists())      # Beschreibung bleibt auf dem NAS
         startup = self.win / "Windows/System32/GroupPolicy/Machine/Scripts/Startup"
         ps1 = (startup / "okula-software.ps1").read_bytes()
         self.assertTrue(ps1.startswith(b"\xef\xbb\xbf"))
-        self.assertIn("Item = 'Barco Tool'".encode(), ps1)
+        self.assertIn("Item = 'barco-tool'".encode(), ps1)
+        self.assertIn("File = 'vlc-3.0.24\\vlc-3.0.24-win64.exe'".encode(), ps1)
         self.assertTrue((startup / "okula-software.cmd").read_bytes().isascii())
         self.assertEqual((result["part"], result["state"], result["files"]), ("/dev/sda3", "installed", 3))
         self.assertIn("ersten Windows-Start", "\n".join(lines))
         # zweite Auswahl ersetzt die noch nicht installierte erste
-        self.transfer(["vlc-3.0.24-win64.exe"])
-        self.assertEqual([p.name for p in target.iterdir()], ["vlc-3.0.24-win64.exe"])
+        self.transfer(["vlc-3.0.24"])
+        self.assertEqual([p.name for p in target.iterdir()], ["vlc-3.0.24"])
 
     def test_bad_item_refused(self):
         from okula_recovery import deploy
@@ -506,20 +667,21 @@ class ChooserTest(unittest.TestCase):
         import time
         from gi.repository import GLib
         from okula_recovery.software_ui import SoftwareChooser
-        with tempfile.TemporaryDirectory() as tmp:
-            sw = distribute.ensure(tmp) / "Software"
-            (sw / "vlc-3.0.24-win64.exe").write_bytes(NSIS)
-            (sw / "unbekannt.exe").write_bytes(UNKNOWN)
+        lib = Library()
+        with lib.tmp:
+            lib.load("vlc-3.0.24-win64.exe", NSIS)
+            lib.load("unbekannt.exe", UNKNOWN)
+            tmp = str(lib.root)
             changes = []
             chooser = SoftwareChooser(on_change=lambda: changes.append(1))
-            chooser.load(tmp, ["vlc-3.0.24-win64.exe", "unbekannt.exe", "weg.exe"])
+            chooser.load(tmp, ["vlc-3.0.24", "unbekannt", "weg.exe"])
             for _ in range(500):
                 if chooser.loaded:
                     break
                 GLib.MainContext.default().iteration(False)
                 time.sleep(0.01)
             self.assertTrue(chooser.loaded)
-            self.assertEqual(chooser.selected(), ["vlc-3.0.24-win64.exe", "weg.exe"])   # „Parameter fehlt“ nie
+            self.assertEqual(chooser.selected(), ["vlc-3.0.24", "weg.exe"])   # „Parameter fehlt“ nie
             self.assertIn("Gewählt: 2 Programm(e)", chooser.total.get_text())
             self.assertTrue(changes)
             chooser.destroy()

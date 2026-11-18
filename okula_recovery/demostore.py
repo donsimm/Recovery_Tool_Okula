@@ -4,6 +4,7 @@ Aufbau wie auf dem NAS, damit die normalen Abläufe ohne Sonderfall laufen:
     <Konfig-Ordner>/demo/images/      Demo-Images (Disk-Image erstellen, fertige Demo-Images)
     <Konfig-Ordner>/demo/Backups/     Demo-Backups
     <Konfig-Ordner>/demo/Verteilen/   Software, Test Files, Content mit Beispielprojekten
+    <Konfig-Ordner>/demo/Software-Bibliothek/   drei erfundene Beispiel-Installer (Software installieren, Ä-041)
 Fertige Demo-Images (wenige MB, als „demo“ markiert, gültige Prüfsummen):
     DEMO-Master-Win11        als Master-Image markiert – Prüfung ergibt ✔
     DEMO-Image-beschaedigt   gleich aufgebaut, ein Byte absichtlich verändert – Prüfung ergibt ✖
@@ -15,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -24,7 +26,7 @@ MASTER = "DEMO-Master-Win11"
 BROKEN = "DEMO-Image-beschaedigt"
 PROJECTS = ("Projekt Alpha", "Projekt Beta", "Schulung 2026")
 TITLE = "Demo (lokal, nicht auf dem NAS)"
-# Beispiel-Installer für „Software installieren“ (I-020) – keine echten Programme, nur die Kennungen
+# Beispiel-Installer für die Software-Bibliothek (I-020, Ä-041) – keine echten Programme, nur die Kennungen
 DEMO_INSTALLERS = {
     "vlc-3.0.24-win64.exe": b"MZ Demo-Installer (erfunden) Nullsoft.NSIS.exehead",
     "AcroRdrDC_de_DE.msi": b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1 Demo-MSI (erfunden)",
@@ -56,12 +58,7 @@ def ensure(root: Path | None = None) -> Path:
         if not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text, encoding="utf-8")
-    # Software installieren (I-020): kleine Beispiel-Installer mit den Kennungen, die die Erkennung sucht
-    for name, data in DEMO_INSTALLERS.items():
-        path = dist / "Software" / name
-        if not path.exists():
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(data)
+    ensure_software(root)
     master = images_dir(root) / MASTER
     if not (master / agentclient.IMAGE_META).is_file():
         make_image(master, "Master-Image für die Vorführung (Sysprep, erfunden)")
@@ -71,6 +68,34 @@ def ensure(root: Path | None = None) -> Path:
         make_image(broken, "Absichtlich beschädigt – zeigt, was „Image prüfen …“ meldet")
         corrupt(broken)
     return root
+
+
+def ensure_software(root: Path) -> None:
+    """Software-Bibliothek im Demo-Speicher (Ä-041) mit den Beispiel-Installern füllen, solange sie leer ist.
+
+    Ältere Demo-Speicher hatten die Beispiele in Verteilen/Software (I-020): diese Dateien und die dort angelegten
+    Beschreibungen werden entfernt – Verteilen/Software gehört nur noch zu Ordner senden."""
+    from okula_recovery import software
+    old = distribute.root(root) / "Software"
+    for name, data in DEMO_INSTALLERS.items():
+        path = old / name
+        try:
+            if path.is_file() and not path.is_symlink() and path.read_bytes() == data:
+                path.unlink()
+        except OSError:
+            pass
+    software.cleanup_distribute(root)
+    if software.scan(root, write=False):
+        return
+    software.ensure_library(root)
+    with tempfile.TemporaryDirectory(dir=root) as tmp:
+        for name, data in DEMO_INSTALLERS.items():
+            src = Path(tmp) / name
+            src.write_bytes(data)
+            try:
+                software.load(root, src)
+            except (software.SoftwareError, OSError):
+                pass                  # z. B. Server-Disk voll – Demo läuft ohne Beispiel-Software weiter
 
 
 def make_image(folder: Path, note: str = "") -> Path:

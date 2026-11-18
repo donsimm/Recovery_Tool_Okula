@@ -270,7 +270,8 @@ def software_plan(nas_root: str, names: list[str], log: Callable[[str], None]):
     for line in plan.lines():
         log("  · " + line)
     if not plan.entries:
-        raise agentclient.AgentError("Keine der gewählten Programme ist installierbar – Reiter Dateien → Software …")
+        raise agentclient.AgentError("Keine der gewählten Programme ist installierbar – Extras → "
+                                     "Software-Bibliothek …")
     return plan
 
 

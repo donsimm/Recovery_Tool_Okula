@@ -1,15 +1,21 @@
-"""Software installieren (I-020): Katalog der Programme im Ordner Verteilen/Software auf dem NAS – ohne GTK.
+"""Software installieren (I-020) aus der Software-Bibliothek des Tools (Ä-041) – ohne GTK.
 
-Einträge (erscheinen von selbst, sobald sie im Ordner liegen):
-- Installer-Dateien direkt in Software/ (.exe, .msi) – ein Programm je Datei;
-- Unterordner – ein Programm mit mehreren Dateien (z. B. „Barco Eventmaster Toolset“): einmal festlegen, welche
-  Datei der Installer ist, der ganze Ordner kommt mit. Sammelordner (z. B. „System Tools“ mit vielen kleinen
-  Werkzeugen) lassen sich als „nur kopieren“ markieren: der Ordner landet auf dem öffentlichen Desktop unter
-  Software\\<Ordner> (wie *Ordner senden*), installiert wird nichts.
+Ablage auf dem NAS im eigenen Ordner neben „Verteilen“ (gesichert, für alle Tool-Rechner gleich):
+    Software-Bibliothek/<key>-<version>/      ein Eintrag (Name = Auswahl, z. B. „vlc-3.0.24“)
+        .okula.json                           Beschreibung (Format „okula-software“ wie I-020)
+        <Installer> bzw. Inhalt des geladenen Ordners
+    Software-Bibliothek/.<…>.partial/         während des Ladens – ein Abbruch hinterlässt nichts Halbes
+Einträge entstehen nur über „Ins Tool laden …“ (eine .exe/.msi) bzw. „Ordner laden …“ (Installer, der seine Dateien
+daneben braucht, z. B. YSUSB_V213_Win/setup.exe): Kopie in die Bibliothek, danach Erkennung. Gleicher Inhalt
+(SHA-256) wird nicht doppelt abgelegt. Sammelordner (z. B. „System Tools“) lassen sich als „nur kopieren“ markieren:
+der Ordner landet auf dem öffentlichen Desktop unter Software\\<Eintrag>, installiert wird nichts.
 
-Zu jedem Eintrag liegt daneben eine versteckte Beschreibung „.<Name>.okula.json“ (Muster oslib): Programmname,
-Version, Installer-Typ, Parameter für die stille Installation, erwartete Rückgabewerte, Art (installieren, nur
-kopieren, nur von Hand), Grösse und SHA-256 des Installers. Sie entsteht beim ersten Lesen des Ordners.
+Der Ordner Verteilen/Software gehört nur noch zu *Ordner senden*; der Katalog liest und schreibt ihn nicht.
+Die Beschreibungen „.<Name>.okula.json“, die I-020 dort angelegt hat, räumt cleanup_distribute weg.
+
+Beschreibung: Programmname, Version, Installer-Typ, Parameter für die stille Installation, erwartete Rückgabewerte,
+Art (installieren, nur kopieren, nur von Hand), Installer (relativ), Grösse und SHA-256 des Installers, dazu
+SHA-256 des ganzen Inhalts (Doppel erkennen) und woher der Eintrag geladen wurde.
 
 Erkennung ohne Ausführen (Kennungen in den ersten MB der Datei, Quellen in docs/TECHNIK.md):
 - .msi → msiexec /i … /qn /norestart
@@ -19,8 +25,8 @@ Erkennung ohne Ausführen (Kennungen in den ersten MB der Datei, Quellen in docs
 - sonst „Parameter fehlt“ – nicht wählbar, bis Parameter hinterlegt sind.
 
 Neue Version: gleicher Programmname (aus dem Datei-/Ordnernamen ohne Version und Architektur, z. B.
-vlc-3.0.24-win64.exe ↔ vlc-3.0.23-win64.exe) → Parameter, Art und Rückgabewerte der vorigen Beschreibung werden
-übernommen (Hinweis im Katalog). Auch die Beschreibung einer gelöschten alten Version zählt.
+vlc-3.0.24-win64.exe ↔ vlc-3.0.23-win64.exe) → Parameter, Art und Rückgabewerte der vorigen Version in der
+Bibliothek werden übernommen (Hinweis in der Liste). Die alte Version bleibt, bis sie gelöscht wird.
 """
 
 from __future__ import annotations
@@ -29,14 +35,22 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import stat
 import struct
+import threading
+import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
+from typing import Callable
 
 from okula_recovery import distribute
 
-SOFTWARE_DIR = "Software"
+LIBRARY_DIR = "Software-Bibliothek"   # auf dem NAS neben „Verteilen“
+LIB_META = ".okula.json"              # Beschreibung im Ordner des Eintrags
+PARTIAL = ".partial"
+SOFTWARE_DIR = "Software"             # Verteilen/Software – nur noch für Ordner senden (Aufräumen von I-020)
 META_SUFFIX = ".okula.json"
 META_FORMAT = "okula-software"
 META_VERSION = 1
@@ -209,12 +223,25 @@ def _version_tuple(text: str) -> tuple:
 
 # ---------- Beschreibung ----------
 
+def library_dir(nas_root: str | Path) -> Path:
+    """Software-Bibliothek auf dem NAS (bzw. im Demo-Speicher)."""
+    return Path(nas_root) / LIBRARY_DIR
+
+
+def ensure_library(nas_root: str | Path) -> Path:
+    base = library_dir(nas_root)
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
 def software_dir(nas_root: str | Path) -> Path:
+    """Verteilen/Software – nur für Ordner senden; hier nur noch zum Aufräumen der I-020-Beschreibungen."""
     return distribute.root(nas_root) / SOFTWARE_DIR
 
 
 def meta_path(entry: Path) -> Path:
-    return entry.with_name(f".{entry.name}{META_SUFFIX}")
+    """Beschreibung eines Eintrags der Bibliothek (im Ordner des Eintrags)."""
+    return entry / LIB_META
 
 
 def _read_meta(path: Path) -> dict | None:
@@ -270,13 +297,13 @@ def check_args(args: str) -> str:
 
 @dataclass
 class Entry:
-    """Ein Programm im Katalog (Datei oder Ordner unter Software/)."""
-    name: str                        # Datei- bzw. Ordnername = Auswahl
-    is_dir: bool
-    path: Path
-    size: int                        # Bytes (Ordner: alle Dateien)
+    """Ein Programm in der Software-Bibliothek (Ordner Software-Bibliothek/<name>)."""
+    name: str                        # Ordnername in der Bibliothek = Auswahl
+    is_dir: bool                     # als Ordner geladen (Installer wählbar, „nur kopieren“ möglich)
+    path: Path                       # Ordner des Eintrags
+    size: int                        # Bytes (alle Dateien ohne Beschreibung)
     meta: dict = field(default_factory=dict)
-    candidates: list[str] = field(default_factory=list)   # Ordner: mögliche Installer (relativ)
+    candidates: list[str] = field(default_factory=list)   # mögliche Installer (relativ zum Eintrag)
 
     @property
     def program(self) -> str:
@@ -305,8 +332,16 @@ class Entry:
 
     @property
     def installer(self) -> str:
-        """Ordner: gewählte Datei (relativ, „/“); Datei: der Name selbst."""
-        return str(self.meta.get("installer") or "") if self.is_dir else self.name
+        """Installer relativ zum Ordner des Eintrags („/“); bei einer geladenen Datei deren Name."""
+        return str(self.meta.get("installer") or "")
+
+    @property
+    def loaded_from(self) -> str:
+        return str(self.meta.get("loaded_from") or "")
+
+    @property
+    def content_sha256(self) -> str:
+        return str(self.meta.get("content_sha256") or "")
 
     @property
     def exit_codes(self) -> list[int]:
@@ -327,7 +362,7 @@ class Entry:
             return HAND
         if self.mode == COPY:
             return COPY_ONLY
-        if self.is_dir and self.installer not in self.candidates:
+        if self.installer not in self.candidates:
             return MISSING
         return READY if self.args.strip() else MISSING
 
@@ -341,7 +376,7 @@ class Entry:
         notes = []
         if self.adopted_from:
             notes.append(f"Parameter von „{self.adopted_from}“ übernommen (neue Version)")
-        if self.is_dir and self.mode == INSTALL and self.installer not in self.candidates:
+        if self.mode == INSTALL and self.installer not in self.candidates:
             notes.append(FOLDER_NOTE if self.candidates else "Kein Installer (.exe/.msi) im Ordner")
         if self.meta.get("note"):
             notes.append(str(self.meta["note"]))
@@ -366,7 +401,8 @@ def _folder_info(path: Path) -> tuple[int, list[str], list[tuple[str, os.stat_re
                 st = full.lstat()
             except OSError:
                 continue
-            if not stat.S_ISREG(st.st_mode) or (f.startswith(".") and f.endswith(META_SUFFIX)):
+            if not stat.S_ISREG(st.st_mode) or (f.startswith(".") and f.endswith(META_SUFFIX)) \
+                    or (here == path and f.startswith(LIB_META)):
                 continue
             rel = full.relative_to(path).as_posix()
             size += st.st_size
@@ -378,22 +414,27 @@ def _folder_info(path: Path) -> tuple[int, list[str], list[tuple[str, os.stat_re
     return size, candidates, files
 
 
-def _fresh_meta(entry_path: Path, is_dir: bool, candidates: list[str]) -> dict:
-    """Neue Beschreibung: Name/Version aus dem Namen, Installer-Typ aus der Datei."""
-    program, version, key = split_name(entry_path.name)
+def pick_installer(candidates: list[str]) -> str:
+    """Eindeutiger Installer eines Ordners (genau einer direkt im Ordner bzw. genau einer insgesamt), sonst „“."""
+    top = [c for c in candidates if "/" not in c]
+    return top[0] if len(top) == 1 else (candidates[0] if len(candidates) == 1 else "")
+
+
+def _fresh_meta(folder: Path, source_name: str, is_dir: bool, candidates: list[str],
+                installer: str | None = None) -> dict:
+    """Neue Beschreibung: Name/Version aus dem Namen der geladenen Datei bzw. des Ordners, Installer-Typ aus der
+    Datei. folder: Ordner, in dem die Dateien liegen (Eintrag bzw. .partial)."""
+    program, version, key = split_name(source_name)
     meta = {"format": META_FORMAT, "version": META_VERSION, "program": program, "program_version": version,
             "key": key, "kind": "", "detected": "", "args": "", "exit_codes": list(DEFAULT_EXIT_CODES),
-            "mode": INSTALL, "installer": "", "note": "", "adopted_from": "", "edited": False}
-    installer = None
-    if is_dir:
-        top = [c for c in candidates if "/" not in c]
-        pick = top[0] if len(top) == 1 else (candidates[0] if len(candidates) == 1 else "")
-        meta["installer"] = pick
-        installer = entry_path / pick if pick else None
+            "mode": INSTALL, "installer": "", "note": "", "adopted_from": "", "edited": False,
+            "source": "folder" if is_dir else "file"}
+    pick = installer if installer is not None else (pick_installer(candidates) if is_dir else source_name)
+    meta["installer"] = pick if pick in candidates else ""
+    if meta["installer"]:
+        _apply_detection(meta, folder / meta["installer"])
     else:
-        installer = entry_path
-    if installer is not None:
-        _apply_detection(meta, installer)
+        _stamp(meta, None)
     return meta
 
 
@@ -455,65 +496,27 @@ def _adopt(meta: dict, name: str, others: dict[str, dict], candidates: list[str]
 
 
 def scan(nas_root: str | Path, write: bool = True) -> list[Entry]:
-    """Alle Programme im Ordner Software (fehlende Beschreibungen werden angelegt, sofern write)."""
-    base = software_dir(nas_root)
+    """Alle Programme der Software-Bibliothek. Nur die Bibliothek – Verteilen/Software wird nicht gelesen.
+
+    Ein Ordner ohne Beschreibung (von Hand hineinkopiert) erhält eine neue, sofern write."""
+    base = library_dir(nas_root)
     try:
         items = sorted(os.scandir(base), key=lambda e: e.name.lower())
     except OSError:
         return []
-    metas: dict[str, dict] = {}       # alle Beschreibungen – auch von gelöschten Einträgen (für neue Versionen)
-    raw = []
-    for e in items:
-        if e.name.startswith("."):
-            if e.name.endswith(META_SUFFIX) and e.is_file(follow_symlinks=False):
-                meta = _read_meta(Path(e.path))
-                if meta is not None:
-                    metas[e.name[1:-len(META_SUFFIX)]] = meta
-            continue
-        if e.is_symlink():
-            continue
-        if e.is_dir(follow_symlinks=False):
-            raw.append((e.name, True))
-        elif e.is_file(follow_symlinks=False) and e.name.lower().endswith(INSTALLER_EXT):
-            raw.append((e.name, False))
     entries = []
-    for name, is_dir in raw:
-        path = base / name
-        if is_dir:
-            size, candidates, _files = _folder_info(path)
-        else:
-            try:
-                size = path.stat().st_size
-            except OSError:
-                continue
-            candidates = []
-        meta = metas.get(name)
-        changed = False
+    for e in items:
+        if e.name.startswith(".") or e.is_symlink() or not e.is_dir(follow_symlinks=False):
+            continue                  # .partial (Laden läuft/abgebrochen), Dateien, Links
+        path = base / e.name
+        size, candidates, _files = _folder_info(path)
+        meta = _read_meta(meta_path(path))
         if meta is None:
-            meta = _fresh_meta(path, is_dir, candidates)
-            _adopt(meta, name, metas, candidates)
-            changed = True
-        else:
-            if is_dir and not meta.get("installer") and not meta.get("edited") and meta.get("mode") == INSTALL:
-                pick = _fresh_meta(path, True, candidates)        # Installer inzwischen eindeutig?
-                if pick.get("installer"):
-                    meta = {**pick, "program": meta.get("program") or pick["program"],
-                            "adopted_from": meta.get("adopted_from", "")}
-                    changed = True
-            installer = (path / meta["installer"]) if is_dir and meta.get("installer") else (None if is_dir else path)
-            before = (meta.get("size"), meta.get("mtime"))
-            if installer is not None and installer.is_file():
-                st = installer.stat()
-                if (st.st_size, int(st.st_mtime)) != before:
-                    if not meta.get("edited") and not meta.get("adopted_from"):
-                        _apply_detection(meta, installer)      # Datei ersetzt: neu erkennen
-                    else:
-                        _stamp(meta, installer)                # eigene Parameter bleiben
-                    changed = True
-        if changed and write:
-            _write_meta(path, meta)
-        metas[name] = meta
-        entries.append(Entry(name, is_dir, path, size, meta, candidates))
+            meta = _fresh_meta(path, e.name, True, candidates)
+            if write:
+                _write_meta(path, meta)
+        is_dir = meta.get("source") != "file"
+        entries.append(Entry(e.name, is_dir, path, size, meta, candidates))
     entries.sort(key=lambda x: (x.program.lower(), _version_tuple(x.version), x.name.lower()))
     return entries
 
@@ -525,11 +528,11 @@ def find(entries: list[Entry], name: str) -> Entry | None:
 def update(nas_root: str | Path, name: str, *, program: str | None = None, version: str | None = None,
            args: str | None = None, exit_codes: str | list[int] | None = None, mode: str | None = None,
            installer: str | None = None) -> Entry:
-    """Beschreibung von Hand ändern (Reiter Dateien → Software …) und speichern."""
+    """Beschreibung von Hand ändern (Extras → Software-Bibliothek …) und speichern."""
     entries = scan(nas_root)
     entry = find(entries, name)
     if entry is None:
-        raise SoftwareError(f"„{name}“ liegt nicht (mehr) im Ordner Software")
+        raise SoftwareError(f"„{name}“ liegt nicht (mehr) in der Software-Bibliothek")
     meta = dict(entry.meta)
     if installer is not None and entry.is_dir:
         if installer and installer not in entry.candidates:
@@ -566,15 +569,236 @@ def update(nas_root: str | Path, name: str, *, program: str | None = None, versi
     return entry
 
 
+# ---------- Bibliothek: laden, löschen, aufräumen (Ä-041) ----------
+
+COPY_CHUNK = 8 * 1024 * 1024
+SPACE_RESERVE = 1024**3
+
+
+@dataclass
+class Source:
+    """Was geladen werden soll – vor dem Kopieren ermittelt (Umfang, Installer im Ordner)."""
+    path: Path
+    is_dir: bool
+    files: list[tuple[str, Path, int]] = field(default_factory=list)   # (relativ, Quelle, Grösse)
+    bytes: int = 0
+    candidates: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)                   # Links, Sonderdateien
+
+    @property
+    def installer(self) -> str:
+        """Eindeutiger Installer (Datei: sie selbst), sonst „“ – dann fragt die Oberfläche nach."""
+        return self.path.name if not self.is_dir else pick_installer(self.candidates)
+
+
+@dataclass
+class LoadResult:
+    entry: Entry
+    duplicate: bool = False          # gleicher Inhalt lag schon in der Bibliothek – nichts abgelegt
+
+
+def inspect(source: str | Path, nas_root: str | Path | None = None) -> Source:
+    """Datei (.exe/.msi) oder Ordner prüfen, bevor etwas kopiert wird."""
+    from okula_recovery import nasfiles
+    src = Path(source)
+    if src.is_symlink() or not src.exists():
+        raise SoftwareError(f"„{src.name}“ ist keine normale Datei bzw. kein Ordner")
+    if nas_root is not None:
+        lib = library_dir(nas_root).resolve()
+        if src.resolve() == lib or src.resolve().is_relative_to(lib):
+            raise SoftwareError("Liegt schon in der Software-Bibliothek")
+    if src.is_file():
+        if not src.name.lower().endswith(INSTALLER_EXT):
+            raise SoftwareError(f"„{src.name}“ ist kein Installer (.exe, .msi) – Ordner mit „Ordner laden …“ laden")
+        size = src.stat().st_size
+        return Source(src, False, [(src.name, src, size)], size, [src.name])
+    if not src.is_dir():
+        raise SoftwareError(f"„{src.name}“ ist keine normale Datei bzw. kein Ordner")
+    out = Source(src, True)
+    for dirpath, dirnames, filenames in os.walk(src):
+        here = Path(dirpath)
+        for name in dirnames + filenames:
+            try:
+                nasfiles.validate_name(name)
+            except nasfiles.FileError as e:
+                raise SoftwareError(f"{here / name}: {e} – auf dem NAS nicht möglich") from None
+        dirnames[:] = sorted(d for d in dirnames if not (here / d).is_symlink())
+        for f in sorted(filenames):
+            full = here / f
+            rel = full.relative_to(src).as_posix()
+            try:
+                st = full.lstat()
+            except OSError:
+                out.skipped.append(rel)
+                continue
+            if not stat.S_ISREG(st.st_mode) or rel.startswith(LIB_META):
+                out.skipped.append(rel)
+                continue
+            out.files.append((rel, full, st.st_size))
+            out.bytes += st.st_size
+            if f.lower().endswith(INSTALLER_EXT):
+                out.candidates.append(rel)
+    out.candidates.sort(key=lambda r: (r.count("/"), r.lower()))
+    if not out.files:
+        raise SoftwareError(f"Ordner „{src.name}“ ist leer")
+    return out
+
+
+def _content_hash(digests: list[tuple[str, str]]) -> str:
+    """SHA-256 des Inhalts: Datei → deren SHA-256; Ordner → über alle Pfade und deren SHA-256."""
+    if len(digests) == 1 and "/" not in digests[0][0]:
+        return digests[0][1]
+    h = hashlib.sha256()
+    for rel, digest in sorted(digests):
+        h.update(f"{rel}\0{digest}\n".encode())
+    return h.hexdigest()
+
+
+def _entry_name(base: Path, meta: dict, source_name: str) -> str:
+    """„<key>-<version>“ (z. B. „vlc-3.0.24“); belegt → „-2“, „-3“ … (bestehende Einträge bleiben)."""
+    key = str(meta.get("key") or "") or name_key(str(meta.get("program") or "")) \
+        or name_key(Path(source_name).stem) or "software"
+    version = re.sub(r"[^0-9A-Za-z._-]+", "", str(meta.get("program_version") or ""))[:40].strip("._-")
+    stem = (f"{key}-{version}" if version else key)[:100]
+    name = stem
+    for i in range(2, 1000):
+        if not (base / name).exists() and not (base / name).is_symlink():
+            return name
+        name = f"{stem}-{i}"
+    raise SoftwareError(f"Kein freier Name für „{stem}“")
+
+
+def load(nas_root: str | Path, source: str | Path | Source, progress: Callable[[int, int, str], None] | None = None,
+         cancel: threading.Event | None = None, installer: str | None = None) -> LoadResult:
+    """Datei bzw. Ordner in die Bibliothek kopieren (zuerst als .partial – ein Abbruch hinterlässt nichts), dabei
+    SHA-256 bilden. Gleicher Inhalt schon da → nichts ablegen (duplicate). Danach Erkennung wie I-020 und
+    Übernahme der Parameter einer vorigen Version (_adopt). installer: im Ordner gewählter Installer."""
+    src = source if isinstance(source, Source) else inspect(source, nas_root)
+    progress = progress or (lambda *_a: None)
+    cancel = cancel or threading.Event()
+    base = ensure_library(nas_root)
+    if installer is not None and installer and installer not in src.candidates:
+        raise SoftwareError(f"„{installer}“ ist keine .exe/.msi im Ordner")
+    free = shutil.disk_usage(base).free
+    if free < src.bytes + SPACE_RESERVE:
+        raise SoftwareError(f"Zu wenig Platz auf dem NAS: {free / 1000**3:.1f} GB frei, "
+                            f"nötig {src.bytes / 1000**3:.1f} GB")
+    partial = base / f".{uuid.uuid4().hex[:12]}{PARTIAL}"
+    done, last = 0, 0.0
+    digests: list[tuple[str, str]] = []
+    try:
+        partial.mkdir()
+        for rel, full, _size in src.files:
+            target = partial / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            h = hashlib.sha256()
+            with open(full, "rb") as fin, open(target, "xb") as fout:
+                while chunk := fin.read(COPY_CHUNK):
+                    if cancel.is_set():
+                        raise SoftwareError("Abgebrochen")
+                    fout.write(chunk)
+                    h.update(chunk)
+                    done += len(chunk)
+                    if time.monotonic() - last >= 0.3:
+                        last = time.monotonic()
+                        progress(done, src.bytes, rel)
+                fout.flush()
+                os.fsync(fout.fileno())
+            st = full.stat()
+            os.utime(target, (st.st_atime, st.st_mtime))
+            digests.append((rel, h.hexdigest()))
+        if cancel.is_set():
+            raise SoftwareError("Abgebrochen")
+        content = _content_hash(digests)
+        existing = scan(nas_root, write=False)
+        same = next((e for e in existing if e.content_sha256 == content), None)
+        if same is not None:
+            shutil.rmtree(partial, ignore_errors=True)
+            progress(src.bytes, src.bytes, "")
+            return LoadResult(same, duplicate=True)
+        size, candidates, _files = _folder_info(partial)
+        meta = _fresh_meta(partial, src.path.name, src.is_dir, candidates,
+                           installer if src.is_dir else src.path.name)
+        _adopt(meta, "", {e.name: e.meta for e in existing}, candidates)
+        meta.update(content_sha256=content, loaded_from=str(src.path),
+                    loaded=time.strftime("%Y-%m-%d %H:%M:%S"))
+        name = _entry_name(base, meta, src.path.name)
+        if not _write_meta(partial, meta):
+            raise SoftwareError("Beschreibung konnte nicht gespeichert werden (Ordner auf dem NAS schreibgeschützt?)")
+        partial.rename(base / name)
+    except BaseException:
+        shutil.rmtree(partial, ignore_errors=True)
+        raise
+    progress(src.bytes, src.bytes, "")
+    path = base / name
+    return LoadResult(Entry(name, src.is_dir, path, size, meta, candidates))
+
+
+def delete(nas_root: str | Path, name: str) -> None:
+    """Eintrag samt Dateien aus der Bibliothek löschen (erst umbenennen, dann löschen – nie halb sichtbar)."""
+    base = library_dir(nas_root)
+    p = PurePosixPath(name)
+    if not name or len(p.parts) != 1 or name.startswith(".") or name in (".", ".."):
+        raise SoftwareError(f"Ungültiger Eintrag: {name}")
+    path = base / name
+    if path.is_symlink() or not path.is_dir():
+        raise SoftwareError(f"„{name}“ liegt nicht (mehr) in der Software-Bibliothek")
+    trash = base / f".{uuid.uuid4().hex[:12]}.geloescht{PARTIAL}"
+    path.rename(trash)
+    shutil.rmtree(trash, ignore_errors=True)
+
+
+def cleanup_partial(nas_root: str | Path, older_than: float = 24 * 3600) -> int:
+    """Reste abgebrochener Ladevorgänge (Absturz, Stromausfall) nach einem Tag entfernen."""
+    base = library_dir(nas_root)
+    n = 0
+    try:
+        items = list(os.scandir(base))
+    except OSError:
+        return 0
+    for e in items:
+        if e.name.startswith(".") and e.name.endswith(PARTIAL) and e.is_dir(follow_symlinks=False):
+            try:
+                if time.time() - e.stat(follow_symlinks=False).st_mtime < older_than:
+                    continue
+            except OSError:
+                continue
+            shutil.rmtree(e.path, ignore_errors=True)
+            n += 1
+    return n
+
+
+def cleanup_distribute(nas_root: str | Path) -> list[str]:
+    """Ä-041: In Verteilen/Software die von I-020 angelegten Beschreibungen „.<Name>.okula.json“ (Format
+    okula-software) löschen – nur diese, sonst nichts. Gibt die gelöschten Dateinamen zurück."""
+    folder = software_dir(nas_root)
+    removed = []
+    try:
+        items = sorted(os.scandir(folder), key=lambda e: e.name)
+    except OSError:
+        return removed
+    for e in items:
+        if not (e.name.startswith(".") and e.name.endswith(META_SUFFIX)) or not e.is_file(follow_symlinks=False):
+            continue
+        if _read_meta(Path(e.path)) is None:
+            continue                  # fremde Datei mit ähnlichem Namen – bleibt
+        try:
+            os.unlink(e.path)
+        except OSError:
+            continue
+        removed.append(e.name)
+    return removed
+
+
 # ---------- Auswahl → was aufs Gerät kommt ----------
 
 @dataclass
 class Plan:
     entries: list[Entry] = field(default_factory=list)
-    files: list[tuple] = field(default_factory=list)   # (Typ "dir"/"file", Pfad relativ zu Software, Grösse, mtime,
-    #                                                     Quelle) – Aufbau wie distribute.Plan.entries
+    files: list[tuple] = field(default_factory=list)   # (Typ "dir"/"file", Pfad relativ zur Ablage am Gerät,
+    #                                                     Grösse, mtime, Quelle) – Aufbau wie distribute.Plan.entries
     bytes: int = 0
-    missing: list[str] = field(default_factory=list)            # nicht mehr im Ordner
+    missing: list[str] = field(default_factory=list)            # nicht mehr in der Bibliothek
     blocked: list[tuple[str, str]] = field(default_factory=list)   # (Name, Status) – nicht installierbar
     renamed: list[tuple[str, str]] = field(default_factory=list)   # (gespeichert, neue Version)
 
@@ -587,7 +811,7 @@ class Plan:
         out = [f"{e.label} – {'nur kopieren (Desktop)' if e.mode == COPY else e.kind_label}"
                f" ({_size(e.size)})" for e in self.entries]
         out += [f"{old} → {new} (neue Version)" for old, new in self.renamed]
-        out += [f"{n}: fehlt im Ordner Software – übersprungen" for n in self.missing]
+        out += [f"{n}: fehlt in der Software-Bibliothek – übersprungen" for n in self.missing]
         out += [f"{n}: {s} – übersprungen" for n, s in self.blocked]
         return out
 
@@ -627,12 +851,7 @@ def plan(nas_root: str | Path, names: list[str], entries: list[Entry] | None = N
             p.blocked.append((e.name, e.status))
             continue
         p.entries.append(e)
-        if not e.is_dir:
-            st = e.path.stat()
-            p.files.append(("file", e.name, st.st_size, int(st.st_mtime), e.path))
-            p.bytes += st.st_size
-            continue
-        p.files.append(("dir", e.name, 0, 0, None))
+        p.files.append(("dir", e.name, 0, 0, None))       # Ordner des Eintrags (ohne Beschreibung)
         _size_, _cand, files = _folder_info(e.path)
         dirs = set()
         for rel, _st in files:
@@ -870,7 +1089,7 @@ def program_line(e: Entry) -> str:
     """Ein Eintrag der Liste $OkulaPrograms."""
     kind = "copy" if e.mode == COPY else ("msi" if e.installer.lower().endswith(".msi") or e.kind == "msi"
                                           else "exe")
-    file = e.name if not e.is_dir else f"{e.name}/{e.installer}" if e.mode != COPY else e.name
+    file = f"{e.name}/{e.installer}" if e.mode != COPY else e.name
     codes = ", ".join(str(c) for c in e.exit_codes)
     return (f"    [pscustomobject]@{{ Name = {_ps(e.label)}; Item = {_ps(e.name)}; "
             f"File = {_ps(file.replace('/', chr(92)))}; Kind = '{kind}'; Args = {_ps(e.args if kind != 'copy' else '')}; "
@@ -886,7 +1105,8 @@ def build_script(entries: list[Entry], device: str = "", created: float | None =
         raise SoftwareError("Keine Software gewählt")
     bad = [e.name for e in entries if not e.selectable]
     if bad:
-        raise SoftwareError(f"Nicht installierbar ({', '.join(bad)}) – Parameter im Reiter Dateien hinterlegen")
+        raise SoftwareError(f"Nicht installierbar ({', '.join(bad)}) – Parameter in Extras → Software-Bibliothek "
+                            "hinterlegen")
     stamp = time.strftime("%d.%m.%Y %H:%M", time.localtime(created if created is not None else time.time()))
     safe_device = re.sub(r"[^\w .-]", "", device)[:60] or "–"
     replace = {"__RESTORE__": wintweaks.RESTORE_START, "__AFTER__": deploy.TWEAK_AFTER, "__CREATED__": stamp,
