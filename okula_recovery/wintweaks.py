@@ -6,13 +6,15 @@ Beim nächsten Windows-Start läuft es als SYSTEM vor der Anmeldung:
 1. Skript löschen, Startmechanismus zurückbauen (gpt.ini/scripts.ini von vorher, Einträge unter
    HKLM\\…\\Group Policy\\Scripts) – so läuft es nie ein zweites Mal, auch nicht nach einem Fehler.
 2. Jede gewählte Option als eigener Baustein (try/catch): Fehler wird protokolliert, der nächste Baustein läuft.
-   Store-Apps zuletzt (dauert am längsten).
+   Store-Apps zuletzt (dauert am längsten), danach ggf. der Nachlauf (Ä-042: geplante Aufgabe, die nach der ersten
+   Anmeldung nachgeladene Apps nochmals entfernt und sich danach selbst löscht).
 Protokoll: C:\\Windows\\Temp\\okula-windows-anpassen.log – das Passwort der automatischen Anmeldung steht nie darin.
 """
 
 from __future__ import annotations
 
 import base64
+import json
 import re
 import time
 from dataclasses import dataclass
@@ -22,10 +24,51 @@ from okula_recovery.deploy import TWEAK_AFTER, TWEAK_LOG, TWEAK_NAME
 LOG_PATH = TWEAK_LOG
 GROUPS = ("Apps", "Updates", "Betrieb", "Datenschutz", "Explorer und Desktop", "Dienste", "Anmeldung")
 AUTOLOGON = "autologon"
+LATER = "later_cleanup"           # Nachlauf (Ä-042) – Baustein entsteht in build_script aus den gewählten Apps
+START_CLEAN = "start_clean"
 APPS_HEADING = "Store-Apps entfernen:"
 SERVICES_HEADING = "Abschalten (stoppen, Starttyp „Deaktiviert“):"
 PASSWORD_HINT = ("Das Passwort liegt nach dem Umsetzen im Klartext in der Registrierung (Winlogon) – wie bei der "
                  "automatischen Anmeldung von Windows üblich.")
+
+# Nachlauf (Ä-042): geplante Aufgabe und Skript – nur ASCII (Aufgabenname, Pfad, Befehlszeile)
+LATER_TASK = "Okula Windows anpassen Nachlauf"
+LATER_FILE = "okula-windows-anpassen-nachlauf.ps1"     # unter %ProgramData%\Okula
+LATER_DELAY_MIN = 30                                    # Minuten nach der Anmeldung
+LATER_DAYS = 30                                         # läuft bis dahin nie → Windows löscht die Aufgabe
+
+# Pakete, die keine Option je entfernt (Ä-042: Rechner, Editor, Paint, Fotos, Snipping Tool, Terminal, Edge,
+# Sicherheit, App-Installer, Frameworks, Codecs, Treiber-Apps) – steht auch im Skript ($OkulaKeep, -like)
+PROTECTED = (
+    "Microsoft.WindowsCalculator", "Microsoft.WindowsNotepad", "Microsoft.Paint", "Microsoft.Windows.Photos",
+    "Microsoft.ScreenSketch", "Microsoft.WindowsTerminal", "Microsoft.MicrosoftEdge*", "Microsoft.SecHealthUI",
+    "Microsoft.DesktopAppInstaller", "Microsoft.Windows.ShellExperienceHost",
+    "Microsoft.Windows.StartMenuExperienceHost", "MicrosoftWindows.Client.CBS", "MicrosoftWindows.Client.Core",
+    "*VCLibs*", "*NET.Native*", "Microsoft.NET.*", "*UI.Xaml*", "*WindowsAppRuntime*", "Microsoft.*Extension*",
+    "*NVIDIA*", "*Realtek*", "*Intel*", "AdvancedMicroDevices*", "*Dolby*", "*Synaptics*", "*Waves*",
+)
+
+# Startmenü Windows 11 (Ä-042): Richtlinie Start/ConfigureStartPins – Kacheln in dieser Reihenfolge; fehlt eine App,
+# zeigt Windows die Kachel erst, wenn sie installiert ist (Microsoft Learn, „Customize the Start layout“).
+# IDs Edge, Explorer, Einstellungen, Fotos, Paint, Terminal aus dem Beispiel von Microsoft Learn.
+START_PINS = (
+    ("Edge", {"desktopAppLink": "%ALLUSERSPROFILE%\\Microsoft\\Windows\\Start Menu\\Programs\\Microsoft Edge.lnk"}),
+    ("Explorer", {"desktopAppLink": "%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\File Explorer.lnk"}),
+    ("Einstellungen", {"packagedAppId": "windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows."
+                                        "immersivecontrolpanel"}),
+    ("Rechner", {"packagedAppId": "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"}),
+    ("Editor", {"packagedAppId": "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App"}),
+    ("Fotos", {"packagedAppId": "Microsoft.Windows.Photos_8wekyb3d8bbwe!App"}),
+    ("Paint", {"packagedAppId": "Microsoft.Paint_8wekyb3d8bbwe!App"}),
+    ("Snipping Tool", {"packagedAppId": "Microsoft.ScreenSketch_8wekyb3d8bbwe!App"}),
+    ("Terminal", {"packagedAppId": "Microsoft.WindowsTerminal_8wekyb3d8bbwe!App"}),
+)
+
+
+def start_pins_json() -> str:
+    """LayoutModification.json für ConfigureStartPins (eine Zeile). applyOnce: Windows 11 24H2 mit KB5062660 setzt die
+    Liste nur einmal, danach heften Benutzer selbst an; ältere Windows 11 ignorieren es (Liste bei jeder Anmeldung)."""
+    return json.dumps({"applyOnce": True, "pinnedList": [pin for _n, pin in START_PINS]}, separators=(",", ":"))
 
 
 @dataclass(frozen=True)
@@ -35,10 +78,16 @@ class Option:
     label: str
     body: str = ""          # PowerShell-Baustein (läuft in Invoke-OkulaStep, Fehler = Ausnahme)
     sub: str = ""           # Unterüberschrift im Dialog (Store-Apps, Dienste)
+    patterns: tuple[str, ...] = ()   # Store-Apps: Name-Muster (Get-AppxPackage -like)
+    tooltip: str = ""
 
 
 def _apps(*patterns: str) -> str:
     return "Remove-OkulaApps @(" + ", ".join(f"'{p}'" for p in patterns) + ")"
+
+
+def _app(key: str, label: str, *patterns: str) -> Option:
+    return Option(key, "Apps", label, _apps(*patterns), APPS_HEADING, patterns)
 
 
 def _services(*names: str) -> str:
@@ -56,33 +105,64 @@ THIS_PC = "{20D04FE0-3AEA-1069-A2D8-08002B30309D}"
 NETWORK = "{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}"
 
 OPTIONS: tuple[Option, ...] = (
-    # Apps – Store-Apps je Gruppe (Name-Muster); Frameworks, NonRemovable und Treiber-Apps nie
-    Option("apps_xbox", "Apps", "Xbox", _apps("Microsoft.Xbox*", "Microsoft.GamingApp"), APPS_HEADING),
-    Option("apps_bing", "Apps", "Bing (Wetter, News …)", _apps("Microsoft.Bing*"), APPS_HEADING),
-    Option("apps_zune", "Apps", "Groove/Filme & TV", _apps("Microsoft.ZuneMusic", "Microsoft.ZuneVideo"),
-           APPS_HEADING),
-    Option("apps_solitaire", "Apps", "Solitaire", _apps("Microsoft.MicrosoftSolitaireCollection"), APPS_HEADING),
-    Option("apps_people", "Apps", "Kontakte", _apps("Microsoft.People"), APPS_HEADING),
-    Option("apps_phone", "Apps", "Smartphone-Link", _apps("Microsoft.YourPhone"), APPS_HEADING),
-    Option("apps_camera", "Apps", "Kamera", _apps("Microsoft.WindowsCamera"), APPS_HEADING),
-    Option("apps_office", "Apps", "Office/Office-Hub",
-           _apps("Microsoft.MicrosoftOfficeHub", "Microsoft.Office.OneNote", "Microsoft.Office.Sway"), APPS_HEADING),
-    Option("apps_3d", "Apps", "3D-Viewer/Paint 3D/Mixed Reality",
-           _apps("Microsoft.Microsoft3DViewer", "Microsoft.MSPaint", "Microsoft.Print3D",
-                 "Microsoft.MixedReality.Portal"), APPS_HEADING),
-    Option("apps_help", "Apps", "Feedback-Hub/Tipps/Hilfe",
-           _apps("Microsoft.WindowsFeedbackHub", "Microsoft.Getstarted", "Microsoft.GetHelp"), APPS_HEADING),
-    Option("apps_store", "Apps", "Microsoft Store", _apps("Microsoft.WindowsStore", "Microsoft.StorePurchaseApp"),
-           APPS_HEADING),
+    # Apps – Store-Apps je Gruppe (Name-Muster); Frameworks, NonRemovable, PROTECTED und Treiber-Apps nie
+    _app("apps_xbox", "Xbox", "Microsoft.Xbox*", "Microsoft.GamingApp"),
+    _app("apps_bing", "Bing (Wetter, News, Bing Search …)", "Microsoft.Bing*"),
+    _app("apps_zune", "Groove/Filme & TV", "Microsoft.ZuneMusic", "Microsoft.ZuneVideo"),
+    _app("apps_solitaire", "Solitaire", "Microsoft.MicrosoftSolitaireCollection"),
+    _app("apps_people", "Kontakte", "Microsoft.People"),
+    _app("apps_phone", "Smartphone-Link", "Microsoft.YourPhone"),
+    _app("apps_camera", "Kamera", "Microsoft.WindowsCamera"),
+    _app("apps_office", "Office/Office-Hub", "Microsoft.MicrosoftOfficeHub", "Microsoft.Office.OneNote",
+         "Microsoft.Office.Sway"),
+    _app("apps_3d", "3D-Viewer/Paint 3D/Mixed Reality", "Microsoft.Microsoft3DViewer", "Microsoft.MSPaint",
+         "Microsoft.Print3D", "Microsoft.MixedReality.Portal"),
+    _app("apps_help", "Feedback-Hub/Tipps/Hilfe", "Microsoft.WindowsFeedbackHub", "Microsoft.Getstarted",
+         "Microsoft.GetHelp"),
+    _app("apps_store", "Microsoft Store", "Microsoft.WindowsStore", "Microsoft.StorePurchaseApp"),
+    # Ä-042: weitere Apps (Windows 11)
+    _app("apps_outlook", "Outlook (neu)/Mail und Kalender", "Microsoft.OutlookForWindows",
+         "microsoft.windowscommunicationsapps"),
+    _app("apps_teams", "Teams", "MSTeams", "MicrosoftTeams"),
+    _app("apps_clipchamp", "Clipchamp", "Clipchamp.Clipchamp"),
+    _app("apps_recorder", "Audiorecorder", "Microsoft.WindowsSoundRecorder"),
+    _app("apps_notes", "Kurznotizen", "Microsoft.MicrosoftStickyNotes"),
+    _app("apps_todo", "To Do", "Microsoft.Todos"),
+    _app("apps_journal", "Journal", "Microsoft.MicrosoftJournal"),
+    _app("apps_maps", "Karten", "Microsoft.WindowsMaps"),
+    _app("apps_alarms", "Uhr (Wecker)", "Microsoft.WindowsAlarms"),
+    _app("apps_family", "Family", "MicrosoftCorporationII.MicrosoftFamily"),
+    _app("apps_quickassist", "Schnellhilfe", "MicrosoftCorporationII.QuickAssist"),
+    _app("apps_powerautomate", "Power Automate", "Microsoft.PowerAutomateDesktop"),
+    _app("apps_devhome", "Dev Home", "Microsoft.Windows.DevHome"),
+    _app("apps_copilot", "Copilot", "Microsoft.Copilot", "Microsoft.Windows.Ai.Copilot.Provider"),
+    _app("apps_widgets", "Widgets", "MicrosoftWindows.Client.WebExperience"),
+    # nachgeladene Werbe-Apps (Platzhalter im Startmenü von Windows 11, später still installiert)
+    _app("apps_ads", "Werbe-Apps (WhatsApp, LinkedIn, Spotify …)", "5319275A.WhatsAppDesktop",
+         "7EE7776C.LinkedInforWindows", "AdobeSystemsIncorporated.Adobe*Express*", "SpotifyAB.SpotifyMusic",
+         "Disney.37853FC22B2CE", "Facebook.*", "BytedancePte.Ltd.TikTok", "AmazonVideo.PrimeVideo",
+         "4DF9E0F8.Netflix", "king.com.*"),
+    Option(LATER, "Apps", "Später nachgeladene Apps nochmals entfernen (nach der Anmeldung)",
+           tooltip=f"Geplante Aufgabe: {LATER_DELAY_MIN} min nach der ersten Anmeldung werden die gewählten "
+                   "Store-Apps ein zweites Mal entfernt (Windows lädt Werbe-Apps erst nach der Anmeldung nach). "
+                   "Die Aufgabe entfernt sich danach selbst."),
     Option("no_reinstall", "Apps", "Wiederinstallation von Werbe-Apps sperren", f"""
 Set-OkulaReg '{POL}\\Windows\\CloudContent' 'DisableWindowsConsumerFeatures' 1
-Invoke-OkulaAllUsers {{
+$users = Invoke-OkulaAllUsers {{
     param($Root)
     foreach ($n in 'SilentInstalledAppsEnabled', 'PreInstalledAppsEnabled', 'PreInstalledAppsEverEnabled',
                    'OemPreInstalledAppsEnabled') {{
         Set-OkulaReg "$Root\\{CDM}" $n 0
     }}
-}}"""),
+}}
+$edition = [string](Get-ItemProperty -LiteralPath 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion' `
+    -ErrorAction SilentlyContinue).EditionID
+if ($edition -match 'Enterprise|Education') {{ "Richtlinie und stille Installation aus: $users" }}
+else {{ "stille Installation aus: $users; Richtlinie wirkt bei $edition nicht (nur Enterprise/Education)" }}""",
+           tooltip="Die Richtlinie „Microsoft-Benutzererfahrungen deaktivieren“ wirkt nur bei Windows Enterprise "
+                   "und Education. Bei Pro und Home wirken die Werte für die stille App-Installation (alle "
+                   "Benutzer) sowie „Startmenü: Werbe-Kacheln entfernen“ und „Später nachgeladene Apps nochmals "
+                   "entfernen“."),
     Option("onedrive", "Apps", "OneDrive entfernen", f"""
 Get-Process -Name 'OneDrive' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 $notes = @()
@@ -188,6 +268,41 @@ Invoke-OkulaAllUsers {{
     Set-OkulaReg "$Root\\{SEARCH}" 'SearchboxTaskbarMode' 0
     Set-OkulaReg "$Root\\{ADV}" 'ShowTaskViewButton' 0
 }}"""),
+    Option(START_CLEAN, "Explorer und Desktop", "Startmenü: Werbe-Kacheln entfernen (Windows 11)", f"""
+if ([Environment]::OSVersion.Version.Build -lt 22000) {{
+    return 'Windows 10 – ohne Wirkung (gilt nur für Windows 11)'
+}}
+$json = '{start_pins_json()}'
+$notes = @()
+try {{
+    # Policy CSP Start/ConfigureStartPins über die MDM-Bridge (WMI, als SYSTEM) – Pro ab Windows 11 21H2
+    $ns = 'root\\cimv2\\mdm\\dmmap'
+    $cls = 'MDM_Policy_Config01_Start02'
+    $obj = Get-CimInstance -Namespace $ns -ClassName $cls `
+        -Filter "ParentID='./Vendor/MSFT/Policy/Config' and InstanceID='Start'" -ErrorAction SilentlyContinue
+    if ($obj) {{
+        $obj.ConfigureStartPins = $json
+        Set-CimInstance -CimInstance $obj -ErrorAction Stop
+    }} else {{
+        New-CimInstance -Namespace $ns -ClassName $cls -Property @{{ ParentID = './Vendor/MSFT/Policy/Config';
+            InstanceID = 'Start'; ConfigureStartPins = $json }} -ErrorAction Stop | Out-Null
+    }}
+    $notes += 'Richtlinie ConfigureStartPins gesetzt (Policy CSP)'
+}} catch {{
+    # Ersatz: Gruppenrichtlinie „Configure Start Pins“ (Windows 11 24H2 mit KB5062660)
+    if ([Environment]::OSVersion.Version.Build -lt 26100) {{
+        throw ('Policy CSP nicht gesetzt: {{0}}' -f $_.Exception.Message)
+    }}
+    Set-OkulaReg '{POL}\\Windows\\Explorer' 'ConfigureStartPins' $json 'String'
+    $notes += ('Gruppenrichtlinie ConfigureStartPins gesetzt (Policy CSP: {{0}})' -f $_.Exception.Message)
+}}
+$notes += 'wirkt bei der nächsten Anmeldung, auch für bestehende Benutzer'
+$notes -join '; '""",
+           tooltip="Ersetzt die angehefteten Kacheln im Startmenü von Windows 11 (auch die Platzhalter für "
+                   "WhatsApp, LinkedIn, Clipchamp …, die Windows erst beim Klick installiert) durch Edge, Explorer, "
+                   "Einstellungen, Rechner, Editor, Fotos, Paint, Snipping Tool und Terminal. Ab Windows 11 24H2 "
+                   "(Update KB5062660) nur einmal – danach lässt sich wieder selbst anheften. Windows 10: ohne "
+                   "Wirkung."),
     # Dienste – je Häkchen stoppen und Starttyp „Deaktiviert“
     Option("svc_search", "Dienste", "Windows Search", _services("WSearch"), SERVICES_HEADING),
     Option("svc_xbox", "Dienste", "Xbox-Dienste",
@@ -210,7 +325,12 @@ TEMPLATES: dict[str, frozenset[str]] = {
                            "fastboot_off", "tips_off", "sticky_off",
                            "telemetry", "adid_off", "location_off", "wer_off", "bing_search_off",
                            "show_ext", "show_hidden", "explorer_thispc", "desktop_icons", "taskbar_clean",
-                           "svc_xbox", "svc_remotereg"}),
+                           START_CLEAN, LATER, "svc_xbox", "svc_remotereg"}),
+    # Ä-042: Windows 11 ohne Werbung – Store und Kamera bleiben (lassen sich dazu wählen), Updates, Betrieb (ausser
+    # Tipps), Explorer-Ansicht, Dienste und Anmeldung bleiben unverändert
+    "Clean": frozenset(set(APP_KEYS) - {"apps_camera", "apps_store"}
+                       | {LATER, "no_reinstall", "onedrive", "cortana", START_CLEAN, "tips_off",
+                          "telemetry", "adid_off", "wer_off", "bing_search_off"}),
 }
 NO_TEMPLATE = "Keine"
 TEMPLATE_NAMES = (*TEMPLATES, NO_TEMPLATE)
@@ -363,14 +483,7 @@ $OkulaName = '__NAME__'
 $OkulaLog = Join-Path $env:SystemRoot "Temp\$OkulaName.log"
 $OkulaGp = Join-Path $env:SystemRoot 'System32\GroupPolicy'
 $OkulaStartup = Join-Path $OkulaGp 'Machine\Scripts\Startup'
-$OkulaKeep = @('*VCLibs*', '*NET.Native*', '*UI.Xaml*', '*NVIDIA*', '*Realtek*', '*Intel*')
-$script:OkulaOk = 0
-$script:OkulaFailed = 0
-
-function Write-OkulaLog([string]$Text) {
-    $line = '{0}  {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Text
-    try { Add-Content -LiteralPath $OkulaLog -Value $line -Encoding UTF8 -ErrorAction Stop } catch { }
-}
+__COMMON__
 
 # Zuerst: Skript (enthält ggf. das Passwort der automatischen Anmeldung) und Startskript löschen
 Remove-Item -LiteralPath (Join-Path $OkulaStartup "$OkulaName.ps1"), (Join-Path $OkulaStartup "$OkulaName.cmd") `
@@ -378,7 +491,25 @@ Remove-Item -LiteralPath (Join-Path $OkulaStartup "$OkulaName.ps1"), (Join-Path 
 
 __RESTORE__
 
-function Invoke-OkulaStep([string]$Label, [scriptblock]$Action) {
+__FUNCTIONS__
+Write-OkulaLog '----- Windows anpassen (Okula Recovery Tool): Start – Vorlage __TEMPLATE__ -----'
+Invoke-OkulaStep 'Startskript und Gruppenrichtlinie aufräumen' {
+    Restore-OkulaStart
+}
+"""
+
+# Gemeinsam mit dem Nachlauf: Schutzliste, Zähler, Protokoll
+COMMON = r"""$OkulaKeep = @(__KEEP__)
+$script:OkulaOk = 0
+$script:OkulaFailed = 0
+
+function Write-OkulaLog([string]$Text) {
+    $line = '{0}  {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Text
+    try { Add-Content -LiteralPath $OkulaLog -Value $line -Encoding UTF8 -ErrorAction Stop } catch { }
+}"""
+
+# Bausteine – gemeinsam mit dem Nachlauf
+FUNCTIONS = r"""function Invoke-OkulaStep([string]$Label, [scriptblock]$Action) {
     try {
         $ErrorActionPreference = 'Stop'
         $note = @(& $Action) | Where-Object { $_ -is [string] -and $_ } | Select-Object -Last 1
@@ -481,27 +612,43 @@ function Test-OkulaKeep([string]$Name) {
     return $false
 }
 
+function Get-OkulaPackages([string]$Type) {
+    # Liste einmal lesen (ein Aufruf je Muster kostet bei 40 Mustern Minuten – Startskripte haben 10 min)
+    if (-not $script:OkulaPkgs) { $script:OkulaPkgs = @{} }
+    if (-not $script:OkulaPkgs.ContainsKey($Type)) {
+        if ($Type -eq 'Provisioned') {
+            $script:OkulaPkgs[$Type] = @(Get-AppxProvisionedPackage -Online -ErrorAction Stop)
+        } else {
+            $script:OkulaPkgs[$Type] = @(Get-AppxPackage -AllUsers -PackageTypeFilter $Type -ErrorAction Stop)
+        }
+    }
+    return $script:OkulaPkgs[$Type]
+}
+
 function Remove-OkulaApps([string[]]$Patterns) {
     # installierte Pakete (alle Benutzer) und vorinstallierte (sonst kommen sie bei neuen Konten wieder und ein
-    # späteres Sysprep bricht ab); Frameworks, NonRemovable und Treiber-Apps (NVIDIA, Realtek, Intel) nie
+    # späteres Sysprep bricht ab); Frameworks, NonRemovable, Schutzliste und Treiber-Apps nie
+    if (-not $script:OkulaGone) { $script:OkulaGone = @{} }
     $removed = @()
     $errors = @()
     foreach ($pat in $Patterns) {
         foreach ($type in 'Bundle', 'Main') {
-            foreach ($p in @(Get-AppxPackage -AllUsers -PackageTypeFilter $type -Name $pat -ErrorAction SilentlyContinue)) {
-                if ($p.NonRemovable -or (Test-OkulaKeep $p.Name) -or ($removed -contains $p.Name)) { continue }
+            foreach ($p in @(Get-OkulaPackages $type | Where-Object { $_.Name -like $pat })) {
+                if ($p.NonRemovable -or (Test-OkulaKeep $p.Name) -or $script:OkulaGone.ContainsKey($p.Name)) { continue }
                 try {
                     Remove-AppxPackage -Package $p.PackageFullName -AllUsers -ErrorAction Stop
+                    $script:OkulaGone[$p.Name] = $true
                     $removed += $p.Name
                 } catch {
                     $errors += '{0}: {1}' -f $p.Name, $_.Exception.Message
                 }
             }
         }
-        foreach ($p in @(Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -like $pat })) {
-            if (Test-OkulaKeep $p.DisplayName) { continue }
+        foreach ($p in @(Get-OkulaPackages 'Provisioned' | Where-Object { $_.DisplayName -like $pat })) {
+            if ((Test-OkulaKeep $p.DisplayName) -or $script:OkulaGone.ContainsKey($p.PackageName)) { continue }
             try {
                 Remove-AppxProvisionedPackage -Online -PackageName $p.PackageName -ErrorAction Stop | Out-Null
+                $script:OkulaGone[$p.PackageName] = $true
                 $removed += $p.DisplayName
             } catch {
                 $errors += '{0} (vorinstalliert): {1}' -f $p.DisplayName, $_.Exception.Message
@@ -513,12 +660,56 @@ function Remove-OkulaApps([string[]]$Patterns) {
     if ($names) { return ($names -join ', ') + ' entfernt' }
     return 'nicht vorhanden'
 }
+"""
 
-Write-OkulaLog '----- Windows anpassen (Okula Recovery Tool): Start – Vorlage __TEMPLATE__ -----'
-Invoke-OkulaStep 'Startskript und Gruppenrichtlinie aufräumen' {
-    Restore-OkulaStart
+# Nachlauf (Ä-042): eigenes Skript unter %ProgramData%\Okula, läuft als geplante Aufgabe (SYSTEM) nach der ersten
+# Anmeldung, entfernt die gewählten Store-Apps nochmals und danach Aufgabe und Datei – auch nach einem Fehler.
+LATER_HEADER = r"""# Okula Recovery Tool – Windows anpassen, Nachlauf (Ä-042)
+# Erstellt: __CREATED__ · Gerät: __DEVICE__
+# Läuft einmal als geplante Aufgabe (SYSTEM) __DELAY__ min nach der ersten Anmeldung: entfernt Store-Apps, die
+# Windows erst nach der Anmeldung nachlädt, danach die Aufgabe und sich selbst. Protokoll: __LOG__
+$ErrorActionPreference = 'Continue'
+$ProgressPreference = 'SilentlyContinue'
+$OkulaName = '__NAME__'
+$OkulaLog = Join-Path $env:SystemRoot "Temp\$OkulaName.log"
+$OkulaTask = '__TASK__'
+__COMMON__
+
+__FUNCTIONS__
+try {
+    Write-OkulaLog '----- Windows anpassen – Nachlauf nach der Anmeldung: Start -----'
+"""
+
+LATER_FOOTER = r"""} finally {
+    Write-OkulaLog ('----- Nachlauf Ende: {0} ok, {1} mit Fehler -----' -f $script:OkulaOk, $script:OkulaFailed)
+    if ($PSCommandPath) { Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue }
+    $folder = Join-Path $env:ProgramData 'Okula'
+    if ((Test-Path -LiteralPath $folder) -and -not @(Get-ChildItem -LiteralPath $folder -Force)) {
+        Remove-Item -LiteralPath $folder -Force -ErrorAction SilentlyContinue
+    }
+    # zuletzt: die Aufgabe entfernt sich selbst
+    Unregister-ScheduledTask -TaskName $OkulaTask -Confirm:$false -ErrorAction SilentlyContinue
 }
 """
+
+# Baustein im Startskript: Nachlauf-Skript ablegen und Aufgabe anlegen
+LATER_BODY = r"""$folder = Join-Path $env:ProgramData 'Okula'
+New-Item -ItemType Directory -Path $folder -Force | Out-Null
+$file = Join-Path $folder '__FILE__'
+$text = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('__B64__'))
+[IO.File]::WriteAllText($file, $text, (New-Object Text.UTF8Encoding $true))
+$ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+$action = New-ScheduledTaskAction -Execute $ps -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"' -f $file)
+$trigger = New-ScheduledTaskTrigger -AtLogOn
+$trigger.Delay = 'PT__DELAY__M'
+$trigger.EndBoundary = (Get-Date).AddDays(__DAYS__).ToString('s')
+$principal = New-ScheduledTaskPrincipal -UserId 'S-1-5-18' -LogonType ServiceAccount -RunLevel Highest
+$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 2) -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew `
+    -DeleteExpiredTaskAfter (New-TimeSpan -Days 1)
+Register-ScheduledTask -TaskName '__TASK__' -Action $action -Trigger $trigger -Principal $principal `
+    -Settings $settings -Force -ErrorAction Stop | Out-Null
+'Aufgabe „__TASK__“ angelegt: __DELAY__ min nach der ersten Anmeldung, __COUNT__ App-Gruppe(n)'"""
 
 FOOTER = r"""
 Write-OkulaLog ('----- Ende: {0} ok, {1} mit Fehler -----' -f $script:OkulaOk, $script:OkulaFailed)
@@ -529,24 +720,66 @@ def _indent(code: str) -> str:
     return "\n".join(("    " + line) if line.strip() else "" for line in code.strip("\n").splitlines())
 
 
+def _keep_list() -> str:
+    return ", ".join(f"'{k}'" for k in PROTECTED)
+
+
+def _fill(text: str, **values: str) -> str:
+    # gemeinsame Teile zuerst (enthalten selbst Platzhalter)
+    text = text.replace("__COMMON__", COMMON).replace("__FUNCTIONS__", FUNCTIONS).replace("__KEEP__", _keep_list())
+    for k, v in values.items():
+        text = text.replace(f"__{k}__", v)
+    return text
+
+
+def _step(o: Option, body: str) -> str:
+    label = f"Store-Apps entfernen: {o.label}" if o.key in APP_KEYS else \
+        f"Dienst abschalten: {o.label}" if o.group == "Dienste" else o.label
+    return f"Invoke-OkulaStep {ps_quote(label)} {{\n{_indent(body)}\n}}"
+
+
+def app_patterns(selected) -> list[str]:
+    """Name-Muster aller gewählten Store-App-Gruppen (Reihenfolge wie im Dialog)."""
+    return [p for o in OPTIONS if o.key in selected and o.key in APP_KEYS for p in o.patterns]
+
+
+def build_later_script(selected, device: str = "", created: float | None = None) -> str:
+    """Nachlauf-Skript (Ä-042): die gewählten Store-Apps nochmals entfernen, danach Aufgabe und Datei löschen."""
+    stamp = time.strftime("%d.%m.%Y %H:%M", time.localtime(created if created is not None else time.time()))
+    safe_device = re.sub(r"[^\w .-]", "", device)[:60] or "–"
+    head = _fill(LATER_HEADER, CREATED=stamp, DEVICE=safe_device, DELAY=str(LATER_DELAY_MIN), LOG=LOG_PATH,
+                 NAME=TWEAK_NAME, TASK=LATER_TASK)
+    steps = [_step(o, o.body) for o in OPTIONS if o.key in selected and o.key in APP_KEYS]
+    return head + _indent("\n".join(steps)) + "\n" + LATER_FOOTER
+
+
+def later_body(selected, device: str = "", created: float | None = None) -> str:
+    """Baustein im Startskript: Nachlauf-Skript nach %ProgramData%\\Okula schreiben, Aufgabe anlegen."""
+    count = sum(1 for k in APP_KEYS if k in selected)
+    if not count:
+        return "'keine Store-Apps gewählt – kein Nachlauf nötig'"
+    return _fill(LATER_BODY, FILE=LATER_FILE, B64=_b64(build_later_script(selected, device, created)),
+                 DELAY=str(LATER_DELAY_MIN), DAYS=str(LATER_DAYS), TASK=LATER_TASK, COUNT=str(count))
+
+
 def build_script(selected, user: str = "", password: str = "", device: str = "", template: str = NO_TEMPLATE,
                  created: float | None = None) -> str:
-    """PowerShell-Skript für die gewählten Optionen. Reihenfolge: wie im Dialog, Store-Apps zuletzt."""
+    """PowerShell-Skript für die gewählten Optionen. Reihenfolge: wie im Dialog, Store-Apps zuletzt, danach der
+    Nachlauf (geplante Aufgabe)."""
     selected = set(selected)
     problem = check(selected, user, password)
     if problem:
         raise TweakError(problem)
     stamp = time.strftime("%d.%m.%Y %H:%M", time.localtime(created if created is not None else time.time()))
     safe_device = re.sub(r"[^\w .-]", "", device)[:60] or "–"
-    head = (HEADER.replace("__RESTORE__", RESTORE_START).replace("__CREATED__", stamp).replace("__DEVICE__", safe_device)
-            .replace("__TEMPLATE__", template_label(template, selected)).replace("__LOG__", LOG_PATH)
-            .replace("__NAME__", TWEAK_NAME).replace("__AFTER__", TWEAK_AFTER))
-    order = [o for o in OPTIONS if o.key in selected and o.key not in APP_KEYS] + \
-            [o for o in OPTIONS if o.key in selected and o.key in APP_KEYS]
+    head = _fill(HEADER.replace("__RESTORE__", RESTORE_START), CREATED=stamp, DEVICE=safe_device,
+                 TEMPLATE=template_label(template, selected), LOG=LOG_PATH, NAME=TWEAK_NAME, AFTER=TWEAK_AFTER)
+    chosen = [o for o in OPTIONS if o.key in selected]
+    order = [o for o in chosen if o.key not in APP_KEYS and o.key != LATER] + \
+            [o for o in chosen if o.key in APP_KEYS] + [o for o in chosen if o.key == LATER]
     steps = []
     for o in order:
-        body = autologon_body(user, password) if o.key == AUTOLOGON else o.body
-        label = f"Store-Apps entfernen: {o.label}" if o.key in APP_KEYS else \
-            f"Dienst abschalten: {o.label}" if o.group == "Dienste" else o.label
-        steps.append(f"Invoke-OkulaStep {ps_quote(label)} {{\n{_indent(body)}\n}}")
+        body = autologon_body(user, password) if o.key == AUTOLOGON else \
+            later_body(selected, device, created) if o.key == LATER else o.body
+        steps.append(_step(o, body))
     return head + "\n" + "\n".join(steps) + "\n" + FOOTER

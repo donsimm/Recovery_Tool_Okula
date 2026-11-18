@@ -560,3 +560,29 @@ Agent-Stick nötig).
       (Windows-Update aus dem Microsoft-Update-Katalog) laden → „bereit“; an der VM installiert (App für einen neuen
       Benutzer vorhanden bzw. Update unter *Installierte Updates*), Protokoll „ok …“ (MSU schon installiert →
       Rückgabewert 2359302 gilt als ok)
+
+### 26. Win11 clean (Ä-042)
+Nach `git pull && sudo ./install.sh` das Tool neu starten (**kein** neuer Agent-Stick nötig). VM mit **Windows 11 Pro**
+(am besten 24H2 mit aktuellen Updates, Netzwerk an), ein lokales Konto angemeldet gewesen.
+- [ ] Vor dem Senden in Windows (PowerShell als Administrator) `Get-AppxPackage -AllUsers | Select Name | Sort Name`
+      festhalten; Startmenü fotografieren (Platzhalter WhatsApp, LinkedIn, Clipchamp …)
+- [ ] *Windows anpassen …* → Vorlage **„Clean“** → Häkchen wie in der Hilfe (Kamera und Microsoft Store aus, Startmenü
+      und Nachlauf an), *Senden* ohne Benutzername/Passwort möglich; Mauszeiger auf „Wiederinstallation … sperren“ →
+      Hinweis Enterprise/Education
+- [ ] Neustart, anmelden → **Startmenü** zeigt nur Edge, Explorer, Einstellungen und die vorhandenen Rechner, Editor,
+      Fotos, Paint, Snipping Tool, Terminal – keine Werbe-Kacheln (WhatsApp, LinkedIn, Adobe Express, Clipchamp …)
+- [ ] `C:\Windows\Temp\okula-windows-anpassen.log`: „ok Startmenü: Werbe-Kacheln entfernen (Windows 11) (Richtlinie
+      ConfigureStartPins gesetzt (Policy CSP) …)“ – steht dort „Gruppenrichtlinie … gesetzt“ oder FEHLER, Text notieren;
+      „Wiederinstallation …“ nennt die Edition („wirkt bei Professional nicht“); Ende „N ok, M mit Fehler“
+- [ ] **Bing Search:** Zeile „Store-Apps entfernen: Bing (Wetter, News, Bing Search …)“ – steht dort
+      `Microsoft.BingSearch … entfernt`, „nicht vorhanden“ oder ein FEHLER? (klärt, ob die App später nachgeladen wurde
+      oder die Entfernung scheiterte)
+- [ ] Aufgabenplanung: Aufgabe „Okula Windows anpassen Nachlauf“ vorhanden, `C:\ProgramData\Okula\okula-windows-anpassen-nachlauf.ps1` vorhanden
+- [ ] **Nach 1 h** (angemeldet bleiben): Protokoll „Windows anpassen – Nachlauf nach der Anmeldung: Start … Nachlauf
+      Ende“; Aufgabe und Datei weg; `Get-AppxPackage -AllUsers` ohne WhatsApp, LinkedIn, Outlook (neu), Teams,
+      Clipchamp, Dev Home, Bing Search, Widgets …; Rechner, Editor, Paint, Fotos, Snipping Tool, Terminal, Edge, Store,
+      Kamera unverändert
+- [ ] **Neustart** und erneut anmelden → Startmenü unverändert sauber, keine neuen Werbe-Apps; selbst eine App anheften,
+      abmelden, anmelden → bleibt angeheftet (nur ab 24H2 mit KB5062660; sonst setzt Windows die Liste neu – notieren)
+- [ ] **Neuer Benutzer** anlegen und anmelden → gleiches Startmenü, keine Werbe-Apps
+- [ ] Windows 10 VM, Vorlage „Clean“ → Protokoll „Startmenü …: Windows 10 – ohne Wirkung“, sonst wie Abschnitt 19

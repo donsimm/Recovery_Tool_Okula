@@ -710,17 +710,26 @@ beim <b>nächsten Start selbst</b> um, vor der Anmeldung. Geht nach einer Instal
 <b>Vorlagen</b> (setzen die Häkchen; danach lässt sich jedes Häkchen ändern – dann steht
 „Vorlage: Player (geändert)“):
 •  <b>Player</b>: alles an ausser <i>Kamera</i> und <i>Druckwarteschlange</i>, mit automatischer Anmeldung.
-•  <b>Laptop</b>: Store-Apps ausser <i>Kamera</i> und <i>Microsoft Store</i>, Wiederinstallation sperren, Cortana aus;
-    Updates bleiben; Betrieb nur Schnellstart, Tipps und Einrastfunktion aus; Datenschutz und Explorer alles;
-    Dienste nur Xbox-Dienste und Remote-Registrierung; keine automatische Anmeldung.
+•  <b>Laptop</b>: Store-Apps ausser <i>Kamera</i> und <i>Microsoft Store</i> (auch Kurznotizen, Audiorecorder,
+    Schnellhilfe), Nachlauf, Wiederinstallation sperren, Cortana aus; Updates bleiben; Betrieb nur Schnellstart,
+    Tipps und Einrastfunktion aus; Datenschutz und Explorer alles (mit Startmenü); Dienste nur Xbox-Dienste und
+    Remote-Registrierung; keine automatische Anmeldung.
+•  <b>Clean</b>: Windows 11 ohne Werbung – alle Häkchen unter <i>Apps</i> ausser <i>Kamera</i> und
+    <i>Microsoft Store</i> (beide bleiben installiert, lassen sich aber dazu wählen), <i>Startmenü: Werbe-Kacheln
+    entfernen</i>, Tipps aus, Telemetrie minimal, Werbe-ID, Fehlerberichte und Bing-Suche aus. Updates, Energie,
+    Explorer-Ansicht, Dienste und Anmeldung bleiben, wie sie sind.
 •  <b>Keine</b>: alle Häkchen weg.
 
 <b>Die Einstellungen:</b>
-•  <b>Apps</b>: Store-Apps entfernen (Xbox, Bing (Wetter, News …), Groove/Filme &amp; TV, Solitaire, Kontakte,
-    Smartphone-Link, Kamera, Office/Office-Hub, 3D-Viewer/Paint 3D/Mixed Reality, Feedback-Hub/Tipps/Hilfe,
-    Microsoft Store) – für alle Benutzer und auch für später angelegte Konten. Treiber-Apps (NVIDIA, Realtek,
-    Intel) und Bausteine, die andere Apps brauchen, bleiben immer. Dazu: Wiederinstallation von Werbe-Apps
-    sperren, OneDrive entfernen, Cortana aus.
+•  <b>Apps</b>: Store-Apps entfernen (Xbox, Bing (Wetter, News, Bing Search …), Groove/Filme &amp; TV, Solitaire,
+    Kontakte, Smartphone-Link, Kamera, Office/Office-Hub, 3D-Viewer/Paint 3D/Mixed Reality, Feedback-Hub/Tipps/Hilfe,
+    Microsoft Store, Outlook (neu)/Mail und Kalender, Teams, Clipchamp, Audiorecorder, Kurznotizen, To Do, Journal,
+    Karten, Uhr (Wecker), Family, Schnellhilfe, Power Automate, Dev Home, Copilot, Widgets, Werbe-Apps (WhatsApp,
+    LinkedIn, Spotify …)) – für alle Benutzer und auch für später angelegte Konten. <b>Nie entfernt</b> werden
+    Rechner, Editor, Paint, Fotos, Snipping Tool, Terminal, Edge, Windows-Sicherheit, App-Installer, Codecs,
+    Treiber-Apps (NVIDIA, Realtek, Intel, AMD, Dolby …) und Bausteine, die andere Apps brauchen. Dazu: Später
+    nachgeladene Apps nochmals entfernen (nach der Anmeldung), Wiederinstallation von Werbe-Apps sperren, OneDrive
+    entfernen, Cortana aus.
 •  <b>Updates</b>: Windows Update aus, keine Treiber über Windows Update, keine automatischen App-Updates.
 •  <b>Betrieb</b>: Energieplan Höchstleistung, Bildschirm und Standby nie ausschalten, Ruhezustand aus,
     Schnellstart aus, Sperrbildschirm aus, Tipps, Vorschläge und Benachrichtigungen aus, Einrastfunktion und
@@ -728,13 +737,30 @@ beim <b>nächsten Start selbst</b> um, vor der Anmeldung. Geht nach einer Instal
 •  <b>Datenschutz</b>: Telemetrie minimal (bei Windows Pro wirkt das wie „Erforderliche Diagnosedaten“),
     Werbe-ID aus, Standort aus, Fehlerberichte aus, Bing-Suche im Startmenü aus.
 •  <b>Explorer und Desktop</b>: Dateiendungen anzeigen, versteckte Dateien anzeigen, Explorer öffnet
-    „Dieser PC“, Symbole „Dieser PC“ und „Netzwerk“ auf dem Desktop, Suchfeld und Taskansicht aus der Taskleiste.
+    „Dieser PC“, Symbole „Dieser PC“ und „Netzwerk“ auf dem Desktop, Suchfeld und Taskansicht aus der Taskleiste,
+    Startmenü: Werbe-Kacheln entfernen (Windows 11).
 •  <b>Dienste</b>: Windows Search, Xbox-Dienste, SysMain, Remote-Registrierung, Druckwarteschlange – je Häkchen
     gestoppt und auf „Deaktiviert“ gestellt.
 •  <b>Anmeldung</b>: <i>Automatische Anmeldung</i> mit Benutzername und Passwort. Ohne beide Angaben lässt sich
     nicht senden. Das Konto muss auf dem Gerät schon vorhanden sein, sonst wird nichts gesetzt (Eintrag im
     Protokoll).
 Einstellungen für Benutzer gelten für alle vorhandenen Konten und für neue Konten.
+
+<b>Startmenü von Windows 11 – warum Werbe-Kacheln trotz entfernter Apps:</b> WhatsApp, LinkedIn, Clipchamp,
+Adobe Express, Spotify &amp; Co. sind im Startmenü oft nur <b>Platzhalter</b>: Die App ist noch gar nicht
+installiert, Windows lädt sie erst beim Klick oder später im Hintergrund. Darum hilft Entfernen allein nicht.
+•  <i>Startmenü: Werbe-Kacheln entfernen (Windows 11)</i> ersetzt die angehefteten Kacheln durch Edge, Explorer,
+    Einstellungen, Rechner, Editor, Fotos, Paint, Snipping Tool und Terminal (fehlt eine davon, erscheint ihre
+    Kachel erst nach der Installation). Wirkt bei der nächsten Anmeldung – für bestehende und neue Benutzer, auch
+    bei Windows Pro. Ab Windows 11 24H2 mit dem Update KB5062660 wird die Liste nur einmal gesetzt, danach lässt
+    sich wieder selbst anheften; bei älteren Windows 11 setzt Windows sie bei jeder Anmeldung neu. Windows 10:
+    ohne Wirkung.
+•  <i>Später nachgeladene Apps nochmals entfernen (nach der Anmeldung)</i> legt eine geplante Aufgabe an: 30 min
+    nach der ersten Anmeldung werden die gewählten Store-Apps ein zweites Mal entfernt, danach löscht sich die
+    Aufgabe selbst (Protokoll wie unten, Abschnitt „Nachlauf“).
+•  <i>Wiederinstallation von Werbe-Apps sperren</i>: Die Richtlinie dazu wirkt laut Microsoft nur bei Windows
+    Enterprise und Education. Bei Pro und Home wirken die Werte für die stille App-Installation (alle Benutzer)
+    und die beiden Häkchen oben. Das Protokoll nennt die Edition.
 
 <b>Passwort:</b> Das Passwort der automatischen Anmeldung liegt danach – wie bei Windows üblich – im
 <b>Klartext in der Registrierung</b> (Winlogon). Bis zum nächsten Start steht es im Startskript auf der Disk;

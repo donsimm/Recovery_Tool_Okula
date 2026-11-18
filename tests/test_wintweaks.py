@@ -1,6 +1,7 @@
 """Windows anpassen (I-039): Optionen, Vorlagen, Skript-Erzeugung, Startmechanismus auf Probe-Daten, Auftrag."""
 
 import base64
+import json
 import re
 import shutil
 import subprocess
@@ -29,8 +30,31 @@ EXPECTED = {
     "apps_3d": ["'Microsoft.Microsoft3DViewer'", "'Microsoft.MSPaint'", "'Microsoft.MixedReality.Portal'"],
     "apps_help": ["'Microsoft.WindowsFeedbackHub'", "'Microsoft.Getstarted'", "'Microsoft.GetHelp'"],
     "apps_store": ["'Microsoft.WindowsStore'"],
+    # Ä-042
+    "apps_outlook": ["'Microsoft.OutlookForWindows'", "'microsoft.windowscommunicationsapps'"],
+    "apps_teams": ["'MSTeams'", "'MicrosoftTeams'"],
+    "apps_clipchamp": ["'Clipchamp.Clipchamp'"],
+    "apps_recorder": ["'Microsoft.WindowsSoundRecorder'"],
+    "apps_notes": ["'Microsoft.MicrosoftStickyNotes'"],
+    "apps_todo": ["'Microsoft.Todos'"],
+    "apps_journal": ["'Microsoft.MicrosoftJournal'"],
+    "apps_maps": ["'Microsoft.WindowsMaps'"],
+    "apps_alarms": ["'Microsoft.WindowsAlarms'"],
+    "apps_family": ["'MicrosoftCorporationII.MicrosoftFamily'"],
+    "apps_quickassist": ["'MicrosoftCorporationII.QuickAssist'"],
+    "apps_powerautomate": ["'Microsoft.PowerAutomateDesktop'"],
+    "apps_devhome": ["'Microsoft.Windows.DevHome'"],
+    "apps_copilot": ["'Microsoft.Copilot'", "'Microsoft.Windows.Ai.Copilot.Provider'"],
+    "apps_widgets": ["'MicrosoftWindows.Client.WebExperience'"],
+    "apps_ads": ["'5319275A.WhatsAppDesktop'", "'7EE7776C.LinkedInforWindows'", "'SpotifyAB.SpotifyMusic'",
+                 "'BytedancePte.Ltd.TikTok'", "'king.com.*'"],
+    "later_cleanup": ["Register-ScheduledTask -TaskName 'Okula Windows anpassen Nachlauf'", "-AtLogOn",
+                      "$trigger.Delay = 'PT30M'", "FromBase64String"],
+    "start_clean": ["MDM_Policy_Config01_Start02", "ConfigureStartPins = $json", "Build -lt 22000",
+                    "Windows 10 – ohne Wirkung", "'ConfigureStartPins' $json 'String'"],
     "no_reinstall": ["CloudContent' 'DisableWindowsConsumerFeatures' 1", "'SilentInstalledAppsEnabled'",
-                     "'PreInstalledAppsEnabled'", "'OemPreInstalledAppsEnabled'", "Invoke-OkulaAllUsers"],
+                     "'PreInstalledAppsEnabled'", "'OemPreInstalledAppsEnabled'", "Invoke-OkulaAllUsers",
+                     "nur Enterprise/Education"],
     "onedrive": ["OneDriveSetup.exe", "'/uninstall'", "'DisableFileSyncNGSC' 1", "'OneDriveSetup'"],
     "cortana": ["'AllowCortana' 0"],
     "wu_off": ["WindowsUpdate\\AU' 'NoAutoUpdate' 1"],
@@ -77,7 +101,7 @@ class OptionsTemplatesTest(unittest.TestCase):
     def test_every_option_has_a_test_and_groups(self):
         self.assertEqual(set(EXPECTED), set(wintweaks.KEYS))
         self.assertEqual(list(wintweaks.by_group()), list(wintweaks.GROUPS))
-        self.assertEqual(len(wintweaks.APP_KEYS), 11)
+        self.assertEqual(len(wintweaks.APP_KEYS), 27)
         self.assertEqual([o.label for o in wintweaks.by_group()["Dienste"]],
                          ["Windows Search", "Xbox-Dienste", "SysMain", "Remote-Registrierung", "Druckwarteschlange"])
 
@@ -97,8 +121,75 @@ class OptionsTemplatesTest(unittest.TestCase):
             self.assertEqual(wintweaks.by_group(laptop)[group], wintweaks.by_group()[group])
         self.assertEqual({o.key for o in wintweaks.by_group(laptop)["Dienste"]}, {"svc_xbox", "svc_remotereg"})
         self.assertNotIn(wintweaks.AUTOLOGON, laptop)
+        self.assertTrue({"start_clean", "later_cleanup", "apps_notes", "apps_recorder"} <= laptop)      # Ä-042
+        self.assertTrue({"start_clean", "later_cleanup", "apps_ads", "apps_outlook"} <= player)
         self.assertEqual(wintweaks.template_keys("Keine"), frozenset())
-        self.assertEqual(wintweaks.TEMPLATE_NAMES, ("Player", "Laptop", "Keine"))
+        self.assertEqual(wintweaks.TEMPLATE_NAMES, ("Player", "Laptop", "Clean", "Keine"))
+
+    def test_template_clean(self):
+        clean = wintweaks.template_keys("Clean")
+        apps = {o.key for o in wintweaks.by_group()["Apps"]}
+        self.assertEqual(apps - clean, {"apps_camera", "apps_store"})               # Store und Kamera bleiben
+        self.assertTrue({"start_clean", "later_cleanup", "no_reinstall", "tips_off", "telemetry",
+                         "bing_search_off", "adid_off"} <= clean)
+        self.assertFalse(clean & {"wu_off", "wu_drivers", "store_updates", "power_high", "power_never",
+                                  "lockscreen_off", "autologon", "show_ext", "show_hidden"})
+        self.assertFalse({o.key for o in wintweaks.by_group(clean)["Dienste"]})
+        self.assertIsNone(wintweaks.check(clean))                                     # ohne Anmeldedaten sendbar
+
+    def test_protected_apps_never_removed(self):
+        import fnmatch
+        protected = ["Microsoft.WindowsCalculator", "Microsoft.WindowsNotepad", "Microsoft.Paint",
+                     "Microsoft.Windows.Photos", "Microsoft.ScreenSketch", "Microsoft.WindowsTerminal",
+                     "Microsoft.MicrosoftEdge.Stable", "Microsoft.MicrosoftEdge", "Microsoft.SecHealthUI",
+                     "Microsoft.DesktopAppInstaller", "Microsoft.VCLibs.140.00.UWPDesktop", "Microsoft.UI.Xaml.2.8",
+                     "Microsoft.WindowsAppRuntime.1.5", "Microsoft.NET.Native.Framework.2.2",
+                     "Microsoft.NET.Native.Runtime.2.2", "Microsoft.HEVCVideoExtension", "Microsoft.WebpImageExtension",
+                     "RealtekSemiconductorCorp.RealtekAudioControl", "NVIDIACorp.NVIDIAControlPanel",
+                     "AppUp.IntelGraphicsExperience", "DolbyLaboratories.DolbyAccess",
+                     "MicrosoftWindows.Client.CBS", "Microsoft.Windows.StartMenuExperienceHost"]
+        patterns = [p for o in wintweaks.OPTIONS for p in o.patterns]
+        self.assertGreater(len(patterns), 40)
+        for name in protected:
+            hits = [p for p in patterns if fnmatch.fnmatchcase(name.lower(), p.lower())]
+            self.assertEqual(hits, [], f"{name} würde entfernt: {hits}")
+            keep = [k for k in wintweaks.PROTECTED if fnmatch.fnmatchcase(name.lower(), k.lower())]
+            self.assertTrue(keep, f"{name} fehlt auf der Schutzliste")
+        # Store nur über das eigene Häkchen; neue Pakete (Bing Search, Widgets) über ihre Gruppe
+        store = [o.key for o in wintweaks.OPTIONS if any(fnmatch.fnmatchcase("microsoft.windowsstore", p.lower())
+                                                       for p in o.patterns)]
+        self.assertEqual(store, ["apps_store"])
+        for name, key in (("Microsoft.BingSearch", "apps_bing"), ("MicrosoftWindows.Client.WebExperience",
+                                                                  "apps_widgets"),
+                          ("Facebook.InstagramBeta", "apps_ads"), ("king.com.CandyCrushSaga", "apps_ads"),
+                          ("AdobeSystemsIncorporated.AdobeCreativeCloudExpress", "apps_ads")):
+            self.assertTrue(any(fnmatch.fnmatchcase(name.lower(), p.lower()) for p in wintweaks.BY_KEY[key].patterns),
+                            name)
+            self.assertFalse([k for k in wintweaks.PROTECTED if fnmatch.fnmatchcase(name.lower(), k.lower())], name)
+        # Schutzliste steht im Skript
+        script = wintweaks.build_script({"apps_ads"})
+        for keep in wintweaks.PROTECTED:
+            self.assertIn(f"'{keep}'", script)
+
+    def test_start_pins_json(self):
+        data = json.loads(wintweaks.start_pins_json())
+        self.assertIs(data["applyOnce"], True)
+        ids = [next(iter(p.values())) for p in data["pinnedList"]]
+        self.assertEqual(len(ids), 9)
+        self.assertTrue(ids[0].endswith("Microsoft Edge.lnk"))
+        self.assertIn("Microsoft.WindowsCalculator_8wekyb3d8bbwe!App", ids)
+        self.assertIn("Microsoft.WindowsTerminal_8wekyb3d8bbwe!App", ids)
+        self.assertIn("windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel", ids)
+        for bad in ("WhatsApp", "LinkedIn", "Clipchamp", "Outlook", "Teams", "Spotify"):
+            self.assertNotIn(bad.lower(), wintweaks.start_pins_json().lower())
+        self.assertNotIn("'", wintweaks.start_pins_json())                       # passt in '…' von PowerShell
+        self.assertNotIn("\n", wintweaks.start_pins_json())
+        body = steps(wintweaks.build_script({"start_clean"}))["Startmenü: Werbe-Kacheln entfernen (Windows 11)"]
+        self.assertIn(f"$json = '{wintweaks.start_pins_json()}'", body)
+        # Windows 10 zuerst abgefangen, Ersatz über die Gruppenrichtlinie nur ab 24H2 (Build 26100)
+        self.assertLess(body.index("Build -lt 22000"), body.index("MDM_Policy_Config01_Start02"))
+        self.assertIn("Build -lt 26100", body)
+        self.assertIn("SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer' 'ConfigureStartPins'", body)
 
     def test_template_label_changed(self):
         player = set(wintweaks.template_keys("Player"))
@@ -123,7 +214,7 @@ class OptionsTemplatesTest(unittest.TestCase):
     def test_summary_and_log_lines_without_password(self):
         sel = set(wintweaks.template_keys("Player")) - {"cortana"}
         text = wintweaks.summary(sel, "Player", "Okula")
-        self.assertTrue(text.startswith("Vorlage Player (geändert): Apps (12), Updates (3), Betrieb (7)"), text)
+        self.assertTrue(text.startswith("Vorlage Player (geändert): Apps (29), Updates (3), Betrieb (7)"), text)
         self.assertIn("Dienste (4), automatische Anmeldung (Okula)", text)
         lines = wintweaks.describe_lines(sel, "Okula")
         self.assertTrue(any(line.startswith("  Apps: Store-Apps entfernen: Xbox, ") for line in lines), lines)
@@ -154,10 +245,15 @@ class ScriptTest(unittest.TestCase):
         self.assertRegex(self.script, r"catch \{\n\s+\$script:OkulaFailed\+\+\n\s+Write-OkulaLog \"FEHLER")
         labels = list(self.steps)
         first_app = next(i for i, lbl in enumerate(labels) if lbl.startswith("Store-Apps entfernen"))
-        self.assertTrue(all(lbl.startswith("Store-Apps entfernen") for lbl in labels[first_app:]))
+        self.assertTrue(all(lbl.startswith("Store-Apps entfernen") for lbl in labels[first_app:-1]))
+        self.assertEqual(labels[-1], wintweaks.BY_KEY["later_cleanup"].label)             # Nachlauf ganz am Schluss
+        # Paketlisten nur einmal lesen (10-Minuten-Grenze der Startskripte)
+        self.assertEqual(self.script.count("Get-AppxProvisionedPackage -Online"), 1)
+        self.assertEqual(self.script.count("Get-AppxPackage -AllUsers"), 1)
         self.assertTrue(self.script.rstrip().endswith("-f $script:OkulaOk, $script:OkulaFailed)"))
         # Frameworks und Treiber-Apps nie, vorinstallierte Pakete mit
-        for keep in ("*VCLibs*", "*NET.Native*", "*UI.Xaml*", "*NVIDIA*", "*Realtek*", "*Intel*"):
+        for keep in ("*VCLibs*", "*NET.Native*", "*UI.Xaml*", "*NVIDIA*", "*Realtek*", "*Intel*", "*WindowsAppRuntime*",
+                     "Microsoft.WindowsCalculator", "Microsoft.Paint", "Microsoft.MicrosoftEdge*"):
             self.assertIn(f"'{keep}'", self.script)
         self.assertIn("$p.NonRemovable", self.script)
         self.assertIn("Remove-AppxPackage -Package $p.PackageFullName -AllUsers", self.script)
@@ -205,6 +301,76 @@ class ScriptTest(unittest.TestCase):
                    f"'{path}', [ref]$null, [ref]$e); $e | ForEach-Object {{ $_.ToString() }}")
             out = subprocess.run(["pwsh", "-NoProfile", "-Command", cmd], capture_output=True, text=True, timeout=60)
             self.assertEqual(out.stdout.strip(), "")
+
+
+class LaterCleanupTest(unittest.TestCase):
+    """Nachlauf (Ä-042): geplante Aufgabe nach der ersten Anmeldung, entfernt die Apps nochmals und sich selbst."""
+
+    def setUp(self):
+        self.sel = {"later_cleanup", "apps_ads", "apps_bing", "cortana"}
+        self.script = wintweaks.build_script(self.sel, device="PC-1", created=0)
+        body = steps(self.script)[wintweaks.BY_KEY["later_cleanup"].label]
+        self.body = body
+        self.later = base64.b64decode(re.search(r"FromBase64String\('([A-Za-z0-9+/=]+)'\)", body).group(1)).decode()
+
+    def test_task_registered_once_after_logon(self):
+        b = self.body
+        self.assertIn("New-ScheduledTaskTrigger -AtLogOn", b)
+        self.assertIn(f"$trigger.Delay = 'PT{wintweaks.LATER_DELAY_MIN}M'", b)
+        self.assertIn(".AddDays(30)", b)                                          # läuft er nie: Windows löscht ihn
+        self.assertIn("-DeleteExpiredTaskAfter", b)
+        self.assertIn("New-ScheduledTaskPrincipal -UserId 'S-1-5-18'", b)
+        self.assertIn(f"Join-Path $folder '{wintweaks.LATER_FILE}'", b)
+        self.assertIn("Text.UTF8Encoding $true", b)                               # mit BOM für PowerShell 5.1
+        self.assertEqual(self.later, wintweaks.build_later_script(self.sel, "PC-1", created=0))
+
+    def test_later_script_removes_apps_and_itself(self):
+        s = self.later
+        self.assertIn("Remove-OkulaApps @('Microsoft.Bing*')", s)
+        self.assertIn("'5319275A.WhatsAppDesktop'", s)
+        self.assertNotIn("AllowCortana", s)                                       # nur Store-Apps
+        self.assertNotIn("Restore-OkulaStart", s)                                 # kein Startskript
+        self.assertNotIn("Register-ScheduledTask", s)
+        fin = s.rindex("\n} finally {")
+        self.assertLess(s.index("Remove-OkulaApps @('Microsoft.Bing*')"), fin)
+        self.assertGreater(s.index("Unregister-ScheduledTask -TaskName $OkulaTask"), fin)
+        self.assertGreater(s.index("Remove-Item -LiteralPath $PSCommandPath"), fin)
+        self.assertIn(f"$OkulaTask = '{wintweaks.LATER_TASK}'", s)
+        self.assertIn(f"$OkulaName = '{deploy.TWEAK_NAME}'", s)                   # gleiches Protokoll
+        for keep in wintweaks.PROTECTED:
+            self.assertIn(f"'{keep}'", s)
+        self.assertEqual(s.count("{"), s.count("}"))
+        self.assertEqual(s.count("("), s.count(")"))
+
+    def test_ascii_where_windows_starts_it(self):
+        for text in (wintweaks.LATER_TASK, wintweaks.LATER_FILE):
+            self.assertTrue(text.isascii(), text)
+        arg_line = next(line for line in self.body.splitlines() if "New-ScheduledTaskAction" in line)
+        self.assertTrue(arg_line.isascii(), arg_line)
+
+    def test_without_apps_nothing_to_do(self):
+        body = steps(wintweaks.build_script({"later_cleanup", "cortana"}))[wintweaks.BY_KEY["later_cleanup"].label]
+        self.assertNotIn("Register-ScheduledTask", body)
+        self.assertIn("kein Nachlauf", body)
+
+    def test_no_password_in_later_script(self):
+        script = wintweaks.build_script(wintweaks.template_keys("Player"), "Okula", PASSWORD)
+        body = steps(script)[wintweaks.BY_KEY["later_cleanup"].label]
+        later = base64.b64decode(re.search(r"FromBase64String\('([A-Za-z0-9+/=]+)'\)", body).group(1)).decode()
+        self.assertNotIn(base64.b64encode(PASSWORD.encode()).decode(), later)
+        self.assertNotIn("DefaultPassword", later)
+
+    @unittest.skipUnless(shutil.which("pwsh"), "braucht PowerShell (pwsh)")
+    def test_powershell_parses(self):
+        for text in (self.script, self.later):
+            with tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "s.ps1"
+                path.write_text(text, encoding="utf-8-sig")
+                cmd = ("$e = $null; [void][System.Management.Automation.Language.Parser]::ParseFile("
+                       f"'{path}', [ref]$null, [ref]$e); $e | ForEach-Object {{ $_.ToString() }}")
+                out = subprocess.run(["pwsh", "-NoProfile", "-Command", cmd], capture_output=True, text=True,
+                                     timeout=60)
+                self.assertEqual(out.stdout.strip(), "")
 
 
 class StartMechanismTest(unittest.TestCase):
@@ -451,6 +617,10 @@ class DialogTest(unittest.TestCase):
             dlg.combo.set_active_id("Laptop")
             self.assertEqual(dlg.selected(), set(wintweaks.template_keys("Laptop")))
             self.assertFalse(dlg.user.get_sensitive())
+            dlg.combo.set_active_id("Clean")
+            self.assertEqual(dlg.selected(), set(wintweaks.template_keys("Clean")))
+            self.assertTrue(dlg.btn.get_sensitive())
+            self.assertIn("Enterprise", dlg.checks["no_reinstall"].get_tooltip_text())
             dlg.combo.set_active_id("Keine")
             self.assertEqual(dlg.selected(), set())
             self.assertFalse(dlg.btn.get_sensitive())

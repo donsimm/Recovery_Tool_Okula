@@ -668,7 +668,8 @@ Taskleiste aus dem Audit-Modus (Befund Master CompactPlayer 17.11.2026). Das Too
   `Import-StartLayout`), in den OEM-Seiten verweist Microsoft für die Taskleiste auf `LayoutXMLPath` (Registrierung im
   Image, vor specialize) – das würde ein Schreiben in den Hive `SOFTWARE` verlangen und ist bewusst nicht umgesetzt.
 - **Windows 11:** gleiche Datei wird geschrieben (schadet nicht); ob Windows 11 sie für die Taskleiste liest, ist zu
-  prüfen. Startmenü von Windows 11 (`LayoutModification.json`, nur über Richtlinie bzw. ab 24H2) ist nicht umgesetzt.
+  prüfen. Startmenü von Windows 11 (`LayoutModification.json`, nur über Richtlinie bzw. ab 24H2) ist hier nicht
+  umgesetzt – Werbe-Kacheln entfernt *Windows anpassen* (Ä-042, Richtlinie ConfigureStartPins, siehe dort).
 - **Startmenü-Kacheln (Windows 10)** werden nicht übernommen: Das Layout liegt pro Benutzer in einer binären
   Datenbank (CloudStore/TileDataLayer) und lässt sich aus dem Profil nicht zuverlässig ableiten; CopyProfile
   unterstützt das Startmenü laut Microsoft nicht.
@@ -987,7 +988,9 @@ im Protokoll, der nächste Baustein läuft; Store-Apps zuletzt, weil am langsams
 | Gruppe | Option | Umsetzung |
 |---|---|---|
 | Apps | Store-Apps: Xbox · Bing … · Groove/Filme & TV · Solitaire · Kontakte · Smartphone-Link · Kamera · Office/Office-Hub · 3D-Viewer/Paint 3D/Mixed Reality · Feedback-Hub/Tipps/Hilfe · Microsoft Store | je Gruppe Name-Muster (z. B. `Microsoft.Xbox*`, `Microsoft.Bing*`, `Microsoft.MSPaint` = Paint 3D); `Remove-AppxPackage -AllUsers` (erst Bundle, dann Main) **und** `Remove-AppxProvisionedPackage -Online`; nie: `NonRemovable`, `*VCLibs*`, `*NET.Native*`, `*UI.Xaml*`, `*NVIDIA*`, `*Realtek*`, `*Intel*` |
-| Apps | Wiederinstallation von Werbe-Apps sperren | `Policies\…\CloudContent\DisableWindowsConsumerFeatures=1`; ContentDeliveryManager `SilentInstalledAppsEnabled`, `PreInstalledAppsEnabled`, `PreInstalledAppsEverEnabled`, `OemPreInstalledAppsEnabled` = 0 (alle Benutzer) |
+| Apps (Ä-042) | Outlook (neu)/Mail und Kalender · Teams · Clipchamp · Audiorecorder · Kurznotizen · To Do · Journal · Karten · Uhr (Wecker) · Family · Schnellhilfe · Power Automate · Dev Home · Copilot · Widgets · Werbe-Apps | `Microsoft.OutlookForWindows`, `microsoft.windowscommunicationsapps` · `MSTeams`, `MicrosoftTeams` · `Clipchamp.Clipchamp` · `Microsoft.WindowsSoundRecorder` · `Microsoft.MicrosoftStickyNotes` · `Microsoft.Todos` · `Microsoft.MicrosoftJournal` · `Microsoft.WindowsMaps` · `Microsoft.WindowsAlarms` · `MicrosoftCorporationII.MicrosoftFamily` · `MicrosoftCorporationII.QuickAssist` · `Microsoft.PowerAutomateDesktop` · `Microsoft.Windows.DevHome` · `Microsoft.Copilot`, `Microsoft.Windows.Ai.Copilot.Provider` · `MicrosoftWindows.Client.WebExperience` · `5319275A.WhatsAppDesktop`, `7EE7776C.LinkedInforWindows`, `AdobeSystemsIncorporated.Adobe*Express*`, `SpotifyAB.SpotifyMusic`, `Disney.37853FC22B2CE`, `Facebook.*` (Facebook, Instagram, Messenger), `BytedancePte.Ltd.TikTok`, `AmazonVideo.PrimeVideo`, `4DF9E0F8.Netflix`, `king.com.*` (Candy Crush). „Bing (Wetter, News, Bing Search …)“ = `Microsoft.Bing*` (auch `Microsoft.BingSearch`) |
+| Apps (Ä-042) | Später nachgeladene Apps nochmals entfernen (nach der Anmeldung) | Nachlauf, siehe unten |
+| Apps | Wiederinstallation von Werbe-Apps sperren | `Policies\…\CloudContent\DisableWindowsConsumerFeatures=1` (wirkt laut Policy CSP *Experience/AllowWindowsConsumerFeatures* **nur Enterprise/Education**, nicht Pro – Protokoll nennt die Edition, Tooltip im Dialog); ContentDeliveryManager `SilentInstalledAppsEnabled`, `PreInstalledAppsEnabled`, `PreInstalledAppsEverEnabled`, `OemPreInstalledAppsEnabled` = 0 (alle Benutzer, wirkt auch bei Pro) |
 | Apps | OneDrive entfernen | Prozess beenden, `OneDriveSetup.exe /uninstall` (System32/SysWOW64), `DisableFileSyncNGSC=1`, Run-Werte `OneDriveSetup`/`OneDrive` weg (alle Benutzer) |
 | Apps | Cortana aus | `Windows Search\AllowCortana=0` |
 | Updates | Windows Update aus · Keine Treiber · Keine App-Updates | `WindowsUpdate\AU\NoAutoUpdate=1` · `ExcludeWUDriversInQualityUpdate=1`, `DriverSearching\SearchOrderConfig=0` · `WindowsStore\AutoDownload=2` |
@@ -998,6 +1001,7 @@ im Protokoll, der nächste Baustein läuft; Store-Apps zuletzt, weil am langsams
 | Datenschutz | Telemetrie minimal · Werbe-ID · Standort · Fehlerberichte | `DataCollection\AllowTelemetry=0` (Pro: wirkt wie 1) + Dienst DiagTrack deaktiviert · `AdvertisingInfo\DisabledByGroupPolicy=1` · `LocationAndSensors\DisableLocation=1` · `Windows Error Reporting\Disabled=1` |
 | Datenschutz | Bing-Suche im Startmenü aus | `DisableWebSearch=1`, `ConnectedSearchUseWeb=0`; Benutzer `BingSearchEnabled=0`, `Policies\…\Explorer\DisableSearchBoxSuggestions=1` (Windows 11) |
 | Explorer und Desktop | Dateiendungen · versteckte Dateien · „Dieser PC“ · Desktop-Symbole · Taskleiste | `HideFileExt=0` · `Hidden=1` · `LaunchTo=1` · `HideDesktopIcons\NewStartPanel` `{20D04FE0-…}`/`{F02C1A0D-…}` = 0 · `SearchboxTaskbarMode=0`, `ShowTaskViewButton=0` (alle Benutzer) |
+| Explorer und Desktop (Ä-042) | Startmenü: Werbe-Kacheln entfernen (Windows 11) | Richtlinie Start/ConfigureStartPins, siehe unten |
 | Dienste | Windows Search · Xbox-Dienste · SysMain · Remote-Registrierung · Druckwarteschlange | `WSearch` · `XblAuthManager`, `XblGameSave`, `XboxNetApiSvc`, `XboxGipSvc` · `SysMain` · `RemoteRegistry` · `Spooler`: stoppen, Starttyp *Deaktiviert*; fehlt der Dienst: „nicht vorhanden“ |
 | Anmeldung | Automatische Anmeldung | Konto fehlt (`Get-LocalUser`) → Fehler, nichts gesetzt; sonst Winlogon `DefaultUserName`, `DefaultPassword`, `DefaultDomainName` = Computername, `AutoLogonCount` weg, `AutoAdminLogon="1"` |
 
@@ -1007,9 +1011,85 @@ mit SID `S-1-5-21-…` aus `ProfileList` (geladen: `HKU\<SID>`, sonst `NTUSER.DA
 laden und wieder entladen) und das Standardprofil (`ProfileList\Default`, sonst `%SystemDrive%\Users\Default`).
 
 **Vorlagen** (fest, `wintweaks.TEMPLATES`): *Player* = alles ausser Kamera und Druckwarteschlange, mit automatischer
-Anmeldung; *Laptop* = Store-Apps ausser Kamera/Store, Wiederinstallation sperren, Cortana aus, Betrieb nur Schnellstart/
-Tipps/Einrastfunktion, Datenschutz und Explorer alles, Dienste Xbox und Remote-Registrierung; *Keine* = nichts. Danach
-einzeln änderbar, Anzeige „Vorlage: Player (geändert)“. Keine eigenen Vorlagen.
+Anmeldung; *Laptop* = Store-Apps ausser Kamera/Store (auch Kurznotizen, Audiorecorder, Schnellhilfe), Nachlauf,
+Wiederinstallation sperren, Cortana aus, Betrieb nur Schnellstart/Tipps/Einrastfunktion, Datenschutz und Explorer alles
+(mit Startmenü), Dienste Xbox und Remote-Registrierung; *Clean* (Ä-042) = alle Häkchen der Gruppe Apps ausser Kamera
+und Store, Startmenü, Tipps aus, Telemetrie, Werbe-ID, Fehlerberichte, Bing-Suche – Updates, Betrieb, Explorer-Ansicht,
+Dienste und Anmeldung unverändert; *Keine* = nichts. Danach einzeln änderbar, Anzeige „Vorlage: Player (geändert)“.
+Keine eigenen Vorlagen.
+
+**Schutzliste** (`wintweaks.PROTECTED`, im Skript `$OkulaKeep`, Vergleich mit `-like`): Rechner
+`Microsoft.WindowsCalculator`, Editor `Microsoft.WindowsNotepad`, Paint `Microsoft.Paint` (nicht Paint 3D
+`Microsoft.MSPaint`), Fotos `Microsoft.Windows.Photos`, Snipping Tool `Microsoft.ScreenSketch`, Terminal
+`Microsoft.WindowsTerminal`, Edge `Microsoft.MicrosoftEdge*`, Sicherheit `Microsoft.SecHealthUI`, App-Installer
+`Microsoft.DesktopAppInstaller`, Shell-Pakete, Frameworks (`*VCLibs*`, `*NET.Native*`, `Microsoft.NET.*`, `*UI.Xaml*`,
+`*WindowsAppRuntime*`), Codecs `Microsoft.*Extension*`, Treiber-Apps (`*NVIDIA*`, `*Realtek*`, `*Intel*`,
+`AdvancedMicroDevices*`, `*Dolby*`, `*Synaptics*`, `*Waves*`); dazu wie bisher `NonRemovable`. Der Store hat sein eigenes
+Häkchen. `tests/test_wintweaks.py` prüft, dass kein Muster eines dieser Pakete trifft. Die Paketlisten
+(`Get-AppxPackage -AllUsers` je Bundle/Main, `Get-AppxProvisionedPackage -Online`) werden einmal gelesen und
+zwischengespeichert – ein Aufruf je Muster dauerte bei rund 45 Mustern mehrere Minuten (10-Minuten-Grenze).
+
+**Startmenü Windows 11 (Ä-042).** Befund 18.11.2026 (Win11-VM, alles angehakt): WhatsApp, LinkedIn, Adobe Express,
+Clipchamp, Audiorecorder, Kurznotizen, Teams standen im Startmenü, `Get-AppxPackage -AllUsers` kannte sie nicht – es sind
+**Platzhalter** im Standard-Startlayout, die Windows erst beim Klick bzw. später im Hintergrund installiert. Lösung:
+Richtlinie **ConfigureStartPins** ersetzt die ganze Liste der angehefteten Kacheln (`wintweaks.START_PINS`, JSON
+`wintweaks.start_pins_json()`): Edge (`desktopAppLink` `%ALLUSERSPROFILE%\…\Microsoft Edge.lnk`), Explorer
+(`%APPDATA%\…\File Explorer.lnk`), Einstellungen (`windows.immersivecontrolpanel_cw5n1h2txyewy!…`), Rechner
+(`Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`), Editor (`Microsoft.WindowsNotepad_…!App`), Fotos
+(`Microsoft.Windows.Photos_…!App`), Paint (`Microsoft.Paint_…!App`), Snipping Tool (`Microsoft.ScreenSketch_…!App`),
+Terminal (`Microsoft.WindowsTerminal_…!App`); `"applyOnce":true`.
+- Weg 1 (immer zuerst): Policy CSP `./Device/Vendor/MSFT/Policy/Config/Start/ConfigureStartPins` über die
+  **MDM-Bridge** (WMI `root\cimv2\mdm\dmmap`, Klasse `MDM_Policy_Config01_Start02`, `ParentID='./Vendor/MSFT/Policy/Config'`,
+  `InstanceID='Start'`, Eigenschaft `ConfigureStartPins` = JSON; Instanz anlegen bzw. ändern). Das Startskript läuft als
+  SYSTEM, wie die Bridge es für Geräte-Richtlinien verlangt.
+- Weg 2 (nur wenn Weg 1 scheitert und Build ≥ 26100): Wert `HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer`
+  `ConfigureStartPins` (REG_SZ, JSON) – Registrierungsort der Gruppenrichtlinie „Configure Start Pins“ (StartMenu.admx).
+- Build < 22000 (Windows 10): nichts gesetzt, Protokoll „Windows 10 – ohne Wirkung“. Windows 10 hat das alte
+  Kachel-Startmenü (I-039 unverändert, Ä-040 bewusst ohne Startmenü-Kacheln); Option bleibt sichtbar, Beschriftung
+  „(Windows 11)“.
+- **Bestehende und neue Benutzer:** Geräte-Richtlinie, gilt laut Microsoft bei der nächsten Anmeldung jedes Benutzers.
+  `applyOnce` ab Windows 11 24H2 mit KB5062660: Liste nur einmal, danach heften Benutzer selbst an; ältere Windows 11
+  ignorieren `applyOnce` und setzen die Liste bei jeder Anmeldung neu (Benutzer können anheften, es bleibt aber nicht).
+- **Zusammenspiel Ä-040:** Die Richtlinie betrifft nur die Startmenü-Kacheln; `LayoutModification.xml` der Taskleiste
+  (`winprofile.py`) bleibt unberührt, es wird keine Datei im Standardprofil geschrieben.
+- Verworfen: `LayoutModification.json` im Standardprofil (OEM-Weg – nur `primaryOEMPins`/`secondaryOEMPins` mit je
+  höchstens 4 Kacheln **zusätzlich** zu den Microsoft-Kacheln, „dynamically delivered apps“ bleiben; nur neue Benutzer),
+  `start2.bin` (binär, nicht dokumentiert), `HideRecommendedSection` (nimmt auch zuletzt geöffnete Dateien weg).
+
+**Nachlauf (Ä-042)** – Option „Später nachgeladene Apps nochmals entfernen (nach der Anmeldung)“: Werbe-Apps lädt
+Windows erst nach der ersten Anmeldung bzw. nach Store-Updates. Der Baustein (immer als letzter) schreibt
+`%ProgramData%\Okula\okula-windows-anpassen-nachlauf.ps1` (UTF-8 mit BOM, Inhalt Base64 im Startskript, enthält nur die
+App-Bausteine – nie das Passwort) und legt die geplante Aufgabe **„Okula Windows anpassen Nachlauf“** an: SYSTEM,
+Auslöser *Bei Anmeldung* (jeder Benutzer) mit 30 min Verzögerung, Ablauf nach 30 Tagen
+(`EndBoundary` + `DeleteExpiredTaskAfter` 1 Tag – läuft sie nie, löscht Windows sie), höchstens 2 h, auch im
+Akkubetrieb. Das Skript entfernt die gewählten Store-Apps nochmals (gleiche Muster und Schutzliste), protokolliert ins
+gleiche Protokoll („Nachlauf … Start/Ende“) und löscht im `finally` sich selbst, den leeren Ordner und zuletzt die
+Aufgabe – auch nach einem Fehler, also genau ein Lauf. Ohne gewählte Store-Apps: „kein Nachlauf nötig“. Aufgabenname,
+Pfad und Befehlszeile nur ASCII.
+
+**Bing Search blieb (Befund 18.11.):** Das Muster `Microsoft.Bing*` trifft `Microsoft.BingSearch`. Das Protokoll der VM
+lag nicht vor. Vermutung (nicht belegt): Die App wurde erst nach dem Startskript über den Store nachgeladen bzw.
+aktualisiert – dann stand im Protokoll „nicht vorhanden“ bzw. nur andere Bing-Apps; bei einem Fehler stünde
+„FEHLER … Microsoft.BingSearch: <Grund>“. Behoben durch den Nachlauf (entfernt nachgeladene Pakete nochmals); Klärung
+über das Protokoll in [TESTS.md](TESTS.md) Abschnitt 26.
+
+Quellen Ä-042 (Microsoft Learn, abgerufen 18.11.2026): „Start Policy CSP“ (*ConfigureStartPins*: Device/User, **Pro**,
+Enterprise, Education ab Windows 11 21H2 [10.0.22000]; GPO-Zuordnung `Software\Policies\Microsoft\Windows\Explorer`,
+Wert `ConfigureStartPins`, StartMenu.admx; *HideRecommendedSection* Pro ab 22H2), „Customize the Start layout for
+managed Windows devices“ (JSON-Format, `applyOnce` ab 24H2 mit KB5062660, „you overwrite the entire layout“, Pins
+nicht installierter Apps erscheinen erst nach der Installation, IDs für Edge, Einstellungen, Explorer, Terminal, Paint,
+Fotos), „Start policy settings“ (GPO *Configure Start Pins* erst ab 24H2 mit KB5062660), „Experience Policy CSP“
+(*AllowWindowsConsumerFeatures* = GPO *Turn off Microsoft consumer experiences*, `DisableWindowsConsumerFeatures`:
+**❌ Pro**, nur Enterprise/Education/IoT; „Start suggestions, … Post-OOBE app install and redirect tiles“), „Customize
+the Windows 11 Start menu“ (OEM: `LayoutModification.json` in `Users\Default\AppData\Local\Microsoft\Windows\Shell`,
+höchstens 4 + 4 Kacheln, „dynamically delivered apps“), „Using PowerShell scripting with the WMI Bridge Provider“
+(Geräte-Richtlinien als Local System, `New-CimInstance`/`Set-CimInstance` mit `ParentID`/`InstanceID`),
+„MDM_Policy_Config01_Start02 class“ (Klasse vorhanden; die Seite von 2018 listet `ConfigureStartPins` noch nicht – die
+Eigenschaft kommt mit Windows 11, darum Weg 2 und Test am Gerät). support.microsoft.com: KB5062660 (22.07.2025, Build
+26100.4770): „Boolean option to the Configure Start Pins policy to allow admins to apply Start menu pins once“. Nicht
+abgerufen, aus dem Gedächtnis: Paketnamen der Werbe-Apps (WhatsApp, LinkedIn, Adobe Express, Spotify, Disney+, TikTok,
+Prime Video, Netflix, Candy Crush, Facebook/Instagram), Journal, Family, Schnellhilfe, Copilot, Widgets und die
+AUMIDs von Rechner, Editor, Snipping Tool.
 
 **Protokoll:** `C:\Windows\Temp\okula-windows-anpassen.log` (UTF-8, Zeitstempel, „ok“/„FEHLER“ je Baustein mit Kurzinfo,
 z. B. entfernte Apps; am Ende „Ende: N ok, M mit Fehler“).

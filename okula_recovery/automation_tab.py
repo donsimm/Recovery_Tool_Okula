@@ -429,7 +429,7 @@ class WindowsTweakDialog(Gtk.Dialog):
 
     def __init__(self, parent: Gtk.Window, device_name: str):
         super().__init__(title="Windows anpassen", transient_for=parent, modal=True)
-        self.set_default_size(660, 720)
+        self.set_default_size(700, 760)
         self.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
         self.btn = self.add_button("Senden", Gtk.ResponseType.OK)
         self.btn.get_style_context().add_class("suggested-action")
@@ -489,6 +489,8 @@ class WindowsTweakDialog(Gtk.Dialog):
 
     def _check(self, o: "wintweaks.Option") -> Gtk.CheckButton:
         c = Gtk.CheckButton(label=o.label)
+        if o.tooltip:
+            c.set_tooltip_text(o.tooltip)
         c.connect("toggled", lambda _c: self._update())
         self.checks[o.key] = c
         return c
