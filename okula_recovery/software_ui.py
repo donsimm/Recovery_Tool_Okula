@@ -163,6 +163,7 @@ class SoftwareLibraryWindow(Gtk.Window):
         self.running = False           # Laden läuft (für „Beenden“ im Hauptfenster)
         self.closing = False
         self.select_after = ""
+        self.message = ""              # Meldung, die nach dem nächsten Neulesen vor der Zählung stehen bleibt
         self.connect("delete-event", self._on_delete)
         self.connect("destroy", lambda _w: setattr(self, "closing", True))
 
@@ -280,9 +281,11 @@ class SoftwareLibraryWindow(Gtk.Window):
         return text in " ".join(str(row[i]) for i in (self.C_NAME, self.C_PROG, self.C_VER, self.C_TYPE,
                                                       self.C_ARGS, self.C_STATUS)).lower()
 
-    def reload(self, select: str = "") -> None:
+    def reload(self, select: str = "", message: str = "") -> None:
+        """Liste neu lesen; message (z. B. „„VLC“ geladen: bereit“) bleibt danach vor der Zählung stehen."""
         self.select_after = select or self.select_after
-        self.status.set_text("Software-Bibliothek wird gelesen …")
+        self.message = message or self.message
+        self.status.set_text(" · ".join(t for t in (self.message, "Software-Bibliothek wird gelesen …") if t))
         run_async(lambda: software.scan(self.root), self._loaded)
 
     def _loaded(self, result) -> None:
@@ -306,9 +309,11 @@ class SoftwareLibraryWindow(Gtk.Window):
                                ", ".join(str(c) for c in e.exit_codes) if install else "–", e.status,
                                nas.format_size(e.size), e.size, "\n".join(tip), install])
         counts = {s: sum(1 for e in result if e.status == s) for s in (software.READY, software.MISSING)}
-        self.status.set_text(f"{len(result)} Einträge · {counts[software.READY]} bereit · "
-                             f"{counts[software.MISSING]} mit fehlenden Parametern" if result else
-                             "Noch keine Programme – „Ins Tool laden …“ oder „Ordner laden …“.")
+        summary = (f"{len(result)} Einträge · {counts[software.READY]} bereit · "
+                   f"{counts[software.MISSING]} mit fehlenden Parametern" if result else
+                   "Noch keine Programme – „Ins Tool laden …“ oder „Ordner laden …“.")
+        message, self.message = self.message, ""
+        self.status.set_text(" · ".join(t for t in (message, summary) if t))
         if keep:
             self._select(keep)
         self._update_buttons()
@@ -384,9 +389,9 @@ class SoftwareLibraryWindow(Gtk.Window):
         def done(result) -> None:
             if isinstance(result, Exception):
                 confirm_error(self, str(result), "Nicht gelöscht")
+                self.reload()
             else:
-                self.status.set_text(f"„{entry.label}“ gelöscht")
-            self.reload()
+                self.reload(message=f"„{entry.label}“ gelöscht")
         self.status.set_text("Wird gelöscht …")
         run_async(lambda: software.delete(self.root, entry.name), done)
 
@@ -511,13 +516,14 @@ class SoftwareLibraryWindow(Gtk.Window):
             return
         e = result.entry
         if result.duplicate:
-            self.status.set_text(f"„{src.path.name}“ ist schon in der Bibliothek (als „{e.label}“, {e.name}) – "
-                                 "nicht doppelt abgelegt")
+            text = (f"„{src.path.name}“ ist schon in der Bibliothek (als „{e.label}“, {e.name}) – "
+                    "nicht doppelt abgelegt")
         else:
             extra = f" – Parameter von „{e.adopted_from}“ übernommen" if e.adopted_from else ""
-            self.status.set_text(f"„{e.label}“ geladen: {e.status}{extra}")
+            text = f"„{e.label}“ geladen: {e.status}{extra}"
+        self.status.set_text(text)
         if not self.closing:
-            self.reload(select=e.name)
+            self.reload(select=e.name, message=text)   # Meldung bleibt nach dem Neulesen vor der Zählung
         self._next()
 
     def _abort(self) -> None:

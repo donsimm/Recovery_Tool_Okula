@@ -706,10 +706,14 @@ class ChooserTest(unittest.TestCase):
             win = SoftwareLibraryWindow(None, str(lib.root))
             wait(lambda: "Noch keine Programme" in win.status.get_text())
             win.enqueue([str(lib.put("vlc-3.0.24-win64.exe", NSIS)), str(lib.put("unbekannt.exe", UNKNOWN))])
-            wait(lambda: not win.running and len(win.store) == 2)
+            wait(lambda: not win.running and len(win.store) == 2 and "Einträge" in win.status.get_text())
             self.assertEqual(sorted(row[win.C_NAME] for row in win.store), ["unbekannt", "vlc-3.0.24"])
+            # Meldung bleibt nach dem Neulesen vor der Zählung stehen
+            self.assertIn("geladen:", win.status.get_text())
+            self.assertIn("2 Einträge", win.status.get_text())
             win.enqueue([str(lib.src / "vlc-3.0.24-win64.exe")])               # Doppel
-            wait(lambda: "schon in der Bibliothek" in win.status.get_text())
+            wait(lambda: not win.running and "Einträge" in win.status.get_text()
+                 and "schon in der Bibliothek" in win.status.get_text())
             path = next(str(row.path) for row in win.sorted if row[win.C_NAME] == "unbekannt")
             win._on_edited(None, path, "/S", "args")
             wait(lambda: software.find(software.scan(lib.root), "unbekannt").args == "/S")
@@ -717,7 +721,8 @@ class ChooserTest(unittest.TestCase):
             win._select("unbekannt")
             with mock.patch.object(software_ui, "confirm", lambda *_a, **_k: True):
                 win.on_delete()
-            wait(lambda: len(win.store) == 1)
+            wait(lambda: len(win.store) == 1 and "1 Einträge" in win.status.get_text())
+            self.assertIn("gelöscht", win.status.get_text())
             win.destroy()
 
 
