@@ -36,6 +36,7 @@ Vorschlag Reihenfolge (Analyse 31.10.): ~~Ä-007~~ ✔ → ~~B-012~~ ✔ → **I
 
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
+| Ä-043 | 🟡 | Prompt freigegeben | Dominik | **Software-Bibliothek: alle gängigen Installer-Typen erkennen** (Qt Installer Framework wie Araneo, Advanced Installer, InstallAware, InstallBuilder, electron-builder, SFX, MSIX/MSU/MSP …), Name/Version/Hersteller aus Versionsinfo bzw. MSI, Knopf „Neu erkennen“. Anlass: Araneo 1.10.2 (Qt IFW 4.6.1) nicht erkannt. Prompt [prompts/Ä-043-installer-erkennung.md](prompts/Ä-043-installer-erkennung.md) | 18.11. |
 | Ä-003 | 🟡 | offen | Claude | **Images und Backups auf dem NAS verschlüsseln:** Sie enthalten Personendaten (revDSG Art. 8, Datensicherheit). Minimum: SMB3-Verschlüsselung (`mount.cifs … seal`). Besser: Verschlüsselung im Datenstrom (z. B. `age` nach `zstd`), Schlüssel root-lesbar und zusätzlich auf Papier | 31.10. (Analyse) |
 | Ä-004 | 🟡 | offen | Claude | **Zentrales Protokoll:** `/var/log/okula-recovery/` mit logrotate. Festhalten, wer wann was auf welches Gerät gespielt hat. Dazu Menü → „Diagnosepaket exportieren“ (Logs, Version, Konfiguration ohne Geheimnisse), um Fehler an Claude Code zu melden | 31.10. (Analyse) |
 | Ä-005 | 🟡 | offen | Claude | **Entwicklung absichern:** GitHub Actions, die alle Tests (über 320) bei jedem Push ausführen. Versionsnummer pflegen (steht noch auf `0.1.0`) und Releases taggen, damit der Server einen geprüften Stand zieht statt den Branch-Kopf. `ui.py` (2780 Zeilen) aufteilen | 31.10. (Analyse) |
