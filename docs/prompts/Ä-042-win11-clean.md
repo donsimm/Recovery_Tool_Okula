@@ -1,6 +1,6 @@
 # Ä-042 – Windows anpassen: Win11 wirklich clean (Startmenü-Platzhalter, fehlende Apps, Vorlage „Clean“)
 
-Status: freigegeben · erstellt 18.11.2026 von der Projektleitung · Freigabe: Dominik 18.11.
+Status: umgesetzt (Commit 3802458) · erstellt 18.11.2026 von der Projektleitung · Freigabe: Dominik 18.11.
 
 ## Rolle und Einstieg
 
