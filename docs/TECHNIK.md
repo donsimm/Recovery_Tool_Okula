@@ -926,6 +926,8 @@ NAS/Verteilen/Content/<Projekt>/   Auswahl – gewählte Projekte landen unter C
 ```
 
 - Die Ordner legt das Tool beim Verbinden mit dem NAS an; die Inhalte lassen sich im Reiter **Dateien** pflegen (Drag & Drop).
+- `Verteilen/Software` ist ein Werkzeug-Ordner für Geräte unterwegs; *Software installieren* nutzt seit Ä-041 die
+  eigene Software-Bibliothek (`NAS/Software-Bibliothek/`, Abschnitt „Software installieren“).
 - **Senden:** Rechtsklick auf das Gerät → **Ordner senden ▸ Software / Test Files / Content …**, oder im Gerätefenster bzw. Tools → „Ordner senden …“ (Auswahl mit Häkchen, auch mehrere Projekte).
 - **Erneut senden ersetzt** den Ordner auf dem Desktop. Der Agent schreibt zuerst in einen versteckten Zwischenordner und tauscht erst um, wenn alles angekommen ist – bei einem Abbruch bleibt der alte Stand. Andere Projekte unter `Content\` bleiben.
 - **Voraussetzungen:** Gerät läuft mit dem Agent (Stick oder Netzwerkstart), Windows vollständig heruntergefahren (kein Schnellstart/Ruhezustand), keine BitLocker-Verschlüsselung. Links auf dem NAS werden nicht mitgesendet.
@@ -1043,27 +1045,57 @@ seinen Eintrag in `scripts.ini` (Originale und Version bleiben, Ergebnis `shared
 nacheinander; der Rückbau (`wintweaks.RESTORE_START`, auch im Notfall-Teil der `.cmd`) legt `gpt.ini`/`scripts.ini`
 erst zurück, wenn keine andere `okula-*.cmd` mehr im Startup-Ordner liegt.
 
-## Software installieren (I-020)
+## Software installieren (I-020, Software-Bibliothek Ä-041)
 
-Programme aus `NAS/Verteilen/Software` werden auf dem Gerät **still und ohne Klicks** installiert – beim ersten
-Windows-Start als SYSTEM. Quelle sind feste, getestete Versionen im Ordner (bewusst nicht winget, Entscheid 17.11.).
-Module: `software.py` (Katalog, Erkennung, Skript – ohne GTK), `software_ui.py` (Liste *Software installieren*,
-Fenster *Software …*), Agent-Befehl `software` (`deploy.software`), `jobs.send_software`/`software_plan`,
+Programme aus der **Software-Bibliothek** des Tools werden auf dem Gerät **still und ohne Klicks** installiert – beim
+ersten Windows-Start als SYSTEM. Quelle sind feste, getestete Versionen (bewusst nicht winget, Entscheid 17.11.).
+Bis Ä-041 (18.11.) war die Quelle `NAS/Verteilen/Software`; dieser Ordner gehört jetzt nur noch zu *Ordner senden*
+(Werkzeug-Ordner für Geräte unterwegs) und wird vom Katalog weder gelesen noch beschrieben.
+Module: `software.py` (Bibliothek, Erkennung, Skript – ohne GTK), `software_ui.py` (Liste *Software installieren*,
+Fenster *Software-Bibliothek*), Agent-Befehl `software` (`deploy.software`), `jobs.send_software`/`software_plan`,
 Direktinstallation in `winsetup.py`.
 
-**Katalog** (`software.scan`): Einträge sind `.exe`/`.msi` direkt in `Software\` und Unterordner. Daneben liegt je
-Eintrag eine versteckte Beschreibung `.<Name>.okula.json` (`format: okula-software`): Programmname, Version, Schlüssel
-für neue Versionen, erkannter und gewählter Installer-Typ, Parameter, erfolgreiche Rückgabewerte (Standard 0, 3010),
-Art (`install`/`copy`/`manual`), bei Ordnern die Installer-Datei, Grösse, Zeit und SHA-256 des Installers. Sie entsteht
-beim ersten Lesen; wird die Datei ersetzt (andere Grösse/Zeit), wird neu erkannt – von Hand gesetzte Parameter
-bleiben. Links werden übersprungen; *Ordner senden* nimmt die Beschreibungen nicht mit.
+**Ablage** (`software.library_dir`): `NAS/Software-Bibliothek/` neben `Verteilen` (wird beim Öffnen des Fensters bzw.
+beim ersten Laden angelegt; im Demo-Speicher entsprechend `…/demo/Software-Bibliothek/`). Je Eintrag ein Ordner
+`<key>-<version>` (z. B. `vlc-3.0.24`, ohne Version nur `<key>`; belegt → `-2`, `-3` …) mit dem Installer bzw. dem
+Inhalt des geladenen Ordners und der Beschreibung `.okula.json` (`format: okula-software`, Felder wie I-020):
+Programmname, Version, Schlüssel für neue Versionen, erkannter und gewählter Installer-Typ, Parameter, erfolgreiche
+Rückgabewerte (Standard 0, 3010), Art (`install`/`copy`/`manual`), Installer relativ zum Eintrag, Grösse, Zeit und
+SHA-256 des Installers; neu `source` (`file`/`folder`), `content_sha256` (Datei: deren SHA-256; Ordner: SHA-256 über
+alle relativen Pfade und deren SHA-256), `loaded_from`, `loaded`. Der Name des Eintrags ist die Auswahl (gespeichert in
+Automatisierung/Vorlagen) und der Ordnername am Gerät. Ein von Hand hineinkopierter Ordner ohne Beschreibung erhält
+beim Lesen eine neue (als Ordner-Eintrag). Ordner `.…partial` und Links werden übersprungen.
 
-**Sammelordner** („System Tools“): ein Ordner ist ein Eintrag. Liegt genau ein Installer darin (bzw. genau einer
-direkt im Ordner), gilt er als Installer, sonst „Installer im Ordner wählen“. Für Ordner mit vielen kleinen Werkzeugen
-gibt es die Art **„nur kopieren“**: der Ordner landet auf dem öffentlichen Desktop unter `Software\<Ordner>`. Begründung:
-eine Zeile je Ordner hält die Liste kurz, Werkzeuge sind meist portabel bzw. werden nur bei Bedarf installiert; was
-installiert werden soll, gehört als eigene Datei oder eigener Ordner nach `Software\`. Einzelne Dateien eines
-Sammelordners zu wählen, wurde verworfen (Baumansicht in drei Dialogen, unklare Reihenfolge).
+**Laden** (`software.inspect` → `software.load`): Datei (`.exe`/`.msi`) oder Ordner prüfen (Umfang, Namen wie beim
+Hochladen in den Reiter *Dateien*, Installer-Kandidaten; Links/Sonderdateien übersprungen; nichts aus der Bibliothek
+selbst), freien Platz prüfen (Reserve 1 GB), dann nach `Software-Bibliothek/.<zufällig>.partial/` kopieren – Fortschritt
+je 8 MB, Abbruch jederzeit, SHA-256 beim Kopieren. Gleicher `content_sha256` schon in der Bibliothek → Kopie löschen,
+Meldung „schon in der Bibliothek (als …)“, kein zweiter Eintrag. Sonst Erkennung wie I-020 (`_fresh_meta` →
+`detect`), Übernahme einer vorigen Version (`_adopt`), Beschreibung schreiben und `.partial` erst ganz am Schluss in den
+Eintrag umbenennen – ein Abbruch oder Fehler hinterlässt nichts (Reste nach Absturz entfernt `cleanup_partial` beim
+nächsten Verbinden, wenn älter als ein Tag). Ordner: genau ein Installer direkt im Ordner (bzw. genau einer insgesamt)
+gilt als Installer; sonst fragt das Fenster vor dem Kopieren nach (oder „keiner – später festlegen“).
+**Löschen** (`software.delete`): Eintrag zuerst in einen versteckten Namen umbenennen, dann löschen.
+
+**Aufräumen von `Verteilen\Software`** (`software.cleanup_distribute`, Ä-041): bei jedem Wechsel auf „NAS verbunden“
+(`ui.cleanup_software_folder`, im Hintergrund) werden in `Verteilen/Software` – nur direkt im Ordner – die Dateien
+`.<Name>.okula.json` gelöscht, deren Inhalt `"format": "okula-software"` hat (von I-020 angelegt). Andere Dateien,
+Links, fremde oder kaputte `.okula.json` und Unterordner bleiben. Ergebnis in der Statuszeile und auf stderr. Nichts
+wird automatisch in die Bibliothek übernommen.
+
+**Fenster** *Extras → Software-Bibliothek …* (`SoftwareLibraryWindow`): oben *Ins Tool laden …* (Dateiwahl mit Filter
+.exe/.msi, mehrere möglich), *Ordner laden …* und Ziehen und Ablegen aufs Fenster (Warteschlange, nacheinander);
+Fortschritt mit *Abbrechen* (Schliessen während des Ladens = Abbrechen; das Hauptfenster fragt beim Beenden wie bei
+Kopien aufs NAS). Darunter die Liste (Programm, Version, Typ, Parameter, Rückgabewerte, Status, Grösse; sortierbar,
+Suchfeld): Programm, Version, Parameter und Rückgabewerte direkt in der Zelle (`software.update`), Art und Installer
+über *Bearbeiten …* (`SoftwareEditDialog` von I-020), *Löschen*/Entf mit Rückfrage. Der frühere Knopf *Software …* im
+Reiter *Dateien* ist entfallen. Läuft das Demo-Gerät, öffnet das Fenster die Bibliothek im Demo-Speicher.
+
+**Sammelordner** („System Tools“): als Ordner geladen ist er ein Eintrag. Für Ordner mit vielen kleinen Werkzeugen
+gibt es die Art **„nur kopieren“**: der Ordner landet auf dem öffentlichen Desktop unter `Software\<Eintrag>`.
+Begründung: eine Zeile je Ordner hält die Liste kurz, Werkzeuge sind meist portabel bzw. werden nur bei Bedarf
+installiert. Einzelne Dateien eines Sammelordners zu wählen, wurde verworfen (Baumansicht in drei Dialogen, unklare
+Reihenfolge).
 
 **Erkennung ohne Ausführen** (`software.detect`, erste 8 MB der Datei):
 
@@ -1083,13 +1115,18 @@ Erkennung beruht auf den Herstellerangaben (Stand Wissen des Umsetzungs-Agenten,
 
 **Neue Version** (`split_name`, `_adopt`): Schlüssel = Datei-/Ordnername ohne Version, Architektur und Füllwörter
 (`vlc-3.0.24-win64.exe` → `vlc`, `AcroRdrDC2400221005_de_DE.exe` → `acrordrdc-de-de`), zusätzlich der Programmname.
-Bekommt ein neuer Eintrag eine Beschreibung und gibt es eine mit gleichem Schlüssel (auch von einer gelöschten
-Datei), werden Typ, Parameter, Rückgabewerte, Art und – bei gleichem Namen – der Installer im Ordner übernommen
-(`adopted_from`, Hinweis im Fenster *Software …*). Bei mehreren gilt die höchste Version. Eine gespeicherte Auswahl
-(Automatisierung) mit einem nicht mehr vorhandenen Namen nimmt die neueste Version gleichen Schlüssels
-(`software.resolve`, Log „alt → neu (neue Version)“). Leere Schlüssel (`setup.exe`) übernehmen nie etwas.
+Wird ein Eintrag geladen und gibt es in der Bibliothek einen mit gleichem Schlüssel bzw. Programmnamen und mit
+Parametern (oder Art „nur kopieren“/„nur von Hand“), werden Typ, Parameter, Rückgabewerte, Art und – bei gleichem
+Namen – der Installer im Ordner übernommen (`adopted_from` = Name des Eintrags, Hinweis in der Liste). Bei mehreren gilt
+die höchste Version. Die alte Version bleibt, bis sie gelöscht wird. Eine gespeicherte Auswahl (Automatisierung,
+Vorlagen) mit einem nicht mehr vorhandenen Namen nimmt die neueste Version gleichen Schlüssels (`software.resolve`,
+Log „alt → neu (neue Version)“) – das gilt auch für Namen aus der Zeit von `Verteilen\Software`
+(`vlc-3.0.24-win64.exe` → `vlc-3.0.24`, `System Tools` → `system-tools`). Gibt es nichts Passendes, steht der Name
+als „fehlt in der Bibliothek“ in der Liste und im Log „… fehlt in der Software-Bibliothek – übersprungen“. Leere
+Schlüssel (`setup.exe`) übernehmen nie etwas.
 
-**Ablage auf dem Gerät:** `C:\ProgramData\Okula\Software\<Eintrag>` und das Startskript
+**Ablage auf dem Gerät:** `C:\ProgramData\Okula\Software\<Eintrag>\…` (seit Ä-041 immer ein Ordner je Eintrag, auch
+bei einer einzelnen Datei; die Beschreibung bleibt auf dem NAS) und das Startskript
 `System32\GroupPolicy\Machine\Scripts\Startup\okula-software.cmd/.ps1` (Mechanismus von I-039,
 `deploy.install_startup_script(root, script, "okula-software", SOFTWARE_CMD_TEXT)`).
 - *Image zurückspielen* (*Danach anpassen*) und Automatisierung (Schritt *Anpassen*, nach dem Anpassen): Agent-Befehl
@@ -1152,12 +1189,14 @@ Windows anpassen (I-039) kann gleichzeitig ausstehen (siehe oben).
 **Im Tool:** Liste *Software installieren* (Häkchen, Suchfeld, Programm, Version, Grösse, Status; Gesamtgrösse) in
 *OS installieren …* (nur Windows), *Image zurückspielen* unter *Danach anpassen* und im Reiter *Automatisierung*
 (Schritt *Anpassen*, `Settings.install_software`, auch in Vorlagen; Rückfrage nennt die Anzahl). Wählbar sind nur
-„bereit“ und „nur kopieren“. Pflege im Reiter *Dateien* → **Software …** (Bearbeiten: Programm, Version, Art,
-Installer, Parameter, Rückgabewerte). Log des Auftrags nennt die Programme, Verlauf des Geräts „Software: … (wird beim
+„bereit“ und „nur kopieren“; die Liste zeigt nur die Software-Bibliothek. Pflege in *Extras → Software-Bibliothek …*
+(siehe oben). Log des Auftrags nennt die Programme, Verlauf des Geräts „Software: … (wird beim
 ersten Start installiert)“. Das Ergebnis am Gerät liest das Tool nicht zurück. Demo-Gerät: drei erfundene
-Beispiel-Installer im Demo-Speicher, der Demo-Agent nimmt den Befehl an und meldet „fertig“.
+Beispiel-Installer in der Bibliothek des Demo-Speichers (`demostore.ensure_software`, nur solange sie leer ist; frühere
+Beispiele in `demo/Verteilen/Software` werden entfernt), der Demo-Agent nimmt den Befehl an und meldet „fertig“.
 
-**Agent:** neuer Befehl `software` → **neuer Agent-Stick bzw. Netzwerkstart neu vorbereiten**.
+**Agent:** neuer Befehl `software` (I-020) → **neuer Agent-Stick bzw. Netzwerkstart neu vorbereiten**. Ä-041 ändert am
+Agent nichts (kein neuer Stick).
 
 ## Automatisierung
 

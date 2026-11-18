@@ -20,6 +20,9 @@ Verteilen/
 
 - Die Ordner `Software` und `Test Files` sind **fix** (Namen und Verhalten).
 - `Content` ist der einzige Auswahl-Ordner: Die Projekte darin werden einzeln gewählt.
+- `Software` ist ein **Werkzeug-Ordner für Geräte unterwegs** (Sammlungen, ZIP-Archive, portable Tools). Für
+  *Software installieren* wird er seit Ä-041 weder gelesen noch beschrieben – die Programme dafür liegen in der
+  Software-Bibliothek (`Software-Bibliothek/` neben `Verteilen`, *Extras → Software-Bibliothek …*).
 
 ## Ziel auf dem Gerät
 
@@ -61,6 +64,7 @@ Linux (später, falls nötig): öffentlicher Desktop gibt es nicht – Schreibti
 - Windows **ganz heruntergefahren** (kein Schnellstart, kein Ruhezustand) – sonst ist die Partition nicht beschreibbar.
 - **BitLocker:** verschlüsselte Partition ohne Wiederherstellungsschlüssel nicht beschreibbar.
 - *Ordner senden* kopiert die Software nur, installiert nichts. Still installieren beim ersten Start: Liste
-  *Software installieren* (I-020) in *OS installieren …*, *Image zurückspielen* und Automatisierung – Details in
-  [TECHNIK.md](TECHNIK.md), „Software installieren“. Die versteckten Beschreibungen `.<Name>.okula.json` im Ordner
-  `Software` werden nicht mitgesendet.
+  *Software installieren* (I-020) in *OS installieren …*, *Image zurückspielen* und Automatisierung, Programme aus
+  der Software-Bibliothek (Ä-041) – Details in [TECHNIK.md](TECHNIK.md), „Software installieren“. Die versteckten
+  Beschreibungen `.<Name>.okula.json`, die I-020 im Ordner `Software` angelegt hatte, entfernt das Tool beim
+  Verbinden mit dem NAS (nur diese Dateien); solche Dateien würden auch nicht mitgesendet.

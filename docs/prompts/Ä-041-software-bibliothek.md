@@ -1,6 +1,6 @@
 # Ä-041 – Software-Bibliothek im Tool (statt Ordner `Verteilen\Software`)
 
-Status: freigegeben · erstellt 18.11.2026 von der Projektleitung · Freigabe: Dominik 18.11.
+Status: umgesetzt (Commit 1da8e56; davor 2abefd8, Doku mit diesem Status im Folgecommit) · erstellt 18.11.2026 von der Projektleitung · Freigabe: Dominik 18.11.
 
 ## Rolle und Einstieg
 

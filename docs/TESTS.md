@@ -460,15 +460,12 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten und **Agent-Stick bzw.
 
 ### 23. Software installieren (I-020)
 Nach `git pull && sudo ./install.sh` das Tool neu starten und **Agent-Stick bzw. Netzwerkstart neu erstellen**
-(Agent geändert: neuer Befehl `software`). Auf dem NAS in `Verteilen\Software` z. B. `vlc-3.0.24-win64.exe` (NSIS),
-den Adobe Reader (`AcroRdrDC….exe` bzw. `.msi`), ein Programm unbekannten Typs und einen Ordner mit mehreren Dateien.
-- [ ] Reiter *Dateien* → **Software …**: alle Einträge erscheinen ohne weiteres Zutun; VLC „NSIS – bereit“,
-      MSI „bereit“, unbekanntes Programm **„Parameter fehlt“**; Ordner mit genau einem Installer „bereit“, sonst
-      „Installer im Ordner wählen“; auf dem NAS liegt je Eintrag eine versteckte `.<Name>.okula.json`
-- [ ] Programm mit „Parameter fehlt“: in *OS installieren …* nicht ankreuzbar (ausgegraut); in *Software …*
+(Agent geändert: neuer Befehl `software`). **Seit Ä-041** kommen die Programme aus der Software-Bibliothek
+(*Extras → Software-Bibliothek …*, Prüfungen zum Laden und Bearbeiten in Abschnitt 25) – nicht mehr aus
+`Verteilen\Software`. In die Bibliothek laden: z. B. `vlc-3.0.24-win64.exe` (NSIS), den Adobe Reader
+(`AcroRdrDC….exe` bzw. `.msi`), ein Programm unbekannten Typs und einen Ordner mit mehreren Dateien.
+- [ ] Programm mit „Parameter fehlt“: in *OS installieren …* nicht ankreuzbar (ausgegraut); in der Software-Bibliothek
       Parameter eintragen → danach „bereit“ und wählbar; *Nur von Hand* → nicht wählbar
-- [ ] **Neue Version**: `vlc-3.0.23-win64.exe` mit eigenen Parametern speichern, dann `vlc-3.0.24-win64.exe` dazulegen
-      (alte löschen) → neue Version zeigt „Parameter von „vlc-3.0.23-win64.exe“ übernommen (neue Version)“
 - [ ] **Direktinstallation (VM, Windows 10 oder 11)**: *OS installieren …* mit **VLC + Adobe Reader** → Log nennt die
       Programme; `okula\install.log` auf der Setup-Partition: „Software kopiert“, „Startskript Software eingerichtet“;
       nach dem ersten Start sind beide installiert, **ohne Klick**; `C:\Windows\Temp\okula-software.log` mit Start/ok
@@ -491,7 +488,8 @@ den Adobe Reader (`AcroRdrDC….exe` bzw. `.msi`), ein Programm unbekannten Typs
 - [ ] Programm mit falschen Parametern (wartet auf Eingabe) → nach 60 min „FEHLER … abgebrochen“, die übrigen laufen
 - [ ] **Automatisierung**: Schritt *Anpassen* mit Software → Auswahl bleibt nach Tool-Neustart und in Vorlagen;
       Durchlauf → Log nennt die Programme, Verlauf mit „Software: …“
-- [ ] Ordner als *Nur kopieren* (z. B. „System Tools“) → liegt danach auf dem Desktop unter `Software\System Tools`
+- [ ] Ordner als *Nur kopieren* (z. B. „System Tools“) → liegt danach auf dem Desktop unter `Software\system-tools`
+      (Name des Eintrags in der Bibliothek)
 - [ ] Alter Agent-Stick: Zurückspielen mit Software → „Zurückgespielt, aber Software nicht übertragen: Agent zu alt …“
 - [ ] DEMO-PC: Liste zeigt drei Beispiel-Installer (zwei bereit, einer „Parameter fehlt“), Zurückspielen mit
       Software → Auftrag „fertig“
@@ -501,3 +499,39 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten und **Agent-Stick neu 
 - [ ] **Start ohne GRUB-Meldung**: CompactPlayer 1 vom neuen Agent-Stick starten → keine Meldung
       „error: file `/boot/grub/font.pf2' not found“, grafisches Menü mit Okula-Logo wie bisher, Agent startet normal
 - [ ] Zweites Gerät (UEFI, z. B. Laptop oder VM) vom selben Stick → ebenfalls ohne Meldung, Menü mit Logo
+
+### 25. Software-Bibliothek (Ä-041)
+Nach `git pull && sudo ./install.sh` das Tool neu starten (**kein** neuer Agent-Stick nötig).
+- [ ] **Aufräumen:** Nach dem Start (NAS verbunden) Statuszeile „Verteilen/Software aufgeräumt: 21 alte
+      Software-Beschreibung(en) …“; in `Verteilen\Software` sind die versteckten `.<Name>.okula.json` weg, alle übrigen
+      Dateien und Ordner (OBS & plugin, Browser, ZIP, portable Tools …) unverändert; *Ordner senden → Software* wie bisher
+- [ ] *Extras → Software-Bibliothek …* öffnet das Fenster; auf dem NAS gibt es den Ordner `Software-Bibliothek` neben
+      `Verteilen`; Liste leer („Noch keine Programme …“)
+- [ ] **Ins Tool laden …** mit `vlc-3.0.24-win64.exe` von einem USB-Datenträger → Balken, danach Zeile
+      „VLC media player · 3.0.24 · NSIS · /S · 0, 3010 · bereit“; auf dem NAS `Software-Bibliothek/vlc-3.0.24/`
+- [ ] Datei aus `Verteilen\Software` laden (Dateiwahl auf dem NAS) → Kopie in der Bibliothek, `Verteilen\Software`
+      unverändert
+- [ ] **Doppel:** dieselbe Datei nochmals laden (auch umbenannt) → Statuszeile „… ist schon in der Bibliothek …“,
+      kein zweiter Eintrag
+- [ ] **Ordner laden …** mit `YSUSB_V213_Win` (setup.exe und Treiberdateien) → ein Eintrag, Installer `setup.exe`;
+      Ordner mit mehreren Installern (z. B. „Browser“ mit Chrome und Firefox) → Rückfrage *Installer wählen*
+- [ ] Dateien/Ordner aus dem Dateimanager ins Fenster ziehen → werden nacheinander geladen
+- [ ] **Abbrechen** während eine grosse Datei kopiert wird → Statuszeile „… abgebrochen – in der Bibliothek bleibt
+      nichts Halbes zurück“; auf dem NAS kein Rest (`.…partial`) und kein Eintrag
+- [ ] In der Liste Programm, Version, Parameter und Rückgabewerte direkt ändern (Zelle anklicken, Enter) → bleibt nach
+      *Aktualisieren* bzw. neuem Öffnen; „Parameter fehlt“ wird nach Eintrag der Parameter „bereit“; ungültige
+      Rückgabewerte → Meldung „Nicht gespeichert“
+- [ ] *Bearbeiten …*: Art *Nur kopieren* für einen Werkzeug-Ordner, Installer im Ordner wechseln
+- [ ] **Neue Version:** `vlc-3.0.23-win64.exe` laden, Parameter ändern, dann `vlc-3.0.24-win64.exe` laden → neue Zeile
+      übernimmt die Parameter (Hinweis beim Mauszeiger „Parameter von „vlc-3.0.23“ übernommen“), alte Zeile bleibt
+- [ ] **Löschen** (Knopf oder Entf) mit Rückfrage → Eintrag und Ordner auf dem NAS weg; Automatisierung mit der
+      gelöschten alten Version nimmt die neue; ein ganz gelöschtes Programm steht in der Auswahl als „fehlt in der
+      Bibliothek“ und im Log des Auftrags „… fehlt in der Software-Bibliothek – übersprungen“
+- [ ] Auswahl *Software installieren* (OS installieren, *Danach anpassen*, Automatisierung) zeigt nur die Bibliothek;
+      Reiter *Dateien* hat keinen Knopf *Software …* mehr
+- [ ] Gespeicherte Auswahl aus der Zeit vor Ä-041 (Automatisierung/Vorlage mit z. B. `vlc-3.0.24-win64.exe`) →
+      nach dem Laden von VLC in die Bibliothek wird sie zu `vlc-3.0.24` aufgelöst
+- [ ] Ein Auftrag mit Software (z. B. Zurückspielen mit *Danach anpassen*) → am Gerät
+      `C:\ProgramData\Okula\Software\vlc-3.0.24\…`, Installation wie in Abschnitt 23
+- [ ] **Demo:** Demo-Gerät an, *Extras → Software-Bibliothek …* → Text oben nennt „Ablage: Demo (lokal, nicht auf dem NAS)“, drei
+      Beispiel-Einträge; laden/löschen dort ändert das NAS nicht
