@@ -686,6 +686,50 @@ class ChooserTest(unittest.TestCase):
             self.assertTrue(changes)
             chooser.destroy()
 
+    def test_library_window_load_edit_delete(self):
+        import time
+        from unittest import mock
+        from gi.repository import GLib
+        from okula_recovery import software_ui
+        from okula_recovery.software_ui import SoftwareLibraryWindow
+
+        def wait(cond):
+            for _ in range(1000):
+                if cond():
+                    return
+                GLib.MainContext.default().iteration(False)
+                time.sleep(0.01)
+            self.fail("Zeitüberschreitung")
+
+        lib = Library()
+        with lib.tmp:
+            win = SoftwareLibraryWindow(None, str(lib.root))
+            wait(lambda: "Noch keine Programme" in win.status.get_text())
+            win.enqueue([str(lib.put("vlc-3.0.24-win64.exe", NSIS)), str(lib.put("unbekannt.exe", UNKNOWN))])
+            wait(lambda: not win.running and len(win.store) == 2)
+            self.assertEqual(sorted(row[win.C_NAME] for row in win.store), ["unbekannt", "vlc-3.0.24"])
+            win.enqueue([str(lib.src / "vlc-3.0.24-win64.exe")])               # Doppel
+            wait(lambda: "schon in der Bibliothek" in win.status.get_text())
+            path = next(str(row.path) for row in win.sorted if row[win.C_NAME] == "unbekannt")
+            win._on_edited(None, path, "/S", "args")
+            wait(lambda: software.find(software.scan(lib.root), "unbekannt").args == "/S")
+            wait(lambda: any(r[win.C_NAME] == "unbekannt" and r[win.C_STATUS] == software.READY for r in win.store))
+            win._select("unbekannt")
+            with mock.patch.object(software_ui, "confirm", lambda *_a, **_k: True):
+                win.on_delete()
+            wait(lambda: len(win.store) == 1)
+            win.destroy()
+
+
+class UiSourceTest(unittest.TestCase):
+    def test_no_catalog_in_files_tab(self):
+        """Keine zwei Orte: der Knopf „Software …“ im Reiter Dateien ist ersetzt durch Extras → Software-Bibliothek."""
+        src = (Path(__file__).resolve().parent.parent / "okula_recovery/ui.py").read_text(encoding="utf-8")
+        self.assertNotIn('"Software …"', src)
+        self.assertNotIn("SoftwareCatalogDialog", src)
+        self.assertIn('"_Software-Bibliothek …": (self.open_software_library', src)
+        self.assertIn("cleanup_software_folder", src)
+
 
 if __name__ == "__main__":
     unittest.main()

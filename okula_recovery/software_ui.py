@@ -1,22 +1,29 @@
-"""Oberfläche „Software installieren“ (I-020): Auswahlliste mit Häkchen (OS installieren, Image zurückspielen,
-Automatisierung) und Pflege des Katalogs (Reiter Dateien → „Software …“). Logik in software.py."""
+"""Oberfläche „Software installieren“ (I-020) und Software-Bibliothek (Ä-041): Auswahlliste mit Häkchen
+(OS installieren, Image zurückspielen, Automatisierung) und das Fenster Extras → „Software-Bibliothek …“
+(laden, Angaben bearbeiten, löschen). Logik in software.py."""
 
 from __future__ import annotations
 
+import threading
+import time
+from pathlib import Path
 from typing import Callable
 
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import GObject, Gtk  # noqa: E402
+gi.require_version("Gdk", "3.0")
+from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 
 from okula_recovery import nas, software  # noqa: E402
-from okula_recovery.uikit import confirm_error, run_async, scrolled  # noqa: E402
+from okula_recovery.uikit import confirm, confirm_error, run_async, scrolled  # noqa: E402
+from okula_recovery.usbtools import rate_text  # noqa: E402
 
 TITLE = "Software installieren"
-FOLDER_HINT = "Programme aus NAS: /Verteilen/Software – neue Dateien erscheinen von selbst (Pflege: Reiter Dateien → " \
-              "„Software …“)."
-NOT_FOUND = "fehlt im Ordner"
+LIBRARY_TITLE = "Software-Bibliothek"
+FOLDER_HINT = "Programme aus der Software-Bibliothek – laden und Parameter pflegen: Extras → „Software-Bibliothek …“."
+NOT_FOUND = "fehlt in der Bibliothek"
+URI_TARGET = "text/uri-list"
 
 
 class SoftwareChooser(Gtk.Box):
@@ -74,20 +81,20 @@ class SoftwareChooser(Gtk.Box):
         return text in f"{row[self.C_PROG]} {row[self.C_VER]} {row[self.C_NAME]} {row[self.C_STATUS]}".lower()
 
     def load(self, nas_root: str | None, selected: list[str] | None = None) -> None:
-        """Katalog im Hintergrund lesen (legt fehlende Beschreibungen an) und Auswahl setzen."""
+        """Bibliothek im Hintergrund lesen und Auswahl setzen."""
         self.nas_root = nas_root
         keep = list(selected) if selected is not None else self.selected()
-        self.loaded = False          # bis der Ordner gelesen ist, gilt die gespeicherte Auswahl
+        self.loaded = False          # bis die Bibliothek gelesen ist, gilt die gespeicherte Auswahl
         self.store.clear()
         if not nas_root:
             self.total.set_text("NAS nicht verbunden – keine Software wählbar")
             return
-        self.total.set_text("Ordner Software wird gelesen …")
+        self.total.set_text("Software-Bibliothek wird gelesen …")
         run_async(lambda: software.scan(nas_root), lambda result: self._loaded(result, keep))
 
     def _loaded(self, result, keep: list[str]) -> None:
         if isinstance(result, Exception):
-            self.total.set_text(f"Ordner Software nicht lesbar: {result}")
+            self.total.set_text(f"Software-Bibliothek nicht lesbar: {result}")
             return
         self.entries = result
         self.loaded = True
@@ -101,9 +108,9 @@ class SoftwareChooser(Gtk.Box):
                                e.status, e.name, e.selectable, e.size, tip, True])
         for name in missing:         # gespeicherte Auswahl, die es nicht mehr gibt – nur abwählbar
             self.store.append([True, name, "", "", NOT_FOUND, name, True, 0,
-                               "Liegt nicht mehr im Ordner Software – wird übersprungen", True])
+                               "Liegt nicht mehr in der Software-Bibliothek – wird übersprungen", True])
         if not self.entries and not missing:
-            self.total.set_text("Keine Programme im Ordner Software")
+            self.total.set_text("Keine Programme in der Software-Bibliothek – Extras → Software-Bibliothek …")
         self._update_total()
         self.on_change()
 
@@ -136,81 +143,396 @@ class SoftwareChooser(Gtk.Box):
                             "ersten Windows-Start still installiert (Protokoll C:\\Windows\\Temp\\okula-software.log)")
 
 
-class SoftwareCatalogDialog(Gtk.Dialog):
-    """Reiter Dateien → „Software …“: Programme mit Typ und Status, Parameter bearbeiten."""
+class SoftwareLibraryWindow(Gtk.Window):
+    """Extras → „Software-Bibliothek …“ (Ä-041): oben laden (Datei, Ordner, Ziehen und Ablegen), darunter die Liste
+    mit den Angaben – Programm, Version, Parameter und Rückgabewerte direkt in der Zeile bearbeitbar, Art und
+    Installer über „Bearbeiten …“."""
 
-    # Name, Programm, Version, Typ, Grösse, Status, Hinweis
-    def __init__(self, parent: Gtk.Window, nas_root: str):
-        super().__init__(title="Software – Programme für „Software installieren“", transient_for=parent, modal=False)
-        self.nas_root = nas_root
-        self.set_default_size(900, 480)
-        self.add_button("Schliessen", Gtk.ResponseType.CLOSE)
-        self.connect("response", lambda *_a: self.destroy())
-        box = self.get_content_area()
-        box.set_spacing(6)
-        box.set_border_width(8)
+    # Name, Programm, Version, Typ, Parameter, Rückgabewerte, Status, Grösse (Text), Grösse (Byte), Tooltip,
+    # Parameter bearbeitbar
+    C_NAME, C_PROG, C_VER, C_TYPE, C_ARGS, C_CODES, C_STATUS, C_SIZE, C_BYTES, C_TIP, C_EDIT = range(11)
+
+    def __init__(self, parent: Gtk.Window, root: str, where: str = "NAS"):
+        super().__init__(title=LIBRARY_TITLE, transient_for=parent)
+        self.parent_window = parent
+        self.root = root
+        self.set_default_size(1100, 560)
+        self.entries: list[software.Entry] = []
+        self.queue: list[str] = []
+        self.cancel = threading.Event()
+        self.running = False           # Laden läuft (für „Beenden“ im Hauptfenster)
+        self.closing = False
+        self.select_after = ""
+        self.connect("delete-event", self._on_delete)
+        self.connect("destroy", lambda _w: setattr(self, "closing", True))
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=10)
         intro = Gtk.Label(xalign=0, wrap=True)
-        intro.set_markup("Installer (<tt>.exe</tt>, <tt>.msi</tt>) und Programm-Ordner in NAS: /Verteilen/Software. "
-                         "Erkannte Installer sind sofort <b>bereit</b>; bei „Parameter fehlt“ die Parameter für die "
-                         "stille Installation hinterlegen. Eine neue Version übernimmt die Parameter der alten.")
+        intro.set_markup(
+            f"Programme für <i>Software installieren</i> – Ablage: {GLib.markup_escape_text(where)}: "
+            f"/{software.LIBRARY_DIR}. Installer (<tt>.exe</tt>, <tt>.msi</tt>) mit <b>Ins Tool laden …</b>, "
+            "Installer mit Dateien daneben mit <b>Ordner laden …</b> – oder aus dem Dateimanager hierher ziehen. "
+            "Erkannte Installer sind sofort <b>bereit</b>; bei „Parameter fehlt“ die Parameter für die stille "
+            "Installation in der Liste eintragen. Eine neue Version übernimmt die Parameter der vorigen.")
         box.pack_start(intro, False, False, 0)
-        self.store = Gtk.ListStore(str, str, str, str, str, str, str)
-        self.view = Gtk.TreeView(model=self.store)
-        for i, title in enumerate(("Programm", "Version", "Typ", "Grösse", "Status", "Hinweis"), start=1):
-            column = Gtk.TreeViewColumn(title, Gtk.CellRendererText(), text=i)
-            column.set_resizable(True)
-            column.set_expand(i in (1, 6))
-            self.view.append_column(column)
-        self.view.connect("row-activated", lambda *_a: self.on_edit())
-        box.pack_start(scrolled(self.view), True, True, 0)
+
         bar = Gtk.Box(spacing=6)
-        edit = Gtk.Button(label="Bearbeiten …")
-        edit.connect("clicked", lambda _b: self.on_edit())
-        bar.pack_start(edit, False, False, 0)
+        self.btn_file = Gtk.Button(label="Ins Tool laden …")
+        self.btn_file.set_tooltip_text("Installer-Datei (.exe, .msi) von hier, einem USB-Datenträger oder dem NAS in "
+                                       "die Software-Bibliothek kopieren")
+        self.btn_file.connect("clicked", lambda _b: self.on_choose(False))
+        bar.pack_start(self.btn_file, False, False, 0)
+        self.btn_folder = Gtk.Button(label="Ordner laden …")
+        self.btn_folder.set_tooltip_text("Ganzen Ordner kopieren – für Installer, die ihre Dateien daneben brauchen "
+                                         "(z. B. YSUSB_V213_Win mit setup.exe)")
+        self.btn_folder.connect("clicked", lambda _b: self.on_choose(True))
+        bar.pack_start(self.btn_folder, False, False, 0)
+        drop = Gtk.Label(xalign=0)
+        drop.set_markup("<small>oder Dateien und Ordner hierher ziehen</small>")
+        drop.get_style_context().add_class("status-idle")
+        bar.pack_start(drop, False, False, 6)
+        self.search = Gtk.SearchEntry(placeholder_text="Suchen …", width_chars=22)
+        self.search.connect("search-changed", lambda _e: self.filter.refilter())
+        bar.pack_end(self.search, False, False, 0)
+        box.pack_start(bar, False, False, 0)
+
+        # Laden: Fortschritt mit Abbrechen (nur sichtbar, solange geladen wird)
+        self.load_box = Gtk.Box(spacing=6, no_show_all=True)
+        self.bar = Gtk.ProgressBar(show_text=True, hexpand=True)
+        self.load_box.pack_start(self.bar, True, True, 0)
+        self.btn_cancel = Gtk.Button(label="Abbrechen")
+        self.btn_cancel.connect("clicked", lambda _b: self._abort())
+        self.load_box.pack_start(self.btn_cancel, False, False, 0)
+        self.bar.show()
+        self.btn_cancel.show()
+        box.pack_start(self.load_box, False, False, 0)
+        self.load_file = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.START, no_show_all=True)
+        self.load_file.get_style_context().add_class("status-idle")
+        box.pack_start(self.load_file, False, False, 0)
+
+        self.store = Gtk.ListStore(str, str, str, str, str, str, str, str, GObject.TYPE_INT64, str, bool)
+        self.filter = self.store.filter_new()
+        self.filter.set_visible_func(self._visible)
+        self.sorted = Gtk.TreeModelSort(model=self.filter)
+        self.view = Gtk.TreeView(model=self.sorted, tooltip_column=self.C_TIP)
+        columns = (("Programm", self.C_PROG, True, "program"), ("Version", self.C_VER, False, "version"),
+                   ("Typ", self.C_TYPE, False, None), ("Parameter", self.C_ARGS, True, "args"),
+                   ("Rückgabewerte", self.C_CODES, False, "exit_codes"), ("Status", self.C_STATUS, False, None),
+                   ("Grösse", self.C_SIZE, False, None))
+        for title, index, expand, field_name in columns:
+            cell = Gtk.CellRendererText()
+            column = Gtk.TreeViewColumn(title, cell, text=index)
+            if field_name:
+                cell.connect("edited", self._on_edited, field_name)
+                if field_name in ("args", "exit_codes"):
+                    column.add_attribute(cell, "editable", self.C_EDIT)
+                else:
+                    cell.set_property("editable", True)
+            if expand:
+                cell.set_property("ellipsize", Pango.EllipsizeMode.END)
+            column.set_expand(expand)
+            column.set_resizable(True)
+            column.set_sort_column_id(self.C_BYTES if index == self.C_SIZE else index)
+            self.view.append_column(column)
+        self.view.get_selection().connect("changed", lambda _s: self._update_buttons())
+        self.view.connect("key-press-event", self._on_key)
+        box.pack_start(scrolled(self.view), True, True, 0)
+        tip = Gtk.Label(xalign=0, wrap=True)
+        tip.set_markup("<small>Programm, Version, Parameter und Rückgabewerte: Zeile markieren und in die Zelle "
+                       "klicken. Art (still installieren, nur kopieren, nur von Hand) und Installer im Ordner: "
+                       "<b>Bearbeiten …</b></small>")
+        tip.get_style_context().add_class("status-idle")
+        box.pack_start(tip, False, False, 0)
+
+        bottom = Gtk.Box(spacing=6)
+        self.btn_edit = Gtk.Button(label="Bearbeiten …")
+        self.btn_edit.connect("clicked", lambda _b: self.on_edit())
+        bottom.pack_start(self.btn_edit, False, False, 0)
+        self.btn_delete = Gtk.Button(label="Löschen")
+        self.btn_delete.connect("clicked", lambda _b: self.on_delete())
+        bottom.pack_start(self.btn_delete, False, False, 0)
         refresh = Gtk.Button(label="Aktualisieren")
         refresh.connect("clicked", lambda _b: self.reload())
-        bar.pack_start(refresh, False, False, 0)
+        bottom.pack_start(refresh, False, False, 0)
         self.status = Gtk.Label(xalign=0, wrap=True)
-        bar.pack_start(self.status, True, True, 0)
-        box.pack_start(bar, False, False, 0)
-        self.entries: list[software.Entry] = []
+        bottom.pack_start(self.status, True, True, 6)
+        close = Gtk.Button(label="Schliessen")
+        close.connect("clicked", lambda _b: self.close())
+        bottom.pack_end(close, False, False, 0)
+        box.pack_start(bottom, False, False, 0)
+        self.add(box)
+
+        # Ziehen und Ablegen aus dem Dateimanager (ganzes Fenster)
+        self.drag_dest_set(Gtk.DestDefaults.ALL, [Gtk.TargetEntry.new(URI_TARGET, Gtk.TargetFlags.OTHER_APP, 0)],
+                           Gdk.DragAction.COPY)
+        self.connect("drag-data-received", self._on_drop)
         self.show_all()
+        self._update_buttons()
         self.reload()
 
-    def reload(self) -> None:
-        self.status.set_text("Ordner Software wird gelesen …")
-        run_async(lambda: software.scan(self.nas_root), self._loaded)
+    # ---------- Liste ----------
+
+    def _visible(self, model, it, _data) -> bool:
+        text = self.search.get_text().strip().lower()
+        if not text:
+            return True
+        row = model[it]
+        return text in " ".join(str(row[i]) for i in (self.C_NAME, self.C_PROG, self.C_VER, self.C_TYPE,
+                                                      self.C_ARGS, self.C_STATUS)).lower()
+
+    def reload(self, select: str = "") -> None:
+        self.select_after = select or self.select_after
+        self.status.set_text("Software-Bibliothek wird gelesen …")
+        run_async(lambda: software.scan(self.root), self._loaded)
 
     def _loaded(self, result) -> None:
+        if self.closing:
+            return
         if isinstance(result, Exception):
             self.status.set_text(f"Nicht lesbar: {result}")
             return
         self.entries = result
+        keep = self.select_after or self._selected_name()
+        self.select_after = ""
         self.store.clear()
         for e in result:
-            self.store.append([e.name, e.program, e.version, e.kind_label, nas.format_size(e.size), e.status, e.note])
+            tip = [e.name + (f" · Installer: {e.installer}" if e.installer else "")]
+            if e.note:
+                tip.append(e.note)
+            if e.loaded_from:
+                tip.append(f"Geladen aus {e.loaded_from}")
+            install = e.mode == software.INSTALL
+            self.store.append([e.name, e.program, e.version, e.kind_label, e.args if install else "–",
+                               ", ".join(str(c) for c in e.exit_codes) if install else "–", e.status,
+                               nas.format_size(e.size), e.size, "\n".join(tip), install])
         counts = {s: sum(1 for e in result if e.status == s) for s in (software.READY, software.MISSING)}
         self.status.set_text(f"{len(result)} Einträge · {counts[software.READY]} bereit · "
                              f"{counts[software.MISSING]} mit fehlenden Parametern" if result else
-                             "Keine Programme im Ordner Software – Installer im Reiter Dateien hochladen.")
+                             "Noch keine Programme – „Ins Tool laden …“ oder „Ordner laden …“.")
+        if keep:
+            self._select(keep)
+        self._update_buttons()
+
+    def _select(self, name: str) -> None:
+        for row in self.sorted:
+            if row[self.C_NAME] == name:
+                self.view.get_selection().select_iter(row.iter)
+                self.view.scroll_to_cell(row.path, None, False, 0, 0)
+                return
+
+    def _selected_name(self) -> str:
+        model, it = self.view.get_selection().get_selected()
+        return model[it][self.C_NAME] if it is not None else ""
+
+    def _selected_entry(self) -> software.Entry | None:
+        return software.find(self.entries, self._selected_name())
+
+    def _update_buttons(self) -> None:
+        has = self._selected_entry() is not None
+        self.btn_edit.set_sensitive(has)
+        self.btn_delete.set_sensitive(has and not self.running)
+
+    def _on_key(self, _view, event) -> bool:
+        if event.keyval == Gdk.KEY_Delete:
+            self.on_delete()
+            return True
+        return False
+
+    def _on_edited(self, _cell, path: str, text: str, field_name: str) -> None:
+        name = self.sorted[path][self.C_NAME]
+        entry = software.find(self.entries, name)
+        if entry is None:
+            return
+        current = {"program": entry.program, "version": entry.version, "args": entry.args,
+                   "exit_codes": ", ".join(str(c) for c in entry.exit_codes)}[field_name]
+        if text.strip() == current:
+            return
+        self._save(name, {field_name: text})
+
+    def _save(self, name: str, values: dict) -> None:
+        def done(result) -> None:
+            if isinstance(result, Exception):
+                confirm_error(self, str(result), "Nicht gespeichert")
+            self.reload(select=name)
+        run_async(lambda: software.update(self.root, name, **values), done)
 
     def on_edit(self) -> None:
-        model, it = self.view.get_selection().get_selected()
-        if it is None:
-            return
-        entry = software.find(self.entries, model[it][0])
+        entry = self._selected_entry()
         if entry is None:
             return
         dlg = SoftwareEditDialog(self, entry)
         while dlg.run() == Gtk.ResponseType.OK:
             try:
-                software.update(self.nas_root, entry.name, **dlg.values())
+                software.update(self.root, entry.name, **dlg.values())
             except (software.SoftwareError, OSError) as e:
                 confirm_error(dlg, str(e), "Nicht gespeichert")
                 continue
             break
         dlg.destroy()
-        self.reload()
+        self.reload(select=entry.name)
+
+    def on_delete(self) -> None:
+        entry = self._selected_entry()
+        if entry is None or self.running:
+            return
+        if not confirm(self, f"„{entry.label}“ aus der Software-Bibliothek löschen?",
+                       f"Der Eintrag „{entry.name}“ mit allen Dateien ({nas.format_size(entry.size)}) wird aus der "
+                       "Bibliothek gelöscht. Gespeicherte Auswahlen (Automatisierung, Vorlagen) nehmen danach eine andere "
+                       "Version desselben Programms oder melden es als fehlend."):
+            return
+
+        def done(result) -> None:
+            if isinstance(result, Exception):
+                confirm_error(self, str(result), "Nicht gelöscht")
+            else:
+                self.status.set_text(f"„{entry.label}“ gelöscht")
+            self.reload()
+        self.status.set_text("Wird gelöscht …")
+        run_async(lambda: software.delete(self.root, entry.name), done)
+
+    # ---------- Laden ----------
+
+    def on_choose(self, folder: bool) -> None:
+        dlg = Gtk.FileChooserDialog(title="Ordner laden" if folder else "Ins Tool laden", transient_for=self,
+                                    action=Gtk.FileChooserAction.SELECT_FOLDER if folder else Gtk.FileChooserAction.OPEN)
+        dlg.add_buttons("Abbrechen", Gtk.ResponseType.CANCEL, "Laden", Gtk.ResponseType.OK)
+        dlg.set_select_multiple(True)
+        if not folder:
+            flt = Gtk.FileFilter()
+            flt.set_name("Installer (.exe, .msi)")
+            for pattern in ("*.exe", "*.EXE", "*.msi", "*.MSI", "*.Exe", "*.Msi"):
+                flt.add_pattern(pattern)
+            dlg.add_filter(flt)
+        dlg.set_current_folder(str(Path.home()))
+        paths = dlg.get_filenames() if dlg.run() == Gtk.ResponseType.OK else []
+        dlg.destroy()
+        self.enqueue(paths)
+
+    def _on_drop(self, _w, _ctx, _x, _y, selection, _info, _time) -> None:
+        # Gtk.DestDefaults.ALL beendet das Ziehen selbst (kein drag_finish hier)
+        paths = [GLib.filename_from_uri(u)[0] for u in selection.get_uris() if u.startswith("file://")]
+        self.enqueue(paths)
+
+    def enqueue(self, paths: list[str]) -> None:
+        if not paths:
+            return
+        self.queue += list(paths)
+        if not self.running:
+            self._next()
+
+    def _set_running(self, on: bool) -> None:
+        self.running = on
+        main_copies = getattr(self.parent_window, "copies", None)
+        if isinstance(main_copies, set):
+            (main_copies.add if on else main_copies.discard)(self)
+        for w in (self.load_box, self.load_file):
+            w.set_visible(on)
+        self.btn_cancel.set_sensitive(on)
+        self._update_buttons()
+
+    def _next(self) -> None:
+        if self.closing or not self.queue:
+            self._set_running(False)
+            if self.closing:
+                self.destroy()
+            return
+        path = self.queue.pop(0)
+        self.cancel = threading.Event()
+        self._set_running(True)
+        self.bar.set_fraction(0)
+        self.bar.set_text(f"{Path(path).name} wird geprüft …")
+        self.load_file.set_text(path)
+        run_async(lambda: software.inspect(path, self.root), self._inspected)
+
+    def _inspected(self, src) -> None:
+        if isinstance(src, Exception):
+            confirm_error(self, str(src), "Nicht geladen")
+            self._next()
+            return
+        if self.closing:
+            self._next()
+            return
+        installer = None
+        if src.is_dir and not src.installer and len(src.candidates) > 1:
+            installer = self._ask_installer(src)
+            if installer is None:          # Abbrechen
+                self.status.set_text(f"„{src.path.name}“ nicht geladen")
+                self._next()
+                return
+        self.bar.set_text(f"{src.path.name} wird in die Software-Bibliothek kopiert …")
+        self.started = time.monotonic()
+
+        def work():
+            return software.load(self.root, src, lambda d, t, f: GLib.idle_add(self._progress, d, t, f),
+                                 self.cancel, installer)
+
+        run_async(work, lambda result: self._loaded_one(src, result))
+
+    def _ask_installer(self, src: software.Source) -> str | None:
+        """Ordner mit mehreren Installern: welcher ist es? „“ = später wählen (bzw. „nur kopieren“)."""
+        dlg = Gtk.Dialog(title="Installer wählen", transient_for=self, modal=True)
+        dlg.add_buttons("Abbrechen", Gtk.ResponseType.CANCEL, "Laden", Gtk.ResponseType.OK)
+        dlg.set_default_response(Gtk.ResponseType.OK)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=12)
+        label = Gtk.Label(xalign=0, wrap=True, max_width_chars=70)
+        label.set_text(f"Im Ordner „{src.path.name}“ liegen mehrere Installer. Welche Datei installiert das Programm? "
+                       "Bei einer Sammlung von Werkzeugen „(keiner – später festlegen)“ wählen und danach unter "
+                       "„Bearbeiten …“ die Art „Nur kopieren“ setzen.")
+        box.pack_start(label, False, False, 0)
+        combo = Gtk.ComboBoxText()
+        combo.append("", "(keiner – später festlegen)")
+        for c in src.candidates:
+            combo.append(c, c)
+        combo.set_active_id(src.candidates[0])
+        box.pack_start(combo, False, False, 0)
+        dlg.get_content_area().add(box)
+        dlg.show_all()
+        answer = combo.get_active_id() if dlg.run() == Gtk.ResponseType.OK else None
+        dlg.destroy()
+        return answer if answer is None else (answer or "")
+
+    def _progress(self, done: int, total: int, current: str) -> bool:
+        frac = done / total if total else 1.0
+        self.bar.set_fraction(frac)
+        self.bar.set_text(f"{frac * 100:.0f} %  ·  {rate_text(done, total, self.started)}")
+        if current:
+            self.load_file.set_text(current)
+        return False
+
+    def _loaded_one(self, src: software.Source, result) -> None:
+        if isinstance(result, Exception):
+            if self.cancel.is_set():
+                self.status.set_text(f"Laden von „{src.path.name}“ abgebrochen – in der Bibliothek bleibt nichts "
+                                     "Halbes zurück")
+                self.queue.clear()
+            else:
+                confirm_error(self, str(result), f"„{src.path.name}“ nicht geladen")
+            self._next()
+            return
+        e = result.entry
+        if result.duplicate:
+            self.status.set_text(f"„{src.path.name}“ ist schon in der Bibliothek (als „{e.label}“, {e.name}) – "
+                                 "nicht doppelt abgelegt")
+        else:
+            extra = f" – Parameter von „{e.adopted_from}“ übernommen" if e.adopted_from else ""
+            self.status.set_text(f"„{e.label}“ geladen: {e.status}{extra}")
+        if not self.closing:
+            self.reload(select=e.name)
+        self._next()
+
+    def _abort(self) -> None:
+        self.cancel.set()
+        self.queue.clear()
+        self.btn_cancel.set_sensitive(False)
+        self.bar.set_text("Wird abgebrochen … (aufräumen)")
+
+    def _on_delete(self, *_a) -> bool:
+        """✕ während des Ladens = Abbrechen (Fenster schliesst sich, sobald aufgeräumt ist)."""
+        if self.running:
+            self.closing = True
+            self._abort()
+            return True
+        return False
 
 
 class SoftwareEditDialog(Gtk.Dialog):
@@ -264,6 +586,9 @@ class SoftwareEditDialog(Gtk.Dialog):
         self.codes.set_tooltip_text("Rückgabewerte, die als erfolgreich gelten (3010 = Neustart nötig – das Gerät "
                                     "startet nach dem letzten Programm einmal neu)")
         row("Erfolgreich bei Rückgabewert", self.codes)
+        if entry.loaded_from:
+            row("Geladen aus", Gtk.Label(label=entry.loaded_from, xalign=0, wrap=True, max_width_chars=60,
+                                         selectable=True))
         note = Gtk.Label(label=entry.note, xalign=0, wrap=True, max_width_chars=70)
         note.get_style_context().add_class("status-idle")
         grid.attach(note, 0, r, 2, 1)

@@ -54,7 +54,7 @@ class Settings:
     account: str = ""                #    lokales Konto (Passwort beim ersten Anmelden), leer = Windows fragt
     copy_profile: bool = True        #    Einstellungen des Administrators übernehmen (Ä-040: CopyProfile, Taskleiste)
     install_software: list[str] = field(default_factory=list)   # Software installieren (I-020): Einträge aus
-    #                                                               Verteilen/Software, beim ersten Start installiert
+    #                                    der Software-Bibliothek (Ä-041, über den key aufgelöst), beim ersten Start
     software: bool = False           # 4: Ordner senden
     testfiles: bool = False
     projects: list[str] = field(default_factory=list)

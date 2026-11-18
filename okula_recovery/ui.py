@@ -72,7 +72,7 @@ MENU_LABELS: dict[str, list[str | None]] = {
                None, "_Restore-Stick aus Image …", "IS_O hinzufügen …",
                "_Boot-Stick aus ISO …", "_Netzwerkstart (PXE) …", None, "Images _aktualisieren"],
     "E_xtras": ["_USB klonen …", "USB _formatieren …", None, "Neue _virtuelle Maschine …", None,
-                "Projektü_bersicht …", None, DEMO_LABEL,
+                "_Software-Bibliothek …", "Projektü_bersicht …", None, DEMO_LABEL,
                 "Demo: nächster Auftrag mit _Fehler",
                 "Demo-Daten _zurücksetzen …"],
     "_Hilfe": ["_So funktioniert das Tool", "_Tastenkürzel", "Ü_ber Okula Recovery Tool"],
@@ -264,6 +264,7 @@ class MainWindow(Gtk.ApplicationWindow):
             "_USB klonen …": (lambda: CloneDialog(self), None),
             "USB _formatieren …": (lambda: FormatDialog(self), None),
             "Neue _virtuelle Maschine …": (self.vm_new, None),
+            "_Software-Bibliothek …": (self.open_software_library, None),
             "Projektü_bersicht …": (self.open_project_overview, None),
             "Demo: nächster Auftrag mit _Fehler": (self.demo_fail_next, None),
             "Demo-Daten _zurücksetzen …": (self.reset_demo_data, None),
@@ -1152,13 +1153,6 @@ class MainWindow(Gtk.ApplicationWindow):
                                 "Dateimanager hierher ziehen")
         bar.pack_start(upload, False, False, 0)
         self.file_buttons["Hochladen"] = upload
-        # I-020: Programme in Verteilen/Software – Typ, Status, Parameter für die stille Installation
-        soft = Gtk.Button(label="Software …")
-        soft.set_tooltip_text("Programme in NAS: /Verteilen/Software für „Software installieren“: erkannter "
-                              "Installer-Typ, Status, Parameter bearbeiten")
-        soft.connect("clicked", lambda _b: self.on_software_catalog())
-        bar.pack_start(soft, False, False, 0)
-        self.file_buttons["Software …"] = soft
         box.pack_start(bar, False, False, 0)
 
         # icon, Name, Grösse (Text), Geändert, Ordner?, Grösse (Byte)
@@ -1209,15 +1203,51 @@ class MainWindow(Gtk.ApplicationWindow):
         if paths:
             self.copy_to_nas(paths, self.files_rel)
 
-    def on_software_catalog(self) -> None:
-        """Reiter Dateien → „Software …“ (I-020): Katalog der Programme pflegen."""
-        root = self._nas_root()
+    def open_software_library(self) -> None:
+        """Extras → „Software-Bibliothek …“ (Ä-041). Läuft das Demo-Gerät, zeigt das Fenster die Bibliothek im
+        Demo-Speicher (das NAS bleibt unberührt), sonst die auf dem NAS."""
+        from okula_recovery import software
+        from okula_recovery.software_ui import SoftwareLibraryWindow
+        if self.demo_running():
+            root, where = str(demostore.ensure()), demostore.TITLE
+        else:
+            root, where = self._nas_root(), "NAS"
         if root is None:
-            self.status("NAS nicht eingehängt")
+            confirm_error(self, "Die Software-Bibliothek liegt auf dem NAS – zuerst über Menü → NAS-Verbindung … "
+                                "verbinden.", "NAS nicht verbunden")
             return
-        from okula_recovery.software_ui import SoftwareCatalogDialog
-        distribute.ensure(root)
-        SoftwareCatalogDialog(self, root)
+        win = getattr(self, "software_window", None)
+        if win is not None and win.get_visible() and not win.closing and win.root == root:
+            win.present()
+            return
+        try:
+            software.ensure_library(root)
+        except OSError as e:
+            confirm_error(self, f"Ordner {software.LIBRARY_DIR} nicht angelegt: {e.strerror or e}")
+            return
+        self.software_window = SoftwareLibraryWindow(self, root, where)
+
+    def cleanup_software_folder(self, root: str) -> None:
+        """Ä-041: Beschreibungen von I-020 in Verteilen/Software entfernen (nur diese) und Reste abgebrochener
+        Ladevorgänge der Bibliothek – im Hintergrund, Ergebnis in die Statuszeile und auf stderr (Log)."""
+        from okula_recovery import software
+
+        def work():
+            return software.cleanup_distribute(root), software.cleanup_partial(root)
+
+        def done(result) -> None:
+            if isinstance(result, Exception):
+                print(f"Software-Bibliothek: Aufräumen in {root} fehlgeschlagen: {result}", file=sys.stderr)
+                return
+            removed, partial = result
+            if removed:
+                text = (f"Verteilen/Software aufgeräumt: {len(removed)} alte Software-Beschreibung(en) (.okula.json) "
+                        "gelöscht – Software kommt jetzt aus Extras → Software-Bibliothek …")
+                print(text + ": " + ", ".join(removed), file=sys.stderr)
+                self.status(text)
+            if partial:
+                print(f"Software-Bibliothek: {partial} Rest(e) abgebrochener Ladevorgänge entfernt", file=sys.stderr)
+        run_async(work, done)
 
     def copy_to_nas(self, paths: list[str], rel: str) -> None:
         """Dateien/Ordner vom Server in den NAS-Ordner rel kopieren (Fortschritt im eigenen Fenster)."""
@@ -1289,7 +1319,6 @@ class MainWindow(Gtk.ApplicationWindow):
         self.file_buttons["Umbenennen"].set_sensitive(root_ok and n == 1)
         self.file_buttons["Löschen"].set_sensitive(root_ok and n > 0)
         self.file_buttons["Hochladen"].set_sensitive(root_ok)
-        self.file_buttons["Software …"].set_sensitive(root_ok)
         self.btn_up.set_sensitive(bool(self.files_rel))
 
     def refresh_files(self) -> None:
@@ -1482,6 +1511,8 @@ class MainWindow(Gtk.ApplicationWindow):
             self._set_style(self.nas_space, "idle")
         if st.state != self.nas_state:
             self.nas_state = st.state
+            if st.state == "ok" and self._nas_root():
+                self.cleanup_software_folder(self._nas_root())     # Ä-041: einmal je Verbindung
             # Wechsel verbunden ↔ getrennt: Listen neu laden bzw. leeren
             self.refresh_images()
             self.refresh_files()

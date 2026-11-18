@@ -520,7 +520,7 @@ class InstallDialog(Gtk.Dialog):
                  preselect: str | None = None, nas_root: str | None = None):
         """start_job(iso, disk_info, edition_index|None, optionen, snapshot=…, software=[…]) – Optionen: WinOptions
         oder LinuxOptions; snapshot: nur VMs, Häkchen „Vorher Snapshot“; software (I-020): gewählte Programme aus
-        Verteilen/Software (nur Windows)."""
+        der Software-Bibliothek (Ä-041, nur Windows)."""
         from okula_recovery.software_ui import SoftwareChooser
         from okula_recovery import linuxsetup
         self.linuxsetup = linuxsetup
@@ -609,7 +609,7 @@ class InstallDialog(Gtk.Dialog):
             else:
                 wbox.attach(Gtk.Label(label=a, xalign=0, margin_start=24), 0, i, 1, 1)
                 wbox.attach(b, 1, i, 1, 1)
-        # I-020: Software aus Verteilen/Software – mit Audit-Modus landet sie im Master-Image
+        # I-020: Software aus der Software-Bibliothek (Ä-041) – mit Audit-Modus landet sie im Master-Image
         self.software = SoftwareChooser(height=110)
         wbox.attach(self.software, 0, len(rows), 3, 1)
         self.software.load(nas_root)

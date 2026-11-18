@@ -28,6 +28,7 @@ Alles läuft über das Netzwerk. Die Sicherungen liegen auf dem <b>NAS</b>.
 •  Geräte <b>automatisch</b> neu aufsetzen, sobald sie starten (<b>Automatisierung</b>).
 •  Windows oder Linux direkt auf ein Gerät installieren.
 •  Ordner wie <i>Software</i> oder Projekte auf den Desktop eines Geräts senden.
+•  Programme still installieren lassen – aus der <b>Software-Bibliothek</b> des Tools.
 •  Geräte ohne Stick starten (<b>Netzwerkstart</b>) und aus der Ferne einschalten (<b>Wake-on-LAN</b>).
 •  <b>Inventar</b> jedes Geräts: Hardware, Disks mit Zustand, Windows-11-Tauglichkeit, Garantie.
     Export als Liste (CSV) oder PDF.
@@ -678,7 +679,9 @@ Legt Ordner vom NAS auf den Desktop eines Geräts – für alle Benutzer.
 <b>Wo die Ordner liegen:</b> auf dem NAS im Ordner <i>Verteilen</i>:
 •  <i>Software</i> und <i>Test Files</i>: werden immer ganz gesendet.
 •  <i>Content</i>: darin liegen Projekte. Gesendet werden nur die gewählten Projekte.
-Die Inhalte lassen sich rechts im Reiter <i>Dateien</i> ändern.
+Die Inhalte lassen sich rechts im Reiter <i>Dateien</i> ändern. <i>Verteilen\\Software</i> ist ein Werkzeug-Ordner
+für Geräte unterwegs – Programme zum stillen Installieren kommen aus der Software-Bibliothek
+(Kapitel <i>Software installieren</i>).
 
 <b>Ablauf:</b>
 1.  Gerät mit dem Agent starten.
@@ -757,22 +760,32 @@ das Skript löscht sich beim Start als Erstes. Im Protokoll, im Log des Auftrags
 
     ("Software installieren", """<big><b>Software installieren</b></big>
 
-Programme aus dem NAS-Ordner <i>Verteilen\\Software</i> werden auf dem Gerät <b>still und ohne Klicks</b>
+Programme aus der <b>Software-Bibliothek</b> des Tools werden auf dem Gerät <b>still und ohne Klicks</b>
 installiert – beim ersten Windows-Start, als SYSTEM. Die Liste <i>Software installieren</i> (Häkchen, Suchfeld,
-Spalten Programm, Version, Grösse, Status, darunter die Gesamtgrösse) gibt es an drei Stellen:
+Spalten Programm, Version, Grösse, Status, darunter die Gesamtgrösse) zeigt nur die Bibliothek und steht an drei
+Stellen:
 •  <i>OS installieren …</i> (Windows) – auch mit <i>Für Master-Image (Audit-Modus)</i>: dann wird im Audit-Modus
     installiert, die Programme landen im Master-Image (Kapitel <i>Windows / Linux installieren</i>).
 •  <i>Image zurückspielen …</i> unter <i>Danach anpassen</i> (Kapitel <i>Image zurückspielen</i>).
 •  Reiter <i>Automatisierung</i>, Schritt <b>Anpassen</b> – die Auswahl wird mit den übrigen Einstellungen und in
     Vorlagen gespeichert (Kapitel <i>Automatisierung</i>).
 
-<b>Der Ordner Software</b>
-•  Installer (<tt>.exe</tt>, <tt>.msi</tt>) direkt in <i>Software</i>: je Datei ein Programm.
-•  Unterordner: ein Programm mit mehreren Dateien (z. B. „Barco Eventmaster Toolset“). Der ganze Ordner kommt
-    mit; einmal festlegen, welche Datei der Installer ist (liegt nur einer im Ordner, wählt das Tool ihn selbst).
-•  Sammelordner mit vielen kleinen Werkzeugen (z. B. „System Tools“): Art <i>Nur kopieren</i> – der Ordner landet
-    auf dem Desktop für alle Benutzer unter <i>Software</i>, installiert wird nichts.
-•  <b>Neue Software</b> einfach im Reiter <i>Dateien</i> in den Ordner legen – sie erscheint von selbst in der Liste.
+<b>Die Software-Bibliothek</b> (<i>Extras → Software-Bibliothek …</i>)
+Oben wird geladen, darunter steht direkt die Liste mit Programm, Version, Typ, Parameter, Rückgabewerte, Status
+und Grösse (Suchfeld oben rechts).
+•  <i>Ins Tool laden …</i>: einen Installer (<tt>.exe</tt>, <tt>.msi</tt>) wählen – von der Server-Disk, einem
+    USB-Datenträger oder dem NAS (auch aus <i>Verteilen\\Software</i>). Er wird in die Bibliothek kopiert.
+•  <i>Ordner laden …</i>: für Installer, die ihre Dateien daneben brauchen (z. B. <tt>YSUSB_V213_Win</tt> mit
+    <tt>setup.exe</tt>). Der ganze Ordner wird kopiert und kommt mit aufs Gerät. Liegen mehrere Installer im
+    Ordner, fragt das Tool, welcher es ist.
+•  Oder Dateien und Ordner aus dem Dateimanager ins Fenster ziehen.
+•  Ein Balken zeigt das Kopieren; <i>Abbrechen</i> lässt nichts Halbes in der Bibliothek zurück.
+•  Danach erkennt das Tool den Installer-Typ und trägt die Parameter ein. Liegt derselbe Inhalt schon in der
+    Bibliothek (gleiche SHA-256-Prüfsumme), wird nichts doppelt abgelegt – die Meldung nennt den Eintrag.
+•  Sammelordner mit vielen kleinen Werkzeugen (z. B. „System Tools“): als Ordner laden, Art <i>Nur kopieren</i> –
+    der Ordner landet auf dem Desktop für alle Benutzer unter <i>Software</i>, installiert wird nichts.
+•  <i>Löschen</i> (oder Taste Entf): Eintrag mit allen Dateien nach Rückfrage entfernen.
+Läuft das Demo-Gerät, zeigt das Fenster die Bibliothek im Demo-Speicher (Kapitel <i>Demo-Gerät</i>).
 
 <b>Status</b>
 •  <b>bereit</b>: Installer-Typ erkannt bzw. Parameter hinterlegt – lässt sich ankreuzen.
@@ -783,18 +796,31 @@ Spalten Programm, Version, Grösse, Status, darunter die Gesamtgrösse) gibt es 
 Erkannt werden MSI, NSIS, Inno Setup, InstallShield und WiX Burn – ohne die Datei auszuführen.
 
 <b>Parameter hinterlegen</b>
-1.  Rechts im Reiter <i>Dateien</i> auf <i>Software …</i> klicken.
-2.  Programm doppelklicken (oder markieren und <i>Bearbeiten …</i>).
-3.  <i>Art</i>, bei Ordnern den <i>Installer</i>, die <i>Parameter</i> für die stille Installation (z. B. <tt>/S</tt>) und
-    <i>Erfolgreich bei Rückgabewert</i> (Standard „0, 3010“; 3010 = Neustart nötig) eintragen, <i>Speichern</i>.
-    Bei MSI ergänzt das Tool <tt>msiexec /i</tt> und den Dateinamen. <tt>{ordner}</tt> steht für den Ordner des
-    Installers, z. B. für eine Antwortdatei.
-Die Angaben liegen in einer versteckten Beschreibung neben dem Installer auf dem NAS.
+1.  <i>Extras → Software-Bibliothek …</i> öffnen.
+2.  Zeile markieren und in die Zelle <i>Programm</i>, <i>Version</i>, <i>Parameter</i> oder <i>Rückgabewerte</i>
+    klicken, Wert eintragen, Enter – gespeichert wird sofort. <i>Parameter</i> sind die Angaben für die stille
+    Installation (z. B. <tt>/S</tt>), <i>Rückgabewerte</i> die Werte für „erfolgreich“ (Standard „0, 3010“;
+    3010 = Neustart nötig).
+3.  <i>Art</i> (still installieren, nur kopieren, nur von Hand) und bei Ordnern den <i>Installer</i>: Zeile markieren,
+    <i>Bearbeiten …</i>, <i>Speichern</i>.
+Bei MSI ergänzt das Tool <tt>msiexec /i</tt> und den Dateinamen. <tt>{ordner}</tt> steht für den Ordner des
+Installers, z. B. für eine Antwortdatei.
 
 <b>Neue Version</b>
-Gleicher Programmname, andere Version (z. B. <tt>vlc-3.0.24-win64.exe</tt> statt <tt>vlc-3.0.23-win64.exe</tt>):
-Die neue Datei übernimmt die Parameter der alten, auch wenn die alte schon gelöscht ist. Der Hinweis steht im
-Fenster <i>Software …</i>. Eine gespeicherte Auswahl (Automatisierung) nimmt dann die neue Version.
+Gleicher Programmname, andere Version (z. B. <tt>vlc-3.0.24-win64.exe</tt> nach <tt>vlc-3.0.23-win64.exe</tt>):
+Die neu geladene Version übernimmt Parameter, Art und Rückgabewerte der vorigen; der Hinweis steht in der Liste
+(Maus über der Zeile). Die alte Version bleibt in der Bibliothek, bis sie gelöscht wird. Eine gespeicherte Auswahl
+(Automatisierung, Vorlagen) nimmt nach dem Löschen der alten Version die neueste; gibt es das Programm gar nicht
+mehr, steht es in der Liste als „fehlt in der Bibliothek“ und wird beim Auftrag übersprungen (Eintrag im Log).
+
+<b>Ablage</b>
+Auf dem NAS im Ordner <i>Software-Bibliothek</i> neben <i>Verteilen</i> – gilt für alle Tool-Rechner gleich.
+Je Programm ein Unterordner (z. B. <tt>vlc-3.0.24</tt>) mit dem Installer bzw. dem geladenen Ordner und einer
+versteckten Beschreibung. Dort nichts von Hand ändern – laden und löschen nur über das Fenster.
+Der Ordner <i>Verteilen\\Software</i> gehört nur zu <i>Ordner senden</i> und wird für <i>Software installieren</i>
+weder gelesen noch beschrieben. Die versteckten Beschreibungen <tt>.…okula.json</tt>, die frühere Versionen dort
+angelegt hatten, entfernt das Tool beim Verbinden mit dem NAS (Meldung in der Statuszeile); sonst bleibt dort alles,
+wie es ist.
 
 <b>Ablauf am Gerät</b>
 1.  Die gewählten Programme kommen mit auf die Disk (<tt>C:\\ProgramData\\Okula\\Software</tt>), dazu ein
@@ -926,8 +952,8 @@ Netzwerkstart mit dem aktuellen Tool). Geprüft wird nur lesend: Daten, Windows 
 4.  Einstellungen wählen: Benutzer, Passwort, bei Windows die Edition.
     Bei Linux auch die Software: zum Beispiel Desktop, SSH-Server (Fernzugriff) oder weitere Pakete.
     Bei Debian gibt es die ganze Auswahl wie im Debian-Installer.
-    Bei Windows unter <i>Windows-Anpassung</i> die Liste <i>Software installieren</i>: Programme aus dem NAS-Ordner
-    <i>Verteilen\\Software</i> ankreuzen – sie werden beim ersten Start still installiert, mit
+    Bei Windows unter <i>Windows-Anpassung</i> die Liste <i>Software installieren</i>: Programme aus der
+    Software-Bibliothek ankreuzen – sie werden beim ersten Start still installiert, mit
     <i>Für Master-Image (Audit-Modus)</i> im Audit-Modus, damit sie im Master-Image landen
     (Kapitel <i>Software installieren</i>).
 5.  Starten. Das Gerät startet danach neu und installiert selbständig.
@@ -1347,9 +1373,10 @@ Die Vorführung braucht <b>kein NAS</b>. Alle Demo-Daten liegen lokal auf dem Se
 •  Rechtsklick auf <i>Demo (lokal, nicht auf dem NAS)</i> → <i>Alle Images im Ordner prüfen …</i>
     zeigt die Zusammenfassung, zum Beispiel „3 Images geprüft: 2 ✔, 1 ✖“.
 •  Für den Ordner <i>Ordner senden</i> gibt es Beispielordner (Software, Test Files, drei Projekte).
-•  Für <i>Software installieren</i> liegen drei erfundene Beispiel-Installer im Demo-Speicher (zwei „bereit“, einer
-    „Parameter fehlt“). Auswahl und Auftrag lassen sich zeigen; am DEMO-PC wird nichts installiert, der Auftrag
-    meldet „fertig“.
+•  Für <i>Software installieren</i> liegen drei erfundene Beispiel-Installer in der Software-Bibliothek des
+    Demo-Speichers (zwei „bereit“, einer „Parameter fehlt“). <i>Extras → Software-Bibliothek …</i> zeigt bei
+    laufendem Demo-Gerät diese Bibliothek – laden, bearbeiten und löschen verändern das NAS nicht. Auswahl und
+    Auftrag lassen sich zeigen; am DEMO-PC wird nichts installiert, der Auftrag meldet „fertig“.
 
 <b>Einen Fehler zeigen:</b>
 <i>Extras → Demo: nächster Auftrag mit Fehler</i>. Der nächste Auftrag bricht ab, der Balken wird rot.

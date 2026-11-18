@@ -133,7 +133,7 @@ class RestoreDialog(Gtk.Dialog):
         self.custom_copy.set_tooltip_text(winunattend.COPY_PROFILE_TOOLTIP)
         grid.attach(self.custom_copy, 0, row, 2, 1)
         row += 1
-        # I-020: Software aus Verteilen/Software – installiert beim ersten Start nach der Ersteinrichtung
+        # I-020: Software aus der Software-Bibliothek (Ä-041) – installiert beim ersten Start nach der Ersteinrichtung
         from okula_recovery.software_ui import SoftwareChooser
         self.custom_software = SoftwareChooser(height=90)
         self.custom_software.set_margin_start(24)

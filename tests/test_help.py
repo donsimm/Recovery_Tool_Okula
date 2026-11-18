@@ -149,6 +149,7 @@ class HelpUpToDateTest(unittest.TestCase):
     def test_b_every_menu_entry_in_help(self):
         menus = load_menu_labels()
         self.assertEqual(list(menus), ["_Menü", "_Tools", "E_xtras", "_Hilfe"])
+        self.assertIn("_Software-Bibliothek …", menus["E_xtras"])            # Ä-041
         help_text = " ".join(helpsearch.plain(t) for _, t in CHAPTERS)
         missing = [f"{clean_label(m)} → {clean_label(label)}"
                    for m in ("_Menü", "_Tools", "E_xtras") for label in menus[m]
