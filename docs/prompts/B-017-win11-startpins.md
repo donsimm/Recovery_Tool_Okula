@@ -1,6 +1,6 @@
 # B-017 – Windows anpassen an Win11 24H2 Pro: Startmenü-Kacheln, falsche FEHLER-Zeilen, Widgets
 
-Status: offen · erstellt 19.11.2026 von der Projektleitung · Freigabe: Dominik 19.11. (Test an der VM)
+Status: umgesetzt (Commit ca6a73a) · erstellt 19.11.2026 von der Projektleitung · Freigabe: Dominik 19.11. (Test an der VM)
 
 ## Rolle und Einstieg
 
