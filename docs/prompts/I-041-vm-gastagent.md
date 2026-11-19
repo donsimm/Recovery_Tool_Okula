@@ -1,6 +1,6 @@
 # I-041 – Test-VMs mit QEMU-Gastagent
 
-Status: offen · erstellt 19.11.2026 von der Projektleitung · Freigabe: Dominik 19.11.
+Status: umgesetzt (Commit 5a7571d) · erstellt 19.11.2026 von der Projektleitung · Freigabe: Dominik 19.11.
 
 ## Rolle und Einstieg
 
