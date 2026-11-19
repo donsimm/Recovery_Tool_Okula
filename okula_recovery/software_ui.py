@@ -34,9 +34,10 @@ class SoftwareChooser(Gtk.Box):
     # Häkchen, Programm, Version, Grösse (Text), Status, Name, wählbar, Grösse (Byte), Tooltip, sichtbar
     C_ON, C_PROG, C_VER, C_SIZE, C_STATUS, C_NAME, C_OK, C_BYTES, C_TIP, C_SHOW = range(10)
 
-    def __init__(self, on_change: Callable[[], None] | None = None, height: int = 140):
+    def __init__(self, on_change: Callable[[], None] | None = None, height: int = 140, when: str = "ersten"):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self.on_change = on_change or (lambda: None)
+        self.when = when             # „ersten“ (Aufsetzen) bzw. „nächsten“ Windows-Start (Ä-044)
         self.entries: list[software.Entry] = []
         self.nas_root: str | None = None
         self.loaded = False
@@ -141,7 +142,50 @@ class SoftwareChooser(Gtk.Box):
             return
         size = sum(row[self.C_BYTES] for row in chosen)
         self.total.set_text(f"Gewählt: {len(chosen)} Programm(e), zusammen {nas.format_size(size)} – werden beim "
-                            "ersten Windows-Start still installiert (Protokoll C:\\Windows\\Temp\\okula-software.log)")
+                            f"{self.when} Windows-Start still installiert (Protokoll "
+                            "C:\\Windows\\Temp\\okula-software.log)")
+
+
+class SoftwareInstallDialog(Gtk.Dialog):
+    """Software installieren an einem Gerät mit Windows (Ä-044): Auswahl aus der Bibliothek (nur „bereit“ und „nur
+    kopieren“ wählbar), Senden legt Installer und Startskript ab – Windows installiert beim nächsten Start."""
+
+    def __init__(self, parent: Gtk.Window | None, device_name: str, nas_root: str):
+        super().__init__(title="Software installieren", transient_for=parent, modal=True)
+        self.set_default_size(640, 520)
+        self.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
+        self.btn = self.add_button("Senden", Gtk.ResponseType.OK)
+        self.btn.get_style_context().add_class("suggested-action")
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=14)
+        head = Gtk.Label(xalign=0, wrap=True)
+        head.set_markup(f"Programme für <b>{GLib.markup_escape_text(device_name)}</b> – Windows installiert sie beim "
+                        "nächsten Start still und ohne Klicks (als SYSTEM, nacheinander in der Reihenfolge der "
+                        "Liste).")
+        box.pack_start(head, False, False, 0)
+        self.chooser = SoftwareChooser(on_change=self._update, height=280, when="nächsten")
+        box.pack_start(self.chooser, True, True, 0)
+        for text in ("Ausgegraut: „Parameter fehlt“ bzw. „nur von Hand“ – Grund in der Liste (Maus über der Zeile), "
+                     "Parameter in Extras → „Software-Bibliothek …“ hinterlegen.",
+                     "Das Gerät muss mit dem Agent laufen; Windows vollständig heruntergefahren (kein Schnellstart/"
+                     "Ruhezustand). Danach Gerät neu starten (Agent-Stick abziehen). Erneut senden ersetzt eine noch "
+                     "nicht installierte Auswahl; ein ausstehendes „Windows anpassen“ bleibt."):
+            hint = Gtk.Label(label=text, xalign=0, wrap=True, max_width_chars=80)
+            hint.get_style_context().add_class("status-idle")
+            box.pack_start(hint, False, False, 0)
+        self.get_content_area().add(box)
+        self.show_all()
+        self.chooser.load(nas_root, [])
+        self._update()
+
+    def _update(self) -> None:
+        self.btn.set_sensitive(self.chooser.loaded and bool(self.selected()))
+
+    def selected(self) -> list[str]:
+        """Gewählte Einträge der Bibliothek (Name), Reihenfolge wie in der Liste."""
+        return [e.name for e in self.chooser.selected_entries()]
+
+    def summary(self) -> str:
+        return software.summary(self.chooser.selected_entries())
 
 
 class SoftwareLibraryWindow(Gtk.Window):

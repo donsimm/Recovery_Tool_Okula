@@ -1,6 +1,6 @@
 # Ä-044 – Software installieren an einem Gerät mit Windows
 
-Status: offen · erstellt 19.11.2026 von der Projektleitung · Freigabe: Dominik 19.11.
+Status: umgesetzt (Commit HASH) · erstellt 19.11.2026 von der Projektleitung · Freigabe: Dominik 19.11.
 
 ## Rolle und Einstieg
 

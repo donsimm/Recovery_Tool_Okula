@@ -243,7 +243,8 @@ Einsortieren und umbenennen: Kapitel <i>Geräte verwalten</i>.
 <b>Gerätefenster</b>
 Doppelklick auf ein Gerät öffnet sein Fenster:
 •  Oben die Knöpfe: Disk-Image erstellen, Image zurückspielen, OS installieren, Backup erstellen,
-    Ordner senden, Windows anpassen (Kapitel <i>Windows anpassen</i>), Inventar neu einlesen; rechts die Symbole <i>Neu starten</i> (Pfeil im Ein/Aus-Zeichen)
+    Ordner senden, Windows anpassen (Kapitel <i>Windows anpassen</i>), Software installieren (Kapitel
+    <i>Software installieren</i>), Inventar neu einlesen; rechts die Symbole <i>Neu starten</i> (Pfeil im Ein/Aus-Zeichen)
     und <i>Herunterfahren</i> (Ein/Aus-Zeichen).
 •  Oben rechts <i>VM mit dieser Hardware erstellen …</i>: virtuelle Maschine mit der Hardware des Geräts
     (Kapitel <i>Virtuelle Maschinen</i>, Abschnitt „Digitaler Zwilling“).
@@ -816,6 +817,8 @@ des Startskripts, den Windows gerade verwendet, bleibt stehen (Hinweis, kein Feh
 •  Das Startskript läuft genau einmal und entfernt sich danach vollständig. Eine vorhandene lokale
     Gruppenrichtlinie bleibt erhalten.
 •  Erneut senden vor dem nächsten Start ersetzt die noch nicht umgesetzte Auswahl.
+•  Programme dazu: <i>Software installieren …</i> am selben Gerät (Kapitel <i>Software installieren</i>) –
+    beide Startskripte laufen beim nächsten Start.
 •  Meldung „Ruhezustand bzw. Schnellstart“: Windows starten und mit Shift + „Herunterfahren“ ganz
     herunterfahren, dann erneut senden.
 •  Kein Windows auf der Disk (oder BitLocker): Es wird nichts gesendet.
@@ -830,14 +833,30 @@ des Startskripts, den Windows gerade verwendet, bleibt stehen (Hinweis, kein Feh
     ("Software installieren", """<big><b>Software installieren</b></big>
 
 Programme aus der <b>Software-Bibliothek</b> des Tools werden auf dem Gerät <b>still und ohne Klicks</b>
-installiert – beim ersten Windows-Start, als SYSTEM. Die Liste <i>Software installieren</i> (Häkchen, Suchfeld,
-Spalten Programm, Version, Grösse, Status, darunter die Gesamtgrösse) zeigt nur die Bibliothek und steht an drei
-Stellen:
+installiert – beim ersten bzw. nächsten Windows-Start, als SYSTEM. Die Liste <i>Software installieren</i> (Häkchen,
+Suchfeld, Spalten Programm, Version, Grösse, Status, darunter die Gesamtgrösse) zeigt nur die Bibliothek und steht
+an vier Stellen:
+•  <b>An einem Gerät mit Windows</b>: Rechtsklick auf das Gerät → <i>Software installieren …</i> (auch
+    <i>Tools → Software installieren …</i> oder der Knopf <i>Software installieren …</i> im Gerätefenster) –
+    für ein Windows, das schon läuft (Abschnitt <i>An einem Gerät mit Windows</i>).
 •  <i>OS installieren …</i> (Windows) – auch mit <i>Für Master-Image (Audit-Modus)</i>: dann wird im Audit-Modus
     installiert, die Programme landen im Master-Image (Kapitel <i>Windows / Linux installieren</i>).
 •  <i>Image zurückspielen …</i> unter <i>Danach anpassen</i> (Kapitel <i>Image zurückspielen</i>).
 •  Reiter <i>Automatisierung</i>, Schritt <b>Anpassen</b> – die Auswahl wird mit den übrigen Einstellungen und in
     Vorlagen gespeichert (Kapitel <i>Automatisierung</i>).
+
+<b>An einem Gerät mit Windows</b>
+Gleich aufgebaut wie <i>Windows anpassen</i>: Windows ist schon eingerichtet, die Programme kommen dazu.
+1.  Gerät mit dem Agent starten (Agent-Stick oder Netzwerkstart). Windows muss ganz heruntergefahren sein.
+2.  Rechtsklick auf das Gerät → <i>Software installieren …</i>
+3.  Programme ankreuzen. Wählbar ist nur, was <b>bereit</b> oder <b>nur kopieren</b> ist; „Parameter fehlt“
+    und „nur von Hand“ sind ausgegraut, der Grund steht in der Liste (Maus über der Zeile).
+4.  Auf <i>Senden</i> klicken. Der Agent legt die Installer und das Startskript ab; der Auftrag steht in der
+    Auftragsliste, der Verlauf des Geräts z. B. „Software installieren (VLC media player 3.0.24, …) – wird beim
+    nächsten Start installiert“.
+5.  Gerät neu starten (Agent-Stick abziehen). Beim Start von Windows wird installiert, Protokoll wie unten.
+Kein Windows auf der Disk (oder BitLocker): Es wird nichts gesendet. Steht noch ein <i>Windows anpassen</i>
+aus, bleibt es: Beim nächsten Start laufen beide, das zuletzt laufende Startskript räumt auf.
 
 <b>Die Software-Bibliothek</b> (<i>Extras → Software-Bibliothek …</i>)
 Oben wird geladen, darunter steht direkt die Liste mit Programm, Version, Hersteller, Typ, Parameter,
@@ -935,7 +954,8 @@ wie es ist.
 <b>Ablauf am Gerät</b>
 1.  Die gewählten Programme kommen mit auf die Disk (<tt>C:\\ProgramData\\Okula\\Software</tt>), dazu ein
     einmaliges Startskript wie bei <i>Windows anpassen</i>.
-2.  Beim ersten Windows-Start (bei einem Master-Image nach der Ersteinrichtung) legt das Startskript eine
+2.  Beim ersten Windows-Start (bei einem Master-Image nach der Ersteinrichtung; an einem Gerät mit Windows beim
+    nächsten Start) legt das Startskript eine
     einmalige geplante Aufgabe an. Diese installiert die Programme nacheinander still als SYSTEM – auch lange
     Installationen werden nicht abgebrochen. Kurze Installationen sind fertig, bevor die Anmeldung erscheint.
 3.  Danach werden die Installer gelöscht. Meldet ein Programm „Neustart nötig“ (3010), startet das Gerät nach
@@ -952,6 +972,8 @@ Gerät geklappt hat, zeigt nur das Protokoll am Gerät.
     Protokoll) – Parameter prüfen.
 •  Erneut zurückspielen bzw. senden vor dem ersten Start ersetzt die noch nicht installierte Auswahl.
 •  Direktinstallation: Dateien über 4 GB gehen nicht (Setup-Partition FAT32).
+•  Meldung „Ruhezustand bzw. Schnellstart“: Windows starten und mit Shift + „Herunterfahren“ ganz
+    herunterfahren, dann erneut senden.
 •  Neuer Agent nötig: Agent-Stick bzw. Netzwerkstart nach dem Update neu erstellen (sonst „Agent zu alt“)."""),
 
     ("Inventar, Garantie, Windows 11", """<big><b>Inventar, Garantie und Windows 11</b></big>
@@ -1472,7 +1494,8 @@ Die Vorführung braucht <b>kein NAS</b>. Alle Demo-Daten liegen lokal auf dem Se
     Rechts im Reiter <i>Images</i> erscheint der Bereich <i>Demo (lokal, nicht auf dem NAS)</i> –
     auch wenn „NAS nicht verbunden“ steht. Das ist bei der Vorführung normal.
 3.  Jetzt lässt sich alles zeigen: Disk-Image erstellen, Image prüfen, zurückspielen, Automatisierung,
-    Backup erstellen und zurückspielen, Ordner senden, Windows anpassen, Inventar exportieren.
+    Backup erstellen und zurückspielen, Ordner senden, Windows anpassen, Software installieren (Beispiele aus der
+    Bibliothek im Demo-Speicher), Inventar exportieren.
     Ein Auftrag dauert knapp eine Minute (<i>Windows anpassen</i> nur ein paar Sekunden; am DEMO-PC wird
     nichts abgelegt).
 

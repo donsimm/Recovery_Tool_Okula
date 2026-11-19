@@ -52,7 +52,8 @@ class Job:
                               "backup": "Backup", "filerestore": "Dateien zurückspielen",
                               "download": "Backup herunterladen", "auto": "Automatisierung",
                               "deliver": "Ordner senden", "hwtest": "Hardware-Test",
-                              "tweak": "Windows anpassen"}.get(self.kind, "Zurückspielen")
+                              "tweak": "Windows anpassen",
+                              "software": "Software installieren"}.get(self.kind, "Zurückspielen")
 
     @property
     def shown_fraction(self) -> float:
@@ -80,7 +81,8 @@ class Job:
 
 
 # Aufträge mit Datenstrom Tool ↔ Agent (Bandbreite gilt); „download“ liest nur vom NAS
-NETWORK_KINDS = {"image", "restore", "install", "linux", "backup", "filerestore", "auto", "deliver"}
+NETWORK_KINDS = {"image", "restore", "install", "linux", "backup", "filerestore", "auto", "deliver",
+                 "software"}
 
 
 def eta_text(seconds: float | None) -> str:
@@ -275,10 +277,15 @@ def software_plan(nas_root: str, names: list[str], log: Callable[[str], None]):
     return plan
 
 
+SOFTWARE_NEXT = ("Wird beim nächsten Windows-Start als SYSTEM still installiert (vor der Anmeldung, lange "
+                 "Installationen laufen danach weiter). Protokoll am Gerät: C:\\Windows\\Temp\\okula-software.log")
+
+
 def send_software(ip: str, key: bytes, port: int, disk: str, nas_root: str, names: list[str], device: str,
-                  log: Callable[[str], None], progress: Callable[[float], None], cancel: threading.Event):
-    """Software installieren (I-020) nach dem Zurückspielen bzw. in der Automatisierung: Installer und Skript ans
-    Gerät; gibt (Plan, Antwort des Agents) zurück."""
+                  log: Callable[[str], None], progress: Callable[[float], None], cancel: threading.Event,
+                  later: str = SOFTWARE_LATER):
+    """Software installieren (I-020) nach dem Zurückspielen, in der Automatisierung bzw. an einem Gerät mit
+    Windows (Ä-044): Installer und Skript ans Gerät; gibt (Plan, Antwort des Agents) zurück."""
     from okula_recovery import software
     plan = software_plan(nas_root, names, log)
     script = software.build_script(plan.entries, device)
@@ -287,8 +294,41 @@ def send_software(ip: str, key: bytes, port: int, disk: str, nas_root: str, name
                                   cancel, port)
     log(f"  Software auf {result.get('part', disk)} abgelegt ({result.get('files', 0)} Dateien)"
         + (" – noch nicht installierte Auswahl von vorher ersetzt" if result.get("replaced") else ""))
-    log("  " + SOFTWARE_LATER)
+    log("  " + later)
     return plan, result
+
+
+def software_history(what: str) -> str:
+    """Verlauf (Ä-044): „Software installieren (VLC media player 3.0.24, …) – wird beim nächsten Start installiert“."""
+    return f"{what} – wird beim nächsten Start installiert"
+
+
+def software_work(ip: str, key: bytes, port: int, disk: str, nas_root: str, names: list[str], device: str,
+                  after: Callable[[Job, str | None, Exception | None], None]):
+    """Software installieren an einem Gerät mit Windows (Ä-044): wie nach dem Zurückspielen (send_software), aber
+    auf ein schon eingerichtetes Windows; after(job, Kurzform der Programme, fehler) trägt den Verlauf ein."""
+    from okula_recovery import software
+
+    def work(job: Job, jm: JobManager) -> str:
+        try:
+            jm.progress(job, 0.0, "Software wird übertragen")
+            plan, result = send_software(ip, key, port, disk, nas_root, list(names), device,
+                                         lambda line: jm.log(job, line),
+                                         lambda f: jm.progress(job, f, "Software wird übertragen"), job.cancel,
+                                         SOFTWARE_NEXT)
+            if result.get("shared"):
+                jm.log(job, "  Ein weiteres Okula-Startskript (Windows anpassen) steht noch aus – beide laufen beim "
+                            "nächsten Start, das letzte stellt die Gruppenrichtlinie wieder her")
+            if result.get("state") == "generalized":
+                jm.log(job, "  Windows ist generalisiert (Sysprep): installiert wird nach der Ersteinrichtung")
+        except Exception as e:
+            after(job, None, e)
+            raise
+        text = software.summary(plan.entries)
+        after(job, text, None)
+        return "wird beim nächsten Windows-Start installiert"
+
+    return work
 
 
 def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source_disk: str | None, verify: bool,

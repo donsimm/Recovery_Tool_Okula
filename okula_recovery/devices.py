@@ -596,6 +596,15 @@ def short_time(iso: str) -> str:
         return ""
 
 
+def windows_disk(dev: Device) -> str | None:
+    """Disk mit dem (einzigen bzw. ersten) Windows laut Inventar, z. B. /dev/nvme0n1 – ohne BitLocker.
+    Bereitschaft für Ordner senden, Windows anpassen und Software installieren (Ä-044)."""
+    for s in dev.inventory.get("systems") or []:
+        if s.get("family") == "Windows" and "BitLocker" not in s.get("name", "") and s.get("disk"):
+            return f"/dev/{s['disk']}"
+    return None
+
+
 def boot_mode(dev: Device) -> str:
     """Startart beim Netzwerkstart: always (F12 → Netzwerk = Agent), local (Netzwerk zuerst, ohne Auftrag von der
     Festplatte), once (Netzwerk zuerst, beim nächsten Start einmal der Agent)."""

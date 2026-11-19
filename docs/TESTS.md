@@ -658,3 +658,29 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (**kein** neuer Agent-
       `virtio-serial`; Liste ohne „Gastagent“; Windows startet weiter (Treiber bleiben bis zur Deinstallation)
 - [ ] **Entfernen in Windows:** *Einstellungen → Apps* „Virtio-win-guest-tools“ deinstallieren (bzw. zurück zum Snapshot
       „vor Gastagent“) → Dienst „QEMU Guest Agent“ weg
+
+### 28. Software installieren an einem Gerät mit Windows (Ä-044)
+Nach `git pull && sudo ./install.sh` das Tool neu starten (**kein** neuer Agent-Stick). VM-Win11-clean (Windows läuft
+schon, Option *Gastagent* an – Abschnitt 27), am besten vorher Snapshot „vor Software“. In der Software-Bibliothek
+`virtio-win-guest-tools.exe` mit Status „bereit“ (Abschnitt 27).
+- [ ] Windows ganz herunterfahren (Shift + „Herunterfahren“), *Einschalten und Agent starten*
+- [ ] Rechtsklick auf die VM: **„Software installieren …“** direkt unter „Windows anpassen …“; ebenso *Tools →
+      Software installieren …* und Knopf im Gerätefenster. Ohne Agent ausgegraut bzw. Meldung „… nicht verbunden“
+- [ ] Dialog: nur „bereit“/„nur kopieren“ ankreuzbar, „Parameter fehlt“/„nur von Hand“ ausgegraut, Grund im Tooltip;
+      *Senden* erst mit Auswahl; unten „werden beim nächsten Windows-Start still installiert“
+- [ ] Gasttools wählen → *Senden*: Auftrag „Software installieren (…)“ im Reiter *Aufträge* mit Fortschritt; Log nennt
+      Programm, Ablage auf der Windows-Partition, „Wird beim nächsten Windows-Start … installiert“
+- [ ] Verlauf: „Software installieren (virtio-win … ) – wird beim nächsten Start installiert“
+- [ ] VM neu starten (Agent-Stick bzw. Netzwerkstart weg) → Windows startet, `C:\Windows\Temp\okula-software.log`
+      mit „ok …“ und „Ende: 1 ok, 0 mit Fehler“; `C:\Windows\System32\GroupPolicy\Machine\Scripts\scripts.ini` weg bzw.
+      ohne `okula-software`
+- [ ] Am Server: `virsh -c qemu:///system qemu-agent-command VM-Win11-clean '{"execute":"guest-ping"}'` →
+      `{"return":{}}`; Gerätefenster „Gastagent: antwortet“
+- [ ] **Zusammen mit Windows anpassen:** wieder Agent starten → erst *Windows anpassen …* (z. B. Vorlage „Clean“)
+      senden, dann *Software installieren …* (anderes Programm, z. B. VLC) senden – Log „Ein weiteres
+      Okula-Startskript (Windows anpassen) steht noch aus …“. Neustart: beide Protokolle (`okula-windows-anpassen.log`,
+      `okula-software.log`) ok, danach `scripts.ini`/`gpt.ini` wie vorher (bzw. weg, wenn es vorher keine gab), keine
+      Okula-Einträge mehr in `gpedit.msc` → *Computerkonfiguration → Windows-Einstellungen → Skripts → Starten*
+- [ ] Umgekehrte Reihenfolge (erst Software, dann Windows anpassen) einmal wiederholen – Ergebnis gleich
+- [ ] Gerät mit BitLocker bzw. ohne Windows: Meldung „kein Windows erkannt (oder … BitLocker) – nichts gesendet“
+- [ ] Demo-Gerät: *Software installieren …* mit den Beispielen aus dem Demo-Speicher → Auftrag „fertig“, Verlauf

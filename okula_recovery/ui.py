@@ -68,7 +68,7 @@ MENU_LABELS: dict[str, list[str | None]] = {
               "Einstellungen e_xportieren …", "Einstellungen _importieren …", None, "_Beenden"],
     "_Tools": ["Gerät ö_ffnen …", "_Disk-Image erstellen …", "Image _zurückspielen …", "_OS installieren …",
                "_Backup erstellen …", "Backup zur_ückspielen …", "Ordner _senden …", "Windows _anpassen …",
-               "_Inventar neu einlesen",
+               "Soft_ware installieren …", "_Inventar neu einlesen",
                None, "_Restore-Stick aus Image …", "IS_O hinzufügen …",
                "_Boot-Stick aus ISO …", "_Netzwerkstart (PXE) …", None, "Images _aktualisieren"],
     "E_xtras": ["_USB klonen …", "USB _formatieren …", None, "Neue _virtuelle Maschine …", None,
@@ -255,6 +255,7 @@ class MainWindow(Gtk.ApplicationWindow):
             "Backup zur_ückspielen …": (lambda: self._with_device(lambda d: self.start_file_restore(None, d)), None),
             "Ordner _senden …": (lambda: self._with_device(self.on_send_folders), None),
             "Windows _anpassen …": (lambda: self._with_device(self.on_tweak_windows), None),
+            "Soft_ware installieren …": (lambda: self._with_device(self.on_install_software), None),
             "_Inventar neu einlesen": (lambda: self._with_device(self.refresh_inventory), None),
             "_Restore-Stick aus Image …": (lambda: self.on_restore_stick(None), None),
             "IS_O hinzufügen …": (self.on_add_iso, None),
@@ -2286,6 +2287,7 @@ class MainWindow(Gtk.ApplicationWindow):
             send.set_submenu(sub)
             menu.append(send)
             add("Windows anpassen …", lambda: self.on_tweak_windows(dev), ready)
+            add("Software installieren …", lambda: self.on_install_software(dev), ready)     # Ä-044
             menu.append(Gtk.SeparatorMenuItem())   # Strom abgesetzt von den Aufträgen
         if dev is not None and dev.is_vm:
             # VM: Einschalten, Bildschirm, Ausschalten … über libvirt statt Wake-on-LAN
@@ -3366,10 +3368,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def windows_disk(self, dev: devices.Device) -> str | None:
         """Disk mit dem (einzigen bzw. ersten) Windows laut Inventar, z. B. /dev/nvme0n1."""
-        for s in dev.inventory.get("systems") or []:
-            if s.get("family") == "Windows" and "BitLocker" not in s.get("name", "") and s.get("disk"):
-                return f"/dev/{s['disk']}"
-        return None
+        return devices.windows_disk(dev)
 
     def on_send_folders(self, dev: devices.Device, preset: str = "") -> None:
         """Ordner senden: Software/Test Files direkt, Content (oder ohne Vorgabe) über die Auswahl."""
@@ -3441,6 +3440,45 @@ class MainWindow(Gtk.ApplicationWindow):
             self.jobs.start(dev.id, "tweak", disk, what,
                             jobs.tweak_work(agent.ip, self.key, agent.control_port, disk, script,
                                             wintweaks.describe_lines(selected, user), after))
+        except agentclient.AgentError as e:
+            confirm_error(parent, str(e))
+            return
+        self.open_device(dev).show_jobs()
+
+    def on_install_software(self, dev: devices.Device) -> None:
+        """Software installieren an einem Gerät mit Windows (Ä-044): gleiche Bereitschaft wie Windows anpassen,
+        Auswahl aus der Software-Bibliothek, der Agent legt Installer und Startskript ab (wie Danach anpassen)."""
+        from okula_recovery.software_ui import SoftwareInstallDialog
+        parent = self._parent_for(dev)
+        agent = self._ready_agent(dev, parent)
+        if agent is None:
+            return
+        disk = self.windows_disk(dev)
+        if disk is None:
+            confirm_error(parent, f"Auf „{dev.name}“ wurde kein Windows erkannt (oder es ist mit BitLocker "
+                                  "verschlüsselt) – nichts gesendet. Inventar neu einlesen.")
+            return
+        root = self.root_for(dev)             # Demo-Gerät: Bibliothek im Demo-Speicher
+        if root is None:
+            confirm_error(parent, "Die Software-Bibliothek liegt auf dem NAS – zuerst über Menü → NAS-Verbindung … "
+                                  "verbinden.")
+            return
+        dlg = SoftwareInstallDialog(parent, dev.name, root)
+        ok = dlg.run() == Gtk.ResponseType.OK
+        names, summary = dlg.selected(), dlg.summary()
+        dlg.destroy()
+        if not ok or not names:
+            return
+        what = f"Software installieren ({summary})"
+
+        def after(job, chosen, error) -> None:
+            GLib.idle_add(self._after_job, dev.id, job, f"Software installieren ({chosen})" if chosen else what,
+                          None, error, False)
+
+        try:
+            self.jobs.start(dev.id, "software", disk, what,
+                            jobs.software_work(agent.ip, self.key, agent.control_port, disk, root, names, dev.name,
+                                               after))
         except agentclient.AgentError as e:
             confirm_error(parent, str(e))
             return
@@ -4082,6 +4120,8 @@ class MainWindow(Gtk.ApplicationWindow):
             elif error is None and job.kind == "tweak":
                 self.store.add_history(dev, job.kind, f"{what}: Startskript abgelegt, wird beim nächsten "
                                                       "Windows-Start umgesetzt", ok=True)
+            elif error is None and job.kind == "software":                 # Ä-044
+                self.store.add_history(dev, job.kind, jobs.software_history(what), ok=True)
             elif error is None:
                 where = ""
                 if job.kind in ("image", "backup") and path and Path(path).is_relative_to(demostore.base()):

@@ -1410,6 +1410,8 @@ bei einer einzelnen Datei; die Beschreibung bleibt auf dem NAS) und das Startskr
   Windows (generalisiert oder installiert), schreibt in einen Zwischenordner und tauscht erst am Ende; eine noch nicht
   installierte Auswahl von vorher wird ersetzt. Alter Agent → „Agent zu alt“, Log „Zurückgespielt, aber Software
   nicht übertragen …“.
+- *Software installieren …* an einem Gerät mit Windows (Ä-044): derselbe Agent-Befehl `software` auf ein schon
+  eingerichtetes Windows – siehe unten „An einem Gerät mit Windows“.
 - Direktinstallation: die Dateien kommen auf die Setup-Partition (`okula/software`, Dateien über 4 GB → Fehler,
   FAT32), das Startskript nach `okula/gp`. `install.cmd` kopiert nach `dism`/`bcdboot` mit `xcopy` nach
   `ProgramData\Okula\Software` und richtet das Startskript ein (hat das Image schon eine lokale Richtlinie, werden
@@ -1477,6 +1479,37 @@ Beispiele in `demo/Verteilen/Software` werden entfernt), der Demo-Agent nimmt de
 **Agent:** neuer Befehl `software` (I-020) → **neuer Agent-Stick bzw. Netzwerkstart neu vorbereiten**. Ä-041 und Ä-043
 ändern am Agent nichts (kein neuer Stick): Erkennung und Installationsskript entstehen im Tool, der Agent überträgt
 nur Dateien und prüft keine Endungen.
+
+### An einem Gerät mit Windows (Ä-044)
+
+Eintrag **„Software installieren …“** im Rechtsklick-Menü des Geräts (unter „Windows anpassen …“), unter *Tools*
+(`Soft_ware installieren …`) und als Knopf im Gerätefenster (`ui.on_install_software`). Aufbau wie *Windows anpassen*
+(`on_tweak_windows`): Agent verbunden und aktuell (`_ready_agent`), Windows laut Inventar ohne BitLocker
+(`devices.windows_disk`, aus `ui.windows_disk` herausgelöst, damit ohne GTK prüfbar) – sonst Meldung „kein Windows
+erkannt (oder … BitLocker) – nichts gesendet“; Ablage `root_for(dev)` (NAS bzw. beim Demo-Gerät der Demo-Speicher),
+ohne NAS Meldung wie beim Fenster *Software-Bibliothek*. Dialog `software_ui.SoftwareInstallDialog` mit der
+bestehenden Liste `SoftwareChooser` (nur „bereit“/„nur kopieren“ wählbar, übrige ausgegraut mit Grund im Tooltip,
+Reihenfolge wie in der Bibliothek; Text „beim nächsten Windows-Start“). *Senden* erst mit Auswahl.
+
+Auftrag `jobs.software_work` (Art `software`, Name „Software installieren“, Netzwerk-Auftrag wie *Ordner senden*):
+ruft `jobs.send_software` mit der Disk aus dem Inventar und der Auswahl – also denselben Weg wie *Danach anpassen*
+(Plan, `software.build_script`, Agent-Befehl `software`, Installer nach `ProgramData\Okula\Software`, Startskript der
+lokalen Gruppenrichtlinie). Log mit Programmen und „Wird beim nächsten Windows-Start … installiert“ (`SOFTWARE_NEXT`
+statt `SOFTWARE_LATER`); antwortet der Agent `shared`, steht im Log, dass ein *Windows anpassen* noch aussteht.
+Verlauf: „Software installieren (VLC media player 3.0.24, …) – wird beim nächsten Start installiert“
+(`jobs.software_history`, Programmnamen aus dem Plan). Am Agent wartet es wie *Windows anpassen* auf den nächsten
+Start – das Tool startet nicht neu (gleiches Verhalten wie *Windows anpassen*: Hinweis „Gerät neu starten,
+Agent-Stick abziehen“ im Dialog und in der Hilfe).
+
+**Zusammen mit *Windows anpassen*:** beide Reihenfolgen gehen über `deploy.install_startup_script`. Das zuerst
+abgelegte Skript sichert die Originale (`*.okula-nachher`) und erhöht die Version; das zweite trägt sich nur in
+`scripts.ini` ein (`shared`). Erneutes Senden desselben Skripts ersetzt nur Skript bzw. Installer. Beim Start
+löscht jedes Skript zuerst sich selbst; `RESTORE_START` (in beiden Skripten) stellt `gpt.ini`/`scripts.ini` erst her,
+wenn kein anderes `okula-*.cmd` mehr im Startup-Ordner liegt – das zuletzt laufende räumt auf. Getestet in
+`tests/test_software_device.py` (beide Reihenfolgen auf einem Probe-Verzeichnis).
+
+**Agent:** unverändert – der Befehl `software` gibt es seit I-020 und sucht schon jetzt „genau ein Windows
+(generalisiert oder installiert)“. **Kein neuer Agent-Stick.**
 
 ## Automatisierung
 
