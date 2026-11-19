@@ -253,7 +253,8 @@ Schnittstellennamen gebunden.
 - `domain_xml(profile)`: libvirt-XML. UEFI über die Firmware-Auswahl von libvirt (`<os firmware='efi'>`, Merkmale
   `secure-boot`/`enrolled-keys`, bei Secure Boot SMM an), BIOS = SeaBIOS; TPM 2.0 `tpm-crb` mit swtpm; Netzwerk
   `bridge br0`; Start Disk → Netzwerk; Grafik SPICE (nur 127.0.0.1, für virt-viewer) mit Standard-VGA; USB-Tablet;
-  kein Memory-Balloon – **kein virtio-Gerät**. SMBIOS per `<sysinfo type='smbios'>` + `<smbios mode='sysinfo'/>`, die
+  kein Memory-Balloon – **kein virtio-Gerät** (einzige Ausnahme auf Wunsch: Gastagent in Test-VMs, I-041,
+  [unten](#test-vms-mit-gastagent-i-041)). SMBIOS per `<sysinfo type='smbios'>` + `<smbios mode='sysinfo'/>`, die
   UUID der VM = SMBIOS-UUID. Das Profil steht als JSON in den Metadaten der VM (`profile_from_xml`).
 - **NVMe:** libvirt 11.3 (Debian 13) kennt den Disk-Bus `nvme` erst ab 11.5. Die Disk wird darum als SATA-Disk
   definiert (libvirt verwaltet Datei, Rechte, AppArmor) und per `<qemu:override>` zum QEMU-Gerät `nvme` umgebaut
@@ -316,6 +317,53 @@ RAM, Hardware ändern, ISO wählen). Das Demo-Gerät bleibt unberührt.
 `install`/`linux`/`restore`/`auto` und kein „VM von ISO gestartet“ – von ISO lässt sich in der VM von Hand
 installieren). Knöpfe *Einschalten und Agent starten*, *Von ISO starten …*, *Trotzdem einschalten*
 (`vm_dialogs.ask_blank_disk`); gilt für alle VMs.
+
+### Test-VMs mit Gastagent (I-041)
+
+Zweck: Die Projektleitung (am Server, mit sudo) führt in einer Test-VM unter Windows Befehle aus und liest die Ausgabe
+– ohne Netzwerk, Passwort oder Bildschirm: `virsh qemu-agent-command <VM> '{"execute":"guest-exec","arguments":
+{"path":"powershell.exe","arg":[…],"capture-output":true}}'`, danach `guest-exec-status` mit der `pid`. Befehle aus
+dem Tool heraus gibt es bewusst nicht.
+
+- **Profil:** `VmProfile.guest_agent` (Standard `False`; ältere Profile ohne das Feld = aus). Oberfläche: Häkchen
+  *Gastagent (nur Test-VMs)* in *Neue virtuelle Maschine* und *Hardware ändern …* (`vm_dialogs.guest_agent_check`,
+  Tooltip `vm.GUEST_AGENT_TIP` mit dem Grund). Ändern wie jede Hardware nur bei ausgeschalteter VM (`set_profile`),
+  Verlauf „Hardware geändert: Gastagent aus → an“ (`vm.profile_changes`). Zwillinge (`profile_from_inventory`) und
+  die drei Vorlagen immer ohne.
+- **XML** (`domain_xml`): eingeschaltet zusätzlich `<controller type='virtio-serial' index='0'/>` und
+  `<channel type='unix'><target type='virtio' name='org.qemu.guest_agent.0'/></channel>` – ohne `<source path>`, den
+  Socket legt libvirt selbst an (unter `/var/lib/libvirt/qemu/channel/target/…`, AppArmor-Freigabe über
+  virt-aa-helper). Ausgeschaltet fehlen beide; sonst ist das XML gleich (Test `test_vm_guest_agent`). Disk-Datei,
+  Snapshot-Liste, Startreihenfolge (`start` definiert zweimal neu), Snapshot einer laufenden VM
+  (`snapshot-create-as --disk-only` ohne `--quiesce`) und die Hilfs-VM zum Zusammenführen (nie ein Kanal) bleiben
+  unverändert. Herunterfahren/Neu starten bleiben ausdrücklich ACPI (`--mode acpi`) – libvirt nähme sonst den
+  Gastagent, sobald er antwortet.
+- **Kennzeichen:** Der Geräteeintrag merkt sich `vm.guest_agent = true` (`MainWindow._vm_guest_flag` nach Erstellen
+  bzw. *Hardware ändern …*), damit die Liste ohne virsh-Aufruf zeichnen kann: Zustand „aus · Gastagent“ bzw. „läuft –
+  Agent verbunden · Gastagent“, im Gerätefenster in der Zeile *Virtuelle Maschine* „Gastagent: antwortet / keine
+  Antwort / VM nicht eingeschaltet“ und in der Übersicht. Die Antwort holt `Virsh.guest_ping`
+  (`virsh qemu-agent-command <VM> --timeout 3 '{"execute":"guest-ping"}'`) im Hintergrund – beim Öffnen, bei
+  Änderungen höchstens alle 10 s und sonst alle 30 s, nur solange das Fenster offen ist und die VM läuft.
+- **Warnung beim Master** (`MainWindow.warn_guest_agent_master`, Rückfrage mit *Trotzdem fortfahren*, sperrt nicht):
+  *Disk-Image erstellen …* einer VM mit Gastagent, *Als Master-Image markieren* eines Images, dessen Quelle laut
+  Metadaten (`source.device_id` bzw. `agent_id`) eine solche VM ist, und *OS installieren …* mit *Für Master-Image
+  (Audit-Modus)* (bei *Abbrechen* bleibt der Dialog offen, „Nicht gestartet: abgebrochen (VM mit Gastagent)“). Text:
+  „VM mit Gastagent – virtio-Treiber und qemu-ga sind im Image. Für Master-Images ohne Gastagent arbeiten.“ Sysprep
+  selbst läuft in der VM von Hand – das Tool sieht ihn nicht.
+- **Gasttools in Windows** über die Software-Bibliothek, kein eigener Download-Code: Quelle Fedora virtio-win, stabile
+  Version (`virtio-win.iso` bzw. die Direkt-Downloads unter `fedorapeople.org/groups/virt/virtio-win/` ¹). Im
+  Hauptordner der ISO `virtio-win-guest-tools.exe` (WiX-Burn-Paket von Red Hat: Treiber-Paket
+  `virtio-win-gt-x64.msi` und qemu-ga, je nach Version weitere Werkzeuge ¹) bzw. die Einzelpakete
+  `virtio-win-gt-x64.msi` und `guest-agent/qemu-ga-x86_64.msi`. Erkennung: Burn mit CompanyName „Red Hat“ bzw.
+  „virtio-win“ im Programm- oder Dateinamen → Typ `virtio` „virtio-win-Gasttools (Burn)“, `/install /quiet /norestart`
+  (0, 1638, 1641, 3010); die MSI wie jedes MSI `/qn /norestart` (0, 1641, 3010). qemu-ga läuft danach als Dienst
+  „QEMU Guest Agent“ (`QEMU-GA` ¹) und braucht den VirtIO-Serial-Treiber aus dem Treiber-Paket. **Entfernen:** in
+  Windows unter *Einstellungen → Apps* deinstallieren (bzw. zurück zu einem Snapshot) und die Option ausschalten.
+- **Agent:** unverändert – kein neuer Agent-Stick.
+
+¹ Aus dem Gedächtnis des Umsetzungs-Agenten (I-041, 19.11.2026), nicht nachgelesen (kein Internetzugriff im
+Auftrag): Ablage der Downloads, Inhalt des Burn-Pakets und Dienstname am Server prüfen ([TESTS.md](TESTS.md)
+Abschnitt 27).
 
 ## Digitaler Zwilling (I-001 Auftrag 3)
 
@@ -1286,6 +1334,7 @@ InstallShield → übrige Kennungen → Squirrel → SFX-Archive → unbekannt.
 | InstallShield (InstallScript) | wie oben, dazu `setup.inx` (übersetztes InstallScript) | – Parameter fehlt: Antwortdatei an einer VM aufzeichnen (`setup.exe /r /f1"C:\setup.iss"`), Installer und `setup.iss` als Ordner laden, `/s /f1"{ordner}\setup.iss"` | Revenera (wie oben) ¹; an `epson665751eu.exe` geprüft |
 | WiX Burn | PE-Abschnitt `.wixburn` | `/quiet /norestart` (0, 1641, 3010) | WiX Toolset „Burn Command Line“ ¹ |
 | Microsoft-Bootstrapper | `.wixburn` und CompanyName „Microsoft …“ (VC++ Redistributable, .NET-Runtime) | `/install /quiet /norestart` (0, 1638 = neuere Version da, 1641, 3010) | Microsoft Learn „Visual C++ Redistributable“ (Befehlszeile) ¹ |
+| virtio-win-Gasttools (I-041) | `.wixburn` und CompanyName „Red Hat …“ bzw. „virtio-win“ im Programm- oder Dateinamen (`virtio-win-guest-tools.exe`) | `/install /quiet /norestart` (0, 1638, 1641, 3010) | WiX Toolset „Burn Command Line“ ¹ (I-041, nur für Test-VMs mit Gastagent) |
 | Qt Installer Framework | angehängte Qt-Ressourcen („qres“) mit `config.xml` (`<Installer>`) bzw. „Built with Qt Installer Framework x.y.z“ (Kopf oder `.rdata`) | ab 4.0: `install --root "<TargetDir>" --accept-licenses --accept-messages --default-answer --confirm-command` (0); `<TargetDir>`: `@ApplicationsDirX64@` → `C:\Program Files`, `@ApplicationsDirX86@` → `C:\Program Files (x86)`, `@ApplicationsDir@` je nach 32/64 Bit, `@RootDir@` → `C:\`; andere Variablen (z. B. `@HomeDir@`) bzw. vor 4.0 (nur mit Steuerskript `--script`) → Parameter fehlt | Qt-IFW-Doku „Using Command Line Interface“, „Configuration File“ ¹; an `AraneoInstaller.exe` (IFW 4.6.1) geprüft |
 | Advanced Installer | „Caphyon“, „Advanced Installer“, „AI_SETUPEXEPATH“ | `/exenoui /qn /norestart` (0, 1641, 3010) | Advanced Installer „EXE setup file command line“ ¹ |
 | InstallAware | „InstallAware“ | `/s` (0, 3010) | InstallAware „Command Line Parameters“ ¹ |

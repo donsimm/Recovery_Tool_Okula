@@ -2078,8 +2078,9 @@ class MainWindow(Gtk.ApplicationWindow):
         auto = self.automation.text(dev)
         if what:
             return what, fraction, eta
+        tag = vm.GUEST_AGENT_TAG if self.vm_guest_agent(dev) else ""     # I-041: Kennzeichen in der Liste
         if agent is None:
-            return " · ".join(p for p in (self.vm_state_text(dev) if dev.is_vm else "nicht verbunden", auto)
+            return " · ".join(p for p in (self.vm_state_text(dev) if dev.is_vm else "nicht verbunden", tag, auto)
                               if p), None, ""
         if auto:
             return auto, None, ""
@@ -2090,7 +2091,7 @@ class MainWindow(Gtk.ApplicationWindow):
         if agent.job:  # z. B. Image-Prüfung, die das Tool dem Agent meldet
             return agent.job, agent.progress, ""
         if dev.is_vm:
-            return " · ".join(p for p in ("läuft – Agent verbunden", agent.status) if p), None, ""
+            return " · ".join(p for p in ("läuft – Agent verbunden", tag, agent.status) if p), None, ""
         return agent.status, None, ""
 
     def _device_values(self, dev: devices.Device) -> list:
@@ -2577,7 +2578,7 @@ class MainWindow(Gtk.ApplicationWindow):
              "Hart ausschalten wie Stecker ziehen (mit Rückfrage)"),
             None,
             ("hardware", "Hardware ändern …", lambda: self.vm_hardware(dev), self.vm_why(dev, "hardware"),
-             "RAM, Kerne, Disk-Grösse, Netzwerkkarte (nur bei ausgeschalteter VM)"),
+             "RAM, Kerne, Disk-Grösse, Netzwerkkarte, Gastagent (nur bei ausgeschalteter VM)"),
             ("delete", "VM löschen …", lambda: self.vm_delete(dev), self.vm_why(dev, "delete"),
              "VM, Disk, Snapshots und Geräteeintrag löschen (nur bei ausgeschalteter VM)"),
         ]
@@ -2627,17 +2628,19 @@ class MainWindow(Gtk.ApplicationWindow):
             dlg = NewVmDialog(self, taken, existing, free, ram)
             ok = dlg.run() == Gtk.ResponseType.OK
             profile_name, name = dlg.values()
+            p = vm.profile(profile_name)
+            p.guest_agent = dlg.guest_agent()            # I-041
             dlg.destroy()
             if not ok:
                 return
             self.status(f"VM „{name}“ wird angelegt …")
-            self._vm_task(lambda: self.virsh.create(vm.profile(profile_name), name), after=lambda p: self._vm_created(
-                p, profile_name))
+            self._vm_task(lambda: self.virsh.create(p, name), after=lambda full: self._vm_created(full, profile_name))
 
         self._vm_task(work, after=ask)
 
     def _vm_created(self, p: vm.VmProfile, profile_name: str) -> None:
         dev = self.store.register_vm(p.name, vm.pre_inventory(p, devices.now()), profile_name)
+        self._vm_guest_flag(dev, p)
         self.sync_netboot()               # VM-MAC sofort freischalten
         self._dev_expand_after = devices.VM_FOLDER
         self.refresh_devices()
@@ -2938,9 +2941,32 @@ class MainWindow(Gtk.ApplicationWindow):
             dlg.destroy()
             if ok and changes:
                 self._vm_task(lambda: self.virsh.set_profile(name, new), "Hardware geändert: " + ", ".join(changes),
-                              dev)
+                              dev, after=lambda full: self._vm_guest_flag(dev, full))
 
         self._vm_task(lambda: (self.virsh.get_profile(name), len(self.virsh.snapshots(name))), dev=dev, after=edit)
+
+    def _vm_guest_flag(self, dev: devices.Device, p: vm.VmProfile) -> None:
+        """I-041: Gastagent laut Profil im Geräteeintrag vermerken (Kennzeichen in Liste und Gerätefenster,
+        Warnung beim Master) – ohne virsh-Aufruf beim Zeichnen der Liste."""
+        if bool(dev.vm.get("guest_agent")) == p.guest_agent:
+            return
+        if p.guest_agent:
+            dev.vm["guest_agent"] = True
+        else:
+            dev.vm.pop("guest_agent", None)
+        self.store.save(dev)
+        self.update_device_rows()
+
+    @staticmethod
+    def vm_guest_agent(dev: devices.Device) -> bool:
+        return dev.is_vm and bool(dev.vm.get("guest_agent"))
+
+    def warn_guest_agent_master(self, parent: Gtk.Window, dev: devices.Device | None) -> bool:
+        """I-041: Master bzw. Image aus einer VM mit Gastagent → Warnung (nicht sperren). True = weiter."""
+        if dev is None or not self.vm_guest_agent(dev):
+            return True
+        return confirm(parent, f"„{dev.name}“ ist eine VM mit Gastagent", vm.GUEST_AGENT_MASTER_WARNING,
+                       ok_label="Trotzdem fortfahren")
 
     def vm_delete(self, dev: devices.Device) -> None:
         parent = self._parent_for(dev)
@@ -3317,7 +3343,19 @@ class MainWindow(Gtk.ApplicationWindow):
                 win.refresh()
         run_async(work, done)
 
+    def image_source_device(self, path: str) -> devices.Device | None:
+        """Gerät, von dem ein Disk-Image stammt (Metadaten source.device_id bzw. agent_id), sonst None."""
+        try:
+            src = json.loads((Path(path) / nas.OKULA_META).read_text()).get("source") or {}
+        except (OSError, ValueError, AttributeError):
+            return None
+        devs = self.store.devices.values()
+        return self.store.devices.get(src.get("device_id") or "") or next(
+            (d for d in devs if src.get("agent_id") and src["agent_id"] in d.agent_ids), None)
+
     def set_master_image(self, path: str, on: bool) -> None:
+        if on and not self.warn_guest_agent_master(self, self.image_source_device(path)):     # I-041
+            return
         try:
             nas.set_master(path, on)
         except OSError as e:
@@ -3642,6 +3680,8 @@ class MainWindow(Gtk.ApplicationWindow):
         if root is None:
             confirm_error(parent, "NAS ist nicht verbunden – Menü → NAS-Verbindung …")
             return
+        if not self.warn_guest_agent_master(parent, dev):       # I-041: Image aus einer VM mit Gastagent
+            return
         ImageDialog(parent, agent, root, name=dev.name,
                     start_job=lambda disk, name, shutdown: self._start_image_job(dev, agent, root, disk, name,
                                                                                   shutdown))
@@ -3797,6 +3837,8 @@ class MainWindow(Gtk.ApplicationWindow):
 
         def start(iso: oslib.IsoInfo, disk: dict, index: int | None, opts, snapshot: bool = False,
                   software: list[str] | None = None) -> None:
+            if getattr(opts, "audit_mode", False) and not self.warn_guest_agent_master(parent, dev):     # I-041
+                raise ValueError("abgebrochen (VM mit Gastagent)")       # Dialog bleibt offen, Text im Status
             if snapshot and dev.is_vm:           # Häkchen „Vorher Snapshot“; Fehler → Dialog meldet, kein Auftrag
                 self.vm_auto_snapshot(dev, "OS-Installation")
             if iso.family == "windows":

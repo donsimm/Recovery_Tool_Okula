@@ -107,6 +107,9 @@ KINDS: dict[str, tuple[str, str, tuple[int, ...], str]] = {
     "wix": ("WiX Burn", "/quiet /norestart", MSI_EXIT_CODES, ""),
     # Microsoft-Bootstrapper (VC++ Redistributable, .NET-Runtime) sind Burn-Pakete; 1638 = neuere Version schon da
     "msburn": ("Microsoft-Bootstrapper (Burn)", "/install /quiet /norestart", (0, 1638, 1641, 3010), ""),
+    # I-041: virtio-win-guest-tools.exe (Fedora virtio-win, Red Hat) ist ein Burn-Paket: Treiber + qemu-ga;
+    # 3010 = Neustart nötig (Treiber), 1638 = andere Version schon da (Quelle nicht abgerufen)
+    "virtio": ("virtio-win-Gasttools (Burn)", "/install /quiet /norestart", (0, 1638, 1641, 3010), ""),
     "squirrel": ("Squirrel", "", DEFAULT_EXIT_CODES, ""),
     # Qt Installer Framework „Using Command Line Interface“ (ab 4.0; Quelle nicht abgerufen, an Araneo geprüft)
     "qtifw": ("Qt Installer Framework", IFW_ARGS, (0,),
@@ -306,7 +309,7 @@ def _qt_ifw(blob: installerinfo.Blob, pe: installerinfo.PE, head: bytes, overlay
                    publisher=cfg.get("Publisher", ""))
 
 
-def _detect_pe(blob: installerinfo.Blob, head: bytes) -> dict:
+def _detect_pe(blob: installerinfo.Blob, head: bytes, filename: str = "") -> dict:
     """Windows-Programm: Typ aus Abschnitten, Manifest, Kopf und angehängten Daten; Angaben aus der Versionsinfo."""
     pe = installerinfo.pe_info(blob)
     vi: dict[str, str] = {}
@@ -326,6 +329,9 @@ def _detect_pe(blob: installerinfo.Blob, head: bytes) -> dict:
     original = (vi.get("OriginalFilename", "") + " " + vi.get("InternalName", "")).lower()
 
     if ".wixburn" in sections:
+        # I-041: Gasttools für Test-VMs (Fedora virtio-win, Red Hat) – Burn-Paket mit Treibern und qemu-ga
+        if "red hat" in company or "virtio-win" in (meta["program"] + " " + filename).lower():
+            return _result("virtio", **meta)
         return _result("msburn" if "microsoft" in company else "wix", **meta)
     if pe is not None and (overlay[:4] == b"qres" or _has(head, "Qt Installer Framework")):
         ifw = _qt_ifw(blob, pe, head, overlay)
@@ -391,7 +397,7 @@ def _detect_blob(blob: installerinfo.Blob, filename: str) -> dict:
                        publisher=p.get("Manufacturer"))
     if head[:2] != b"MZ":
         return _result("")
-    return _detect_pe(blob, head)
+    return _detect_pe(blob, head, filename)
 
 
 def detect_bytes(data: bytes, filename: str) -> dict:

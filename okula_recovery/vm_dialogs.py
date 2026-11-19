@@ -34,6 +34,14 @@ def hardware_rows(p: vm.VmProfile) -> list[tuple[str, str]]:
             ("Hersteller / Modell", f"{p.smbios.manufacturer} {p.smbios.product}")]
 
 
+def guest_agent_check(active: bool) -> Gtk.CheckButton:
+    """I-041: Häkchen „Gastagent (nur Test-VMs)“, Standard aus; Tooltip nennt den Grund."""
+    check = Gtk.CheckButton(label=vm.GUEST_AGENT_LABEL)
+    check.set_active(active)
+    check.set_tooltip_text(vm.GUEST_AGENT_TIP)
+    return check
+
+
 def _fill_grid(grid: Gtk.Grid, rows: list[tuple[str, str]]) -> None:
     for child in grid.get_children():
         grid.remove(child)
@@ -92,6 +100,8 @@ class NewVmDialog(Gtk.Dialog):
         box.pack_start(frame, False, False, 0)
         self.check = Gtk.Label(xalign=0, wrap=True, max_width_chars=70)
         box.pack_start(self.check, False, False, 0)
+        self.guest = guest_agent_check(False)
+        box.pack_start(self.guest, False, False, 0)
         box.pack_start(_hint("Die Disk-Datei liegt auf der SSD des Servers und wächst mit dem belegten Platz. "
                              "Die VM ist sofort für den Netzwerkstart freigeschaltet; der Agent startet mit "
                              "„Einschalten und Agent starten“. Windows in der VM bleibt „nicht aktiviert“."),
@@ -107,6 +117,9 @@ class NewVmDialog(Gtk.Dialog):
 
     def values(self) -> tuple[str, str]:
         return self.profile_name(), self.name.get_text().strip()
+
+    def guest_agent(self) -> bool:
+        return self.guest.get_active()
 
     def _profile_changed(self) -> None:
         p = vm.PROFILES[self.profile_name()]
@@ -132,9 +145,10 @@ class NewVmDialog(Gtk.Dialog):
         self.ok.set_sensitive(not errors)
 
 
-FIRMWARE_LABELS = {"uefi-sb": "UEFI mit Secure Boot", "uefi": "UEFI ohne Secure Boot", "bios": "BIOS (Legacy)"}
+FIRMWARE_LABELS = vm.FIRMWARE_LABELS
 NIC_LABELS = {"e1000e": "Intel e1000e", "e1000": "Intel e1000", "rtl8139": "Realtek rtl8139 – nur Linux"}
-BUS_LABELS = {"nvme": "NVMe", "sata": "SATA"}
+BUS_LABELS = vm.BUS_LABELS
+profile_changes = vm.profile_changes
 
 
 class HardwareDialog(Gtk.Dialog):
@@ -175,6 +189,8 @@ class HardwareDialog(Gtk.Dialog):
             if unit:
                 grid.attach(Gtk.Label(label=unit, xalign=0), 2, i, 1, 1)
         box.pack_start(grid, False, False, 0)
+        self.guest = guest_agent_check(p.guest_agent)            # I-041
+        box.pack_start(self.guest, False, False, 0)
 
         risky = Gtk.Expander(label="Firmware und Disk-Anschluss (Achtung)")
         inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=6)
@@ -210,6 +226,7 @@ class HardwareDialog(Gtk.Dialog):
             w.connect("value-changed", lambda _w: self._check())
         for w in (self.nic, self.firmware, self.bus):
             w.connect("changed", lambda _w: self._check())
+        self.guest.connect("toggled", lambda _w: self._check())
         self.get_content_area().add(box)
         self._check()
         self.show_all()
@@ -222,21 +239,12 @@ class HardwareDialog(Gtk.Dialog):
         p.nic.model = self.nic.get_active_id() or p.nic.model
         p.firmware = self.firmware.get_active_id() or p.firmware
         p.disk.bus = self.bus.get_active_id() or p.disk.bus
+        p.guest_agent = self.guest.get_active()
         return p
 
     def changes(self) -> list[str]:
         """Für den Verlauf: „RAM 4 → 8 GB“ …"""
-        a, b = self.old, self.profile()
-        out = []
-        for label, old, new in (("RAM", f"{a.ram_mb // 1024} GB", f"{b.ram_mb // 1024} GB"),
-                                ("Kerne", a.cpu.cores, b.cpu.cores),
-                                ("Disk", f"{a.disk.size_gb} GB", f"{b.disk.size_gb} GB"),
-                                ("Netzwerkkarte", a.nic.model, b.nic.model),
-                                ("Firmware", FIRMWARE_LABELS[a.firmware], FIRMWARE_LABELS[b.firmware]),
-                                ("Disk-Anschluss", BUS_LABELS[a.disk.bus], BUS_LABELS[b.disk.bus])):
-            if old != new:
-                out.append(f"{label} {old} → {new}")
-        return out
+        return profile_changes(self.old, self.profile())
 
     def _check(self) -> None:
         p = self.profile()
@@ -250,6 +258,9 @@ class HardwareDialog(Gtk.Dialog):
                          "Netzwerk (nur für Linux)")
         if p.firmware != self.old.firmware or p.disk.bus != self.old.disk.bus:
             notes.append("Firmware bzw. Disk-Anschluss geändert – installiertes System startet evtl. nicht mehr")
+        if p.guest_agent and not self.old.guest_agent:
+            notes.append("Gastagent nur für Test-VMs – aus dieser VM kein Master-Image machen (virtio-Treiber und "
+                         "qemu-ga kämen ins Image)")
         self.check.set_markup(_notes_markup(errors, notes))
         self.ok.set_sensitive(not errors and bool(self.changes()))
 

@@ -2,7 +2,8 @@
 
 Konzept und Profile: docs/VM.md. Grundsätze:
 - Nur Standard-Hardware (SATA/NVMe, Intel e1000e/e1000, Realtek rtl8139), keine virtio-Geräte – ein Image aus der VM
-  soll auf echten Geräten laufen.
+  soll auf echten Geräten laufen. Einzige Ausnahme, nur auf Wunsch im Profil (I-041, Standard aus): der Kanal für den
+  QEMU-Gastagent (virtio-serial) in Test-VMs – damit lassen sich in Windows per virsh Befehle ausführen.
 - Netzwerk über die Brücke br0 (okula-bridge), VMs sind im LAN sichtbar; Agent über den Netzwerkstart.
 - virsh -c qemu:///system als Benutzer (Gruppe libvirt), Disks als qcow2 im Speicherpool „okula“.
   In der VM steht die Disk als Datei (type="file"), nicht als Pool-Volume: Nur für Dateien legt virt-aa-helper
@@ -71,6 +72,19 @@ MIN_FREE_GB = 20            # so viel muss auf dem Server mindestens frei bleibe
 LOW_SPACE_GB = 50           # Snapshots: Warnung, wenn weniger frei ist
 SNAP_TITLE_MAX = 80
 RAM_RESERVE_MB = 2048       # für den Server selbst
+
+# I-041: QEMU-Gastagent in Test-VMs (Option im Profil, Standard aus)
+GUEST_AGENT_CHANNEL = "org.qemu.guest_agent.0"
+GUEST_AGENT_LABEL = "Gastagent (nur Test-VMs)"
+GUEST_AGENT_TAG = "Gastagent"            # Kennzeichen in Geräteliste und Gerätefenster
+GUEST_AGENT_TIP = ("Kanal für den QEMU-Gastagent (virtio-serial): Damit lassen sich in Windows Befehle per virsh "
+                   "ausführen und die Ausgabe lesen – ohne Netzwerk und ohne Bildschirm. In Windows braucht es dazu "
+                   "die virtio-win-Gasttools (Software-Bibliothek). Nur für Test-VMs: Das Tool bildet sonst nur "
+                   "Standard-Hardware nach, damit ein Image aus der VM auf echten Geräten läuft – mit Gastagent "
+                   "landen virtio-Treiber und qemu-ga im Image.")
+GUEST_AGENT_MASTER_WARNING = ("VM mit Gastagent – virtio-Treiber und qemu-ga sind im Image. Für Master-Images ohne "
+                              "Gastagent arbeiten.")
+GUEST_PING_TIMEOUT = 3          # Sekunden, die virsh auf die Antwort von guest-ping wartet
 
 ET.register_namespace("qemu", QEMU_NS)
 ET.register_namespace("okula", OKULA_NS)
@@ -141,6 +155,7 @@ class VmProfile:
     cpu: CpuSpec = field(default_factory=CpuSpec)
     ram_mb: int = 4096
     smbios: Smbios = field(default_factory=Smbios)
+    guest_agent: bool = False         # I-041: Kanal für den QEMU-Gastagent (virtio-serial), nur Test-VMs
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False, sort_keys=True)
@@ -360,6 +375,11 @@ def domain_xml(p: VmProfile, boot: str = "normal", iso: str = "", disk_file: str
     video = _sub(dev, "video")
     _sub(video, "model", type="vga", vram="16384", heads="1", primary="yes")
     _sub(dev, "input", type="tablet", bus="usb")
+    if p.guest_agent:
+        # I-041: Gastagent nur auf Wunsch (Test-VMs). Den Socket legt libvirt selbst an (ohne Pfad).
+        _sub(dev, "controller", type="virtio-serial", index="0")
+        channel = _sub(dev, "channel", type="unix")
+        _sub(channel, "target", type="virtio", name=GUEST_AGENT_CHANNEL)
     _sub(dev, "memballoon", model="none")     # sonst legt libvirt ein virtio-Gerät an
 
     extra_args = []
@@ -556,7 +576,35 @@ def describe(p: VmProfile) -> str:
     ram_text = f"{ram:.0f} GB" if ram == int(ram) else f"{ram:.1f} GB"
     return " · ".join((fw, "Q35" if p.chipset == "q35" else "i440FX", disk, nic,
                        f"{p.cpu.cores * p.cpu.threads} Kern{'e' if p.cpu.cores * p.cpu.threads != 1 else ''}",
-                       f"{ram_text} RAM"))
+                       f"{ram_text} RAM") + ((GUEST_AGENT_TAG,) if p.guest_agent else ()))
+
+
+FIRMWARE_LABELS = {"uefi-sb": "UEFI mit Secure Boot", "uefi": "UEFI ohne Secure Boot", "bios": "BIOS (Legacy)"}
+BUS_LABELS = {"nvme": "NVMe", "sata": "SATA"}
+
+
+def profile_changes(a: VmProfile, b: VmProfile) -> list[str]:
+    """Änderungen „Hardware ändern …“ für den Verlauf: „RAM 4 GB → 8 GB“, „Gastagent aus → an“ …"""
+    out = []
+    for label, old, new in (("RAM", f"{a.ram_mb // 1024} GB", f"{b.ram_mb // 1024} GB"),
+                            ("Kerne", a.cpu.cores, b.cpu.cores),
+                            ("Disk", f"{a.disk.size_gb} GB", f"{b.disk.size_gb} GB"),
+                            ("Netzwerkkarte", a.nic.model, b.nic.model),
+                            ("Firmware", FIRMWARE_LABELS[a.firmware], FIRMWARE_LABELS[b.firmware]),
+                            ("Disk-Anschluss", BUS_LABELS[a.disk.bus], BUS_LABELS[b.disk.bus]),
+                            (GUEST_AGENT_TAG, "an" if a.guest_agent else "aus", "an" if b.guest_agent else "aus")):
+        if old != new:
+            out.append(f"{label} {old} → {new}")
+    return out
+
+
+def guest_agent_text(answer: bool | None, state: str = "running") -> str:
+    """Statuszeile im Gerätefenster (I-041): None = wird geprüft."""
+    if state != "running":
+        return "Gastagent: VM nicht eingeschaltet"
+    if answer is None:
+        return "Gastagent: wird geprüft …"
+    return "Gastagent: antwortet" if answer else "Gastagent: keine Antwort"
 
 
 # Kurzbeschreibung der Profile (docs/VM.md) für den Dialog „Neue virtuelle Maschine“
@@ -1224,6 +1272,19 @@ class Virsh:
         for i, alias in enumerate(order):
             self._qmp(name, "qom-set", path=paths[alias], property="bootindex", value=base + i)
         return True
+
+    def guest_ping(self, name: str, timeout: int = GUEST_PING_TIMEOUT) -> bool:
+        """I-041: Antwortet der QEMU-Gastagent in der VM (guest-ping)? Kein Kanal, VM aus, qemu-ga fehlt → False.
+        Dauert höchstens timeout Sekunden – nicht im GTK-Thread aufrufen."""
+        try:
+            out = self.virsh("qemu-agent-command", name, "--timeout", str(int(timeout)),
+                             json.dumps({"execute": "guest-ping"}))
+        except VmError:
+            return False
+        try:
+            return "return" in json.loads(out)
+        except (ValueError, TypeError):
+            return False
 
     def delete(self, name: str) -> None:
         """VM mit Disk, Snapshots (alle Overlay-Dateien), NVRAM und TPM-Zustand löschen (Rückfrage ist Sache der

@@ -623,3 +623,38 @@ angepasste sein (der falsche Wert von Ä-042 wird ersetzt).
       weg bzw. ohne `okula-windows-anpassen`
 - [ ] Selbst eine App anheften, abmelden, anmelden → bleibt angeheftet (`applyOnce`)
 - [ ] Zum Vergleich (Rückmeldung an Okuli): Ist der Bereich **„Empfohlen“** („Erste Schritte“ u. a.) noch da?
+
+### 27. Test-VMs mit Gastagent (I-041)
+Nach `git pull && sudo ./install.sh` das Tool neu starten (**kein** neuer Agent-Stick). Eine Test-VM mit Windows 11
+(z. B. VM-Win11-test), am besten vorher Snapshot „vor Gastagent“. Gasttools aus Fedora virtio-win, stabile Version
+(`virtio-win.iso`: `virtio-win-guest-tools.exe` bzw. `virtio-win-gt-x64.msi` + `guest-agent/qemu-ga-x86_64.msi`).
+- [ ] *Extras → Neue virtuelle Maschine …*: Häkchen *Gastagent (nur Test-VMs)* ist **aus**, Mauszeiger darauf → Tooltip
+      mit dem Grund (Standard-Hardware, Image auf echten Geräten)
+- [ ] **Option einschalten:** VM ausgeschaltet → *Hardware ändern …* → Häkchen *Gastagent (nur Test-VMs)* → Hinweis
+      „Gastagent nur für Test-VMs …“ → *Übernehmen*; Verlauf „Hardware geändert: Gastagent aus → an“;
+      `virsh -c qemu:///system dumpxml <VM>` zeigt `<controller type='virtio-serial' …>` und `<channel type='unix'>` mit
+      `<target type='virtio' name='org.qemu.guest_agent.0' …/>` (Pfad von libvirt), sonst unverändert (Disk-Datei,
+      Snapshots, MAC, UUID)
+- [ ] Geräteliste: Zustand „aus · Gastagent“; Gerätefenster: Zeile *Virtuelle Maschine* mit „Gastagent: VM nicht
+      eingeschaltet“, Übersicht „… · Gastagent (nur Test-VMs)“
+- [ ] **Start mit Overlay-Kette** (VM mit Snapshots): *Einschalten* bzw. *Einschalten und Agent starten* geht wie bisher
+      (kein AppArmor-Fehler); bei Windows: Gerätefenster „Gastagent: keine Antwort“ (Gasttools fehlen noch)
+- [ ] **Gasttools installieren:** `virtio-win-guest-tools.exe` in *Extras → Software-Bibliothek …* laden → Typ
+      „virtio-win-Gasttools (Burn)“, Parameter `/install /quiet /norestart`, Rückgabewerte 0, 1638, 1641, 3010, Status
+      „bereit“ (alternativ die beiden MSI → „MSI (Windows Installer)“, `/qn /norestart`); an der VM über *OS installieren …*
+      bzw. *Image zurückspielen …* → *Danach anpassen* wählen (oder von Hand in der VM) → `C:\Windows\Temp\okula-software.log`
+      „ok …“; Dienst „QEMU Guest Agent“ läuft (`Get-Service QEMU-GA`)
+- [ ] **guest-ping antwortet:** am Server `virsh -c qemu:///system qemu-agent-command <VM> '{"execute":"guest-ping"}'` →
+      `{"return":{}}`; Gerätefenster „Gastagent: antwortet“ (spätestens nach 30 s)
+- [ ] **Befehl ausführen:** `virsh … qemu-agent-command <VM> '{"execute":"guest-exec","arguments":{"path":"powershell.exe",
+      "arg":["-NoProfile","-Command","Get-ComputerInfo | Select OsName"],"capture-output":true}}'` → `pid`; danach
+      `guest-exec-status` mit dieser `pid` → `out-data` (Base64) mit dem Windows-Namen
+- [ ] **Warnung beim Master:** Agent starten → *Disk-Image erstellen …* → Rückfrage „VM mit Gastagent – virtio-Treiber
+      und qemu-ga sind im Image. Für Master-Images ohne Gastagent arbeiten.“; *Abbrechen* öffnet nichts, *Trotzdem
+      fortfahren* öffnet den Dialog. Dasselbe bei *Als Master-Image markieren* eines Images dieser VM und bei
+      *OS installieren …* mit *Für Master-Image (Audit-Modus)* (*Abbrechen* → Dialog bleibt offen, „Nicht gestartet: …“)
+- [ ] Snapshot erstellen, zurück, löschen mit Gastagent wie bisher; automatischer Snapshot bei laufendem Agent geht
+- [ ] **Option aus → Kanal weg:** VM aus → *Hardware ändern …* → Häkchen weg → `dumpxml` ohne `channel` und ohne
+      `virtio-serial`; Liste ohne „Gastagent“; Windows startet weiter (Treiber bleiben bis zur Deinstallation)
+- [ ] **Entfernen in Windows:** *Einstellungen → Apps* „Virtio-win-guest-tools“ deinstallieren (bzw. zurück zum Snapshot
+      „vor Gastagent“) → Dienst „QEMU Guest Agent“ weg

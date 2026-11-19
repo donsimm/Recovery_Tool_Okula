@@ -47,6 +47,7 @@ DHCP, verwaltet von NetworkManager („Wired connection 1“). QEMU/libvirt noch
 - Neustart/Herunterfahren/Einschalten über libvirt statt Wake-on-LAN.
 - **Nur Standard-Hardware** nachbilden (SATA/NVMe, Intel e1000e/e1000, Realtek rtl8139 nur für Linux), keine virtio-Treiber –
   sonst läuft ein Image aus der VM auf echten Geräten nicht. Übertragbar auf andere Hardware nur mit Sysprep.
+  Einzige Ausnahme: Option *Gastagent (nur Test-VMs)*, Standard aus ([unten](#test-vms-mit-gastagent-i-041-19112026)).
 
 ## Profile (Vorlagen)
 
@@ -258,3 +259,51 @@ Abschnitt 13.
   ganze Partition. Gelesen wird nur der Kopf, im Hintergrund des Dialogs.
 - Die Zahl im Verlauf („von 128 GB auf 513 GB“) ist die aufgerundete Quelldisk, z. B. 513 GB für eine 512-GB-SSD
   (512,1 GB).
+
+## Test-VMs mit Gastagent (I-041, 19.11.2026)
+
+Anlass: Der Test von *Windows anpassen* (Ä-042/B-017) am 19.11. ging nur über Bildschirmfotos, `virsh send-key` und
+das schreibgeschützte Einhängen der Disk. Mit dem QEMU-Gastagent führt die Projektleitung (am Server, mit sudo) in
+einer Test-VM unter Windows selbst Befehle aus und liest die Ausgabe – ohne Netzwerk, Passwort und Bildschirm:
+
+```
+virsh -c qemu:///system qemu-agent-command <VM> '{"execute":"guest-ping"}'
+virsh -c qemu:///system qemu-agent-command <VM> '{"execute":"guest-exec","arguments":{"path":"powershell.exe",
+  "arg":["-NoProfile","-Command","…"],"capture-output":true}}'          # → {"return":{"pid":…}}
+virsh -c qemu:///system qemu-agent-command <VM> '{"execute":"guest-exec-status","arguments":{"pid":…}}'
+                                                                        # → out-data (Base64), exitcode
+```
+
+**Grundsatz bleibt:** Der Gastagent braucht einen virtio-serial-Kanal – ein virtio-Gerät. Darum nur als Option im
+Profil, **Standard aus**, Bezeichnung *Gastagent (nur Test-VMs)*, Tooltip mit dem Grund. Befehle aus dem Tool heraus
+gibt es nicht (Sache der Projektleitung mit virsh).
+
+- **Ein-/Ausschalten:** Häkchen bei *Neue virtuelle Maschine* bzw. *Hardware ändern …* (VM aus). Eingeschaltet:
+  `<controller type='virtio-serial'>` und `<channel type='unix'>` mit Ziel `org.qemu.guest_agent.0` (Socket von
+  libvirt). Ausgeschaltet sind beide weg; sonst ändert sich nichts (Disk-Datei bzw. oberstes Overlay, Snapshots,
+  MAC, UUID, Seriennummern). Zwillinge und die Vorlagen sind immer ohne.
+- **Gasttools in Windows** über die Software-Bibliothek (kein eigener Download): Fedora virtio-win, stabile Version,
+  `virtio-win.iso` – darin `virtio-win-guest-tools.exe` (Burn-Paket: Treiber + qemu-ga) bzw. `virtio-win-gt-x64.msi`
+  und `guest-agent/qemu-ga-x86_64.msi`. Die Erkennung setzt Typ und stille Parameter (Burn `/install /quiet
+  /norestart`, MSI `/qn /norestart`). Installiert werden die virtio-Treiber (u. a. VirtIO-Serial) und der Dienst
+  „QEMU Guest Agent“. Entfernen: in Windows unter *Einstellungen → Apps* deinstallieren oder zurück zum Snapshot von
+  vorher, danach die Option ausschalten.
+- **Schutz vor Verwechslung:** Kennzeichen *Gastagent* in der Geräteliste, im Gerätefenster „Gastagent: antwortet /
+  keine Antwort“ (guest-ping im Hintergrund, Timeout 3 s). Warnung (nicht gesperrt) bei *Disk-Image erstellen …*,
+  *Als Master-Image markieren* und *OS installieren …* mit Audit-Modus: „VM mit Gastagent – virtio-Treiber und qemu-ga
+  sind im Image. Für Master-Images ohne Gastagent arbeiten.“ Master-Images also in einer eigenen VM ohne Gastagent
+  bauen (oder vom Snapshot vor den Gasttools aus, mit ausgeschalteter Option).
+- **Kein neuer Agent-Stick** (Agent unverändert). Technik: [TECHNIK.md](TECHNIK.md) „Test-VMs mit Gastagent“, Prüfung:
+  [TESTS.md](TESTS.md) Abschnitt 27.
+
+### Abweichungen und Grenzen (I-041)
+
+- **Häkchen auch bei „Neue virtuelle Maschine“** (im Prompt nur „Option im Profil“): spart das Ein- und Ausschalten
+  nach dem Anlegen; Standard aus wie bei *Hardware ändern …*.
+- **Warnung als Rückfrage** mit *Trotzdem fortfahren* bei drei Stellen. Sysprep selbst startet in der VM von Hand –
+  das Tool sieht ihn nicht; ein Image ohne Metadaten (Clonezilla) wird beim Markieren nicht erkannt.
+- Das Kennzeichen in der Liste stammt aus dem Geräteeintrag (gesetzt beim Anlegen bzw. *Hardware ändern …*). Wird
+  die VM ausserhalb des Tools mit virsh geändert, stimmt es bis zum nächsten *Hardware ändern …* nicht.
+- Eigener Typ „virtio-win-Gasttools (Burn)“ statt allgemein „WiX Burn“: Burn kennt `/install` als Standard-Aktion,
+  der Prompt verlangt die ausdrückliche Form; andere Burn-Pakete bleiben bei `/quiet /norestart`.
+- Am Server nicht geprüft (Agent ohne sudo, Tests ohne libvirt); Ablauf in [TESTS.md](TESTS.md) Abschnitt 27.

@@ -548,7 +548,7 @@ Die Disk ist eine Datei auf der SSD des Servers und wächst mit dem belegten Pla
     in der VM das Signal wie beim kurzen Druck auf den Einschaltknopf.
 •  <i>Ausschalten …</i>: hart ausschalten wie Stecker ziehen, mit Rückfrage.
 •  <i>Hardware ändern …</i> (nur ausgeschaltet): Arbeitsspeicher, Kerne, Disk vergrössern (nie verkleinern),
-    Netzwerkkarte. Firmware und Disk-Anschluss nur mit Warnung – ein installiertes System startet danach
+    Netzwerkkarte, <i>Gastagent (nur Test-VMs)</i> (Abschnitt unten). Firmware und Disk-Anschluss nur mit Warnung – ein installiertes System startet danach
     evtl. nicht mehr. Hat die VM Snapshots, ist <i>Disk</i> gesperrt: zuerst die Snapshots löschen.
     Ist die Disk für ein Image zu klein, vergrössert <i>Image zurückspielen …</i> sie auf Wunsch selbst
     (Kapitel <i>Image zurückspielen</i>, Abschnitt „Disk der VM zu klein“).
@@ -613,12 +613,40 @@ beginnt mit <i>0c1a</i>, die Disk-Seriennummer mit <i>VM</i>, die MAC ist eigene
 Gerät auseinander und führt sie nie zusammen. In der Übersicht der VM steht <i>Zwilling von</i> mit dem Gerät
 (anklickbar); im Verlauf beider steht der Eintrag. Ein neues Image aktualisiert den Zwilling nicht von selbst.
 
+<b>Gastagent – Befehle in Windows ausführen (nur Test-VMs)</b>
+Wozu: in einer Test-VM unter Windows Befehle ausführen und die Ausgabe lesen – ohne Netzwerk, ohne Passwort und
+ohne Bildschirm, z. B. um <i>Windows anpassen</i> zu prüfen. Das geschieht am Server mit virsh, nicht im Tool:
+<tt>virsh qemu-agent-command &lt;VM&gt; '{"execute":"guest-ping"}'</tt> prüft die Verbindung, <tt>guest-exec</tt>
+mit <tt>powershell.exe</tt> und <tt>"capture-output":true</tt> führt einen Befehl aus.
+1.  Häkchen <i>Gastagent (nur Test-VMs)</i> bei <i>Extras → Neue virtuelle Maschine …</i> oder bei
+    <i>Hardware ändern …</i> (VM ausgeschaltet). Standard ist aus. Die VM bekommt einen Kanal für den
+    QEMU-Gastagent (virtio-serial); sonst ändert sich nichts – Disk, Snapshots und Identität bleiben.
+2.  Gasttools in Windows über die Software-Bibliothek (Kapitel <i>Software installieren</i>): Quelle ist Fedora
+    virtio-win, stabile Version (<tt>virtio-win.iso</tt>). Daraus <tt>virtio-win-guest-tools.exe</tt> laden –
+    oder die beiden Pakete <tt>virtio-win-gt-x64.msi</tt> (Treiber) und <tt>qemu-ga-x86_64.msi</tt> (Ordner
+    <tt>guest-agent</tt>). Typ und Parameter erkennt das Tool (Burn: <tt>/install /quiet /norestart</tt>,
+    MSI: <tt>/qn /norestart</tt>). Danach bei <i>OS installieren …</i> bzw. <i>Image zurückspielen …</i>
+    (<i>Danach anpassen</i>) ankreuzen oder in der VM von Hand ausführen.
+    Installiert werden die virtio-Treiber (darunter VirtIO-Serial für den Kanal) und der Windows-Dienst
+    „QEMU Guest Agent“ (qemu-ga); die Gasttools bringen je nach Version weitere Werkzeuge mit.
+3.  Kennzeichen: in der Geräteliste <i>Gastagent</i> neben dem Zustand, im Gerätefenster in der Zeile
+    <i>Virtuelle Maschine</i> <i>Gastagent: antwortet</i> bzw. <i>keine Antwort</i> (alle 30 Sekunden mit
+    <tt>guest-ping</tt> geprüft) und in der Übersicht.
+<b>Entfernen:</b> in Windows unter <i>Einstellungen → Apps</i> „Virtio-win-guest-tools“ (bzw. die Treiber und
+„QEMU guest agent“) deinstallieren – oder zurück zu einem Snapshot von vorher. Danach das Häkchen bei
+<i>Hardware ändern …</i> entfernen: Kanal und Controller sind dann weg.
+<b>Nicht für Master-Images:</b> Mit Gastagent landen virtio-Treiber und qemu-ga im Image. Bei
+<i>Disk-Image erstellen …</i>, <i>Als Master-Image markieren</i> (Image aus einer solchen VM) und
+<i>OS installieren …</i> mit <i>Für Master-Image (Audit-Modus)</i> erscheint darum die Warnung
+„VM mit Gastagent – virtio-Treiber und qemu-ga sind im Image. Für Master-Images ohne Gastagent arbeiten.“
+<i>Trotzdem fortfahren</i> ist möglich. Master-Images in einer VM ohne Gastagent bauen.
+
 <b>Grenzen</b>
 •  Kein echtes Hersteller-BIOS: Eigenheiten echter Geräte (z. B. Einstellungen im HP- oder Lenovo-BIOS)
     lassen sich nicht nachbilden. Der Reiter <i>BIOS</i> zeigt nur das einfache BIOS der VM.
 •  Windows in der VM bleibt „nicht aktiviert“. Der Windows-Schlüssel eines Geräts wird nie übernommen.
 •  Ein Image aus der VM läuft auf echten Geräten nur mit Sysprep (Kapitel <i>Master-Image</i>).
-    Die VM nutzt dafür nur Standard-Hardware (SATA/NVMe, Intel-Netzwerkkarte).
+    Die VM nutzt dafür nur Standard-Hardware (SATA/NVMe, Intel-Netzwerkkarte) – ausser mit <i>Gastagent</i>.
 •  Die VMs laufen auf dem Server weiter, auch wenn das Tool geschlossen ist."""),
 
     ("Automatisierung", """<big><b>Geräte automatisch neu aufsetzen</b></big>
@@ -853,6 +881,8 @@ Läuft das Demo-Gerät, zeigt das Fenster die Bibliothek im Demo-Speicher (Kapit
 •  InstallShield (MSI): <tt>/s /v"/qn /norestart"</tt>
 •  WiX Burn: <tt>/quiet /norestart</tt> · Microsoft-Bootstrapper (VC++ Redistributable, .NET-Runtime):
     <tt>/install /quiet /norestart</tt>, Rückgabewert 1638 = neuere Version schon da
+•  virtio-win-Gasttools (<tt>virtio-win-guest-tools.exe</tt>, Burn-Paket von Red Hat, nur für Test-VMs mit
+    Gastagent – Kapitel <i>Virtuelle Maschinen</i>): <tt>/install /quiet /norestart</tt>
 •  Qt Installer Framework ab 4.0 (z. B. Luminex Araneo): <tt>install --root "&lt;Zielordner&gt;"
     --accept-licenses --accept-messages --default-answer --confirm-command</tt>, Zielordner aus dem Installer
     (<tt>C:\\Program Files\\…</tt>)

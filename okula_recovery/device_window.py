@@ -13,7 +13,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
 from okula_recovery import (archive, bootkeys, demostore, devices, imagecheck, inventory, jobs, nas,  # noqa: E402
-                            pxelog, warranty, win11)
+                            pxelog, vm, warranty, win11)
 from okula_recovery.bios_tab import BiosTab  # noqa: E402
 from okula_recovery.hw_tab import HwTab  # noqa: E402
 from okula_recovery.automation_tab import AutomationTab  # noqa: E402
@@ -23,6 +23,9 @@ from okula_recovery.uikit import (ask_text, confirm_error, numbered_section, pow
 
 if TYPE_CHECKING:
     from okula_recovery.ui import MainWindow
+
+
+GUEST_PING_EVERY = 30       # I-041: so oft fragt das Gerätefenster den Gastagent (Sekunden)
 
 
 def gb(n: int | float | None) -> str:
@@ -127,11 +130,20 @@ class DeviceWindow(Gtk.Window):
         root.pack_start(actions, False, False, 0)
         # Virtuelle Maschine: Einschalten, Bildschirm, Ausschalten … über libvirt (ersetzt Wake-on-LAN)
         self.vm_buttons: dict[str, Gtk.Button] = {}
+        # I-041: Kennzeichen „Gastagent“ mit Antwort von guest-ping (im Hintergrund, alle 30 s)
+        self.guest_label: Gtk.Label | None = None
+        self._guest_answer: bool | None = None
+        self._guest_busy, self._guest_last, self._guest_timer = False, 0.0, 0
         if dev.is_vm:
             bar = Gtk.Box(spacing=6)
             title = Gtk.Label(xalign=0, margin_end=6)
             title.set_markup("<b>Virtuelle Maschine</b>")
             bar.pack_start(title, False, False, 0)
+            self.guest_label = Gtk.Label(xalign=0, margin_end=6, no_show_all=True)
+            self.guest_label.set_tooltip_text(vm.GUEST_AGENT_TIP)
+            bar.pack_start(self.guest_label, False, False, 0)
+            self._guest_timer = GLib.timeout_add_seconds(GUEST_PING_EVERY, self._guest_tick)
+            self.connect("destroy", lambda *_a: self._guest_stop())
             for entry in main.vm_actions(dev):
                 if entry is None or entry[0] in ("shutdown", "reboot"):   # Symbole oben rechts
                     continue
@@ -387,6 +399,7 @@ class DeviceWindow(Gtk.Window):
             self.btn_twin.set_tooltip_text(why or "Virtuelle Maschine mit Hersteller, Modell, BIOS, CPU, RAM, Disk und "
                                                   "Firmware dieses Geräts anlegen – auf Wunsch mit dem letzten Image")
         if dev.is_vm:
+            self._guest_show()
             for entry in self.main.vm_actions(dev):
                 if entry is None:
                     continue
@@ -401,6 +414,49 @@ class DeviceWindow(Gtk.Window):
             for action in ("poweroff", "reboot"):       # Symbole: mit Agent über den Agent, sonst libvirt
                 if action in self.buttons:
                     self.buttons[action].set_sensitive(online or not stop)
+
+    # ---------- Gastagent (I-041) ----------
+
+    def _guest_show(self) -> None:
+        """Kennzeichen „Gastagent: …“ zeigen bzw. ausblenden; bei laufender VM höchstens alle 10 s neu fragen."""
+        if self.guest_label is None:
+            return
+        on = self.main.vm_guest_agent(self.dev)
+        self.guest_label.set_visible(on)
+        if not on:
+            return
+        state = self.main.vm_state(self.dev)
+        if state != "running":
+            self._guest_answer = None
+        elif GLib.get_monotonic_time() / 1e6 - self._guest_last > 10:
+            self._guest_ping()
+        self.guest_label.set_text(vm.guest_agent_text(self._guest_answer, state))
+
+    def _guest_stop(self) -> None:
+        if getattr(self, "_guest_timer", 0):
+            GLib.source_remove(self._guest_timer)
+            self._guest_timer = 0
+
+    def _guest_tick(self) -> bool:
+        if self.guest_label is not None and self.get_visible():
+            self._guest_last = 0.0
+            self._guest_show()
+        return True
+
+    def _guest_ping(self) -> None:
+        """guest-ping im Hintergrund (mit Timeout, nicht im GTK-Thread)."""
+        if self._guest_busy:
+            return
+        self._guest_busy, self._guest_last = True, GLib.get_monotonic_time() / 1e6
+        name = self.dev.vm.get("name", "")
+
+        def done(result) -> None:
+            self._guest_busy = False
+            self._guest_answer = result is True
+            if self.guest_label is not None and self.main.vm_guest_agent(self.dev):
+                self.guest_label.set_text(vm.guest_agent_text(self._guest_answer, self.main.vm_state(self.dev)))
+
+        run_async(lambda: self.main.virsh.guest_ping(name), done)
 
     def _fill_overview(self) -> None:
         for child in self.info_grid.get_children():
@@ -441,8 +497,9 @@ class DeviceWindow(Gtk.Window):
             note = " · Inventar vorläufig aus dem Profil – das echte meldet der Agent beim ersten Start" \
                 if inv.get("provisional") else ""
             profile = dev.vm.get("profile")
+            guest = f" · {vm.GUEST_AGENT_LABEL}" if self.main.vm_guest_agent(dev) else ""        # I-041
             rows.insert(0, ("Virtuelle Maschine", f"{dev.vm.get('name', '')}" + (f" (Profil {profile})" if profile
-                                                                                else "") + note))
+                                                                                else "") + guest + note))
             original = self.main.store.devices.get(dev.vm.get("twin_of", ""))
             if dev.vm.get("twin_of"):
                 rows.insert(1, ("Zwilling von", original.name if original else "Gerät gelöscht"))
@@ -975,6 +1032,7 @@ class DeviceWindow(Gtk.Window):
         if getattr(self, "_pxe_timer", 0):
             GLib.source_remove(self._pxe_timer)
             self._pxe_timer = 0
+        self._guest_stop()
         self._save_name()
         self._save_notes()
         self.main.device_windows.pop(self.dev.id, None)
