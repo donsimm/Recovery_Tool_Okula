@@ -1355,8 +1355,9 @@ function Start-Okula {
         -Force -ErrorAction SilentlyContinue
     try {
         $ErrorActionPreference = 'Stop'
-        Restore-OkulaStart
-        Write-OkulaLog 'ok      Startskript und Gruppenrichtlinie aufgeräumt'
+        $note = Restore-OkulaStart
+        if ($note) { Write-OkulaLog ('ok      Startskript und Gruppenrichtlinie aufgeräumt ({0})' -f $note) }
+        else { Write-OkulaLog 'ok      Startskript und Gruppenrichtlinie aufgeräumt' }
     } catch {
         Write-OkulaLog ('FEHLER  Startskript und Gruppenrichtlinie aufräumen: {0}' -f $_.Exception.Message)
     }

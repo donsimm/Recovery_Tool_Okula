@@ -988,7 +988,7 @@ im Protokoll, der nächste Baustein läuft; Store-Apps zuletzt, weil am langsams
 | Gruppe | Option | Umsetzung |
 |---|---|---|
 | Apps | Store-Apps: Xbox · Bing … · Filme & TV (`Microsoft.ZuneVideo`; `Microsoft.ZuneMusic` seit der Ergänzung nur unter Windows-Programme) · Solitaire · Kontakte · Smartphone-Link · Kamera · Office/Office-Hub · 3D-Viewer/Paint 3D/Mixed Reality · Feedback-Hub/Tipps/Hilfe · Microsoft Store | je Gruppe Name-Muster (z. B. `Microsoft.Xbox*`, `Microsoft.Bing*`, `Microsoft.MSPaint` = Paint 3D); `Remove-AppxPackage -AllUsers` (erst Bundle, dann Main) **und** `Remove-AppxProvisionedPackage -Online`; nie: `NonRemovable`, `*VCLibs*`, `*NET.Native*`, `*UI.Xaml*`, `*NVIDIA*`, `*Realtek*`, `*Intel*` |
-| Apps (Ä-042) | Outlook (neu)/Mail und Kalender · Teams · Clipchamp · Audiorecorder · Kurznotizen · To Do · Journal · Karten · Uhr (Wecker) · Family · Schnellhilfe · Power Automate · Dev Home · Copilot · Widgets · Werbe-Apps | `Microsoft.OutlookForWindows`, `microsoft.windowscommunicationsapps` · `MSTeams`, `MicrosoftTeams` · `Clipchamp.Clipchamp` · `Microsoft.WindowsSoundRecorder` · `Microsoft.MicrosoftStickyNotes` · `Microsoft.Todos` · `Microsoft.MicrosoftJournal` · `Microsoft.WindowsMaps` · `Microsoft.WindowsAlarms` · `MicrosoftCorporationII.MicrosoftFamily` · `MicrosoftCorporationII.QuickAssist` · `Microsoft.PowerAutomateDesktop` · `Microsoft.Windows.DevHome` · `Microsoft.Copilot`, `Microsoft.Windows.Ai.Copilot.Provider` · `MicrosoftWindows.Client.WebExperience` · `5319275A.WhatsAppDesktop`, `7EE7776C.LinkedInforWindows`, `AdobeSystemsIncorporated.Adobe*Express*`, `SpotifyAB.SpotifyMusic`, `Disney.37853FC22B2CE`, `Facebook.*` (Facebook, Instagram, Messenger), `BytedancePte.Ltd.TikTok`, `AmazonVideo.PrimeVideo`, `4DF9E0F8.Netflix`, `king.com.*` (Candy Crush). „Bing (Wetter, News, Bing Search …)“ = `Microsoft.Bing*` (auch `Microsoft.BingSearch`) |
+| Apps (Ä-042) | Outlook (neu)/Mail und Kalender · Teams · Clipchamp · Audiorecorder · Kurznotizen · To Do · Journal · Karten · Uhr (Wecker) · Family · Schnellhilfe · Power Automate · Dev Home · Copilot · Widgets · Werbe-Apps | `Microsoft.OutlookForWindows`, `microsoft.windowscommunicationsapps` · `MSTeams`, `MicrosoftTeams` · `Clipchamp.Clipchamp` · `Microsoft.WindowsSoundRecorder` · `Microsoft.MicrosoftStickyNotes` · `Microsoft.Todos` · `Microsoft.MicrosoftJournal` · `Microsoft.WindowsMaps` · `Microsoft.WindowsAlarms` · `MicrosoftCorporationII.MicrosoftFamily` · `MicrosoftCorporationII.QuickAssist` · `Microsoft.PowerAutomateDesktop` · `Microsoft.Windows.DevHome` · `Microsoft.Copilot`, `Microsoft.Windows.Ai.Copilot.Provider` · `MicrosoftWindows.Client.WebExperience` und (B-017) Richtlinie `HKLM\SOFTWARE\Policies\Microsoft\Dsh\AllowNewsAndInterests=0` („Widgets zulassen“ aus, Policy CSP *NewsAndInterests/AllowNewsAndInterests*, Pro ab Windows 11 21H2 – nimmt Widgets samt Wetter aus der Taskleiste, auch wenn das Paket bleibt; wird vor dem Entfernen gesetzt) · `5319275A.WhatsAppDesktop`, `7EE7776C.LinkedInforWindows`, `AdobeSystemsIncorporated.Adobe*Express*`, `SpotifyAB.SpotifyMusic`, `Disney.37853FC22B2CE`, `Facebook.*` (Facebook, Instagram, Messenger), `BytedancePte.Ltd.TikTok`, `AmazonVideo.PrimeVideo`, `4DF9E0F8.Netflix`, `king.com.*` (Candy Crush). „Bing (Wetter, News, Bing Search …)“ = `Microsoft.Bing*` (auch `Microsoft.BingSearch`) |
 | Apps (Ä-042) | Später nachgeladene Apps nochmals entfernen (nach der Anmeldung) | Nachlauf, siehe unten |
 | Apps | Wiederinstallation von Werbe-Apps sperren | `Policies\…\CloudContent\DisableWindowsConsumerFeatures=1` (wirkt laut Policy CSP *Experience/AllowWindowsConsumerFeatures* **nur Enterprise/Education**, nicht Pro – Protokoll nennt die Edition, Tooltip im Dialog); ContentDeliveryManager `SilentInstalledAppsEnabled`, `PreInstalledAppsEnabled`, `PreInstalledAppsEverEnabled`, `OemPreInstalledAppsEnabled` = 0 (alle Benutzer, wirkt auch bei Pro) |
 | Apps | OneDrive entfernen | Prozess beenden, `OneDriveSetup.exe /uninstall` (System32/SysWOW64), `DisableFileSyncNGSC=1`, Run-Werte `OneDriveSetup`/`OneDrive` weg (alle Benutzer) |
@@ -1070,6 +1070,25 @@ Paketnamen der Medien-Erweiterungen und `Microsoft.ZuneMusic` aus dem Gedächtni
 (`Get-AppxPackage -AllUsers` je Bundle/Main, `Get-AppxProvisionedPackage -Online`) werden einmal gelesen und
 zwischengespeichert – ein Aufruf je Muster dauerte bei rund 45 Mustern mehrere Minuten (10-Minuten-Grenze).
 
+**Entfernen und Protokoll (B-017).** Befund 19.11.2026 (Windows 11 Pro 24H2, Build 26100.8036): 19× „FEHLER … (vorinstalliert):
+Das System kann die angegebene Datei nicht finden“, obwohl die Apps weg waren – `Remove-AppxPackage -AllUsers` entfernt
+bei 24H2 offenbar auch die Bereitstellung, die zwischengespeicherte Liste von `Get-AppxProvisionedPackage` war danach
+veraltet; weil `Remove-OkulaApps` bei Fehlern nur die Fehler meldete, fehlten die entfernten Pakete im Protokoll. Jetzt:
+- Nach jedem erfolgreichen `Remove-AppxPackage` wird die Bereitstellungsliste verworfen und vor dem nächsten Schritt neu
+  gelesen (`$script:OkulaPkgs.Remove('Provisioned')`; höchstens ein Lesen je App-Gruppe mit entferntem Paket).
+- Meldet `Remove-AppxProvisionedPackage` trotzdem 0x80070002/0x80070003 (`HResult` der Ausnahme oder einer inneren
+  Ausnahme bzw. Code im Text, `Test-OkulaNotFound`), gilt das Paket als schon entfernt – kein Fehler.
+- Protokollzeile über `Get-OkulaResult`: entfernte Pakete stehen immer drin, auch neben echten Fehlern
+  („X, Y entfernt; Fehler: Z: …“, dann als FEHLER-Zeile). Gilt ebenso für `Remove-OkulaCapabilities` und – weil es die
+  gleichen Funktionen sind – für den Nachlauf.
+
+**Aufräumen des Startskripts (B-017).** `Restore-OkulaStart` (gemeinsam mit *Software installieren*): Lässt sich ein
+leerer Ordner (`Machine\Scripts\Startup`, `Machine\Scripts`, `Machine`) nicht löschen, weil Windows ihn gerade verwendet,
+wird das als Hinweis zurückgegeben („ok … (leerer Ordner … bleibt …)“) und der Rückbau der Registrierung läuft trotzdem
+weiter (vorher brach er an dieser Stelle ab). Ein echter Fehler bleibt: `scripts.ini`/`gpt.ini` lassen sich nicht
+löschen bzw. zurücklegen, `scripts.ini` nennt danach noch das Startskript, oder die Einträge unter
+`…\Group Policy\Scripts\Startup` bzw. `…\State\Machine\Scripts\Startup` lassen sich nicht entfernen.
+
 **Startmenü Windows 11 (Ä-042).** Befund 18.11.2026 (Win11-VM, alles angehakt): WhatsApp, LinkedIn, Adobe Express,
 Clipchamp, Audiorecorder, Kurznotizen, Teams standen im Startmenü, `Get-AppxPackage -AllUsers` kannte sie nicht – es sind
 **Platzhalter** im Standard-Startlayout, die Windows erst beim Klick bzw. später im Hintergrund installiert. Lösung:
@@ -1078,13 +1097,24 @@ Richtlinie **ConfigureStartPins** ersetzt die ganze Liste der angehefteten Kache
 (`%APPDATA%\…\File Explorer.lnk`), Einstellungen (`windows.immersivecontrolpanel_cw5n1h2txyewy!…`), Rechner
 (`Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`), Editor (`Microsoft.WindowsNotepad_…!App`), Fotos
 (`Microsoft.Windows.Photos_…!App`), Paint (`Microsoft.Paint_…!App`), Snipping Tool (`Microsoft.ScreenSketch_…!App`),
-Terminal (`Microsoft.WindowsTerminal_…!App`); `"applyOnce":true`.
-- Weg 1 (immer zuerst): Policy CSP `./Device/Vendor/MSFT/Policy/Config/Start/ConfigureStartPins` über die
-  **MDM-Bridge** (WMI `root\cimv2\mdm\dmmap`, Klasse `MDM_Policy_Config01_Start02`, `ParentID='./Vendor/MSFT/Policy/Config'`,
-  `InstanceID='Start'`, Eigenschaft `ConfigureStartPins` = JSON; Instanz anlegen bzw. ändern). Das Startskript läuft als
-  SYSTEM, wie die Bridge es für Geräte-Richtlinien verlangt.
-- Weg 2 (nur wenn Weg 1 scheitert und Build ≥ 26100): Wert `HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer`
-  `ConfigureStartPins` (REG_SZ, JSON) – Registrierungsort der Gruppenrichtlinie „Configure Start Pins“ (StartMenu.admx).
+Terminal (`Microsoft.WindowsTerminal_…!App`); `"applyOnce":true`. Schlüssel `packagedAppId` wie in den JSON-Beispielen
+von Microsoft Learn und in der Ausgabe von `Export-StartLayout` (die Tabellen auf Learn schreiben `packagedAppID`).
+- **Ab Build 26100 (Windows 11 24H2, B-017):** Gruppenrichtlinie „Configure Start Pins“ genau wie in
+  `C:\Windows\PolicyDefinitions\StartMenu.admx` (an der VM geprüft: `valueName="ConfigureStartPins"`, enabled = 1,
+  Element `text` mit `valueName="ConfigureStartPinsJSON"`, `expandable="true"`; Learn GPO-Tabelle: Wert = „Path to the
+  JSON file“). Das Skript schreibt die JSON-Datei `%ProgramData%\Okula\StartPins.json` (UTF-8 ohne BOM,
+  `wintweaks.START_PINS_FILE`) und setzt unter `HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer`
+  `ConfigureStartPins` = 1 (REG_DWORD) und `ConfigureStartPinsJSON` = voller Pfad der Datei (REG_EXPAND_SZ). Der
+  falsche REG_SZ-Wert aus Ä-042 (JSON-Text in `ConfigureStartPins`) wird vorher gelöscht – ein erneuter Lauf auf schon
+  angepassten Geräten repariert ihn. Die Datei muss bleiben: Nachlauf und *Software installieren* löschen
+  `%ProgramData%\Okula` nur, wenn der Ordner leer ist. Keine MDM-Bridge mehr ab 24H2 (Befund 19.11.: „Ungültige
+  Eigenschaft "ConfigureStartPins"“ am unverwalteten Pro).
+- **Build 22000–26099 (Windows 11 vor 24H2):** nur Policy CSP `./Device/Vendor/MSFT/Policy/Config/Start/ConfigureStartPins`
+  über die **MDM-Bridge** (WMI `root\cimv2\mdm\dmmap`, Klasse `MDM_Policy_Config01_Start02`, `ParentID='./Vendor/MSFT/Policy/Config'`,
+  `InstanceID='Start'`, Eigenschaft `ConfigureStartPins` = JSON; Instanz anlegen bzw. ändern; das Startskript läuft als
+  SYSTEM, wie die Bridge es verlangt). Klappt das nicht: FEHLER „Windows 11 vor 24H2: Startmenü nur mit
+  Geräteverwaltung (Policy CSP: …)“ – die Gruppenrichtlinie gibt es dort nicht.
+- Nicht geprüft wird, ob KB5062660 installiert ist (Build 26100 ohne das Update ignoriert die Richtlinie still).
 - Build < 22000 (Windows 10): nichts gesetzt, Protokoll „Windows 10 – ohne Wirkung“. Windows 10 hat das alte
   Kachel-Startmenü (I-039 unverändert, Ä-040 bewusst ohne Startmenü-Kacheln); Option bleibt sichtbar, Beschriftung
   „(Windows 11)“.
@@ -1131,6 +1161,16 @@ Eigenschaft kommt mit Windows 11, darum Weg 2 und Test am Gerät). support.micro
 abgerufen, aus dem Gedächtnis: Paketnamen der Werbe-Apps (WhatsApp, LinkedIn, Adobe Express, Spotify, Disney+, TikTok,
 Prime Video, Netflix, Candy Crush, Facebook/Instagram), Journal, Family, Schnellhilfe, Copilot, Widgets und die
 AUMIDs von Rechner, Editor, Snipping Tool.
+
+Quellen B-017 (Microsoft Learn, abgerufen 19.11.2026): „Customize the Start layout for managed Windows devices“
+(GPO-Tabelle *Configure Start Pins* = „Path to the JSON file“, nur ab 24H2 mit KB5062660; CSP/Intune = Inhalt der
+Datei; Schlüsseltabelle `packagedAppID`, JSON-Beispiel `packagedAppId`), „Start Policy CSP“ (*ConfigureStartPins*
+Pro ab 21H2, GPO-Wert `ConfigureStartPins`, StartMenu.admx; *HideRecommendedSection* Device/User, **Pro** ab 22H2,
+`Policies\Microsoft\Windows\Explorer\HideRecommendedSection`), „NewsAndInterests Policy CSP“ (*AllowNewsAndInterests*:
+Device, **Pro**, ab Windows 11 21H2, 0 = nicht zulassen, „applies to the entire widgets experience, including content
+on the taskbar“, GPO *Allow widgets*, `SOFTWARE\Policies\Microsoft\Dsh`, NewsAndInterests.admx), „Customize the
+Windows 11 Start menu“ (OEM, ebenfalls Tabelle `packagedAppID`, Beispiel `packagedAppId`). Am Gerät: `StartMenu.admx`
+der VM-Win11-test (Okuli, 19.11.). HResult 0x80070002/0x80070003 = Win32-Fehler 2/3 (Datei/Pfad nicht gefunden).
 
 **Protokoll:** `C:\Windows\Temp\okula-windows-anpassen.log` (UTF-8, Zeitstempel, „ok“/„FEHLER“ je Baustein mit Kurzinfo,
 z. B. entfernte Apps; am Ende „Ende: N ok, M mit Fehler“).

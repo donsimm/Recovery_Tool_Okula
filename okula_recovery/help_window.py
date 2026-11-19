@@ -760,9 +760,13 @@ installiert, Windows lädt sie erst beim Klick oder später im Hintergrund. Daru
 •  <i>Startmenü: Werbe-Kacheln entfernen (Windows 11)</i> ersetzt die angehefteten Kacheln durch Edge, Explorer,
     Einstellungen, Rechner, Editor, Fotos, Paint, Snipping Tool und Terminal (fehlt eine davon, erscheint ihre
     Kachel erst nach der Installation). Wirkt bei der nächsten Anmeldung – für bestehende und neue Benutzer, auch
-    bei Windows Pro. Ab Windows 11 24H2 mit dem Update KB5062660 wird die Liste nur einmal gesetzt, danach lässt
-    sich wieder selbst anheften; bei älteren Windows 11 setzt Windows sie bei jeder Anmeldung neu. Windows 10:
-    ohne Wirkung.
+    bei Windows Pro. Ab Windows 11 24H2 (mit dem Update KB5062660) über die Gruppenrichtlinie „Configure Start
+    Pins“; die Liste liegt in <tt>C:\\ProgramData\\Okula\\StartPins.json</tt> und muss dort bleiben. Windows setzt
+    sie nur einmal, danach lässt sich wieder selbst anheften. Ältere Windows 11 nehmen die Liste nur über eine
+    Geräteverwaltung an – klappt das nicht, steht „Windows 11 vor 24H2: Startmenü nur mit Geräteverwaltung“ als
+    FEHLER im Protokoll. Windows 10: ohne Wirkung.
+•  <i>Widgets</i> entfernt die App und setzt zusätzlich die Richtlinie „Widgets zulassen“ auf aus – damit
+    verschwindet auch das Wetter aus der Taskleiste, selbst wenn Windows das Paket behält.
 •  <i>Später nachgeladene Apps nochmals entfernen (nach der Anmeldung)</i> legt eine geplante Aufgabe an: 30 min
     nach der ersten Anmeldung werden die gewählten Store-Apps ein zweites Mal entfernt, danach löscht sich die
     Aufgabe selbst (Protokoll wie unten, Abschnitt „Nachlauf“).
@@ -775,7 +779,10 @@ installiert, Windows lädt sie erst beim Klick oder später im Hintergrund. Daru
 das Skript löscht sich beim Start als Erstes. Im Protokoll, im Log des Auftrags und im Verlauf steht es nie.
 
 <b>Protokoll am Gerät:</b> <tt>C:\\Windows\\Temp\\okula-windows-anpassen.log</tt> – je Einstellung „ok“ oder
-„FEHLER“ mit Grund. Ein Fehler hält die übrigen Einstellungen nicht auf.
+„FEHLER“ mit Grund. Ein Fehler hält die übrigen Einstellungen nicht auf. Beim Entfernen von Apps stehen die
+entfernten Pakete immer in der Zeile, auch wenn es daneben einen Fehler gibt („…, … entfernt; Fehler: …“).
+Vorinstallierte Pakete, die Windows schon mit der App entfernt hat, gelten nicht als Fehler. Ein leerer Ordner
+des Startskripts, den Windows gerade verwendet, bleibt stehen (Hinweis, kein Fehler).
 
 <b>Gut zu wissen:</b>
 •  Das Startskript läuft genau einmal und entfernt sich danach vollständig. Eine vorhandene lokale

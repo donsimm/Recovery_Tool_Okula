@@ -57,9 +57,16 @@ PROTECTED_WINDOWS = (
 )
 PROTECTED = PROTECTED_ALWAYS + PROTECTED_WINDOWS          # im Skript $OkulaKeep
 
-# Startmenü Windows 11 (Ä-042): Richtlinie Start/ConfigureStartPins – Kacheln in dieser Reihenfolge; fehlt eine App,
+# Startmenü Windows 11 (Ä-042, B-017): Richtlinie ConfigureStartPins – Kacheln in dieser Reihenfolge; fehlt eine App,
 # zeigt Windows die Kachel erst, wenn sie installiert ist (Microsoft Learn, „Customize the Start layout“).
-# IDs Edge, Explorer, Einstellungen, Fotos, Paint, Terminal aus dem Beispiel von Microsoft Learn.
+# IDs Edge, Explorer, Einstellungen, Fotos, Paint, Terminal aus dem Beispiel von Microsoft Learn. Schreibweise
+# „packagedAppId“ wie in den JSON-Beispielen von Microsoft Learn und in der Ausgabe von Export-StartLayout (die
+# Tabellen dort schreiben „packagedAppID“).
+# Ab Windows 11 24H2 (Build 26100, KB5062660) als Gruppenrichtlinie laut StartMenu.admx: ConfigureStartPins = 1
+# (DWORD) und ConfigureStartPinsJSON = Pfad zur JSON-Datei (REG_EXPAND_SZ). Die Datei bleibt liegen (Nachlauf und
+# Software installieren löschen %ProgramData%\Okula nur, wenn der Ordner leer ist).
+START_PINS_FILE = "StartPins.json"                      # unter %ProgramData%\Okula, UTF-8 ohne BOM
+START_GPO_BUILD = 26100
 START_PINS = (
     ("Edge", {"desktopAppLink": "%ALLUSERSPROFILE%\\Microsoft\\Windows\\Start Menu\\Programs\\Microsoft Edge.lnk"}),
     ("Explorer", {"desktopAppLink": "%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\File Explorer.lnk"}),
@@ -75,8 +82,9 @@ START_PINS = (
 
 
 def start_pins_json() -> str:
-    """LayoutModification.json für ConfigureStartPins (eine Zeile). applyOnce: Windows 11 24H2 mit KB5062660 setzt die
-    Liste nur einmal, danach heften Benutzer selbst an; ältere Windows 11 ignorieren es (Liste bei jeder Anmeldung)."""
+    """LayoutModification.json für ConfigureStartPins (eine Zeile, nur ASCII). applyOnce: Windows 11 24H2 mit KB5062660
+    setzt die Liste nur einmal, danach heften Benutzer selbst an; ältere Windows 11 ignorieren es (Liste bei jeder
+    Anmeldung)."""
     return json.dumps({"applyOnce": True, "pinnedList": [pin for _n, pin in START_PINS]}, separators=(",", ":"))
 
 
@@ -159,7 +167,15 @@ OPTIONS: tuple[Option, ...] = (
     _app("apps_powerautomate", "Power Automate", "Microsoft.PowerAutomateDesktop"),
     _app("apps_devhome", "Dev Home", "Microsoft.Windows.DevHome"),
     _app("apps_copilot", "Copilot", "Microsoft.Copilot", "Microsoft.Windows.Ai.Copilot.Provider"),
-    _app("apps_widgets", "Widgets", "MicrosoftWindows.Client.WebExperience"),
+    # B-017: zusätzlich Richtlinie „Widgets zulassen“ = 0 (Policy CSP NewsAndInterests/AllowNewsAndInterests, Pro ab
+    # Windows 11 21H2) – Wetter und Widgets verschwinden aus der Taskleiste, auch wenn das Paket bleibt
+    Option("apps_widgets", "Apps", "Widgets", f"""
+Set-OkulaReg '{POL}\\Dsh' 'AllowNewsAndInterests' 0
+try {{ $r = {_apps("MicrosoftWindows.Client.WebExperience")} }}
+catch {{ throw ('Richtlinie „Widgets zulassen“ aus; ' + $_.Exception.Message) }}
+'Richtlinie „Widgets zulassen“ aus; ' + $r""", APPS_HEADING, ("MicrosoftWindows.Client.WebExperience",),
+           tooltip="Entfernt die App Widgets und setzt die Richtlinie „Widgets zulassen“ auf aus – damit "
+                   "verschwindet auch das Wetter aus der Taskleiste."),
     # nachgeladene Werbe-Apps (Platzhalter im Startmenü von Windows 11, später still installiert)
     _app("apps_ads", "Werbe-Apps (WhatsApp, LinkedIn, Spotify …)", "5319275A.WhatsAppDesktop",
          "7EE7776C.LinkedInforWindows", "AdobeSystemsIncorporated.Adobe*Express*", "SpotifyAB.SpotifyMusic",
@@ -325,9 +341,23 @@ if ([Environment]::OSVersion.Version.Build -lt 22000) {{
     return 'Windows 10 – ohne Wirkung (gilt nur für Windows 11)'
 }}
 $json = '{start_pins_json()}'
-$notes = @()
+if ([Environment]::OSVersion.Version.Build -ge {START_GPO_BUILD}) {{
+    # Windows 11 24H2: Gruppenrichtlinie „Configure Start Pins“ wie in StartMenu.admx – Schalter (DWORD 1) und Pfad
+    # zur JSON-Datei (REG_EXPAND_SZ); die Datei bleibt in %ProgramData%\\Okula liegen
+    $folder = Join-Path $env:ProgramData 'Okula'
+    New-Item -ItemType Directory -Path $folder -Force | Out-Null
+    $file = Join-Path $folder '{START_PINS_FILE}'
+    [IO.File]::WriteAllText($file, $json, (New-Object Text.UTF8Encoding $false))
+    $key = '{POL}\\Windows\\Explorer'
+    # bisheriger falscher Wert (Ä-042: JSON-Text als REG_SZ) wird ersetzt
+    Remove-ItemProperty -LiteralPath $key -Name 'ConfigureStartPins' -ErrorAction SilentlyContinue
+    Set-OkulaReg $key 'ConfigureStartPins' 1
+    Set-OkulaReg $key 'ConfigureStartPinsJSON' $file 'ExpandString'
+    return ('Gruppenrichtlinie ConfigureStartPins gesetzt (Datei {{0}}); wirkt bei der nächsten Anmeldung, auch ' +
+            'für bestehende Benutzer') -f $file
+}}
 try {{
-    # Policy CSP Start/ConfigureStartPins über die MDM-Bridge (WMI, als SYSTEM) – Pro ab Windows 11 21H2
+    # Windows 11 vor 24H2: nur Policy CSP Start/ConfigureStartPins über die MDM-Bridge (WMI, als SYSTEM)
     $ns = 'root\\cimv2\\mdm\\dmmap'
     $cls = 'MDM_Policy_Config01_Start02'
     $obj = Get-CimInstance -Namespace $ns -ClassName $cls `
@@ -339,22 +369,16 @@ try {{
         New-CimInstance -Namespace $ns -ClassName $cls -Property @{{ ParentID = './Vendor/MSFT/Policy/Config';
             InstanceID = 'Start'; ConfigureStartPins = $json }} -ErrorAction Stop | Out-Null
     }}
-    $notes += 'Richtlinie ConfigureStartPins gesetzt (Policy CSP)'
 }} catch {{
-    # Ersatz: Gruppenrichtlinie „Configure Start Pins“ (Windows 11 24H2 mit KB5062660)
-    if ([Environment]::OSVersion.Version.Build -lt 26100) {{
-        throw ('Policy CSP nicht gesetzt: {{0}}' -f $_.Exception.Message)
-    }}
-    Set-OkulaReg '{POL}\\Windows\\Explorer' 'ConfigureStartPins' $json 'String'
-    $notes += ('Gruppenrichtlinie ConfigureStartPins gesetzt (Policy CSP: {{0}})' -f $_.Exception.Message)
+    throw ('Windows 11 vor 24H2: Startmenü nur mit Geräteverwaltung (Policy CSP: {{0}})' -f $_.Exception.Message)
 }}
-$notes += 'wirkt bei der nächsten Anmeldung, auch für bestehende Benutzer'
-$notes -join '; '""",
+'Richtlinie ConfigureStartPins gesetzt (Policy CSP); wirkt bei der nächsten Anmeldung, auch für bestehende Benutzer'""",
            tooltip="Ersetzt die angehefteten Kacheln im Startmenü von Windows 11 (auch die Platzhalter für "
                    "WhatsApp, LinkedIn, Clipchamp …, die Windows erst beim Klick installiert) durch Edge, Explorer, "
                    "Einstellungen, Rechner, Editor, Fotos, Paint, Snipping Tool und Terminal. Ab Windows 11 24H2 "
-                   "(Update KB5062660) nur einmal – danach lässt sich wieder selbst anheften. Windows 10: ohne "
-                   "Wirkung."),
+                   "über die Gruppenrichtlinie (Liste in C:\\ProgramData\\Okula\\StartPins.json), nur einmal – "
+                   "danach lässt sich wieder selbst anheften. Ältere Windows 11 nur, wenn die Geräteverwaltung die "
+                   "Richtlinie annimmt (sonst Fehler im Protokoll). Windows 10: ohne Wirkung."),
     # Dienste – je Häkchen stoppen und Starttyp „Deaktiviert“
     Option("svc_search", "Dienste", "Windows Search", _services("WSearch"), SERVICES_HEADING),
     Option("svc_xbox", "Dienste", "Xbox-Dienste",
@@ -495,20 +519,30 @@ $secret = $null
 # Okula-Startskripte gleichzeitig aus, laufen sie beim selben Start nacheinander; erst das letzte (keine andere
 # okula-*.cmd mehr im Startup-Ordner) legt gpt.ini/scripts.ini von vorher zurück.
 RESTORE_START = r"""function Restore-OkulaStart {
-    # Weitere Okula-Startskripte noch offen (z. B. Software installieren): das letzte stellt den Stand her
+    # Weitere Okula-Startskripte noch offen (z. B. Software installieren): das letzte stellt den Stand her.
+    # Rückgabe: Hinweis fürs Protokoll (oder nichts). Fehler nur, wenn scripts.ini bzw. die Registrierung des
+    # Startskripts bleibt – lässt sich ein leerer, von Windows gerade verwendeter Ordner nicht löschen, ist das nur
+    # ein Hinweis (B-017).
+    $notes = @()
     $others = @(Get-ChildItem -LiteralPath $OkulaStartup -Filter 'okula-*.cmd' -Force -ErrorAction SilentlyContinue |
                 Where-Object { $_.BaseName -ne $OkulaName })
     if (-not $others) {
         # gpt.ini und scripts.ini: Stand von vorher (Version erhöht) bzw. löschen, wenn es sie vorher nicht gab
         foreach ($file in (Join-Path $OkulaGp 'Machine\Scripts\scripts.ini'), (Join-Path $OkulaGp 'gpt.ini')) {
             $saved = $file + '__AFTER__'
-            if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force }
-            if (Test-Path -LiteralPath $saved) { Move-Item -LiteralPath $saved -Destination $file -Force }
+            if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force -ErrorAction Stop }
+            if (Test-Path -LiteralPath $saved) { Move-Item -LiteralPath $saved -Destination $file -Force -ErrorAction Stop }
+        }
+        $ini = Join-Path $OkulaGp 'Machine\Scripts\scripts.ini'
+        if ((Test-Path -LiteralPath $ini) -and
+            ((Get-Content -LiteralPath $ini -Raw -ErrorAction SilentlyContinue) -like "*$OkulaName*")) {
+            throw ('scripts.ini nennt das Startskript noch: {0}' -f $ini)
         }
         foreach ($sub in 'Machine\Scripts\Startup', 'Machine\Scripts', 'Machine') {
             $folder = Join-Path $OkulaGp $sub
             if ((Test-Path -LiteralPath $folder) -and -not @(Get-ChildItem -LiteralPath $folder -Force)) {
-                Remove-Item -LiteralPath $folder -Force
+                try { Remove-Item -LiteralPath $folder -Force -ErrorAction Stop }
+                catch { $notes += ('leerer Ordner {0} bleibt (wird gerade verwendet, ohne Wirkung)' -f $sub) }
             }
         }
     }
@@ -524,6 +558,7 @@ RESTORE_START = r"""function Restore-OkulaStart {
             if (-not @(Get-ChildItem -LiteralPath $gpo.PSPath)) { Remove-Item -LiteralPath $gpo.PSPath -Recurse -Force }
         }
     }
+    if ($notes) { return ($notes -join '; ') }
 }"""
 
 HEADER = r"""# Okula Recovery Tool – Windows anpassen (I-039)
@@ -682,6 +717,28 @@ function Get-OkulaPackages([string]$Type) {
     return $script:OkulaPkgs[$Type]
 }
 
+function Test-OkulaNotFound($ErrorRecord) {
+    # 0x80070002 / 0x80070003 (Datei bzw. Pfad nicht gefunden): das Paket ist schon weg
+    $e = $ErrorRecord.Exception
+    while ($e) {
+        if ($e.HResult -eq -2147024894 -or $e.HResult -eq -2147024893) { return $true }
+        $e = $e.InnerException
+    }
+    return ([string]$ErrorRecord.Exception.Message -match '0x8007000[23]')
+}
+
+function Get-OkulaResult([string[]]$Removed, [string[]]$Errors, [string]$Suffix, [string]$None) {
+    # Protokollzeile: entfernte Pakete stehen immer drin, auch wenn es daneben echte Fehler gibt
+    $names = @($Removed | Where-Object { $_ } | Sort-Object -Unique)
+    $text = if ($names) { ($names -join ', ') + $Suffix } else { '' }
+    if ($Errors) {
+        if ($text) { throw ('{0}; Fehler: {1}' -f $text, ($Errors -join '; ')) }
+        throw ($Errors -join '; ')
+    }
+    if ($text) { return $text }
+    return $None
+}
+
 function Remove-OkulaApps([string[]]$Patterns, [switch]$Explicit) {
     # installierte Pakete (alle Benutzer) und vorinstallierte (sonst kommen sie bei neuen Konten wieder und ein
     # späteres Sysprep bricht ab); Frameworks, NonRemovable, Schutzliste und Treiber-Apps nie
@@ -697,6 +754,9 @@ function Remove-OkulaApps([string[]]$Patterns, [switch]$Explicit) {
                     Remove-AppxPackage -Package $p.PackageFullName -AllUsers -ErrorAction Stop
                     $script:OkulaGone[$p.Name] = $true
                     $removed += $p.Name
+                    # Windows 11 24H2: -AllUsers entfernt auch die Bereitstellung – Liste vor dem nächsten Schritt
+                    # neu lesen (B-017)
+                    $script:OkulaPkgs.Remove('Provisioned')
                 } catch {
                     $errors += '{0}: {1}' -f $p.Name, $_.Exception.Message
                 }
@@ -711,14 +771,17 @@ function Remove-OkulaApps([string[]]$Patterns, [switch]$Explicit) {
                 $script:OkulaGone[$p.PackageName] = $true
                 $removed += $p.DisplayName
             } catch {
-                $errors += '{0} (vorinstalliert): {1}' -f $p.DisplayName, $_.Exception.Message
+                if (Test-OkulaNotFound $_) {
+                    # schon entfernt (z. B. durch Remove-AppxPackage -AllUsers) – kein Fehler
+                    $script:OkulaGone[$p.PackageName] = $true
+                    $removed += $p.DisplayName
+                } else {
+                    $errors += '{0} (vorinstalliert): {1}' -f $p.DisplayName, $_.Exception.Message
+                }
             }
         }
     }
-    if ($errors) { throw ($errors -join '; ') }
-    $names = @($removed | Sort-Object -Unique)
-    if ($names) { return ($names -join ', ') + ' entfernt' }
-    return 'nicht vorhanden'
+    return (Get-OkulaResult $removed $errors ' entfernt' 'nicht vorhanden')
 }
 
 function Remove-OkulaCapabilities([string[]]$Patterns) {
@@ -738,13 +801,9 @@ function Remove-OkulaCapabilities([string[]]$Patterns) {
             }
         }
     }
-    if ($errors) { throw ($errors -join '; ') }
-    if ($removed) {
-        $text = 'Windows-Funktion ' + (($removed | Sort-Object -Unique) -join ', ') + ' entfernt'
-        if ($restart) { $text += ' (wirkt nach einem Neustart)' }
-        return $text
-    }
-    return 'Windows-Funktion nicht vorhanden'
+    $suffix = if ($restart) { ' entfernt (wirkt nach einem Neustart)' } else { ' entfernt' }
+    $text = Get-OkulaResult $removed $errors $suffix 'nicht vorhanden'
+    return 'Windows-Funktion ' + $text
 }
 """
 
@@ -769,6 +828,7 @@ try {
 LATER_FOOTER = r"""} finally {
     Write-OkulaLog ('----- Nachlauf Ende: {0} ok, {1} mit Fehler -----' -f $script:OkulaOk, $script:OkulaFailed)
     if ($PSCommandPath) { Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue }
+    # nur einen leeren Ordner löschen – StartPins.json (Startmenü-Richtlinie, B-017) bleibt
     $folder = Join-Path $env:ProgramData 'Okula'
     if ((Test-Path -LiteralPath $folder) -and -not @(Get-ChildItem -LiteralPath $folder -Force)) {
         Remove-Item -LiteralPath $folder -Force -ErrorAction SilentlyContinue

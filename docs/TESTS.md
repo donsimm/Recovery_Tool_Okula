@@ -601,3 +601,25 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (**kein** neuer Agent-
       Windows-Sicherheit funktionieren; nach einem weiteren Neustart nichts zurück
 - [ ] Win10-VM *Editor*, *Paint*, *Internet Explorer 11* → klassischer Editor bzw. Paint entfernt (Windows-Funktion),
       IE11 weg (`Get-WindowsCapability -Online -Name Browser.InternetExplorer*` → NotPresent)
+
+**Korrektur B-017 (19.11.) – VM-Win11-test, Windows 11 Pro 24H2 (Build 26100.x)**
+Nach `git pull && sudo ./install.sh` das Tool neu starten (**kein** neuer Agent-Stick). Die VM kann die schon einmal
+angepasste sein (der falsche Wert von Ä-042 wird ersetzt).
+- [ ] Vorlage **„Clean“** (Widgets und Startmenü an) → senden → Neustart, anmelden → **Startmenü** zeigt nur die festen
+      Kacheln (Edge, Explorer, Einstellungen und die vorhandenen Rechner, Editor, Fotos, Paint, Snipping Tool, Terminal) –
+      kein WhatsApp, Adobe Express, LinkedIn
+- [ ] Registrierung `HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer`: `ConfigureStartPins` = 1 (REG_DWORD),
+      `ConfigureStartPinsJSON` = `C:\ProgramData\Okula\StartPins.json` (REG_EXPAND_SZ); Datei vorhanden, lesbares JSON,
+      bleibt auch nach dem Nachlauf (nach 1 h) erhalten
+- [ ] Protokoll „ok Startmenü: Werbe-Kacheln entfernen (Windows 11) (Gruppenrichtlinie ConfigureStartPins gesetzt
+      (Datei C:\ProgramData\Okula\StartPins.json) …)“
+- [ ] **Keine Wetteranzeige** („11°C …“) und kein Widgets-Knopf in der Taskleiste; `HKLM\SOFTWARE\Policies\Microsoft\Dsh`
+      `AllowNewsAndInterests` = 0; Protokoll „ok Store-Apps entfernen: Widgets (Richtlinie „Widgets zulassen“ aus; …)“
+- [ ] Protokoll **ohne falsche FEHLER**: keine Zeile „(vorinstalliert): Das System kann die angegebene Datei … nicht
+      finden“; jede App-Zeile nennt die entfernten Pakete („… entfernt“) bzw. „nicht vorhanden“; gibt es doch einen
+      FEHLER, steht davor „…, … entfernt; Fehler: …“ – Text notieren
+- [ ] Erste Zeile „Startskript und Gruppenrichtlinie aufräumen“ ist **ok** (ggf. mit Hinweis „leerer Ordner
+      Machine\Scripts\Startup bleibt …“), kein FEHLER „wird gerade verwendet“; `C:\Windows\System32\GroupPolicy\Machine\Scripts\scripts.ini`
+      weg bzw. ohne `okula-windows-anpassen`
+- [ ] Selbst eine App anheften, abmelden, anmelden → bleibt angeheftet (`applyOnce`)
+- [ ] Zum Vergleich (Rückmeldung an Okuli): Ist der Bereich **„Empfohlen“** („Erste Schritte“ u. a.) noch da?

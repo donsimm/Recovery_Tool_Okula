@@ -45,7 +45,7 @@ EXPECTED = {
     "apps_powerautomate": ["'Microsoft.PowerAutomateDesktop'"],
     "apps_devhome": ["'Microsoft.Windows.DevHome'"],
     "apps_copilot": ["'Microsoft.Copilot'", "'Microsoft.Windows.Ai.Copilot.Provider'"],
-    "apps_widgets": ["'MicrosoftWindows.Client.WebExperience'"],
+    "apps_widgets": ["'MicrosoftWindows.Client.WebExperience'", "Microsoft\\Dsh' 'AllowNewsAndInterests' 0"],
     "apps_ads": ["'5319275A.WhatsAppDesktop'", "'7EE7776C.LinkedInforWindows'", "'SpotifyAB.SpotifyMusic'",
                  "'BytedancePte.Ltd.TikTok'", "'king.com.*'"],
     # Ergänzung Ä-042: Windows-Programme (ausdrücklich, -Explicit)
@@ -67,7 +67,8 @@ EXPECTED = {
     "later_cleanup": ["Register-ScheduledTask -TaskName 'Okula Windows anpassen Nachlauf'", "-AtLogOn",
                       "$trigger.Delay = 'PT30M'", "FromBase64String"],
     "start_clean": ["MDM_Policy_Config01_Start02", "ConfigureStartPins = $json", "Build -lt 22000",
-                    "Windows 10 – ohne Wirkung", "'ConfigureStartPins' $json 'String'"],
+                    "Windows 10 – ohne Wirkung", "Set-OkulaReg $key 'ConfigureStartPins' 1",
+                    "Set-OkulaReg $key 'ConfigureStartPinsJSON' $file 'ExpandString'"],
     "no_reinstall": ["CloudContent' 'DisableWindowsConsumerFeatures' 1", "'SilentInstalledAppsEnabled'",
                      "'PreInstalledAppsEnabled'", "'OemPreInstalledAppsEnabled'", "Invoke-OkulaAllUsers",
                      "nur Enterprise/Education"],
@@ -225,12 +226,44 @@ class OptionsTemplatesTest(unittest.TestCase):
             self.assertNotIn(bad.lower(), wintweaks.start_pins_json().lower())
         self.assertNotIn("'", wintweaks.start_pins_json())                       # passt in '…' von PowerShell
         self.assertNotIn("\n", wintweaks.start_pins_json())
+        self.assertTrue(wintweaks.start_pins_json().isascii())                   # Datei UTF-8 ohne BOM
         body = steps(wintweaks.build_script({"start_clean"}))["Startmenü: Werbe-Kacheln entfernen (Windows 11)"]
         self.assertIn(f"$json = '{wintweaks.start_pins_json()}'", body)
-        # Windows 10 zuerst abgefangen, Ersatz über die Gruppenrichtlinie nur ab 24H2 (Build 26100)
-        self.assertLess(body.index("Build -lt 22000"), body.index("MDM_Policy_Config01_Start02"))
-        self.assertIn("Build -lt 26100", body)
-        self.assertIn("SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer' 'ConfigureStartPins'", body)
+        # Windows 10 zuerst abgefangen, dann ab 24H2 (Build 26100) die Gruppenrichtlinie, sonst die MDM-Bridge
+        self.assertLess(body.index("Build -lt 22000"), body.index("Build -ge 26100"))
+        self.assertLess(body.index("Build -ge 26100"), body.index("MDM_Policy_Config01_Start02"))
+
+    def test_start_pins_policy_like_admx(self):
+        """B-017: wie StartMenu.admx – ConfigureStartPins = 1 (DWORD), ConfigureStartPinsJSON = Pfad (REG_EXPAND_SZ)."""
+        body = steps(wintweaks.build_script({"start_clean"}))["Startmenü: Werbe-Kacheln entfernen (Windows 11)"]
+        gpo = body[body.index("Build -ge 26100"):body.index("MDM_Policy_Config01_Start02")]
+        self.assertIn("$key = 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer'", gpo)
+        self.assertIn("$folder = Join-Path $env:ProgramData 'Okula'", gpo)
+        self.assertIn(f"$file = Join-Path $folder '{wintweaks.START_PINS_FILE}'", gpo)
+        self.assertEqual(wintweaks.START_PINS_FILE, "StartPins.json")
+        self.assertIn("[IO.File]::WriteAllText($file, $json, (New-Object Text.UTF8Encoding $false))", gpo)  # ohne BOM
+        # alter REG_SZ-Wert (JSON-Text) zuerst weg, dann DWORD 1 und Pfad
+        remove = gpo.index("Remove-ItemProperty -LiteralPath $key -Name 'ConfigureStartPins'")
+        self.assertLess(remove, gpo.index("Set-OkulaReg $key 'ConfigureStartPins' 1"))
+        self.assertIn("Set-OkulaReg $key 'ConfigureStartPinsJSON' $file 'ExpandString'", gpo)
+        self.assertNotIn("$json 'String'", body)                                   # kein JSON-Text mehr
+        self.assertNotIn("'ConfigureStartPins' $json", body)
+        self.assertIn("return (", gpo)                                             # MDM-Bridge nur vor 24H2
+        # vor 24H2: MDM-Bridge, sonst ehrlich als Fehler
+        mdm = body[body.index("MDM_Policy_Config01_Start02"):]
+        self.assertIn("throw ('Windows 11 vor 24H2: Startmenü nur mit Geräteverwaltung", mdm)
+        # Datei bleibt: Nachlauf löscht den Ordner nur, wenn er leer ist
+        later = wintweaks.build_later_script({"apps_ads"})
+        self.assertIn("-and -not @(Get-ChildItem -LiteralPath $folder -Force)", later)
+
+    def test_widgets_policy(self):
+        """B-017: Richtlinie „Widgets zulassen“ aus (Policy CSP NewsAndInterests), auch wenn das Paket bleibt."""
+        body = steps(wintweaks.build_script({"apps_widgets"}))["Store-Apps entfernen: Widgets"]
+        policy = body.index("Set-OkulaReg 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Dsh' 'AllowNewsAndInterests' 0")
+        self.assertLess(policy, body.index("Remove-OkulaApps @('MicrosoftWindows.Client.WebExperience')"))
+        self.assertIn("catch { throw ('Richtlinie „Widgets zulassen“ aus; ' + $_.Exception.Message) }", body)
+        self.assertEqual(wintweaks.BY_KEY["apps_widgets"].patterns, ("MicrosoftWindows.Client.WebExperience",))
+        self.assertIn("AllowNewsAndInterests", wintweaks.build_later_script({"apps_widgets"}))
 
     def test_template_label_changed(self):
         player = set(wintweaks.template_keys("Player"))
@@ -308,6 +341,46 @@ class ScriptTest(unittest.TestCase):
         self.assertIn("[string]$_.State -eq 'Installed'", self.script)
         self.assertIn("Remove-AppxPackage -Package $p.PackageFullName -AllUsers", self.script)
         self.assertIn("Remove-AppxProvisionedPackage -Online", self.script)
+
+    def test_provisioned_already_gone_is_no_error(self):
+        """B-017: nach Remove-AppxPackage -AllUsers die Bereitstellungsliste neu lesen; 0x80070002/0x80070003 beim
+        Entfernen der Bereitstellung = schon entfernt; entfernte Pakete stehen immer im Protokoll."""
+        s = self.script
+        fn = s[s.index("function Remove-OkulaApps"):s.index("function Remove-OkulaCapabilities")]
+        installed = fn.index("Remove-AppxPackage -Package $p.PackageFullName -AllUsers")
+        reread = fn.index("$script:OkulaPkgs.Remove('Provisioned')")
+        self.assertLess(installed, reread)
+        self.assertLess(reread, fn.index("Get-OkulaPackages 'Provisioned'"))
+        catch = fn[fn.index("Remove-AppxProvisionedPackage"):]
+        self.assertLess(catch.index("if (Test-OkulaNotFound $_)"), catch.index("(vorinstalliert)"))
+        self.assertIn("return (Get-OkulaResult $removed $errors ' entfernt' 'nicht vorhanden')", fn)
+        self.assertNotIn("if ($errors) { throw", fn)                              # nicht mehr ohne die Namen
+        helper = s[s.index("function Test-OkulaNotFound"):s.index("function Get-OkulaResult")]
+        self.assertIn("-2147024894", helper)                                       # 0x80070002
+        self.assertIn("-2147024893", helper)                                       # 0x80070003
+        self.assertEqual(0x80070002 - (1 << 32), -2147024894)
+        self.assertEqual(0x80070003 - (1 << 32), -2147024893)
+        self.assertIn("'0x8007000[23]'", helper)
+        result = s[s.index("function Get-OkulaResult"):s.index("function Remove-OkulaApps")]
+        self.assertIn("throw ('{0}; Fehler: {1}' -f $text, ($Errors -join '; '))", result)
+        # gleiche Funktionen im Nachlauf
+        later = wintweaks.build_later_script({"apps_teams"})
+        for needle in ("function Test-OkulaNotFound", "$script:OkulaPkgs.Remove('Provisioned')",
+                       "if (Test-OkulaNotFound $_)", "function Get-OkulaResult"):
+            self.assertIn(needle, later)
+        caps = s[s.index("function Remove-OkulaCapabilities"):]
+        self.assertIn("Get-OkulaResult $removed $errors $suffix 'nicht vorhanden'", caps)
+
+    def test_cleanup_folder_in_use_is_no_error(self):
+        """B-017: leerer Ordner Scripts\\Startup „wird verwendet“ → Hinweis; Fehler nur, wenn scripts.ini bleibt."""
+        fn = wintweaks.RESTORE_START
+        self.assertIn("try { Remove-Item -LiteralPath $folder -Force -ErrorAction Stop }", fn)
+        self.assertIn("catch { $notes += ('leerer Ordner {0} bleibt (wird gerade verwendet, ohne Wirkung)'", fn)
+        self.assertIn("throw ('scripts.ini nennt das Startskript noch: {0}' -f $ini)", fn)
+        self.assertLess(fn.index("scripts.ini nennt"), fn.index("leerer Ordner"))
+        # Registrierung des Startskripts wird auch dann noch aufgeräumt
+        self.assertLess(fn.index("leerer Ordner"), fn.index("State\\Machine\\Scripts\\Startup"))
+        self.assertTrue(fn.rstrip().endswith("if ($notes) { return ($notes -join '; ') }\n}"))
 
     def test_password_never_in_log_or_plain(self):
         self.assertNotIn(PASSWORD, self.script)
