@@ -235,6 +235,63 @@ def set_netfirst(on: bool, saved: list[str] | None = None) -> dict:
     return result
 
 
+# ---------- Ä-045: Startziel für den nächsten Start (Neustart in Windows / in den Agent) ----------
+# BootNext gilt laut UEFI-Spezifikation (Abschnitt 3.1.2) einmal und vor BootOrder; BootCurrent ist der Eintrag, von
+# dem das laufende System (hier der Agent) gestartet wurde. Windows legt mit bcdboot einen Firmware-Eintrag
+# „Windows Boot Manager“ auf \EFI\Microsoft\Boot\bootmgfw.efi an (Microsoft Learn, BCDBoot Command-Line Options).
+
+WINDOWS_LABEL = re.compile(r"Windows Boot Manager", re.I)
+WINDOWS_PATH = re.compile(r"\\EFI\\Microsoft\\Boot\\bootmgfw\.efi", re.I)
+BOOT_TARGETS = ("windows", "agent")
+
+
+def windows_entry(info: dict) -> str:
+    """Firmware-Eintrag des Windows-Boot-Managers, sonst "". Mehrere: aktiv vor inaktiv, dann wie in BootOrder."""
+    order = info.get("order") or []
+    candidates = []
+    for num, (active, text) in info["entries"].items():
+        if WINDOWS_PATH.search(text) or WINDOWS_LABEL.search(text.split("\t")[0]):
+            pos = order.index(num) if num in order else len(order)
+            candidates.append((0 if active else 1, pos, num))
+    return min(candidates)[2] if candidates else ""
+
+
+def _label(info: dict, num: str) -> str:
+    _active, text = info["entries"].get(num, (False, ""))
+    return text.split("\t")[0].split("  ")[0][:60] or f"Boot{num}"
+
+
+def boot_next_choice(info: dict, target: str) -> dict:
+    """Welcher Eintrag für „windows“ bzw. „agent“ (ohne etwas zu ändern).
+    Ergebnis: {set: Nummer oder "", label, via (disk | network | stick), message (Grund, falls nichts passt)}."""
+    if target not in BOOT_TARGETS:
+        raise ImagingError(f"Unbekanntes Startziel: {target}")
+    win = windows_entry(info)
+    if target == "windows":
+        if not win:
+            return {"set": "", "message": "Kein Starteintrag „Windows Boot Manager“ in der Firmware"}
+        return {"set": win, "label": _label(info, win), "via": "disk"}
+    current = (info.get("current") or "").upper()
+    net = network_entry(info)
+    if current and current in info["entries"] and current != win:
+        return {"set": current, "label": _label(info, current), "via": "network" if current == net else "stick"}
+    if net:            # Eintrag des Sticks gibt es nicht mehr (manche Firmware legt ihn nur vorübergehend an)
+        return {"set": net, "label": _label(info, net), "via": "network"}
+    return {"set": "", "message": "Startquelle des Agents unbekannt (kein BootCurrent, kein Netzwerk-Eintrag)"}
+
+
+def set_boot_next(target: str) -> dict:
+    """BootNext auf Windows bzw. auf die Startquelle des Agents setzen. BIOS-Modus: nicht steuerbar."""
+    if not Path("/sys/firmware/efi").is_dir():
+        return {"set": "", "uefi": False,
+                "message": "Gerät startet im BIOS-Modus – das Startziel lässt sich nur im Startmenü der Firmware wählen"}
+    info = parse_boot(efibootmgr("-v"))
+    choice = boot_next_choice(info, target)
+    if choice["set"]:
+        efibootmgr("--bootnext", choice["set"])
+    return {"uefi": True, **choice}
+
+
 def set_bootnext(disk: str, part: int, label: str) -> str:
     """Starteintrag für die Setup-Partition anlegen und nur für den nächsten Start wählen."""
     before = set(re.findall(r"^Boot([0-9A-Fa-f]{4})", efibootmgr(), re.M))

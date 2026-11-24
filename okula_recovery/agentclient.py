@@ -123,6 +123,20 @@ def bootorder(ip: str, key: bytes, action: str = "status", saved: list[str] | No
     return reply
 
 
+def bootnext(ip: str, key: bytes, target: str, port: int = wire.PORT) -> dict:
+    """Ä-045: Startziel für den nächsten Start („windows“ oder „agent“) über UEFI-BootNext.
+    Antwort {set, label, via, uefi, message}; set = "" heisst: nicht steuerbar (Grund in message)."""
+    with _connect(ip, key, port) as sock:
+        wire.send_json(sock, {"cmd": "bootnext", "target": target})
+        reply = wire.recv_json(sock)
+    if reply.get("type") != "bootnext":
+        message = reply.get("message", "Agent hat abgelehnt")
+        if "Unbekannter Befehl" in message:
+            message = "Agent zu alt – Agent-Stick bzw. Netzwerkstart mit dem aktuellen Tool neu erstellen"
+        raise AgentError(message)
+    return reply
+
+
 def _bios_call(ip: str, key: bytes, port: int, request: dict, kind: str) -> dict:
     with _connect(ip, key, port) as sock:
         wire.send_json(sock, request)

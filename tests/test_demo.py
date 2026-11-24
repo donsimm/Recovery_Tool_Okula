@@ -104,6 +104,15 @@ class DemoAgentTest(unittest.TestCase):
         st = agentclient.bootorder("127.0.0.1", self.key, "normal", st["previous"], self.port)
         self.assertFalse(st["netfirst"])
 
+    def test_bootnext(self):
+        """Ä-045: Startziel für den nächsten Start über das echte Protokoll."""
+        res = agentclient.bootnext("127.0.0.1", self.key, "windows", self.port)
+        self.assertEqual((res["set"], res["label"], res["via"]), ("0001", "Windows Boot Manager", "disk"))
+        res = agentclient.bootnext("127.0.0.1", self.key, "agent", self.port)
+        self.assertEqual((res["set"], res["via"]), ("0002", "stick"))
+        with self.assertRaisesRegex(agentclient.AgentError, "Unbekanntes Startziel"):
+            agentclient.bootnext("127.0.0.1", self.key, "bios", self.port)
+
     def test_zz_fail_flag_and_reboot(self):
         self.flag.touch()
         with self.assertRaisesRegex(agentclient.AgentError, "Demo: simulierter Fehler"):

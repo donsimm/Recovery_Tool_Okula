@@ -387,6 +387,13 @@ def set_netfirst(on: bool, saved: list[str] | None = None) -> dict:
     return {**boot_status(), "previous": previous}
 
 
+def set_boot_next(target: str) -> dict:
+    """Ä-045: wie am echten Gerät – Windows-Boot-Manager bzw. der Stick, von dem der Demo-Agent „läuft“."""
+    entries = {n: (True, label) for n, label in LABELS.items()}
+    return {"uefi": True, **wininstall.boot_next_choice({"current": "0002", "order": list(BOOT["order"]),
+                                                         "entries": entries}, target)}
+
+
 # ---------- BIOS (I-032): simuliertes HP-BIOS ----------
 
 def _enum(name: str, value: str, possible: tuple[str, ...]) -> dict:
@@ -493,6 +500,7 @@ def install_fakes() -> None:
     filebackup.backup, filebackup.restore_files = backup, restore_files
     wininstall.install, wininstall.bootprep = install, bootprep
     wininstall.boot_status, wininstall.set_netfirst = boot_status, set_netfirst
+    wininstall.set_boot_next = set_boot_next
     deploy.customize, deploy.deliver, deploy.tweak, deploy.software = customize, deliver, tweak, software
     deploy.open_keyboards = lambda pattern="": []
     biosread.read, biosread.write = bios_read, bios_write

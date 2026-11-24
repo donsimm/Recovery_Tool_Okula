@@ -101,7 +101,8 @@ def scrolled(child: Gtk.Widget) -> Gtk.ScrolledWindow:
     return sw
 
 
-def confirm(parent: Gtk.Window, title: str, text: str, ok_label: str = "Löschen", red: bool = False) -> bool:
+def confirm(parent: Gtk.Window, title: str, text: str, ok_label: str = "Löschen", red: bool = False,
+            cancel_label: str = "Abbrechen") -> bool:
     """Rückfrage mit rotem Knopf, Abbrechen als Standard. red: Text rot (Zusammenfassung vor dem Löschen)."""
     dlg = Gtk.MessageDialog(transient_for=parent, modal=True, message_type=Gtk.MessageType.WARNING,
                             buttons=Gtk.ButtonsType.NONE, text=title)
@@ -109,7 +110,7 @@ def confirm(parent: Gtk.Window, title: str, text: str, ok_label: str = "Löschen
         dlg.format_secondary_markup(f'<span foreground="#c62828">{GLib.markup_escape_text(text)}</span>')
     else:
         dlg.format_secondary_text(text)
-    dlg.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
+    dlg.add_button(cancel_label, Gtk.ResponseType.CANCEL)
     btn = dlg.add_button(ok_label, Gtk.ResponseType.OK)
     btn.get_style_context().add_class("destructive-action")
     dlg.set_default_response(Gtk.ResponseType.CANCEL)
@@ -173,16 +174,30 @@ def open_url(parent: Gtk.Window, url: str) -> None:
         subprocess.Popen(["xdg-open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-POWER_ACTIONS = (("reboot", "system-reboot-symbolic", "Neu starten"),
+# Ä-045: zwei eindeutige Neustart-Knöpfe (mit Beschriftung) statt eines Symbols „Neu starten“
+POWER_ACTIONS = (("reboot-windows", "system-reboot-symbolic", "Neustart in Windows"),
+                 ("reboot-agent", "system-reboot-symbolic", "Neustart in den Agent"),
                  ("poweroff", "system-shutdown-symbolic", "Herunterfahren"))
 
 
+def power_tip(action: str) -> str:
+    from okula_recovery import neustart
+    if action == "poweroff":
+        return "Herunterfahren (mit Rückfrage)"
+    return f"{neustart.TIPS[action.split('-', 1)[1]]} (mit Rückfrage)"
+
+
 def power_buttons(handler, sensitive: bool = False) -> dict[str, Gtk.Button]:
-    """Symbolknöpfe „Neu starten“ und „Herunterfahren“ (Hauptfenster und Gerätefenster); handler(action)."""
+    """Knöpfe „Neustart in Windows“, „Neustart in den Agent“ und Symbol „Herunterfahren“ (Hauptfenster und
+    Gerätefenster); handler(action) mit action reboot-windows | reboot-agent | poweroff."""
     out = {}
-    for action, icon, tip in POWER_ACTIONS:
-        b = Gtk.Button.new_from_icon_name(icon, Gtk.IconSize.BUTTON)
-        b.set_tooltip_text(f"{tip} (Gerät mit Agent, mit Rückfrage)")
+    for action, icon, label in POWER_ACTIONS:
+        if action == "poweroff":
+            b = Gtk.Button.new_from_icon_name(icon, Gtk.IconSize.BUTTON)
+        else:
+            b = Gtk.Button(label=label, image=Gtk.Image.new_from_icon_name(icon, Gtk.IconSize.BUTTON),
+                           always_show_image=True)
+        b.set_tooltip_text(power_tip(action))
         b.set_sensitive(sensitive)
         b.connect("clicked", lambda _b, a=action: handler(a))
         out[action] = b

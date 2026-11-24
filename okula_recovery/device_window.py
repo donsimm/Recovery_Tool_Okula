@@ -125,9 +125,9 @@ class DeviceWindow(Gtk.Window):
                                                   "beim nächsten Start still")
         for key in ("image", "restore", "install", "backup", "send", "tweak", "software", "inventory"):
             actions.pack_start(self.buttons[key], False, False, 0)
-        # Neu starten / Herunterfahren als Symbole wie im Hauptfenster (rechts, abgesetzt von den Aufträgen)
+        # Neustart in Windows / in den Agent und Herunterfahren wie im Hauptfenster (rechts, abgesetzt; Ä-045)
         power = power_buttons(lambda action: main.power(self.dev, action), sensitive=True)
-        self.buttons.update(power)
+        self.power_buttons = power
         for b in reversed(power.values()):
             actions.pack_end(b, False, False, 0)
         root.pack_start(actions, False, False, 0)
@@ -148,7 +148,7 @@ class DeviceWindow(Gtk.Window):
             self._guest_timer = GLib.timeout_add_seconds(GUEST_PING_EVERY, self._guest_tick)
             self.connect("destroy", lambda *_a: self._guest_stop())
             for entry in main.vm_actions(dev):
-                if entry is None or entry[0] in ("shutdown", "reboot"):   # Symbole oben rechts
+                if entry is None or entry[0] in ("shutdown", "reboot-windows", "reboot-agent"):   # Knöpfe oben rechts
                     continue
                 key, label = entry[0], entry[1]
                 b = Gtk.Button(label=label)
@@ -413,10 +413,8 @@ class DeviceWindow(Gtk.Window):
                     button.set_tooltip_text(why or tip)
             if self.snapshot_tab is not None:
                 self.snapshot_tab.refresh_buttons()
-            stop = self.main.vm_why(dev, "stop")
-            for action in ("poweroff", "reboot"):       # Symbole: mit Agent über den Agent, sonst libvirt
-                if action in self.buttons:
-                    self.buttons[action].set_sensitive(online or not stop)
+        # Ä-045: Neustart-Knöpfe und Herunterfahren nur, wenn sie gehen – sonst ausgegraut mit Grund
+        self.main.update_power_buttons(self.power_buttons, dev)
 
     # ---------- Gastagent (I-041) ----------
 

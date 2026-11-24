@@ -244,8 +244,8 @@ Einsortieren und umbenennen: Kapitel <i>Geräte verwalten</i>.
 Doppelklick auf ein Gerät öffnet sein Fenster:
 •  Oben die Knöpfe: Disk-Image erstellen, Image zurückspielen, OS installieren, Backup erstellen,
     Ordner senden, Windows anpassen (Kapitel <i>Windows anpassen</i>), Software installieren (Kapitel
-    <i>Software installieren</i>), Inventar neu einlesen; rechts die Symbole <i>Neu starten</i> (Pfeil im Ein/Aus-Zeichen)
-    und <i>Herunterfahren</i> (Ein/Aus-Zeichen).
+    <i>Software installieren</i>), Inventar neu einlesen; rechts die Knöpfe <i>Neustart in Windows</i> und
+    <i>Neustart in den Agent</i> sowie das Symbol <i>Herunterfahren</i> (Ein/Aus-Zeichen).
 •  Oben rechts <i>VM mit dieser Hardware erstellen …</i>: virtuelle Maschine mit der Hardware des Geräts
     (Kapitel <i>Virtuelle Maschinen</i>, Abschnitt „Digitaler Zwilling“).
 •  <i>Aufträge</i>: was gerade läuft, mit Fortschritt und Log.
@@ -335,9 +335,18 @@ Die Aufträge für das gewählte Gerät stehen zusätzlich im Menü <i>Tools</i>
 •  <i>Netzwerkstart → Einschalten</i> bzw. <i>Einschalten und Agent starten</i>: Gerät aus der Ferne
     einschalten (Wake-on-LAN, wie im Reiter <i>Netzwerk</i>). Ausgegraut, wenn es nicht geht – der Grund
     steht im Tooltip (z. B. schon verbunden, keine Kabel-Netzwerkkarte, „Netzwerkstart zuerst“ fehlt).
-•  <i>Neu starten</i> und <i>Herunterfahren</i>: Symbole rechts unter der Geräteliste und im Gerätefenster
-    (Name als Tooltip), mit Rückfrage; nur wenn das Gerät verbunden ist und kein Auftrag läuft.
-    Bei virtuellen Maschinen auch ohne Agent (Kapitel <i>Virtuelle Maschinen</i>).
+•  <i>Neustart in Windows</i> und <i>Neustart in den Agent</i>: Knöpfe rechts unter der Geräteliste, im
+    Gerätefenster und im Rechtsklick-Menü, mit Rückfrage; nur wenn das Gerät verbunden ist und kein Auftrag
+    läuft. Ausgegraut, wenn es nicht geht – der Grund steht im Tooltip.
+    <i>Neustart in Windows</i> startet von der Disk; abgelegte Aufträge (<i>Windows anpassen</i>,
+    <i>Software installieren</i>) laufen dort. <i>Neustart in den Agent</i> startet wieder den Agent
+    (Netzwerkstart bzw. Agent-Stick). Bei UEFI-Geräten legt der Agent das Ziel einmalig fest (BootNext auf den
+    Windows Boot Manager bzw. auf den Stick oder den Netzwerkstart); beim Netzwerkstart wird zusätzlich der Agent
+    angefordert bzw. abbestellt. Geht das nicht (BIOS-Modus, alter Agent-Stick, kein Windows-Starteintrag), nennt
+    eine Rückfrage den Grund und was zu tun ist – z. B. „Stick abziehen, sobald der Bildschirm dunkel wird – dann
+    startet Windows“. Virtuelle Maschinen: auch ohne Agent, die Startreihenfolge stellt das Tool je Knopf ein
+    (Kapitel <i>Virtuelle Maschinen</i>).
+•  <i>Herunterfahren</i>: Symbol rechts neben den Neustart-Knöpfen, mit Rückfrage.
 •  <i>Inventar exportieren …</i>: Liste zu diesem Gerät (Kapitel <i>Inventar, Garantie, Windows 11</i>).
 
 <b>Ordner</b>
@@ -551,8 +560,12 @@ Die Disk ist eine Datei auf der SSD des Servers und wächst mit dem belegten Pla
     innert weniger Sekunden einen Tastendruck („Press any key to boot from CD“).
 •  <i>Bildschirm</i>: zeigt den Bildschirm der VM in einem eigenen Fenster; es wartet, bis die VM läuft.
     Nochmals klicken öffnet das Fenster neu. Maus und Tastatur gehen in die VM, Ctrl+Alt gibt sie wieder frei.
-•  <i>Herunterfahren</i> und <i>Neu starten</i>: mit Agent über den Agent, sonst bekommt das Betriebssystem
-    in der VM das Signal wie beim kurzen Druck auf den Einschaltknopf.
+•  <i>Herunterfahren</i>: mit Agent über den Agent, sonst bekommt das Betriebssystem in der VM das Signal wie
+    beim kurzen Druck auf den Einschaltknopf.
+•  <i>Neustart in Windows</i>: stellt die VM auf Disk zuerst (Agent abbestellt) und startet neu – mit Agent über
+    den Agent, sonst über das Signal an das Betriebssystem.
+•  <i>Neustart in den Agent</i>: stellt die VM auf Netzwerk zuerst, fordert den Agent an und startet neu. Dafür
+    muss der Netzwerkstart eingeschaltet sein, sonst ist der Knopf ausgegraut.
 •  <i>Ausschalten …</i>: hart ausschalten wie Stecker ziehen, mit Rückfrage.
 •  <i>Hardware ändern …</i> (nur ausgeschaltet): Arbeitsspeicher, Kerne, Disk vergrössern (nie verkleinern),
     Netzwerkkarte, <i>Gastagent (nur Test-VMs)</i> (Abschnitt unten). Firmware und Disk-Anschluss nur mit Warnung – ein installiertes System startet danach
@@ -564,7 +577,8 @@ Die Disk ist eine Datei auf der SSD des Servers und wächst mit dem belegten Pla
 In der Geräteliste steht der Zustand: <i>aus</i>, <i>läuft</i> oder <i>läuft – Agent verbunden</i>
 (alle 5 Sekunden neu). Die Startreihenfolge stellt das Tool selbst ein: normal startet die VM von der Disk,
 nach <i>Einschalten und Agent starten</i> einmal über das Netzwerk. Sobald der Agent verbunden ist, gilt wieder
-die Disk – ein Neustart danach (z. B. nach dem Zurückspielen) startet das System auf der Disk. Im Gerätefenster,
+die Disk. Wohin ein Neustart geht, bestimmt der Knopf: <i>Neustart in Windows</i> bzw. <i>Neustart in den
+Agent</i> – nicht, was vorher vorgemerkt war. Im Gerätefenster,
 Reiter <i>Netzwerk</i>, lässt sich der Agent auch für den nächsten Neustart einer laufenden VM vormerken.
 Wake-on-LAN und „Netzwerkstart zuerst“ gibt es bei VMs nicht.
 
@@ -740,7 +754,9 @@ beim <b>nächsten Start selbst</b> um. Geht nach einer Installation oder jederze
     der Knopf <i>Windows anpassen …</i> im Gerätefenster).
 3.  Oben eine <b>Vorlage</b> wählen oder die Häkchen einzeln setzen.
 4.  Auf <i>Senden</i> klicken. Der Auftrag steht in der Auftragsliste, der Verlauf des Geräts nennt die Auswahl.
-5.  Gerät neu starten (Agent-Stick abziehen). Beim Start von Windows werden die Einstellungen umgesetzt.
+5.  Ist der Auftrag fertig, fragt das Tool „Jetzt in Windows neu starten?“: <i>Neustart in Windows</i> oder
+    <i>Später</i> (später über den Knopf <i>Neustart in Windows</i>). Beim Start von Windows werden die
+    Einstellungen umgesetzt.
 
 <b>Vorlagen</b> (setzen die Häkchen; danach lässt sich jedes Häkchen ändern – dann steht
 „Vorlage: Player (geändert)“):
@@ -894,7 +910,8 @@ Gleich aufgebaut wie <i>Windows anpassen</i>: Windows ist schon eingerichtet, di
 4.  Auf <i>Senden</i> klicken. Der Agent legt die Installer und das Startskript ab; der Auftrag steht in der
     Auftragsliste, der Verlauf des Geräts z. B. „Software installieren (VLC media player 3.0.24, …) – wird beim
     nächsten Start installiert“.
-5.  Gerät neu starten (Agent-Stick abziehen). Beim Start von Windows wird installiert, Protokoll wie unten.
+5.  Ist der Auftrag fertig, fragt das Tool „Jetzt in Windows neu starten?“: <i>Neustart in Windows</i> oder
+    <i>Später</i>. Beim Start von Windows wird installiert, Protokoll wie unten.
 Kein Windows auf der Disk (oder BitLocker): Es wird nichts gesendet. Steht noch ein <i>Windows anpassen</i>
 aus, bleibt es: Beim nächsten Start laufen beide, das zuletzt laufende Startskript räumt auf.
 

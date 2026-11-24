@@ -167,7 +167,7 @@ class SoftwareInstallDialog(Gtk.Dialog):
         for text in ("Ausgegraut: „Parameter fehlt“ bzw. „nur von Hand“ – Grund in der Liste (Maus über der Zeile), "
                      "Parameter in Extras → „Software-Bibliothek …“ hinterlegen.",
                      "Das Gerät muss mit dem Agent laufen; Windows vollständig heruntergefahren (kein Schnellstart/"
-                     "Ruhezustand). Danach Gerät neu starten (Agent-Stick abziehen). Erneut senden ersetzt eine noch "
+                     "Ruhezustand). Nach dem Senden fragt das Tool nach dem Neustart in Windows. Erneut senden ersetzt eine noch "
                      "nicht installierte Auswahl; ein ausstehendes „Windows anpassen“ bleibt."):
             hint = Gtk.Label(label=text, xalign=0, wrap=True, max_width_chars=80)
             hint.get_style_context().add_class("status-idle")

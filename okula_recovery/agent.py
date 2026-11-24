@@ -570,6 +570,15 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
                 except (imaging.ImagingError, OSError) as e:
                     reply = {"type": "error", "message": str(e)}
                 wire.send_json(tls, reply)
+            elif cmd == "bootnext":
+                # Ä-045: Startziel nur für den nächsten Start (Windows bzw. wieder der Agent); startet nicht neu
+                try:
+                    reply = {"type": "bootnext", **wininstall.set_boot_next(str(req.get("target") or ""))}
+                    if reply.get("set"):
+                        log(f"Nächster Start: {reply.get('label')} (Boot{reply['set']}, Tool {addr[0]})", show=True)
+                except (imaging.ImagingError, OSError) as e:
+                    reply = {"type": "error", "message": str(e)}
+                wire.send_json(tls, reply)
             elif cmd == "hwtest":
                 run_hwtest(tls, addr, req)
             elif cmd == "bios":

@@ -42,7 +42,9 @@ from okula_recovery.os_dialogs import (BootStickDialog, InstallDialog, IsoDetail
 from okula_recovery.restore_dialog import RestoreDialog  # noqa: E402
 from okula_recovery.stick_dialog import StickDialog  # noqa: E402
 from okula_recovery.uikit import (ask_text, confirm, confirm_error, make_tree, open_url, pane_title,  # noqa: E402
-                                  power_buttons, remember_columns, rgba_hex, run_async, scrolled, svg_pixbuf)
+                                  power_buttons, power_tip, remember_columns, rgba_hex, run_async, scrolled,
+                                  svg_pixbuf)
+from okula_recovery import neustart  # noqa: E402
 
 ASSETS = Path(__file__).resolve().parent / "assets"
 NAS_POLL = 30  # Sekunden zwischen den NAS-Statusabfragen
@@ -2049,7 +2051,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.btn_restore.connect("clicked", lambda _b: self._with_device(self.start_restore))
         for b in (self.btn_open, self.btn_image, self.btn_restore):
             actions.pack_start(b, False, False, 0)
-        # Herunterfahren / Neu starten als Symbole wie die übrigen Symbolknöpfe (rechts, abgesetzt)
+        # Neustart in Windows / in den Agent (Ä-045) und Symbol Herunterfahren (rechts, abgesetzt)
         self.power_buttons = power_buttons(lambda action: self._with_device(lambda d: self.power(d, action)))
         for b in reversed(self.power_buttons.values()):
             actions.pack_end(b, False, False, 0)
@@ -2232,8 +2234,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.btn_open.set_sensitive(dev is not None)
         for b in (self.btn_image, self.btn_restore):
             b.set_sensitive(ready)
-        for b in self.power_buttons.values():   # VMs auch ohne Agent (über libvirt)
-            b.set_sensitive(ready or (dev is not None and dev.is_vm and not self.vm_why(dev, "stop")))
+        self.update_power_buttons(self.power_buttons, dev)   # VMs auch ohne Agent (über libvirt); Grund im Tooltip
         self.dev_buttons["rename"].set_sensitive(kind in ("folder", "device"))
         self.dev_buttons["delete"].set_sensitive(kind == "folder" or (dev is not None and agent is None and (
             not dev.is_vm or not self.vm_why(dev, "delete"))))
@@ -2316,7 +2317,12 @@ class MainWindow(Gtk.ApplicationWindow):
             return True
         if dev is not None:
             add("Herunterfahren", lambda: self.power(dev, "poweroff"), ready)
-            add("Neu starten", lambda: self.power(dev, "reboot"), ready)
+            for target in (neustart.WINDOWS, neustart.AGENT):        # Ä-045: zwei eindeutige Neustart-Einträge
+                why = self.reboot_why(dev, target)
+                item = Gtk.MenuItem(label=neustart.LABELS[target], sensitive=not why)
+                item.set_tooltip_text(why or neustart.TIPS[target])
+                item.connect("activate", lambda _i, t=target: self.reboot_to(dev, t))
+                menu.append(item)
             # Netzwerkstart: aus der Ferne einschalten (Wake-on-LAN), nicht mögliches ausgegraut mit Grund
             why_wake, why_agent = self.wake_options(dev)
             net = Gtk.MenuItem(label="Netzwerkstart", sensitive=not (why_wake and why_agent))
@@ -2575,7 +2581,11 @@ class MainWindow(Gtk.ApplicationWindow):
             None,
             ("shutdown", "Herunterfahren", lambda: self.power(dev, "poweroff"), stop,
              "Geordnet herunterfahren (mit Agent über den Agent, sonst Signal an das Betriebssystem)"),
-            ("reboot", "Neu starten", lambda: self.power(dev, "reboot"), stop, "VM neu starten"),
+            ("reboot-windows", neustart.LABELS[neustart.WINDOWS], lambda: self.reboot_to(dev, neustart.WINDOWS),
+             self.reboot_why(dev, neustart.WINDOWS), "VM von der Disk neu starten (Disk zuerst)"),
+            ("reboot-agent", neustart.LABELS[neustart.AGENT], lambda: self.reboot_to(dev, neustart.AGENT),
+             self.reboot_why(dev, neustart.AGENT), "VM über den Netzwerkstart in den Agent neu starten "
+                                                   "(Netzwerk zuerst, Agent angefordert)"),
             ("poweroff", "Ausschalten …", lambda: self.vm_poweroff(dev), stop,
              "Hart ausschalten wie Stecker ziehen (mit Rückfrage)"),
             None,
@@ -4140,6 +4150,8 @@ class MainWindow(Gtk.ApplicationWindow):
             win.load_images()
         if error is None and shutdown and dev is not None:
             self._power_after(dev, job)
+        elif error is None and dev is not None and job.kind in neustart.AFTER_SEND_KINDS:
+            self.ask_reboot_after_send(dev, job)     # Ä-045: direkt fragen statt Umweg über ein Menü
         return False
 
     def _power_after(self, dev: devices.Device, job: jobs.Job) -> None:
@@ -4185,7 +4197,134 @@ class MainWindow(Gtk.ApplicationWindow):
         if agent.agent_id not in self.inv_pending:
             self.fetch_inventory(agent, refresh=True)
 
+    # ---------- Ä-045: Neustart in Windows / Neustart in den Agent ----------
+
+    def reboot_why(self, dev: devices.Device | None, target: str) -> str:
+        """Warum „Neustart in Windows“ bzw. „Neustart in den Agent“ gerade nicht geht ("" = möglich)."""
+        if dev is None:
+            return neustart.why_not(target, selected=False)
+        agent = self.online_agent(dev)
+        online = agent is not None and agent.control_port > 0
+        vm_stop = self.vm_why(dev, "stop") if dev.is_vm else ""
+        netboot_why = ""
+        if dev.is_vm and target == neustart.AGENT:
+            ready, reason = self.netboot_ready()
+            if not ready:
+                netboot_why = reason.split(" – ")[0] if reason else "Netzwerkstart ist nicht eingerichtet"
+        return neustart.why_not(target, is_vm=dev.is_vm, online=online, vm_stop_why=vm_stop, netboot_why=netboot_why)
+
+    def update_power_buttons(self, buttons: dict, dev: devices.Device | None) -> None:
+        """Knöpfe Neustart/Herunterfahren: ausgegraut mit Grund im Tooltip (Hauptfenster und Gerätefenster)."""
+        for action, b in buttons.items():
+            if action == "poweroff":
+                agent = self.online_agent(dev) if dev else None
+                ok = dev is not None and ((agent is not None and agent.control_port > 0)
+                                          or (dev.is_vm and not self.vm_why(dev, "stop")))
+                b.set_sensitive(ok)
+                b.set_tooltip_text(power_tip(action) if ok or dev is None else
+                                   "Herunterfahren – Gerät ist nicht mit dem Agent verbunden")
+                continue
+            why = self.reboot_why(dev, action.split("-", 1)[1])
+            b.set_sensitive(not why)
+            b.set_tooltip_text(why or power_tip(action))
+
+    def reboot_to(self, dev: devices.Device, target: str, ask: bool = True) -> None:
+        """Neustart mit eindeutigem Ziel: Windows (Disk) oder Agent (Netzwerk/Stick). ask=False: schon bestätigt
+        (Abfrage nach dem Senden)."""
+        parent = self._parent_for(dev)
+        why = self.reboot_why(dev, target)
+        if why:
+            confirm_error(parent, why)
+            return
+        agent = self.online_agent(dev)
+        if agent is not None and (self.jobs.summary(dev.id) or (agent.busy and ask)):   # Beacon kann nachhinken
+            confirm_error(parent, f"Auf „{dev.name}“ läuft ein Auftrag – erst danach neu starten.")
+            return
+        if ask:
+            title, body, ok_label = neustart.confirm_text(
+                target, dev.name, (dev.hardware or (agent.hardware if agent else "")) +
+                (f" ({agent.ip})" if agent else ""), dev.is_vm, dev.netboot and dev.netfirst)
+            if not confirm(parent, title, body, ok_label=ok_label):
+                return
+        # Netzwerkstart: „Agent beim nächsten Start“ passend setzen bzw. abbestellen (gilt auch für VMs)
+        want_agent = target == neustart.AGENT
+        if dev.is_vm and want_agent and not dev.netboot:
+            self.store.update(dev, netboot=True)
+            self.store.add_history(dev, "notiz", "Netzwerkstart erlaubt")
+        if dev.boot_request != want_agent and (dev.netboot or not want_agent):
+            dev.boot_request = want_agent
+            self.store.save(dev)
+            self.store.add_history(dev, "notiz", "Agent beim nächsten Start " + ("angefordert" if want_agent
+                                                                                else "abbestellt"))
+            self.netboot_changed()
+        self.sync_netboot(after=lambda: self._reboot_go(dev, target))
+
+    def _reboot_go(self, dev: devices.Device, target: str) -> None:
+        parent = self._parent_for(dev)
+        agent = self.online_agent(dev)
+        key = self.key
+        if dev.is_vm:
+            name, network_first = dev.vm["name"], neustart.vm_network_first(target)
+
+            def work():
+                self.virsh.set_boot_runtime(name, network_first)       # eindeutig je Knopf, nicht vom Zustand
+                if agent is not None and agent.control_port:
+                    agentclient.power(agent.ip, key, "reboot", agent.control_port)
+                else:
+                    self.virsh.reboot(name)                            # ohne Agent: ACPI an das Betriebssystem
+                return {"vm": True}
+            run_async(work, lambda result: self._reboot_done(dev, target, result))
+            return
+        if agent is None or not agent.control_port:
+            confirm_error(parent, f"„{dev.name}“ ist nicht mehr verbunden.")
+            return
+
+        def chosen(result) -> None:
+            if isinstance(result, Exception):
+                result = {"set": "", "message": str(result)}
+            if not result.get("set") and not confirm(
+                    parent, "Startziel nicht festgelegt",
+                    neustart.fallback_text(target, str(result.get("message") or "unbekannt"),
+                                           dev.netboot and dev.netfirst),
+                    ok_label="Trotzdem neu starten"):
+                return
+            run_async(lambda: (agentclient.power(agent.ip, key, "reboot", agent.control_port), result)[1],
+                      lambda r: self._reboot_done(dev, target, r))
+
+        run_async(lambda: agentclient.bootnext(agent.ip, key, target, agent.control_port), chosen)
+
+    def _reboot_done(self, dev: devices.Device, target: str, result) -> None:
+        if isinstance(result, Exception):
+            msg = str(result) if isinstance(result, (agentclient.AgentError, vm.VmError)) else \
+                f"Unerwarteter Fehler: {result}"
+            self.status(f"{dev.name}: {neustart.LABELS[target]} fehlgeschlagen – {msg}")
+            confirm_error(self._parent_for(dev), msg)
+            return
+        text = neustart.done_text(target, result)
+        self.store.add_history(dev, "power", text, ok=True)
+        self.status(f"{dev.name}: {text}")
+        win = self.device_windows.get(dev.id)
+        if win:
+            win.refresh()
+
+    def ask_reboot_after_send(self, dev: devices.Device, job: jobs.Job | None = None, waited: int = 0) -> bool:
+        """Nach Windows anpassen / Software installieren: direkt fragen, ob jetzt in Windows neu gestartet wird.
+        Erst wenn der Auftrag ganz fertig ist (after() läuft noch im Auftrag); höchstens 30 s warten."""
+        if job is not None and job.running and waited < 60:
+            GLib.timeout_add(500, self.ask_reboot_after_send, dev, job, waited + 1)
+            return False
+        if self.reboot_why(dev, neustart.WINDOWS) or self.jobs.summary(dev.id):
+            return False      # nicht mehr verbunden oder weiterer Auftrag: kein Neustart anbieten
+        if confirm(self._parent_for(dev), neustart.AFTER_SEND_TITLE,
+                   f"„{dev.name}“: Die Aufträge laufen beim nächsten Windows-Start. Das Gerät startet von der Disk.",
+                   ok_label=neustart.LABELS[neustart.WINDOWS], cancel_label=neustart.LATER):
+            self.reboot_to(dev, neustart.WINDOWS, ask=False)
+        return False
+
     def power(self, dev: devices.Device, action: str) -> None:
+        if action.startswith("reboot-"):            # Ä-045: Neustart in Windows / in den Agent
+            self.reboot_to(dev, action.split("-", 1)[1])
+            return
         parent = self._parent_for(dev)
         if dev.is_vm and self.online_agent(dev) is None:     # VM ohne Agent: über libvirt (ACPI)
             self.vm_power(dev, action)
