@@ -3439,7 +3439,8 @@ class MainWindow(Gtk.ApplicationWindow):
         try:
             self.jobs.start(dev.id, "tweak", disk, what,
                             jobs.tweak_work(agent.ip, self.key, agent.control_port, disk, script,
-                                            wintweaks.describe_lines(selected, user), after))
+                                            wintweaks.describe_lines(selected, user), after,
+                                            wintweaks.offline_request(selected)))
         except agentclient.AgentError as e:
             confirm_error(parent, str(e))
             return

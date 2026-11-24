@@ -281,18 +281,35 @@ SOFTWARE_NEXT = ("Wird beim nächsten Windows-Start als SYSTEM still installiert
                  "Installationen laufen danach weiter). Protokoll am Gerät: C:\\Windows\\Temp\\okula-software.log")
 
 
-SYNC_SET = ("Die Anmeldung wartet beim nächsten Start, bis das Startskript fertig ist (Richtlinie „Beim Neustart des "
-            "Computers und bei der Anmeldung immer auf das Netzwerk warten“ bis dahin an, danach wie vorher)")
+OFFLINE_LATE = ("das Startskript setzt es beim Start; Startmenü bzw. Wetter greifen evtl. erst nach einem weiteren "
+                "Neustart (Windows wartet bei der Anmeldung nicht auf das Startskript)")
 
 
-def sync_line(result: dict) -> str | None:
-    """B-019: Logzeile zur Richtlinie SyncForegroundPolicy (Antwort des Agents) – None bei einem alten Agent."""
-    if result.get("sync_error"):
-        return (f"Hinweis: Die Anmeldung wartet nicht auf das Startskript ({result['sync_error']}) – Startmenü, "
-                "Widgets und Nachlauf greifen evtl. erst nach einem weiteren Neustart")
-    if result.get("sync"):
-        return SYNC_SET
-    return None
+def offline_lines(requested: dict | None, result: dict) -> list[str]:
+    """B-020: Logzeilen zum Teil, den der Agent vor dem Windows-Start offline schreibt (Antwort des Agents)."""
+    if not requested:
+        return []
+    if result.get("offline_error"):
+        return [f"Hinweis: Startmenü/Widgets nicht vor dem Windows-Start gesetzt ({result['offline_error']}) – "
+                + OFFLINE_LATE]
+    off = result.get("offline")
+    if not isinstance(off, dict):
+        return ["Hinweis: Agent zu alt für die Einstellungen vor dem Windows-Start (Agent-Stick bzw. Netzwerkstart "
+                "neu erstellen) – " + OFFLINE_LATE]
+    lines = []
+    if off.get("start") == "set":
+        lines.append(f"Vor dem Windows-Start gesetzt: Startmenü-Richtlinie (feste Kacheln), Startmenü von "
+                     f"{off.get('profiles', 0)} Profil(en) zurückgesetzt (start2.bin gesichert als "
+                     f"start2.bin.okula-{off.get('stamp', '…')}) – gilt ab der ersten Anmeldung")
+        if off.get("hints"):
+            lines.append("Hinweis: " + "; ".join(map(str, off["hints"])) + " – das Startskript versucht es nochmals")
+    elif off.get("start") == "old":
+        lines.append(f"Startmenü: Windows-Build {off.get('build')} vor 24H2 – setzt nur das Startskript "
+                     "(Geräteverwaltung)")
+    if off.get("widgets"):
+        lines.append("Vor dem Windows-Start gesetzt: Richtlinie „Widgets zulassen“ aus (kein Wetter in der "
+                     "Taskleiste)")
+    return lines
 
 
 def send_software(ip: str, key: bytes, port: int, disk: str, nas_root: str, names: list[str], device: str,
@@ -309,8 +326,6 @@ def send_software(ip: str, key: bytes, port: int, disk: str, nas_root: str, name
     log(f"  Software auf {result.get('part', disk)} abgelegt ({result.get('files', 0)} Dateien)"
         + (" – noch nicht installierte Auswahl von vorher ersetzt" if result.get("replaced") else ""))
     log("  " + later)
-    if sync_line(result):
-        log("  " + sync_line(result))
     return plan, result
 
 
@@ -745,9 +760,10 @@ TWEAK_GENERALIZED = ("Windows ist generalisiert (Sysprep, Ersteinrichtung steht 
 
 
 def tweak_work(ip: str, key: bytes, port: int, disk: str, script: str, lines: list[str],
-               after: Callable[[Job, str | None, Exception | None], None]):
+               after: Callable[[Job, str | None, Exception | None], None], offline: dict | None = None):
     """Windows anpassen (I-039): Skript (im Tool erzeugt, wintweaks.build_script) als einmaliges Startskript ablegen.
-    lines = gewählte Optionen fürs Log – das Skript selbst (ggf. mit Passwort) kommt nie ins Log."""
+    lines = gewählte Optionen fürs Log – das Skript selbst (ggf. mit Passwort) kommt nie ins Log. offline (B-020):
+    Teil, den der Agent vor dem Windows-Start schreibt (wintweaks.offline_request)."""
     def work(job: Job, jm: JobManager) -> str:
         try:
             jm.log(job, "Gewählte Einstellungen:")
@@ -755,17 +771,17 @@ def tweak_work(ip: str, key: bytes, port: int, disk: str, script: str, lines: li
                 jm.log(job, line)
             jm.log(job, "Einstellungen werden übertragen …")
             jm.progress(job, 0.3, "Einstellungen werden übertragen …")
-            result = agentclient.tweak(ip, key, disk, script, port)
+            result = agentclient.tweak(ip, key, disk, script, port, **({"offline": offline} if offline else {}))
             how = "ersetzt (noch nicht umgesetzte Einstellungen von vorher verworfen)" if result.get("replaced") \
                 else "abgelegt"
             jm.log(job, f"Startskript auf {result.get('part', disk)} {how}"
                         + (" – vorhandene lokale Gruppenrichtlinie bleibt erhalten" if result.get("gpo") else ""))
             if result.get("state") == "generalized":
                 jm.log(job, TWEAK_GENERALIZED)
-            jm.log(job, "Wird beim nächsten Windows-Start umgesetzt (als SYSTEM, vor der Anmeldung). "
+            jm.log(job, "Wird beim nächsten Windows-Start umgesetzt (als SYSTEM). "
                         "Protokoll am Gerät: C:\\Windows\\Temp\\okula-windows-anpassen.log")
-            if sync_line(result):
-                jm.log(job, sync_line(result))
+            for line in offline_lines(offline, result):
+                jm.log(job, line)
         except Exception as e:
             after(job, None, e)
             raise

@@ -425,11 +425,14 @@ class ScriptTest(unittest.TestCase):
         self.assertIn("$s = [string]$entry.GetValue('Script')", reg)
         self.assertNotIn("Get-ItemProperty", reg)
         self.assertNotIn(").Script", fn)
-        # eigener Name oder Altlast: okula-*.cmd, das nicht mehr im Startup-Ordner liegt
-        self.assertIn("$leaf = ($s -split '[\\\\/]')[-1]", reg)
+        # eigener Name oder Altlast: okula-*.cmd, das nicht mehr im Startup-Ordner liegt (B-020: als Funktion, auch
+        # für die Nachkontrolle nach einem Fehler)
+        own = fn[fn.index("function Test-OkulaGpScript"):fn.index("function Get-OkulaGpLeft")]
+        self.assertIn("$leaf = ($Script -split '[\\\\/]')[-1]", own)
         self.assertIn("$stale = ($leaf -like 'okula-*.cmd') -and -not (Test-Path -LiteralPath "
-                      "(Join-Path $OkulaStartup $leaf))", reg)
-        self.assertIn("if (($s -like \"*$OkulaName*\") -or $stale) {", reg)
+                      "(Join-Path $OkulaStartup $leaf))", own)
+        self.assertIn("return (($Script -like \"*$OkulaName*\") -or $stale)", own)
+        self.assertIn("if (Test-OkulaGpScript $s) {", reg)
         # leere GPO-Liste löschen, sonst nachnummerieren; danach die Liste der GPOs
         self.assertIn("Remove-Item -LiteralPath $gpo.PSPath -Recurse -Force -ErrorAction Stop", reg)
         self.assertIn("Update-OkulaGpNumbers $gpo.PSPath", reg)

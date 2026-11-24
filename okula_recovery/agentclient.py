@@ -646,12 +646,17 @@ def customize(ip: str, key: bytes, disk: str, unattend: str, hostname: str, port
     return list(reply.get("results") or [])
 
 
-def tweak(ip: str, key: bytes, disk: str, script: str, port: int = wire.PORT) -> dict:
+def tweak(ip: str, key: bytes, disk: str, script: str, port: int = wire.PORT, offline: dict | None = None) -> dict:
     """Windows anpassen (I-039): Skript als einmaliges Startskript auf die Windows-Partition legen lassen.
-    Antwort: {part, state (installed | generalized), replaced, gpo, version}."""
+    offline (B-020): Teil, den der Agent gleich in die ausgeschaltete Windows-Installation schreibt
+    (wintweaks.offline_request). Antwort: {part, state (installed | generalized), replaced, gpo, version} und
+    "offline" bzw. "offline_error" (fehlt beides trotz Auftrag: Agent älter als B-020)."""
+    req = {"cmd": "tweak", "disk": disk, "script": script}
+    if offline:
+        req["offline"] = offline
     with _connect(ip, key, port) as sock:
         sock.settimeout(300)
-        wire.send_json(sock, {"cmd": "tweak", "disk": disk, "script": script})
+        wire.send_json(sock, req)
         reply = wire.recv_json(sock)
     if reply.get("type") != "done":
         raise AgentError(_old_agent(str(reply.get("message", "Agent hat abgelehnt"))))

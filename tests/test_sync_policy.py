@@ -1,6 +1,6 @@
-"""B-019: Okula-Startskripte vor der Anmeldung – SyncForegroundPolicy offline im Hive SOFTWARE setzen (hivexsh,
-nachgebildet), sichern und wiederherstellen; Nachlauf mit Zeit-Auslöser; Startmenü bei angemeldeten Profilen.
-Läuft ohne root, ohne hivexsh und ohne Windows."""
+"""B-019/B-020: Registrierung offline schreiben (deploy.set_hive_values, hivexsh nachgebildet), SyncForegroundPolicy
+nur noch als Altlast (wird nicht mehr gesetzt, aber wiederhergestellt); Nachlauf mit Zeit-Auslöser; Startmenü bei
+angemeldeten Profilen. Läuft ohne root, ohne hivexsh und ohne Windows."""
 
 import base64
 import re
@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from okula_recovery import deploy, jobs, software, winprofile, wintweaks
+from okula_recovery import deploy, software, winprofile, wintweaks
 from tests.test_copyprofile import HiveWriter
 from tests.test_wintweaks import steps
 
@@ -20,6 +20,7 @@ ON = (4, b"\x01\x00\x00\x00")
 OFF = (4, b"\x00\x00\x00\x00")
 TIMEOUT = ("GpNetworkStartTimeoutPolicyValue", 4, b"\x3c\x00\x00\x00")
 TEXT = ("Hinweis", 1, "ab".encode("utf-16-le") + b"\0\0")
+SYNC = [("SyncForegroundPolicy", *ON)]           # Beispielwert für die allgemeine Funktion
 
 
 def software_hive(sync=None, others=(), depth=5, build="26100", dirty=False) -> bytes:
@@ -51,16 +52,14 @@ class HiveReaderTest(unittest.TestCase):
         self.assertFalse(winprofile.Hive(software_hive(dirty=True)).clean())
 
 
-class SyncPolicyTest(unittest.TestCase):
-    """set_sync_policy auf einer Probe-Windows-Partition; hivexsh wird nachgebildet (schreibt einen fertigen Hive)."""
+class HiveWriteTest(unittest.TestCase):
+    """set_hive_values auf einer Probe-Windows-Partition; hivexsh wird nachgebildet (schreibt einen fertigen Hive)."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         self.config = self.root / "Windows/System32/config"
         self.config.mkdir(parents=True)
-        self.gp = self.root / "Windows/System32/GroupPolicy"
-        self.gp.mkdir()
         self.hive = self.config / "SOFTWARE"
         self.calls = []
         which = mock.patch.object(deploy.shutil, "which", lambda name: f"/usr/bin/{name}")
@@ -72,8 +71,6 @@ class SyncPolicyTest(unittest.TestCase):
 
     def fake(self, after: bytes | None, rc: int = 0):
         def run(cmd, input=None, **_kw):
-            if cmd == ["sync"]:                                             # deploy.tweak nach dem Ablegen
-                return subprocess.CompletedProcess(cmd, 0)
             self.calls.append((cmd, input))
             self.assertEqual(cmd[:2], ["hivexsh", "-w"])
             self.assertNotEqual(Path(cmd[2]), self.hive)                    # nie direkt das Original
@@ -82,96 +79,80 @@ class SyncPolicyTest(unittest.TestCase):
             return subprocess.CompletedProcess(cmd, rc, "", "hivex: Fehler" if rc else "")
         return run
 
-    def saved(self) -> Path:
-        return self.gp / deploy.SYNC_SAVED
-
     def assert_unchanged(self, before: bytes):
         self.assertEqual(self.hive.read_bytes(), before)
-        self.assertFalse(self.saved().exists())
         self.assertEqual(sorted(p.name for p in self.config.iterdir()), ["SOFTWARE"])     # Kopie weg
 
-    def test_missing_key_created_and_saved_as_absent(self):
+    def test_missing_key_created(self):
         self.hive.write_bytes(software_hive(depth=2))
         after = software_hive(ON)
-        res = deploy.set_sync_policy(self.root, self.fake(after))
-        self.assertEqual(res, {"sync": "set"})
+        self.assertTrue(deploy.set_hive_values(self.root, {deploy.SYNC_KEY: SYNC}, run=self.fake(after)))
         self.assertEqual(self.hive.read_bytes(), after)
-        self.assertEqual(self.saved().read_bytes(), b"fehlt\r\n")
-        self.assertEqual(deploy.SYNC_SAVED, "SyncForegroundPolicy.okula-nachher")
         self.assertEqual(self.calls[0][1], "cd \\Policies\\Microsoft\nadd Windows NT\ncd Windows NT\n"
                                            "add CurrentVersion\ncd CurrentVersion\nadd Winlogon\ncd Winlogon\n"
                                            "setval 1\nSyncForegroundPolicy\nhex:4:01,00,00,00\ncommit\n")
         self.assertEqual(sorted(p.name for p in self.config.iterdir()), ["SOFTWARE"])
 
-    def test_existing_value_and_other_values_kept(self):
-        self.hive.write_bytes(software_hive(OFF, (TIMEOUT, TEXT)))
-        after = software_hive(ON, (TIMEOUT, TEXT))
-        self.assertEqual(deploy.set_sync_policy(self.root, self.fake(after)), {"sync": "set"})
-        self.assertEqual(self.saved().read_bytes(), b"dword:0\r\n")
-        # setval ersetzt alle Werte des Schlüssels: die übrigen werden unverändert mitgeschrieben
-        self.assertEqual(self.calls[0][1], "cd \\Policies\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\n"
-                                           "setval 3\nGpNetworkStartTimeoutPolicyValue\nhex:4:3c,00,00,00\n"
-                                           "Hinweis\nhex:1:61,00,62,00,00,00\n"
-                                           "SyncForegroundPolicy\nhex:4:01,00,00,00\ncommit\n")
+    def test_existing_value_replaced_and_other_values_kept(self):
+        for old in (OFF, (1, "1".encode("utf-16-le") + b"\0\0")):         # auch anderer Typ wird ersetzt
+            with self.subTest(old=old):
+                self.calls.clear()
+                self.hive.write_bytes(software_hive(old, (TIMEOUT, TEXT)))
+                after = software_hive(ON, (TIMEOUT, TEXT))
+                self.assertTrue(deploy.set_hive_values(self.root, {deploy.SYNC_KEY: SYNC}, run=self.fake(after)))
+                # setval ersetzt alle Werte des Schlüssels: die übrigen werden unverändert mitgeschrieben
+                self.assertEqual(self.calls[0][1], "cd \\Policies\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\n"
+                                                   "setval 3\nGpNetworkStartTimeoutPolicyValue\nhex:4:3c,00,00,00\n"
+                                                   "Hinweis\nhex:1:61,00,62,00,00,00\n"
+                                                   "SyncForegroundPolicy\nhex:4:01,00,00,00\ncommit\n")
 
-    def test_second_script_keeps_saved_state(self):
-        """Weiteres bzw. ersetztes Okula-Startskript: Wert schon 1, Sicherung von vorher bleibt, kein Schreiben."""
-        self.hive.write_bytes(software_hive(depth=2))
-        deploy.set_sync_policy(self.root, self.fake(software_hive(ON)))
-        self.calls.clear()
-        self.assertEqual(deploy.set_sync_policy(self.root, self.fake(None)), {"sync": "kept"})
-        self.assertEqual(self.calls, [])
-        self.assertEqual(self.saved().read_bytes(), b"fehlt\r\n")
-
-    def test_already_on_only_saved(self):
-        self.hive.write_bytes(software_hive(ON))
+    def test_already_set_nothing_written(self):
+        self.hive.write_bytes(software_hive(ON, (TIMEOUT,), dirty=True))   # auch unsauber: nichts zu tun
         before = self.hive.read_bytes()
-        self.assertEqual(deploy.set_sync_policy(self.root, self.fake(None)), {"sync": "set"})
+        self.assertFalse(deploy.set_hive_values(self.root, {deploy.SYNC_KEY: SYNC}, run=self.fake(None)))
         self.assertEqual(self.calls, [])
-        self.assertEqual(self.hive.read_bytes(), before)
-        self.assertEqual(self.saved().read_bytes(), b"dword:1\r\n")
+        self.assert_unchanged(before)
 
     def test_hivexsh_error_leaves_hive_unchanged(self):
         self.hive.write_bytes(software_hive(OFF))
         before = self.hive.read_bytes()
-        with self.assertRaisesRegex(deploy.SyncError, "hivexsh: hivex: Fehler – nicht geändert"):
-            deploy.set_sync_policy(self.root, self.fake(software_hive(ON), rc=1))
+        with self.assertRaisesRegex(deploy.HiveError, "hivexsh: hivex: Fehler – nicht geändert"):
+            deploy.set_hive_values(self.root, {deploy.SYNC_KEY: SYNC}, run=self.fake(software_hive(ON), rc=1))
         self.assert_unchanged(before)
 
     def test_wrong_result_leaves_hive_unchanged(self):
         self.hive.write_bytes(software_hive(OFF, (TIMEOUT, TEXT)))
         before = self.hive.read_bytes()
-        for after, message in ((software_hive(OFF, (TIMEOUT, TEXT)), "fehlt in der geschriebenen Kopie"),
+        for after, message in ((software_hive(OFF, (TIMEOUT, TEXT)), "SyncForegroundPolicy fehlt in der "
+                                                                     "geschriebenen Kopie"),
                                (software_hive(ON, (TIMEOUT,)), "weicht ab"),
                                (software_hive(ON, (TIMEOUT, TEXT), build="19045"), "weicht ab"),
                                (software_hive(ON, (TIMEOUT, TEXT), dirty=True), "nicht sauber"),
                                (b"kaputt", "nicht lesbar")):
             with self.subTest(message=message):
-                with self.assertRaisesRegex(deploy.SyncError, message):
-                    deploy.set_sync_policy(self.root, self.fake(after))
+                with self.assertRaisesRegex(deploy.HiveError, message):
+                    deploy.set_hive_values(self.root, {deploy.SYNC_KEY: SYNC}, run=self.fake(after))
                 self.assert_unchanged(before)
 
     def test_refused_before_writing(self):
         cases = ((software_hive(OFF, dirty=True), "nicht sauber geschlossen"),
-                 (software_hive((1, "1".encode("utf-16-le") + b"\0\0")), "kein DWORD"),
                  (software_hive(OFF, (("Name mit ü", 4, b"\0\0\0\0"),)), "nicht sicher mitschreiben"),
                  (b"regf", "nicht lesbar"))
         for data, message in cases:
             with self.subTest(message=message):
                 self.hive.write_bytes(data)
-                with self.assertRaisesRegex(deploy.SyncError, message):
-                    deploy.set_sync_policy(self.root, self.fake(software_hive(ON)))
+                with self.assertRaisesRegex(deploy.HiveError, message):
+                    deploy.set_hive_values(self.root, {deploy.SYNC_KEY: SYNC}, run=self.fake(software_hive(ON)))
                 self.assertEqual(self.calls, [])
                 self.assert_unchanged(data)
 
     def test_no_hive_or_no_hivexsh(self):
-        with self.assertRaisesRegex(deploy.SyncError, "SOFTWARE nicht gefunden"):
-            deploy.set_sync_policy(self.root, self.fake(None))
+        with self.assertRaisesRegex(deploy.HiveError, "SOFTWARE nicht gefunden"):
+            deploy.set_hive_values(self.root, {deploy.SYNC_KEY: SYNC}, run=self.fake(None))
         self.hive.write_bytes(software_hive(OFF))
         with mock.patch.object(deploy.shutil, "which", lambda name: None):
-            with self.assertRaisesRegex(deploy.SyncError, "hivexsh fehlt"):
-                deploy.set_sync_policy(self.root, self.fake(None))
-        self.assertFalse(self.saved().exists())
+            with self.assertRaisesRegex(deploy.HiveError, "hivexsh fehlt"):
+                deploy.set_hive_values(self.root, {deploy.SYNC_KEY: SYNC}, run=self.fake(None))
 
     def test_write_back_error_restores_original(self):
         self.hive.write_bytes(b"alt")
@@ -185,37 +166,62 @@ class SyncPolicyTest(unittest.TestCase):
             return real_open(path, mode, *a, **kw)
 
         with mock.patch("builtins.open", failing_open):
-            with self.assertRaisesRegex(deploy.SyncError, "Datenträger voll.*Original zurückgelegt"):
+            with self.assertRaisesRegex(deploy.HiveError, "SOFTWARE nicht geschrieben.*Datenträger voll.*Original "
+                                                          "zurückgelegt"):
                 deploy._write_back(self.hive, b"neu", b"alt")
         self.assertEqual(self.hive.read_bytes(), b"alt")
         deploy._write_back(self.hive, b"neu-und-laenger", b"alt")
         self.assertEqual(self.hive.read_bytes(), b"neu-und-laenger")
 
-    def test_sync_result_only_hint(self):
-        lines = []
-        res = deploy.sync_result(self.root, lines.append)
-        self.assertEqual(list(res), ["sync_error"])
-        self.assertIn("SOFTWARE nicht gefunden", res["sync_error"])
-        self.assertTrue(lines[0].startswith("Hinweis: SyncForegroundPolicy nicht gesetzt"))
+    def test_commands_several_keys_one_run(self):
+        """B-020: je Schlüssel ein setval, alle in einem Lauf; ein von einem früheren Block angelegter Teil wird
+        nicht nochmals angelegt."""
+        cmds = deploy.hivexsh_commands([(["Policies"], ["Microsoft", "Windows", "Explorer"],
+                                         [("A", 4, b"\1\0\0\0"), ("B", 2, "x\0".encode("utf-16-le"))]),
+                                        (["Policies", "Microsoft"], ["Dsh"], [("C", 4, b"\0\0\0\0")])])
+        self.assertEqual(cmds, "cd \\Policies\nadd Microsoft\ncd Microsoft\nadd Windows\ncd Windows\nadd Explorer\n"
+                               "cd Explorer\nsetval 2\nA\nhex:4:01,00,00,00\nB\nhex:2:78,00,00,00\n"
+                               "cd \\Policies\\Microsoft\nadd Dsh\ncd Dsh\nsetval 1\nC\nhex:4:00,00,00,00\ncommit\n")
+        self.assertEqual(deploy.hivexsh_commands([([], ["Policies"], [])]), "add Policies\ncd Policies\nsetval 0\n"
+                                                                            "commit\n")
+        self.assertEqual(deploy.hivexsh_commands([([], ["X"], []), ([], ["Y"], [])]).count("cd \\\n"), 1)
 
-    def test_tweak_sets_policy_after_script(self):
+
+class NoSyncPolicyTest(unittest.TestCase):
+    """B-020: Der Agent setzt SyncForegroundPolicy nicht mehr (Windows wartet trotzdem nicht auf die Startskripte)."""
+
+    def test_agent_no_longer_sets_it(self):
         from tests.test_wintweaks import FakeMounts
-        self.hive.write_bytes(software_hive(depth=2))
-        after = software_hive(ON)
-        parts = [{"path": "/dev/sda3", "fstype": "ntfs", "size": 1 << 35}]
-        with mock.patch.object(deploy, "_candidates", lambda disk: parts), \
-                mock.patch.object(deploy.filebackup, "Mounts", FakeMounts({"/dev/sda3": self.root})), \
-                mock.patch.object(deploy, "windows_state", lambda root: "installed"), \
-                mock.patch.object(deploy.subprocess, "run", self.fake(after)):
-            res = deploy.tweak({"disk": "/dev/sda", "script": "Write-Host 1"}, log=lambda *_a: None)
-        self.assertEqual(res["sync"], "set")
-        self.assertEqual(self.hive.read_bytes(), after)
-        self.assertTrue((self.gp / "Machine/Scripts/Startup" / deploy.TWEAK_PS1).is_file())
-        self.assertEqual(self.saved().read_bytes(), b"fehlt\r\n")
+        self.assertFalse(hasattr(deploy, "set_sync_policy"))
+        self.assertFalse(hasattr(deploy, "sync_result"))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Windows/System32/config").mkdir(parents=True)
+            hive = root / "Windows/System32/config/SOFTWARE"
+            hive.write_bytes(software_hive(depth=2))
+            before = hive.read_bytes()
+            calls = []
+            parts = [{"path": "/dev/sda3", "fstype": "ntfs", "size": 1 << 35}]
+            with mock.patch.object(deploy, "_candidates", lambda disk: parts), \
+                    mock.patch.object(deploy.filebackup, "Mounts", FakeMounts({"/dev/sda3": root})), \
+                    mock.patch.object(deploy, "windows_state", lambda r: "installed"), \
+                    mock.patch.object(deploy.subprocess, "run", lambda cmd, **kw: calls.append(cmd)):
+                res = deploy.tweak({"disk": "/dev/sda", "script": "Write-Host 1"}, log=lambda *_a: None)
+            self.assertEqual(calls, [["sync"]])                                       # kein hivexsh
+            self.assertEqual(hive.read_bytes(), before)
+            self.assertFalse((root / "Windows/System32/GroupPolicy" / deploy.SYNC_SAVED).exists())
+            self.assertNotIn("sync", res)
+            self.assertNotIn("offline", res)
+        # das Startskript kennt den Wert nur noch zum Wiederherstellen (Altlast)
+        script = wintweaks.build_script({"cortana", "start_clean", "apps_widgets"})
+        self.assertNotIn("Set-OkulaReg 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon' "
+                         "'SyncForegroundPolicy'", script)
+        # nur im Rückbau: New-ItemProperty, GetValue, Remove-ItemProperty
+        self.assertEqual(script.count("'SyncForegroundPolicy'"), 3)
 
 
 class RestoreTest(unittest.TestCase):
-    """Das letzte Okula-Startskript stellt SyncForegroundPolicy her (PowerShell und Notfall im .cmd)."""
+    """Altlast B-019: Das letzte Okula-Startskript stellt SyncForegroundPolicy her (PowerShell und Notfall im .cmd)."""
 
     def test_restore_in_both_scripts(self):
         fn = wintweaks.RESTORE_START
@@ -232,6 +238,9 @@ class RestoreTest(unittest.TestCase):
         self.assertIn("Remove-ItemProperty -LiteralPath $syncKey -Name 'SyncForegroundPolicy'", block)
         self.assertLess(block.index("Remove-ItemProperty"), block.index("Remove-Item -LiteralPath $syncSaved"))
         self.assertIn("$syncError = 'SyncForegroundPolicy nicht zurückgesetzt", block)
+        # B-020: Sicherung schon weg (anderes Skript war schneller) = kein Fehler
+        catch = block[block.index("} catch {"):]
+        self.assertLess(catch.index("if (Test-Path -LiteralPath $syncSaved) {"), catch.index("$syncError = "))
         # Fehler erst nach dem Aufräumen der Registrierung, mit den übrigen Hinweisen
         self.assertLess(fn.index("$removed++"), fn.index("if ($syncError) { throw ((@($notes) + $syncError)"))
         tweak = wintweaks.build_script({"cortana"})
@@ -264,6 +273,7 @@ class LaterAndStartMenuTest(unittest.TestCase):
         return steps(wintweaks.build_script(sel, device="PC-1", created=0))[wintweaks.BY_KEY["later_cleanup"].label]
 
     def test_once_trigger_when_someone_logged_on(self):
+        """B-019, bleibt mit B-020: Ist beim Anlegen schon jemand angemeldet, zusätzlich „jetzt + 30 min“."""
         b = self.later_body({"later_cleanup", "apps_ads"})
         shell = b.index("$shell = @(Get-CimInstance -ClassName Win32_Process -Filter \"Name='explorer.exe'\"")
         self.assertLess(b.index("$triggers = @($trigger)"), shell)
@@ -324,35 +334,6 @@ class SoftwareWaitTest(unittest.TestCase):
         self.assertIn("Get-ChildItem -LiteralPath $OkulaStartup -Filter 'okula-*.cmd'", start[:wait])
         self.assertLess(software.SHARED_WAIT + 300, 600)          # Windows anpassen ~90 s, Reserve bis 600 s
         self.assertLess(software.SHARED_WAIT, software.START_WAIT)
-
-
-class JobLogTest(unittest.TestCase):
-    def test_sync_line(self):
-        self.assertEqual(jobs.sync_line({"sync": "set"}), jobs.SYNC_SET)
-        self.assertEqual(jobs.sync_line({"sync": "kept"}), jobs.SYNC_SET)
-        self.assertIsNone(jobs.sync_line({}))                                  # alter Agent
-        line = jobs.sync_line({"sync_error": "hivexsh fehlt"})
-        self.assertTrue(line.startswith("Hinweis: Die Anmeldung wartet nicht auf das Startskript (hivexsh fehlt)"))
-        self.assertIn("immer auf das Netzwerk warten", jobs.SYNC_SET)
-
-    def test_tweak_job_logs_sync(self):
-        import time
-        from okula_recovery import agentclient
-
-        def fake(ip, key, disk, s, port):
-            return {"type": "done", "part": "/dev/sda3", "state": "installed", "replaced": False, "gpo": False,
-                    "sync": "set"}
-
-        jm = jobs.JobManager()
-        with mock.patch.object(agentclient, "tweak", fake):
-            job = jm.start("dev", "tweak", "/dev/sda", "Windows anpassen",
-                           jobs.tweak_work("127.0.0.1", b"k", 1, "/dev/sda", "x", [], lambda j, p, e: None))
-            for _ in range(100):
-                if not job.running:
-                    break
-                time.sleep(0.05)
-        self.assertEqual(job.state, jobs.DONE)
-        self.assertIn(jobs.SYNC_SET, "\n".join(job.log))
 
 
 if __name__ == "__main__":

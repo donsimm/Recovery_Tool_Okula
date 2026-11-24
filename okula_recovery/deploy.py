@@ -7,7 +7,8 @@
   (Users/Public/Desktop); vorhandene Ordner gleichen Namens werden ersetzt – erst wenn alles da ist.
 - tweak: „Windows anpassen“ (I-039) – ein vom Tool erzeugtes PowerShell-Skript als einmaliges Startskript der
   lokalen Gruppenrichtlinie ablegen (System32/GroupPolicy); vorhandene Richtlinien bleiben, das Skript stellt den
-  vorherigen Stand beim Start selbst wieder her.
+  vorherigen Stand beim Start selbst wieder her. B-020: was vor der ersten Anmeldung wirken muss (Startmenü- und
+  Widgets-Richtlinie, start2.bin umbenennen), schreibt der Agent gleich offline (tweak_offline).
 - software: „Software installieren“ (I-020) – Installer nach ProgramData/Okula/Software und ein Startskript
   (wie tweak), das sie beim nächsten Windows-Start als SYSTEM still installiert.
 - countdown: „Automatisierung startet in 30 s – Esc zum Abbrechen“ am Bildschirm; Esc direkt von der
@@ -327,9 +328,9 @@ MAX_SCRIPT = 512 * 1024
 SCRIPTS_CSE = "{42B5FAAE-6536-11D2-AE5A-0000F87571E3}"     # Client-Erweiterung „Scripts“
 SCRIPTS_TOOL = "{40B6664F-4972-11D1-A7CA-0000F87571E3}"    # Snap-in „Skripts (Start/Herunterfahren)“, Computer
 GUID_RE = re.compile(r"\{[0-9A-Fa-f-]{36}\}")
-# B-019: Richtlinie „Beim Neustart des Computers und bei der Anmeldung immer auf das Netzwerk warten“ (Logon.admx,
-# SyncForegroundPolicy) im Hive SOFTWARE – während ein Okula-Startskript aussteht; Stand von vorher in
-# GroupPolicy/SyncForegroundPolicy.okula-nachher („fehlt“ bzw. „dword:<Zahl>“). Details bei set_sync_policy.
+# B-019 (zurückgebaut mit B-020): Agents mit B-019 setzten SyncForegroundPolicy im Hive SOFTWARE und sicherten den
+# Stand von vorher in GroupPolicy/SyncForegroundPolicy.okula-nachher („fehlt“ bzw. „dword:<Zahl>“). Der Agent setzt
+# sie nicht mehr; das letzte Okula-Startskript (und der Notfall im .cmd) stellt eine solche Altlast noch her.
 SYNC_KEY = r"Policies\Microsoft\Windows NT\CurrentVersion\Winlogon"
 SYNC_VALUE = "SyncForegroundPolicy"
 SYNC_SAVED = SYNC_VALUE + TWEAK_AFTER
@@ -341,7 +342,8 @@ def startup_cmd_text(name: str, title: str, args: str = "", what: str = "Einstel
     Nur ASCII (cmd liest die Datei in der OEM-Codepage). Die zweite Hälfte läuft nur, wenn PowerShell das Skript nicht
     gestartet hat – sonst hat das Skript beide Dateien schon gelöscht und cmd findet die nächste Zeile nicht mehr.
     Steht noch ein anderes Okula-Startskript aus (I-020: Software und Windows anpassen gleichzeitig), stellt erst
-    dieses die Gruppenrichtlinie wieder her – und (B-019) SyncForegroundPolicy wie vorher (reg add bzw. reg delete)."""
+    dieses die Gruppenrichtlinie wieder her – und eine Altlast von B-019 (SyncForegroundPolicy wie vorher, reg add bzw.
+    reg delete)."""
     return "\r\n".join((
         "@echo off",
         f"rem Okula Recovery Tool - {title}: einmaliges Startskript (entfernt sich selbst)",
@@ -562,71 +564,72 @@ def install_startup_script(root: Path, script: str, name: str = TWEAK_NAME, cmd_
     return {"replaced": False, "gpo": bool(gpt_bytes), "version": version}
 
 
-# ---------- B-019: Startskripte vor der Anmeldung (SyncForegroundPolicy offline setzen) ----------
+# ---------- Registrierung offline schreiben (B-019, verallgemeinert B-020) ----------
 #
-# Auf Clients verarbeitet Windows die Gruppenrichtlinie beim Start standardmässig nicht synchron (Microsoft Learn,
-# Policy CSP ADMX_Logon/SyncForegroundPolicy; „Schnelle Anmeldung“): Die Anmeldung erscheint, bevor die
-# Startskripte gelaufen sind (Befund 24.11.2026: Okula-Skript beginnt 15 s nach der Anmeldung). Mit der Richtlinie
-# „Beim Neustart des Computers und bei der Anmeldung immer auf das Netzwerk warten“ (SyncForegroundPolicy = 1)
-# läuft die Verarbeitung synchron – die Anmeldung wartet, bis die Startskripte fertig sind (höchstens
-# MaxGPOScriptWait, Standard 600 s für alle Skripte zusammen). Windows liest den Wert beim Start, bevor ein Skript
-# läuft – darum setzt ihn der Agent offline im Hive SOFTWARE (hivexsh aus libhivex-bin, auf dem Agent-Stick):
-#   Kopie (SOFTWARE.okula-tmp neben dem Original) → hivexsh -w → mit dem eigenen Leser prüfen → zurückschreiben.
-# Bei einem Fehler bleibt der Hive unverändert; das Startskript läuft dann wie bisher (nach der Anmeldung).
-# hivexsh „setval“ ersetzt alle Werte des Schlüssels – die übrigen Werte werden darum unverändert (hex:<Typ>:…)
-# mitgeschrieben und danach verglichen.
+# Werte im Hive einer ausgeschalteten Windows-Installation setzen (hivexsh aus libhivex-bin, auf dem Agent-Stick):
+#   Kopie (<Hive>.okula-tmp neben dem Original) → hivexsh -w → mit dem eigenen Leser prüfen → zurückschreiben.
+# Ein unsauber geschlossener Hive (Sequenznummern ungleich, Änderungen noch in .LOG1/.LOG2) wird nicht beschrieben.
+# Bei einem Fehler bleibt der Hive unverändert. hivexsh „setval“ ersetzt alle Werte des Schlüssels – die übrigen
+# Werte werden darum unverändert (hex:<Typ>:…) mitgeschrieben und danach verglichen. Je Schlüssel ein setval mit
+# allen Werten, alle Schlüssel in einem hivexsh-Lauf (ein commit).
 
+REG_EXPAND_SZ = 2
 REG_DWORD = 4
-SYNC_ON = (REG_DWORD, b"\x01\x00\x00\x00")
 _REG_NAME_RE = re.compile(r"^[\x21-\x7e](?:[\x20-\x7e]*[\x21-\x7e])?$")   # druckbares ASCII, kein Rand-Leerzeichen
 _SAMPLE = (r"Microsoft\Windows NT\CurrentVersion", "CurrentBuild")         # Stichprobe: bleibt gleich
+HiveValue = tuple[str, int, bytes]
 
 
-class SyncError(ImagingError):
-    """SyncForegroundPolicy nicht gesetzt – Hive unverändert (Startskript läuft dann nach der Anmeldung)."""
+class HiveError(ImagingError):
+    """Registrierung nicht geschrieben – Hive unverändert."""
 
 
-def sync_saved_text(old: tuple[int, bytes] | None) -> str:
-    """Stand von vorher für SyncForegroundPolicy.okula-nachher: „fehlt“ oder „dword:<Zahl>“."""
-    if old is None:
-        return SYNC_ABSENT
-    kind, data = old
-    if kind != REG_DWORD or len(data) != 4:
-        raise SyncError(f"{SYNC_VALUE} ist schon vorhanden, aber kein DWORD (Typ {kind}) – nicht geändert")
-    return f"dword:{struct.unpack('<I', data)[0]}"
+def reg_dword(value: int) -> tuple[int, bytes]:
+    return REG_DWORD, struct.pack("<I", value)
 
 
-def hivexsh_commands(present: list[str], missing: list[str], values: list[tuple[str, int, bytes]]) -> str:
-    """Eingabe für hivexsh -w: zum Schlüssel wechseln (fehlende Teile anlegen), alle Werte setzen, speichern."""
-    lines = ["cd \\" + "\\".join(present)] if present else []
-    for part in missing:
-        lines += [f"add {part}", f"cd {part}"]
-    lines.append(f"setval {len(values)}")
-    for name, kind, data in values:
-        lines += [name or "@", f"hex:{kind}:" + ",".join(f"{b:02x}" for b in data)]
+def reg_expand_sz(text: str) -> tuple[int, bytes]:
+    return REG_EXPAND_SZ, (text + "\0").encode("utf-16-le")
+
+
+def hivexsh_commands(blocks: list[tuple[list[str], list[str], list[HiveValue]]]) -> str:
+    """Eingabe für hivexsh -w: je Schlüssel (vorhandener Pfad, fehlende Teile, alle Werte) hinwechseln, fehlende
+    Teile anlegen, alle Werte mit einem setval setzen; am Schluss ein commit."""
+    lines: list[str] = []
+    for i, (present, missing, values) in enumerate(blocks):
+        if present or i:                                  # hivexsh beginnt an der Wurzel
+            lines.append("cd \\" + "\\".join(present))
+        for part in missing:
+            lines += [f"add {part}", f"cd {part}"]
+        lines.append(f"setval {len(values)}")
+        for name, kind, data in values:
+            lines += [name or "@", f"hex:{kind}:" + ",".join(f"{b:02x}" for b in data)]
     lines.append("commit")
     return "\n".join(lines) + "\n"
 
 
-def _value_set(values) -> list[tuple[str, int, bytes]]:
-    return sorted((n.lower(), k, d) for n, k, d in values or [] if n.lower() != SYNC_VALUE.lower())
+def _others(values, names: set[str]) -> list[tuple[str, int, bytes]]:
+    return sorted((n.lower(), k, d) for n, k, d in values or [] if n.lower() not in names)
 
 
-def _check_sync_hive(before: winprofile.Hive, data: bytes) -> None:
-    """Geschriebene Kopie prüfen: Wert = 1, übrige Werte des Schlüssels und Stichprobe gleich, Kopf sauber."""
+def _check_hive(before: winprofile.Hive, data: bytes, plan: list[tuple[str, list[HiveValue]]]) -> None:
+    """Geschriebene Kopie prüfen: neue Werte da, übrige Werte der Schlüssel und Stichprobe gleich, Kopf sauber."""
     try:
         after = winprofile.Hive(data)
-        ok = after.value(SYNC_KEY, SYNC_VALUE) == SYNC_ON
-        same = _value_set(after.values(SYNC_KEY)) == _value_set(before.values(SYNC_KEY))
+        missing, same = [], True
+        for key, values in plan:
+            names = {n.lower() for n, _k, _d in values}
+            missing += [n for n, k, d in values if after.value(key, n) != (k, d)]
+            same = same and _others(after.values(key), names) == _others(before.values(key), names)
         sample = after.value(*_SAMPLE) == before.value(*_SAMPLE)
     except (winprofile.ProfileError, struct.error, IndexError) as e:
-        raise SyncError(f"geschriebene Kopie nicht lesbar ({e}) – nicht geändert") from None
-    if not ok:
-        raise SyncError(f"{SYNC_VALUE} fehlt in der geschriebenen Kopie – nicht geändert")
+        raise HiveError(f"geschriebene Kopie nicht lesbar ({e}) – nicht geändert") from None
+    if missing:
+        raise HiveError(f"{', '.join(missing)} fehlt in der geschriebenen Kopie – nicht geändert")
     if not same or not sample:
-        raise SyncError("geschriebene Kopie weicht ab (andere Werte verändert) – nicht geändert")
+        raise HiveError("geschriebene Kopie weicht ab (andere Werte verändert) – nicht geändert")
     if not after.clean():
-        raise SyncError("geschriebene Kopie nicht sauber abgeschlossen – nicht geändert")
+        raise HiveError("geschriebene Kopie nicht sauber abgeschlossen – nicht geändert")
 
 
 def _write_back(path: Path, new: bytes, orig: bytes) -> None:
@@ -640,89 +643,209 @@ def _write_back(path: Path, new: bytes, orig: bytes) -> None:
         if path.read_bytes() != new:
             raise OSError("Inhalt nach dem Schreiben anders")
     except OSError as e:
+        name = path.name
         try:
             with open(path, "r+b") as f:
                 f.write(orig)
                 f.truncate()
         except OSError as e2:
-            raise SyncError(f"Registrierung SOFTWARE nicht geschrieben ({e}) und Original nicht zurückgelegt "
+            raise HiveError(f"Registrierung {name} nicht geschrieben ({e}) und Original nicht zurückgelegt "
                             f"({e2}) – Windows startet so evtl. nicht") from None
-        raise SyncError(f"Registrierung SOFTWARE nicht geschrieben ({e}) – Original zurückgelegt") from None
+        raise HiveError(f"Registrierung {name} nicht geschrieben ({e}) – Original zurückgelegt") from None
 
 
-def set_sync_policy(root: Path, run: Callable | None = None) -> dict:
-    """SyncForegroundPolicy = 1 im Hive SOFTWARE setzen, Stand von vorher sichern (root = Windows-Partition).
-
-    Ist der Stand schon gesichert (anderes bzw. ersetztes Okula-Startskript steht noch aus), bleibt die Sicherung –
-    sie gibt den Stand vor dem ersten Startskript wieder. Ergebnis {"sync": "set"} bzw. {"sync": "kept"}; jeder
-    Fehler als SyncError, der Hive bleibt dann unverändert."""
+def _hive_file(root: Path, hive: str) -> Path:
     config = find_ci(root, "Windows/System32/config")
-    hive_path = find_ci(config, "SOFTWARE") if config else None
-    gp = find_ci(root, "Windows/System32/GroupPolicy")
-    if hive_path is None or not hive_path.is_file() or gp is None:
-        raise SyncError("Registrierung SOFTWARE nicht gefunden")
-    saved = find_ci(gp, SYNC_SAVED) or gp / SYNC_SAVED
+    path = find_ci(config, hive) if config else None
+    if path is None or not path.is_file() or path.is_symlink():
+        raise HiveError(f"Registrierung {hive} nicht gefunden")
+    return path
+
+
+def set_hive_values(root: Path, changes: dict[str, list[HiveValue]], hive: str = "SOFTWARE",
+                    run: Callable | None = None) -> bool:
+    """Werte offline im Hive setzen (root = Windows-Partition, changes = {Schlüssel: [(Name, Typ, Daten)]}).
+
+    Fehlende Schlüssel werden angelegt, die übrigen Werte eines Schlüssels bleiben (werden mitgeschrieben und danach
+    verglichen). True = geschrieben, False = alle Werte waren schon so (nichts geschrieben). Jeder Fehler als
+    HiveError, der Hive bleibt dann unverändert."""
+    hive_path = _hive_file(root, hive)
     orig = hive_path.read_bytes()
+    plan: list[tuple[str, list[HiveValue]]] = []
+    blocks = []
+    created: set[str] = set()                       # von einem früheren Block angelegt (gleicher Lauf)
     try:
-        hive = winprofile.Hive(orig)
-        current = hive.value(SYNC_KEY, SYNC_VALUE)
-        before = hive.values(SYNC_KEY)
-        parts = SYNC_KEY.split("\\")
-        present: list[str] = []                    # vorhandener Anfang des Pfads, der Rest wird angelegt
-        for part in parts:
-            if hive.find_key("\\".join(present + [part])) is None:
-                break
-            present.append(part)
+        h = winprofile.Hive(orig)
+        for key, values in changes.items():
+            if all(h.value(key, n) == (k, d) for n, k, d in values):
+                continue                                # schon so – Schlüssel nicht anfassen
+            names = {n.lower() for n, _k, _d in values}
+            others = [(n, k, d) for n, k, d in h.values(key) or [] if n.lower() not in names]
+            parts = key.split("\\")
+            present: list[str] = []                     # vorhandener Anfang des Pfads, der Rest wird angelegt
+            for part in parts:
+                path = "\\".join(present + [part])
+                if h.find_key(path) is None and path.lower() not in created:
+                    break
+                present.append(part)
+            for i in range(len(present), len(parts)):
+                created.add("\\".join(parts[:i + 1]).lower())
+            plan.append((key, list(values)))
+            blocks.append((present, parts[len(present):], others + list(values)))
     except (winprofile.ProfileError, struct.error, IndexError) as e:
-        raise SyncError(f"Registrierung SOFTWARE nicht lesbar ({e})") from None
-    if current == SYNC_ON:
-        if not saved.is_file():                    # war schon an (eigene Richtlinie) – nur den Stand sichern
-            _write_file(saved, (sync_saved_text(current) + "\r\n").encode("ascii"))
-            return {"sync": "set"}
-        return {"sync": "kept"}
-    if not hive.clean():
-        raise SyncError("Registrierung SOFTWARE nicht sauber geschlossen (Windows nicht ganz heruntergefahren?) – "
+        raise HiveError(f"Registrierung {hive} nicht lesbar ({e})") from None
+    if not plan:
+        return False
+    if not h.clean():
+        raise HiveError(f"Registrierung {hive} nicht sauber geschlossen (Windows nicht ganz heruntergefahren?) – "
                         "nicht geändert")
-    note = None if saved.is_file() else sync_saved_text(current)
-    others = [(n, k, d) for n, k, d in before or [] if n.lower() != SYNC_VALUE.lower()]
-    for name, _k, _d in others:
-        if name and (name == "@" or not _REG_NAME_RE.match(name)):
-            raise SyncError(f"Wert „{name}“ unter {SYNC_KEY} lässt sich nicht sicher mitschreiben – nicht geändert")
+    for (key, _v), (_p, _m, values) in zip(plan, blocks):
+        for name, _k, _d in values:
+            if name and (name == "@" or not _REG_NAME_RE.match(name)):
+                raise HiveError(f"Wert „{name}“ unter {key} lässt sich nicht sicher mitschreiben – nicht geändert")
     if not shutil.which("hivexsh"):
-        raise SyncError("hivexsh fehlt auf dem Agent (Paket libhivex-bin) – Agent-Stick neu erstellen")
-    commands = hivexsh_commands(present, parts[len(present):], others + [(SYNC_VALUE, *SYNC_ON)])
+        raise HiveError("hivexsh fehlt auf dem Agent (Paket libhivex-bin) – Agent-Stick neu erstellen")
     work = hive_path.with_name(hive_path.name + ".okula-tmp")
-    if note is not None:
-        _write_file(saved, (note + "\r\n").encode("ascii"))
     try:
         work.write_bytes(orig)
         try:
-            r = (run or subprocess.run)(["hivexsh", "-w", str(work)], input=commands, capture_output=True,
-                                        text=True, timeout=300)
+            r = (run or subprocess.run)(["hivexsh", "-w", str(work)], input=hivexsh_commands(blocks),
+                                        capture_output=True, text=True, timeout=300)
         except (OSError, subprocess.SubprocessError) as e:
-            raise SyncError(f"hivexsh nicht ausgeführt ({e}) – nicht geändert") from None
+            raise HiveError(f"hivexsh nicht ausgeführt ({e}) – nicht geändert") from None
         if r.returncode != 0:
-            raise SyncError(f"hivexsh: {(r.stderr or r.stdout or '').strip()[:200]} – nicht geändert")
+            raise HiveError(f"hivexsh: {(r.stderr or r.stdout or '').strip()[:200]} – nicht geändert")
         new = work.read_bytes()
-        _check_sync_hive(hive, new)
+        _check_hive(h, new, plan)
         _write_back(hive_path, new, orig)
-    except Exception:
-        if note is not None:
-            saved.unlink(missing_ok=True)
-        raise
     finally:
         work.unlink(missing_ok=True)
-    return {"sync": "set"}
+    return True
 
 
-def sync_result(root: Path, log: Callable[[str], None]) -> dict:
-    """set_sync_policy für tweak/software: Fehler nur als Hinweis (das Startskript liegt schon)."""
+def windows_build(root: Path) -> int:
+    """Build-Nummer (CurrentBuild) aus dem Hive SOFTWARE – 0, wenn sie sich nicht lesen lässt."""
     try:
-        return set_sync_policy(root)
-    except Exception as e:      # nie den Auftrag abbrechen – das Startskript liegt schon
-        why = str(e) if isinstance(e, ImagingError) else f"{type(e).__name__}: {e}"
-        log(f"Hinweis: {SYNC_VALUE} nicht gesetzt – {why}")
-        return {"sync_error": why}
+        value = winprofile.Hive(_hive_file(root, "SOFTWARE").read_bytes()).value(*_SAMPLE)
+    except (HiveError, OSError, winprofile.ProfileError, struct.error, IndexError):
+        return 0
+    if not value or value[0] not in (1, REG_EXPAND_SZ):
+        return 0
+    text = value[1].decode("utf-16-le", errors="replace").split("\0")[0].strip()
+    return int(text) if text.isdigit() else 0
+
+
+# ---------- B-020: vor der ersten Anmeldung wirksam – offline beim Senden von „Windows anpassen“ ----------
+#
+# Windows wartet bei der Anmeldung nicht auf die Startskripte (Befund 24.11.2026, auch mit SyncForegroundPolicy = 1:
+# Gruppenrichtlinie 10:31:59 fertig, Anmeldung 10:32:01, Okula-Skript erst 10:32:06). Was vor der ersten Anmeldung
+# wirken muss, schreibt der Agent darum gleich, solange Windows aus ist:
+#   START_CLEAN ab Build 26100: StartPins.json, Richtlinie ConfigureStartPins/ConfigureStartPinsJSON, start2.bin
+#   (und start.bin) in allen Profilen umbenennen, Marke start-offline.ok für das Startskript
+#   Widgets: Richtlinie AllowNewsAndInterests = 0
+# Das Startskript setzt die Werte trotzdem nochmals (doppelt schadet nicht – und wirkt, falls offline nicht ging);
+# mit Marke überspringt es nur das Umbenennen (und damit das Nachholen im Nachlauf).
+
+START_GPO_BUILD = 26100                        # Windows 11 24H2: Gruppenrichtlinie statt MDM-Bridge (B-017)
+OKULA_REL = "ProgramData/Okula"
+START_PINS_FILE = "StartPins.json"              # unter %ProgramData%\Okula, UTF-8 ohne BOM
+START_PINS_PATH = "%ProgramData%\\Okula\\" + START_PINS_FILE
+START_MARKER = "start-offline.ok"               # unter %ProgramData%\Okula: Startmenü offline zurückgesetzt
+# Ordner der gespeicherten Startmenü-Anheftungen je Profil (B-018)
+START_LAYOUT_DIR = ("AppData\\Local\\Packages\\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy"
+                    "\\LocalState")
+EXPLORER_KEY = r"Policies\Microsoft\Windows\Explorer"
+DSH_KEY = r"Policies\Microsoft\Dsh"
+MAX_PINS = 64 * 1024
+
+
+def _mkdirs_ci(root: Path, rel: str) -> Path:
+    cur = root
+    for part in PurePosixPath(rel).parts:
+        cur = _dir_ci(cur, part)
+        cur.mkdir(exist_ok=True)
+    return cur
+
+
+def reset_start_layouts(root: Path, stamp: str) -> tuple[int, list[str]]:
+    """start2.bin (und start.bin) in allen Profilen unter Users umbenennen (<Name>.okula-<stamp>, nicht löschen).
+    Ergebnis: (Anzahl Profile mit umbenannter Datei, Hinweise zu Dateien, die sich nicht umbenennen liessen)."""
+    users = find_ci(root, "Users")
+    if users is None or users.is_symlink() or not users.is_dir():
+        return 0, []
+    count, hints = 0, []
+    for profile in sorted(users.iterdir()):
+        if profile.is_symlink() or not profile.is_dir():      # „All Users“, „Default User“ (Verknüpfungen)
+            continue
+        layout = find_ci(profile, START_LAYOUT_DIR.replace("\\", "/"))
+        if layout is None or not layout.is_dir() or any(p.is_symlink() for p in (layout, *layout.parents)
+                                                        if profile in p.parents):
+            continue
+        done = False
+        for name in ("start2.bin", "start.bin"):
+            path = find_ci(layout, name)
+            if path is None or path.is_symlink() or not path.is_file():
+                continue
+            try:
+                path.rename(path.with_name(f"{path.name}.okula-{stamp}"))
+                done = True
+            except OSError as e:
+                hints.append(f"{name} von {profile.name} nicht umbenannt: {e}")
+        count += done
+    return count, hints
+
+
+def _drop_marker(root: Path) -> None:
+    marker = find_ci(root, f"{OKULA_REL}/{START_MARKER}")
+    if marker is not None and marker.is_file() and not marker.is_symlink():
+        marker.unlink()
+
+
+def tweak_offline(root: Path, spec, run: Callable | None = None, now: float | None = None) -> dict:
+    """B-020: Teil von „Windows anpassen“, der vor der ersten Anmeldung wirken muss, offline schreiben.
+
+    spec (vom Tool, nur für gewählte Optionen): {"start_pins": <JSON für ConfigureStartPins>, "widgets": True}.
+    Ergebnis für die Antwort: {"offline": {...}} bzw. {"offline_error": Grund} (Hive dann unverändert, nichts
+    umbenannt, keine Marke – das Startskript macht es wie bisher) bzw. {} ohne Auftrag."""
+    spec = spec if isinstance(spec, dict) else {}
+    pins = spec.get("start_pins")
+    widgets = bool(spec.get("widgets"))
+    _drop_marker(root)                           # alte Marke: sonst überspränge das Skript das Umbenennen
+    if not pins and not widgets:
+        return {}
+    try:
+        if pins is not None and (not isinstance(pins, str) or len(pins) > MAX_PINS or not pins.isascii()):
+            raise HiveError("Startmenü-Liste ungültig")
+        build = windows_build(root)
+        if not build:
+            raise HiveError("Windows-Version (CurrentBuild) nicht lesbar")
+        start = bool(pins) and build >= START_GPO_BUILD
+        changes: dict[str, list[HiveValue]] = {}
+        if start:
+            folder = _mkdirs_ci(root, OKULA_REL)
+            _write_file(find_ci(folder, START_PINS_FILE) or folder / START_PINS_FILE, pins.encode("ascii"))
+            changes[EXPLORER_KEY] = [("ConfigureStartPins", *reg_dword(1)),
+                                     ("ConfigureStartPinsJSON", *reg_expand_sz(START_PINS_PATH))]
+        if widgets:
+            changes[DSH_KEY] = [("AllowNewsAndInterests", *reg_dword(0))]
+        if changes:
+            set_hive_values(root, changes, run=run)
+    except Exception as e:       # nie den Auftrag abbrechen – das Startskript liegt schon und setzt es selbst
+        return {"offline_error": str(e) if isinstance(e, ImagingError) else f"{type(e).__name__}: {e}"}
+    out: dict = {"build": build}
+    if widgets:
+        out["widgets"] = True
+    if pins:
+        out["start"] = "set" if start else "old"           # old: vor 24H2 – nur das Startskript (MDM-Bridge)
+    if start:
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(now))
+        count, hints = reset_start_layouts(root, stamp)
+        out.update(profiles=count, stamp=stamp)
+        if hints:                # nicht alles umbenannt: keine Marke – das Startskript versucht es nochmals
+            out["hints"] = hints
+        else:
+            _write_file(folder / START_MARKER, f"stamp={stamp}\r\nprofiles={count}\r\n".encode("ascii"))
+    return {"offline": out}
 
 
 def _windows_system(m: filebackup.Mounts, disk: str) -> tuple[str, Path]:
@@ -758,12 +881,24 @@ def tweak(req: dict, log: Callable[[str], None] = print) -> dict:
         part, root = _windows_system(m, disk)
         state = windows_state(root)
         result = install_startup_script(root, script)
-        result.update(sync_result(root, log))           # B-019: Anmeldung wartet auf das Startskript
+        result.update(tweak_offline(root, req.get("offline")))     # B-020: vor der ersten Anmeldung wirksam
         subprocess.run(["sync"])
     log(f"Windows anpassen {part}: Startskript " + ("ersetzt" if result["replaced"] else "abgelegt") +
-        (" (lokale Gruppenrichtlinie ergänzt)" if result["gpo"] else "") +
-        (f", {SYNC_VALUE} gesetzt" if result.get("sync") else ""))
+        (" (lokale Gruppenrichtlinie ergänzt)" if result["gpo"] else "") + offline_log(result))
     return {"type": "done", "part": part, "state": state, **result}
+
+
+def offline_log(result: dict) -> str:
+    """Zusatz für die Logzeile des Agents (B-020)."""
+    if result.get("offline_error"):
+        return f"; Hinweis: vor dem Windows-Start nichts gesetzt – {result['offline_error']}"
+    off = result.get("offline") or {}
+    parts = []
+    if off.get("start") == "set":
+        parts.append(f"Startmenü-Richtlinie gesetzt, Startmenü von {off.get('profiles', 0)} Profil(en) zurückgesetzt")
+    if off.get("widgets"):
+        parts.append("Widgets-Richtlinie gesetzt")
+    return ("; vor dem Windows-Start: " + ", ".join(parts)) if parts else ""
 
 
 # ---------- Software installieren (I-020): Installer nach ProgramData, Startskript ----------
@@ -820,7 +955,6 @@ def software(sock, req: dict, log: Callable[[str], None] = print, report: Report
                     raise ImagingError(f"{item} wurde nicht übertragen")
                 src.rename(target / item)
             result = install_startup_script(root, script, SOFTWARE_NAME, SOFTWARE_CMD_TEXT)
-            result.update(sync_result(root, log))       # B-019: Anmeldung wartet auf das Startskript
             subprocess.run(["sync"])
         finally:
             shutil.rmtree(stage, ignore_errors=True)

@@ -345,8 +345,7 @@ def software(sock, req: dict, log=print, report=None) -> None:
         raise ImagingError("Keine Software gewählt")
     files = _receive_files(sock, req, report or (lambda f, p, n: None), ack=False)
     wire.send_json(sock, {"type": "done", "part": f"{DEMO_DISK_PATH}p3", "state": "installed", "files": files,
-                          "bytes": int(req.get("bytes") or 0), "replaced": False, "gpo": False, "version": 1,
-                          "sync": "set"})
+                          "bytes": int(req.get("bytes") or 0), "replaced": False, "gpo": False, "version": 1})
     log(f"Demo: Software abgelegt (simuliert): {', '.join(map(str, req.get('items') or []))}")
 
 
@@ -356,8 +355,17 @@ def tweak(req: dict, log=print) -> dict:
         raise ImagingError("Keine Einstellungen gewählt")
     time.sleep(2)
     log("Demo: Startskript für „Windows anpassen“ abgelegt (simuliert)")
-    return {"type": "done", "part": f"{DEMO_DISK_PATH}p3", "state": "installed", "replaced": False, "gpo": False,
-            "version": 1, "sync": "set"}
+    reply = {"type": "done", "part": f"{DEMO_DISK_PATH}p3", "state": "installed", "replaced": False, "gpo": False,
+             "version": 1}
+    spec = req.get("offline") if isinstance(req.get("offline"), dict) else {}
+    if spec.get("start_pins") or spec.get("widgets"):          # B-020: Offline-Teil simuliert (Build 26100)
+        off: dict = {"build": 26100}
+        if spec.get("start_pins"):
+            off.update(start="set", profiles=1, stamp=time.strftime("%Y%m%d-%H%M%S"))
+        if spec.get("widgets"):
+            off["widgets"] = True
+        reply["offline"] = off
+    return reply
 
 
 BOOT = {"order": ["0001", "0002", "0003"], "netfirst": False}

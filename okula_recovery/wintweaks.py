@@ -1,9 +1,10 @@
 """Windows anpassen (I-039): Optionen, Vorlagen und das PowerShell-Skript – ohne GTK.
 
 Das Tool erzeugt hier ein Skript für Windows PowerShell 5.1 (Windows 10 22H2, Windows 11) und schickt es an den
-Agent; der legt es als einmaliges Startskript der lokalen Gruppenrichtlinie ab (deploy.install_startup_script) und
-setzt bis dahin SyncForegroundPolicy (B-019, deploy.set_sync_policy), damit die Anmeldung auf das Skript wartet.
-Beim nächsten Windows-Start läuft es als SYSTEM vor der Anmeldung:
+Agent; der legt es als einmaliges Startskript der lokalen Gruppenrichtlinie ab (deploy.install_startup_script).
+Windows wartet bei der Anmeldung nicht auf Startskripte (B-020) – was vor der ersten Anmeldung wirken muss
+(Startmenü, Widgets), schreibt der Agent darum zusätzlich gleich offline (offline_request → deploy.tweak_offline).
+Beim nächsten Windows-Start läuft das Skript als SYSTEM (evtl. parallel zur Anmeldung):
 1. Skript löschen, Startmechanismus zurückbauen (gpt.ini/scripts.ini von vorher, Einträge unter
    HKLM\\…\\Group Policy\\Scripts) – so läuft es nie ein zweites Mal, auch nicht nach einem Fehler.
 2. Jede gewählte Option als eigener Baustein (try/catch): Fehler wird protokolliert, der nächste Baustein läuft.
@@ -20,7 +21,8 @@ import re
 import time
 from dataclasses import dataclass
 
-from okula_recovery.deploy import TWEAK_AFTER, TWEAK_LOG, TWEAK_NAME
+from okula_recovery.deploy import (START_GPO_BUILD, START_LAYOUT_DIR, START_MARKER, START_PINS_FILE, TWEAK_AFTER,
+                                   TWEAK_LOG, TWEAK_NAME)
 
 LOG_PATH = TWEAK_LOG
 GROUPS = ("Apps", "Windows-Programme", "Updates", "Betrieb", "Datenschutz", "Explorer und Desktop", "Dienste",
@@ -65,13 +67,11 @@ PROTECTED = PROTECTED_ALWAYS + PROTECTED_WINDOWS          # im Skript $OkulaKeep
 # Tabellen dort schreiben „packagedAppID“).
 # Ab Windows 11 24H2 (Build 26100, KB5062660) als Gruppenrichtlinie laut StartMenu.admx: ConfigureStartPins = 1
 # (DWORD) und ConfigureStartPinsJSON = Pfad zur JSON-Datei (REG_EXPAND_SZ). Die Datei bleibt liegen (Nachlauf und
-# Software installieren löschen %ProgramData%\Okula nur, wenn der Ordner leer ist).
-START_PINS_FILE = "StartPins.json"                      # unter %ProgramData%\Okula, UTF-8 ohne BOM
-START_GPO_BUILD = 26100
-# B-018: Ordner der gespeicherten Startmenü-Anheftungen je Profil (start2.bin, ältere start.bin). Bei bestehenden
-# Profilen hat start2.bin Vorrang vor der Richtlinie – START_CLEAN benennt sie ab Build 26100 einmalig um.
-START_LAYOUT_DIR = ("AppData\\Local\\Packages\\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy"
-                    "\\LocalState")
+# Software installieren löschen %ProgramData%\Okula nur, wenn der Ordner leer ist). START_PINS_FILE, START_GPO_BUILD,
+# START_LAYOUT_DIR und START_MARKER stehen in deploy.py (der Agent schreibt dasselbe offline, B-020).
+# B-018: START_LAYOUT_DIR = Ordner der gespeicherten Startmenü-Anheftungen je Profil (start2.bin, ältere start.bin).
+# Bei bestehenden Profilen hat start2.bin Vorrang vor der Richtlinie – START_CLEAN benennt sie ab Build 26100 einmalig
+# um (B-020: schon offline durch den Agent, dann liegt die Marke START_MARKER und das Skript überspringt es).
 START_PINS = (
     ("Edge", {"desktopAppLink": "%ALLUSERSPROFILE%\\Microsoft\\Windows\\Start Menu\\Programs\\Microsoft Edge.lnk"}),
     ("Explorer", {"desktopAppLink": "%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\File Explorer.lnk"}),
@@ -358,6 +358,21 @@ if ([Environment]::OSVersion.Version.Build -ge {START_GPO_BUILD}) {{
     Remove-ItemProperty -LiteralPath $key -Name 'ConfigureStartPins' -ErrorAction SilentlyContinue
     Set-OkulaReg $key 'ConfigureStartPins' 1
     Set-OkulaReg $key 'ConfigureStartPinsJSON' $file 'ExpandString'
+    # B-020: Richtlinie und Zurücksetzen hat der Agent schon beim Senden offline erledigt (Marke) – Windows meldet
+    # evtl. an, bevor dieses Skript läuft; nochmals umbenennen hiesse, das frisch angelegte Startmenü zu verwerfen
+    $marker = Join-Path $folder '{START_MARKER}'
+    if (Test-Path -LiteralPath $marker) {{
+        $offline = @{{}}
+        try {{ $offline = ConvertFrom-StringData ([IO.File]::ReadAllText($marker)) }} catch {{ }}
+        Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
+        $offCount = $offline['profiles']
+        $offStamp = $offline['stamp']
+        return ('Gruppenrichtlinie ConfigureStartPins gesetzt (Datei {{0}}); Startmenü schon beim Senden vor dem ' +
+                'Windows-Start zurückgesetzt (Agent: Richtlinie gesetzt, Startmenü von {{1}} Profil(en) zurückgesetzt, ' +
+                'start2.bin gesichert als start2.bin.okula-{{2}}) – gilt ab der ersten Anmeldung für neue Konten und ' +
+                'bestehende; eigene Anheftungen der Benutzer gehen dabei verloren') -f $file, $offCount, $offStamp
+    }}
+    # Ohne Marke (Agent älter als B-020 oder offline nicht geklappt) wie bisher:
     # B-018: bei bestehenden Profilen hat die gespeicherte start2.bin Vorrang vor der Richtlinie – einmalig
     # zurücksetzen (umbenennen, nicht löschen); Windows legt bei der nächsten Anmeldung eine neue an
     $sub = '{START_LAYOUT_DIR}'
@@ -573,8 +588,12 @@ $secret = $null
 
 
 # Rückbau des Startmechanismus – gemeinsam mit „Software installieren“ (I-020, software.py). Stehen mehrere
-# Okula-Startskripte gleichzeitig aus, laufen sie beim selben Start nacheinander; erst das letzte (keine andere
-# okula-*.cmd mehr im Startup-Ordner) legt gpt.ini/scripts.ini von vorher zurück.
+# Okula-Startskripte gleichzeitig aus, legt erst das letzte (keine andere okula-*.cmd mehr im Startup-Ordner)
+# gpt.ini/scripts.ini von vorher zurück. B-020: Die Skripte laufen u. U. gleichzeitig (Befund 24.11.: Windows
+# anpassen und Software starteten in derselben Sekunde) – darum alles unter der Sperre RESTORE_LOCK; „schon
+# aufgeräumt“ bzw. „nicht vorhanden“, weil das andere Skript schneller war, ist kein Fehler.
+RESTORE_LOCK = "Global\\OkulaStartRestore"
+RESTORE_LOCK_WAIT = 120          # s
 RESTORE_START = r"""function Update-OkulaGpNumbers([string]$Path) {
     # Unterschlüssel 0, 1, … nach dem Entfernen lückenlos nachnummerieren (Reihenfolge bleibt). B-018: ob Windows
     # Lücken verträgt, ist nicht belegt (ungeprüft) – lückenlos entspricht dem, was Windows selbst anlegt.
@@ -587,24 +606,91 @@ RESTORE_START = r"""function Update-OkulaGpNumbers([string]$Path) {
     }
 }
 
+function Test-OkulaGpScript([string]$Script) {
+    # Eintrag unter …\Group Policy\…\Scripts\Startup für dieses Skript oder Rest eines früheren Laufs (okula-*.cmd,
+    # das nicht mehr im Startup-Ordner liegt – B-018)?
+    if (-not $Script) { return $false }
+    $leaf = ($Script -split '[\\/]')[-1]
+    $stale = ($leaf -like 'okula-*.cmd') -and -not (Test-Path -LiteralPath (Join-Path $OkulaStartup $leaf))
+    return (($Script -like "*$OkulaName*") -or $stale)
+}
+
+function Get-OkulaGpLeft([string]$List) {
+    # Anzahl solcher Einträge, die noch da sind (B-020: nach einem Fehler – war das andere Skript schneller?)
+    $left = 0
+    foreach ($gpo in @(Get-ChildItem -LiteralPath $List -ErrorAction SilentlyContinue)) {
+        foreach ($entry in @(Get-ChildItem -LiteralPath $gpo.PSPath -ErrorAction SilentlyContinue)) {
+            if (Test-OkulaGpScript ([string]$entry.GetValue('Script'))) { $left++ }
+        }
+    }
+    return $left
+}
+
 function Restore-OkulaStart {
+    # B-020: unter einer Sperre (benannter Mutex für alle Sitzungen). Jedes Okula-Startskript hat seine .cmd schon
+    # gelöscht, bevor es hierher kommt; wer die Sperre als Zweiter bekommt, sieht kein anderes Skript mehr und
+    # räumt den Rest auf – die Entscheidung „letztes Skript“ fällt also erst, wenn das andere wirklich fertig ist.
+    # Rückgabe: Hinweis fürs Protokoll (oder nichts); Fehler als Ausnahme (siehe Invoke-OkulaStartRestore).
+    $lock = $null
+    $locked = $false
+    $lockNote = $null
+    try {
+        $lock = New-Object System.Threading.Mutex($false, '__LOCK__')
+        try {
+            $locked = $lock.WaitOne(__LOCKWAIT__ * 1000)
+        } catch {
+            # Das andere Skript endete, ohne die Sperre freizugeben (AbandonedMutexException) – sie gehört jetzt hier
+            $e = $_.Exception
+            while ($e -and -not ($e -is [System.Threading.AbandonedMutexException])) { $e = $e.InnerException }
+            if (-not $e) { throw }
+            $locked = $true
+        }
+        if (-not $locked) { $lockNote = 'Sperre nach __LOCKWAIT__ s nicht frei – ohne Sperre aufgeräumt' }
+    } catch {
+        $lockNote = ('Sperre nicht verfügbar ({0}) – ohne Sperre aufgeräumt' -f $_.Exception.Message)
+    }
+    try {
+        $note = Invoke-OkulaStartRestore
+    } catch {
+        if ($lockNote) { throw ('{0}; {1}' -f $_.Exception.Message, $lockNote) }
+        throw
+    } finally {
+        if ($locked) { try { $lock.ReleaseMutex() } catch { } }
+        if ($lock) { $lock.Dispose() }
+    }
+    $all = @(@($note, $lockNote) | Where-Object { $_ })
+    if ($all) { return ($all -join '; ') }
+}
+
+function Invoke-OkulaStartRestore {
     # Weitere Okula-Startskripte noch offen (z. B. Software installieren): das letzte stellt den Stand her.
     # Rückgabe: Hinweis fürs Protokoll (oder nichts). Fehler nur, wenn scripts.ini bleibt – lässt sich ein leerer,
     # von Windows gerade verwendeter Ordner nicht löschen (B-017) oder ein Eintrag in der Registrierung nicht
-    # entfernen (B-018), ist das nur ein Hinweis. B-019: SyncForegroundPolicy nicht zurückgesetzt = Fehler (am Ende,
-    # nach dem Aufräumen der Registrierung).
+    # entfernen (B-018), ist das nur ein Hinweis. Altlast B-019: SyncForegroundPolicy nicht zurückgesetzt = Fehler
+    # (am Ende, nach dem Aufräumen der Registrierung). B-020: Was das andere Skript schon erledigt hat („nicht
+    # vorhanden“), ist weder Fehler noch Hinweis – nur was danach noch übrig ist.
     $notes = @()
     $syncError = $null
     $others = @(Get-ChildItem -LiteralPath $OkulaStartup -Filter 'okula-*.cmd' -Force -ErrorAction SilentlyContinue |
                 Where-Object { $_.BaseName -ne $OkulaName })
     if (-not $others) {
-        # gpt.ini und scripts.ini: Stand von vorher (Version erhöht) bzw. löschen, wenn es sie vorher nicht gab
-        foreach ($file in (Join-Path $OkulaGp 'Machine\Scripts\scripts.ini'), (Join-Path $OkulaGp 'gpt.ini')) {
-            $saved = $file + '__AFTER__'
-            if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force -ErrorAction Stop }
-            if (Test-Path -LiteralPath $saved) { Move-Item -LiteralPath $saved -Destination $file -Force -ErrorAction Stop }
-        }
         $ini = Join-Path $OkulaGp 'Machine\Scripts\scripts.ini'
+        $gpt = Join-Path $OkulaGp 'gpt.ini'
+        # B-020: Nichts mehr zurückzulegen (kein *.okula-nachher, scripts.ini ohne Okula-Startskript) = das andere
+        # Okula-Startskript hat schon aufgeräumt – dann nichts löschen (sonst ginge die zurückgelegte gpt.ini verloren)
+        $pending = (Test-Path -LiteralPath ($ini + '__AFTER__')) -or (Test-Path -LiteralPath ($gpt + '__AFTER__')) -or
+                   ((Test-Path -LiteralPath $ini) -and
+                    ([string](Get-Content -LiteralPath $ini -Raw -ErrorAction SilentlyContinue) -match 'okula-[^\r\n]*\.cmd'))
+        if ($pending) {
+            # gpt.ini und scripts.ini: Stand von vorher (Version erhöht) bzw. löschen, wenn es sie vorher nicht gab
+            foreach ($file in $ini, $gpt) {
+                $saved = $file + '__AFTER__'
+                if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force -ErrorAction Stop }
+                if (Test-Path -LiteralPath $saved) { Move-Item -LiteralPath $saved -Destination $file -Force -ErrorAction Stop }
+            }
+        } else {
+            $notes += 'Gruppenrichtlinie war schon zurückgelegt (anderes Okula-Startskript)'
+        }
         if ((Test-Path -LiteralPath $ini) -and
             ((Get-Content -LiteralPath $ini -Raw -ErrorAction SilentlyContinue) -like "*$OkulaName*")) {
             throw ('scripts.ini nennt das Startskript noch: {0}' -f $ini)
@@ -616,8 +702,9 @@ function Restore-OkulaStart {
                 catch { $notes += ('leerer Ordner {0} bleibt (wird gerade verwendet, ohne Wirkung)' -f $sub) }
             }
         }
-        # B-019: Richtlinie „immer auf das Netzwerk warten“ (SyncForegroundPolicy) wie vor dem Ablegen – der Agent
-        # hat sie gesetzt, damit die Anmeldung auf die Startskripte wartet. Gilt ab dem nächsten Start.
+        # Altlast B-019: Agents mit B-019 setzten die Richtlinie „immer auf das Netzwerk warten“
+        # (SyncForegroundPolicy) und sicherten den Stand von vorher – seit B-020 nicht mehr; ein noch gesicherter
+        # Stand wird hier wiederhergestellt. Gilt ab dem nächsten Start.
         $syncSaved = Join-Path $OkulaGp 'SyncForegroundPolicy__AFTER__'
         if (Test-Path -LiteralPath $syncSaved) {
             try {
@@ -640,13 +727,16 @@ function Restore-OkulaStart {
                 Remove-Item -LiteralPath $syncSaved -Force -ErrorAction Stop
             } catch {
                 $why = $_.Exception.Message
-                $syncError = 'SyncForegroundPolicy nicht zurückgesetzt (Anmeldung wartet weiter auf das Netzwerk): ' + $why
+                # B-020: Sicherung schon weg = das andere Okula-Startskript hat den Stand hergestellt – kein Fehler
+                if (Test-Path -LiteralPath $syncSaved) {
+                    $syncError = 'SyncForegroundPolicy nicht zurückgesetzt (Anmeldung wartet weiter auf das Netzwerk): ' + $why
+                }
             }
         }
     }
     # Einträge, die Windows beim Verarbeiten der Richtlinie für Okula-Startskripte angelegt hat: dieses Skript und
-    # Reste früherer Läufe (okula-*.cmd, das nicht mehr im Startup-Ordner liegt – B-018). Nur den Wert „Script“
-    # lesen: Get-ItemProperty wandelt alle Werte um und scheitert am 16-Byte-QWORD „ExecTime“ (InvalidCastException).
+    # Reste früherer Läufe (Test-OkulaGpScript). Nur den Wert „Script“ lesen: Get-ItemProperty wandelt alle Werte um
+    # und scheitert am 16-Byte-QWORD „ExecTime“ (InvalidCastException).
     $base = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy'
     $removed = 0
     foreach ($list in "$base\Scripts\Startup", "$base\State\Machine\Scripts\Startup") {
@@ -657,10 +747,7 @@ function Restore-OkulaStart {
                 $gone = $false
                 foreach ($entry in @(Get-ChildItem -LiteralPath $gpo.PSPath -ErrorAction Stop)) {
                     $s = [string]$entry.GetValue('Script')
-                    if (-not $s) { continue }
-                    $leaf = ($s -split '[\\/]')[-1]
-                    $stale = ($leaf -like 'okula-*.cmd') -and -not (Test-Path -LiteralPath (Join-Path $OkulaStartup $leaf))
-                    if (($s -like "*$OkulaName*") -or $stale) {
+                    if (Test-OkulaGpScript $s) {
                         Remove-Item -LiteralPath $entry.PSPath -Recurse -Force -ErrorAction Stop
                         $removed++
                         $gone = $true
@@ -676,18 +763,23 @@ function Restore-OkulaStart {
             }
             if ($changed) { Update-OkulaGpNumbers $list }
         } catch {
-            $notes += ('Registrierung {0} nicht ganz aufgeräumt (ohne Wirkung): {1}' -f ($list -replace '^.*\\Group Policy\\', ''),
-                       $_.Exception.Message)
+            # B-020: „nicht vorhanden“, weil das andere Okula-Startskript den Eintrag gerade entfernt hat, ist kein
+            # Fehler – Hinweis nur, wenn danach noch ein Okula-Eintrag übrig ist
+            $why = $_.Exception.Message
+            if ((Test-Path -LiteralPath $list) -and (Get-OkulaGpLeft $list)) {
+                $notes += ('Registrierung {0} nicht ganz aufgeräumt (ohne Wirkung): {1}' -f ($list -replace '^.*\\Group Policy\\', ''),
+                           $why)
+            }
         }
     }
     if ($removed) { $notes += ('{0} Eintrag/Einträge von Okula-Startskripten in der Registrierung entfernt' -f $removed) }
     if ($syncError) { throw ((@($notes) + $syncError) -join '; ') }
     if ($notes) { return ($notes -join '; ') }
-}"""
+}""".replace("__LOCKWAIT__", str(RESTORE_LOCK_WAIT)).replace("__LOCK__", RESTORE_LOCK)
 
 HEADER = r"""# Okula Recovery Tool – Windows anpassen (I-039)
 # Erstellt: __CREATED__ · Gerät: __DEVICE__ · Vorlage: __TEMPLATE__
-# Einmaliges Startskript der lokalen Gruppenrichtlinie (läuft als SYSTEM vor der Anmeldung). Zuerst werden das
+# Einmaliges Startskript der lokalen Gruppenrichtlinie (läuft als SYSTEM beim Start). Zuerst werden das
 # Skript und der Startmechanismus entfernt, dann folgen die Einstellungen – jede für sich: ein Fehler wird
 # protokolliert, die nächste Einstellung läuft weiter. Protokoll: __LOG__
 $ErrorActionPreference = 'Continue'
@@ -1091,6 +1183,17 @@ def later_body(selected, device: str = "", created: float | None = None) -> str:
         return "'keine Store-Apps gewählt – kein Nachlauf nötig'"
     return _fill(LATER_BODY, FILE=LATER_FILE, B64=_b64(build_later_script(selected, device, created)),
                  DELAY=str(LATER_DELAY_MIN), DAYS=str(LATER_DAYS), TASK=LATER_TASK, COUNT=str(count))
+
+
+def offline_request(selected) -> dict:
+    """B-020: Teil für den Agent, der vor der ersten Anmeldung wirken muss – nur für die gewählten Optionen. Der
+    Agent schreibt ihn offline (deploy.tweak_offline; Startmenü erst ab Build 26100, aus dem Hive gelesen)."""
+    out: dict = {}
+    if START_CLEAN in selected:
+        out["start_pins"] = start_pins_json()
+    if "apps_widgets" in selected:
+        out["widgets"] = True
+    return out
 
 
 def build_script(selected, user: str = "", password: str = "", device: str = "", template: str = NO_TEMPLATE,
