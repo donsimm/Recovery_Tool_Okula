@@ -1,6 +1,6 @@
 # B-019 – Okula-Startskripte laufen parallel zur Anmeldung
 
-Status: offen · erstellt 24.11.2026 von der Projektleitung · Freigabe: Dominik 24.11. (Gesamttest an der VM)
+Status: umgesetzt (Commit 21af43a) · erstellt 24.11.2026 von der Projektleitung · Freigabe: Dominik 24.11. (Gesamttest an der VM)
 
 ## Rolle und Einstieg
 
