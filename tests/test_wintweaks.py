@@ -248,8 +248,9 @@ class OptionsTemplatesTest(unittest.TestCase):
         self.assertIn("Set-OkulaReg $key 'ConfigureStartPinsJSON' $file 'ExpandString'", gpo)
         self.assertNotIn("$json 'String'", body)                                   # kein JSON-Text mehr
         self.assertNotIn("'ConfigureStartPins' $json", body)
-        # 24H2-Zweig endet mit return – die MDM-Bridge danach läuft nur vor 24H2
-        self.assertRegex(gpo, r"\n\s*return \$text\n\s*\}\n\s*try \{\n")
+        # 24H2-Zweig endet mit return (B-021: mit Hinweis zu Werbe-Platzhaltern) – die MDM-Bridge danach läuft nur
+        # vor 24H2
+        self.assertRegex(gpo, r"\n\s*return \$text \+ \$adsNote\n\s*\}\n\s*try \{\n")
         # vor 24H2: MDM-Bridge, sonst ehrlich als Fehler
         mdm = body[body.index("MDM_Policy_Config01_Start02"):]
         self.assertIn("throw ('Windows 11 vor 24H2: Startmenü nur mit Geräteverwaltung", mdm)
