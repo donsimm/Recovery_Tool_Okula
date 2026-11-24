@@ -1,6 +1,6 @@
 # B-018 – Windows anpassen: Startmenü bei bestehenden Konten, Registry-Reste beim Aufräumen
 
-Status: offen · erstellt 24.11.2026 von der Projektleitung · Freigabe: Dominik 24.11. (Test an der VM)
+Status: umgesetzt (Commit bd17480) · erstellt 24.11.2026 von der Projektleitung · Freigabe: Dominik 24.11. (Test an der VM)
 
 ## Rolle und Einstieg
 
