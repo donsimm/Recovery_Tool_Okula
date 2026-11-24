@@ -1,6 +1,6 @@
 # Ä-045 – Zwei klare Neustart-Knöpfe: „Neustart in Windows“ und „Neustart in den Agent“
 
-Status: offen · erstellt 24.11.2026 von der Projektleitung · Freigabe: Dominik 24.11.
+Status: umgesetzt (Commit 874121e) · erstellt 24.11.2026 von der Projektleitung · Freigabe: Dominik 24.11.
 
 ## Rolle und Einstieg
 

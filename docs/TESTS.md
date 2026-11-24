@@ -795,3 +795,30 @@ schon, Option *Gastagent* an – Abschnitt 27), am besten vorher Snapshot „vor
 - [ ] Umgekehrte Reihenfolge (erst Software, dann Windows anpassen) einmal wiederholen – Ergebnis gleich
 - [ ] Gerät mit BitLocker bzw. ohne Windows: Meldung „kein Windows erkannt (oder … BitLocker) – nichts gesendet“
 - [ ] Demo-Gerät: *Software installieren …* mit den Beispielen aus dem Demo-Speicher → Auftrag „fertig“, Verlauf
+
+### Ä-045 Neustart-Knöpfe
+Nach `git pull && sudo ./install.sh` das Tool neu starten; **neuer Agent-Stick nötig** bzw. Netzwerkstart neu
+vorbereiten (neuer Agent-Befehl `bootnext`). Vorher `python3 -m unittest discover -s tests -t .` (Agent konnte die
+Tests nicht ausführen).
+- [ ] **Oberfläche:** unter der Geräteliste, im Gerätefenster (oben rechts) und im Rechtsklick-Menü je
+      *Neustart in Windows* und *Neustart in den Agent*, kein „Neu starten“ mehr; Symbol *Herunterfahren* daneben.
+      Gerätefenster: Knopfzeile nicht abgeschnitten (sonst melden)
+- [ ] Echtes Gerät ohne Agent: beide Knöpfe ausgegraut, Tooltip „Gerät ist nicht mit dem Agent verbunden …“
+- **VM-Win11-clean, beide Knöpfe** (Netzwerkstart eingeschaltet):
+- [ ] Windows läuft, Agent nicht verbunden → *Neustart in Windows*: Rückfrage nennt „Disk zuerst“, VM startet Windows
+      (auch wenn vorher im Reiter *Netzwerk* „Beim nächsten Start den Agent laden“ angehakt war – Haken danach weg)
+- [ ] Windows läuft → *Neustart in den Agent*: VM startet über das Netzwerk den Agent, grüner Punkt
+- [ ] Agent verbunden → *Windows anpassen …* senden → nach dem Auftrag sofort die Frage „Jetzt in Windows neu
+      starten?“ mit *Neustart in Windows* / *Später*; *Neustart in Windows* → VM startet Windows, das Startskript läuft
+- [ ] Wie oben mit *Software installieren …*, diesmal *Später* → nichts passiert; danach Knopf *Neustart in Windows*
+- [ ] Agent verbunden → *Neustart in den Agent* → VM kommt wieder mit dem Agent
+- [ ] Netzwerkstart aus (Tools → Netzwerkstart (PXE) …): *Neustart in den Agent* bei der VM ausgegraut mit Grund
+- [ ] Verlauf je Neustart: „Neustart in Windows (vom Tool, VM: Disk zuerst)“ bzw. „… Netzwerk zuerst“
+- **Ein echtes Gerät mit Agent-Stick (UEFI):**
+- [ ] Mit Stick starten → *Neustart in Windows* (Stick bleibt stecken): Gerät startet Windows (BootNext),
+      Agent-Bildschirm vorher „Nächster Start: Windows Boot Manager (Boot000x …)“; Verlauf „… einmalig über Windows Boot
+      Manager“. Nächster Start ohne Zutun wieder wie vorher (Stick zuerst, BootOrder unverändert)
+- [ ] Mit Stick starten → *Neustart in den Agent*: Gerät startet wieder den Agent vom Stick
+- [ ] Gerät im BIOS-/Legacy-Modus (z. B. CompactPlayer): Rückfrage „Startziel nicht festgelegt“ mit Hinweis „Stick
+      abziehen, sobald der Bildschirm dunkel wird“; *Trotzdem neu starten* → neu gestartet
+- [ ] Mit altem Agent-Stick: Rückfrage nennt „Agent zu alt …“

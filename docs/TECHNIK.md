@@ -215,6 +215,22 @@ Im Gerätefenster, Reiter **Netzwerk** (dort auch Netzwerkstart-Schalter und Net
 
 > Für „Netzwerkstart zuerst“ braucht der Agent die neue Funktion: **Agent-Stick neu erstellen** und unter Tools → Netzwerkstart **neu vorbereiten**.
 
+**Neustart in Windows / Neustart in den Agent (Ä-045):** zwei Knöpfe statt „Neu starten“ (Geräteliste, Gerätefenster,
+Rechtsklick; nach *Windows anpassen* / *Software installieren* die Frage „Jetzt in Windows neu starten?“). Regeln und
+Texte: `neustart.py`; Ablauf: `ui.reboot_to` → `_reboot_go`.
+- **VM:** `virsh.set_boot_runtime` je Knopf (Windows: Disk zuerst, „einmal Agent“ abbestellt; Agent: Netzwerk zuerst,
+  Netzwerkstart erlaubt, „einmal Agent“ angefordert), dann Neustart über den Agent bzw. ACPI. Was vorher vorgemerkt war,
+  zählt nicht mehr.
+- **Echtes Gerät (Agent verbunden):** Agent-Befehl `bootnext` (`wininstall.set_boot_next`, `efibootmgr --bootnext`):
+  Windows = Eintrag „Windows Boot Manager“ bzw. Pfad `\EFI\Microsoft\Boot\bootmgfw.efi` (bcdboot legt ihn in NVRAM an,
+  Microsoft Learn „BCDBoot Command-Line Options“); Agent = `BootCurrent` (Stick oder Netzwerk), sonst der Netzwerk-
+  Eintrag. BootNext gilt laut UEFI-Spezifikation (3.1.2) einmal und vor BootOrder; BootOrder bleibt unverändert.
+  Mit Netzwerkstart setzt bzw. löscht das Tool zusätzlich „einmal Agent“, sodass grub/pxelinux zum Ziel passt.
+- **Nicht steuerbar** (BIOS-Modus, alter Agent ohne `bootnext`, kein passender Eintrag): Rückfrage „Startziel nicht
+  festgelegt“ mit Hinweis – Windows: „Stick abziehen, sobald der Bildschirm dunkel wird“ (bzw. Netzwerkstart „lokal“);
+  Agent: Stick stecken lassen, sonst im Startmenü der Firmware wählen. Grenzen: Firmware, die BootNext übergeht, oder
+  ein USB-Eintrag, den die Firmware nur vorübergehend anlegt (dann Netzwerk-Eintrag bzw. Hinweis).
+
 **Netzwerkstart-Protokoll (Ä-034):** Gerätefenster → Netzwerk zeigt, was die Dienste je Gerät gesehen haben (letzte 6 Stunden, alle 5 s neu, solange der Reiter offen ist): Anfrage mit Firmware-Art (BIOS/UEFI aus `PXEClient:Arch`), Antwort bzw. „nicht freigeschaltet“ (`proxy-ignored`), TFTP-Dateien (shim, grub, grub.cfg, Startart, Kernel, initrd bzw. pxelinux), HTTP (Live-System, Agent-Teil) und Fehler. Das Journal liest der Root-Helfer (`okula-make-stick pxe log`, gleiche sudo-Regel), übersetzt wird in `pxelog.py`. TFTP kennt nur IPs – die MAC kommt aus Dateinamen mit MAC (`okula/mode/<mac>`, `pxelinux.cfg/01-<mac>`), der Anfrage auf Port 4011, der HTTP-Meldung (mit MAC) oder der ARP-Tabelle. Geprüft mit echten Abläufen im Labor (dnsmasq 2.91, OVMF + shim/grub, SeaBIOS/iPXE + pxelinux); die Aufzeichnungen liegen in `tests/data/pxelog/`.
 
 **BIOS-Modus (Legacy, B-003):** keine EFI-Variablen – „Netzwerkstart zuerst“ stellt man im BIOS-Setup von Hand ein (Netzwerk/PXE an erste Stelle); der Schalter vermerkt es nur (`devices.bios_mode`: Inventar `platform.uefi`, sonst letzte Prüfung). „Agent beim nächsten Start“ und „Einschalten und Agent starten“ laufen danach über die PXE-Antwort des Tools wie bei UEFI. Netzwerkkarten: nur Kabel mit fester MAC zählen für PXE/WoL (`devices.nic_kind`, `real_mac`); WLAN, Mobilfunk (`ww…`) und zufällige MACs nicht; früher gesehene Karten nur mit fester MAC.
