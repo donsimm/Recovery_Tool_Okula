@@ -1,6 +1,6 @@
 # B-021 – Windows anpassen: Rest vor der ersten Anmeldung (Sperrbildschirm, Werbe-Platzhalter, Agent-Uhr)
 
-Status: offen · erstellt 24.11.2026 von der Projektleitung · Freigabe: Dominik 24.11.
+Status: umgesetzt (Commit 52dbbf0, Doku im Folge-Commit; Tests vom Agent nicht ausführbar) · erstellt 24.11.2026 von der Projektleitung · Freigabe: Dominik 24.11.
 
 ## Rolle und Einstieg
 

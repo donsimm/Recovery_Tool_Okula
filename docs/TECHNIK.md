@@ -1100,13 +1100,63 @@ Skript nur für die gewählten Optionen `{"start_pins": <JSON>}` (*Startmenü: W
 Beide Schlüssel in einem hivexsh-Lauf (`set_hive_values`). Umbenannt und markiert wird nur, wenn die Werte gesetzt sind
 (bzw. schon so waren) – sonst würde die erste Anmeldung ohne Richtlinie eine neue `start2.bin` anlegen. Eine alte Marke
 wird bei jedem *Windows anpassen* zuerst gelöscht. Fehler (Hive unsauber, `CurrentBuild` nicht lesbar, hivexsh …) →
-Antwort `offline_error`, Hive unverändert, nichts umbenannt, keine Marke; Log des Auftrags „Hinweis: Startmenü/Widgets
-nicht vor dem Windows-Start gesetzt (…)“ (`jobs.offline_lines`). Liess sich eine Datei nicht umbenennen: Hinweis, keine
+Antwort `offline_error`, Hive unverändert, nichts umbenannt, keine Marke; Log des Auftrags „Hinweis: Einstellungen
+vor dem Windows-Start nicht gesetzt (…)“ (`jobs.offline_lines`, Text seit B-021). Liess sich eine Datei nicht umbenennen: Hinweis, keine
 Marke (das Startskript versucht es nochmals). Ein Agent vor B-020 ignoriert den Auftrag → „Hinweis: Agent zu alt …“.
 Das Startskript setzt Richtlinien und JSON **trotzdem** wie bisher (doppelt schadet nicht, wirkt, falls offline nicht
 ging). Mit Marke überspringt es nur das Umbenennen – und damit auch das Nachholen im Nachlauf (`-StartSids`); die Marke
 wird gelesen und gelöscht, Protokoll „… Startmenü schon beim Senden vor dem Windows-Start zurückgesetzt (Agent: …
 N Profil(e) …)“. Ohne Marke wie B-018/B-019.
+
+**Rest vor der ersten Anmeldung (B-021, 24.11.2026).** Befund Gesamttest B-020 (VM-Win11-clean, Windows 11 Pro Build
+26200): Sperrbildschirm beim ersten Start noch da, im Startmenü zusätzlich WhatsApp, Adobe Express, LinkedIn, Zeitstempel
+des Agents 1 h vor. Zusätzlich zur Tabelle oben schreibt der Agent im selben hivexsh-Lauf:
+
+| Option | offline (Hive `SOFTWARE`) | Wirkung laut Microsoft Learn |
+|---|---|---|
+| *Sperrbildschirm aus* (`lock_screen_off`) | `Policies\Microsoft\Windows\Personalization\NoLockScreen` = 1 (DWORD) | Policy CSP `ADMX_ControlPanelDisplay/CPL_Personalization_NoLockScreen` („Do not display the lock screen“, ControlPanelDisplay.admx): Pro, Enterprise, Education, IoT Enterprise ab Windows 11 21H2 bzw. Windows 10 2004/20H2/21H1 mit KB5005101 – Home nicht aufgeführt |
+| *Wiederinstallation von Werbe-Apps sperren* (`consumer_off`) | `Policies\Microsoft\Windows\CloudContent\DisableWindowsConsumerFeatures` = 1 (DWORD) | Policy CSP `Experience/AllowWindowsConsumerFeatures` („Turn off Microsoft consumer experiences“: Start suggestions, Post-OOBE app install and redirect tiles): **nur Enterprise, Education, IoT Enterprise** – nicht Pro |
+
+Die Antwort nennt zusätzlich `edition` (`EditionID` aus `Microsoft\Windows NT\CurrentVersion`, `deploy.windows_edition`,
+nur ASCII-Buchstaben/Ziffern). `jobs.offline_lines` meldet damit ehrlich: Sperrbildschirm bei Home (`Core*`) „laut
+Microsoft nicht unterstützt, wirkt evtl. nicht“; Benutzererfahrungen bei allem ausser Enterprise/Education „wirkt bei
+Windows <Edition> nicht“ samt Hinweis zu den Platzhaltern; bei *Startmenü* ohne Enterprise/Education eigener Hinweis.
+Fehlt in der Antwort eines Agents von B-020 ein angeforderter Wert → „Hinweis: Agent zu alt für Sperrbildschirm bzw.
+Werbe-Richtlinie …“. Das Startskript setzt beide Werte weiterhin selbst; die Startmenü-Zeile im Protokoll endet bei
+Pro/Home mit dem Hinweis zu den Platzhaltern (`$adsNote`), *Sperrbildschirm aus* nennt die Edition.
+
+*Werbe-Platzhalter (WhatsApp, Adobe Express, LinkedIn):* Microsoft Learn „Customize the Windows 11 Start menu“
+(OEM): „The items in this section are a combination of Microsoft-defined apps, dynamically delivered apps, and
+OEM-configured items.“ Die Richtlinie `ConfigureStartPins` ersetzt laut „Customize the Start layout“ die Liste, nennt
+die nachgelieferten Apps aber nicht. Abschalten lassen sie sich laut Policy CSP nur über
+`AllowWindowsConsumerFeatures` („redirect tiles“) bzw. `Experience/DisableCloudOptimizedContent` – beide **nicht für
+Pro**. Für Pro/Home gibt es keinen belegten Weg (auch nicht über das Standardprofil `Users\Default\NTUSER.DAT`); die
+Werte unter `ContentDeliveryManager` (*Tipps*, *Wiederinstallation sperren*) sind bei Microsoft nicht dokumentiert und
+werden nicht als Lösung genannt. Darum ehrlicher Hinweis (Tooltip, Protokoll, Log, Hilfe): von Hand „Von Start lösen“;
+mit `applyOnce: true` überschreibt die Richtlinie das danach nicht.
+
+*Weitere Werte geprüft (nur Maschinen-Werte im Hive `SOFTWARE`):* offline umgesetzt nur, was beim ersten Start bzw. bei
+der ersten Anmeldung schon wirken muss und ohne Seiteneffekt geschrieben werden kann (oben). Bewusst nicht offline:
+Cortana, Bing-Suche (wirken erst bei der Benutzung, Bing zusätzlich Benutzerwerte), Telemetrie, Werbe-ID, Standort,
+Fehlerberichte (kein Bezug zur ersten Anmeldung; Telemetrie braucht zusätzlich den Dienst), Windows Update, Treiber,
+App-Updates (Skript läuft beim Start ohnehin vor den meisten Downloads – nicht belegt, dass offline nötig wäre),
+OneDrive `DisableFileSyncNGSC` (Einrichtung je Benutzer über den Run-Eintrag im Benutzer-Hive; Wirkung der
+Richtlinie auf die Ersteinrichtung nicht belegt), automatische Anmeldung (Winlogon liegt zwar in `SOFTWARE`, aber
+Passwort offline im Klartext und keine Kontoprüfung ohne SAM), Copilot (Richtlinie nur Benutzer), Schnellstart (Hive
+`SYSTEM`), Tipps/Explorer/Taskleiste/Einrastfunktion (Benutzer-Hives).
+
+**Uhr des Agents (B-021).** Ursache: Windows führt die Hardware-Uhr (RTC) in Ortszeit; der Kernel des Live-Systems
+liest sie beim Start als UTC, die Zeitzone `Europe/Zurich` (Startparameter `timezone=`, live-config) rechnet dann
+nochmals +1 h (Winter) bzw. +2 h (Sommer) dazu – daher `start2.bin.okula-…` 17:02 statt 16:02, Windows-Dateizeiten
+stimmen. Einen Zeitserver nutzt der Agent nicht. Lösung ohne Annahme über die RTC (Geräte mit Linux führen sie in UTC):
+Jede Anfrage des Tools (JSON mit `cmd`) trägt `now` = Uhrzeit des Servers in Sekunden UTC (`wire.send_json`, nur auf
+der Tool-Seite – der Agent sendet nur `type`). `agent.handle_connection` ruft vor jedem Befehl `agent.sync_clock(now)`:
+weicht die Systemuhr mehr als 5 s ab, setzt sie `time.clock_settime(CLOCK_REALTIME)` (Log „Uhr nach dem Server gestellt
+(ging N s vor; Hardware-Uhr unverändert)“); ungültige Werte (vor 2023, nach 2100, kein Zahlwert) und Fehler (kein
+root) nur ins Protokoll. Die RTC bleibt unverändert: kein `hwclock --systohc`; der Kernel schreibt die RTC nur bei
+NTP-Synchronisation zurück (`clock_settime` setzt den Status „unsynchronisiert“ – aus dem Gedächtnis, Kernel
+`ntp_clear`). Zeitstempel vor der ersten Verbindung (Startmeldungen im Journal) können noch abweichen. Alter Agent mit
+neuem Tool: `now` wird ignoriert; neuer Agent mit altem Tool: kein `now`, Uhr wie bisher. Neuer Agent-Stick nötig.
 
 **Gleichzeitige Okula-Startskripte (B-020).** `Restore-OkulaStart` (gemeinsam für *Windows anpassen* und *Software
 installieren*) läuft unter einem benannten Mutex `Global\OkulaStartRestore` (`wintweaks.RESTORE_LOCK`, Wartezeit

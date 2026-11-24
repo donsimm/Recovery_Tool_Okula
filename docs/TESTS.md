@@ -704,11 +704,36 @@ anmelden, sobald die Anmeldung erscheint (auch wenn das Skript noch läuft).
       unter `Group Policy\Scripts\Startup` und `State\Machine\Scripts\Startup` ohne `okula-*`-Einträge
 - [ ] Nach 30 min: Nachlauf gelaufen (Protokoll „Nachlauf … Ende“), Aufgabe verschwunden; Startmenü bleibt
 - [ ] Gegenprobe Fehlerfall: VM hart ausschalten (nicht herunterfahren), mit Agent starten, *Windows anpassen* senden →
-      Log „Hinweis: Startmenü/Widgets nicht vor dem Windows-Start gesetzt (… nicht sauber geschlossen …)“, Windows
+      Log „Hinweis: Einstellungen vor dem Windows-Start nicht gesetzt (… nicht sauber geschlossen …)“ (Text seit
+      B-021), Windows
       startet normal, das Startskript setzt es (Protokoll wie B-018/B-019); oder Meldung „Ruhezustand bzw.
       Schnellstart“ (dann ist dieser Teil nicht prüfbar)
 - [ ] Optional VM mit Windows 11 vor 24H2 (Build < 26100): Log „Startmenü: Windows-Build … vor 24H2 – setzt nur das
       Startskript“, Widgets trotzdem offline
+
+**Korrektur B-021 (24.11.) – VM-Win11-clean ab Snapshot „frisch“, Windows 11 Pro (Build 26200)**
+Nach `git pull && sudo ./install.sh` das Tool neu starten und **den Agent-Stick bzw. Netzwerkstart neu erstellen**
+(Agent-Code geändert: Offline-Werte, Uhr). *Windows anpassen* mit Vorlage „Clean“ **plus** *Sperrbildschirm aus*
+senden (Clean enthält *Wiederinstallation von Werbe-Apps sperren* und das Startmenü), dann **nur einmal** neu starten.
+- [ ] Log des Auftrags: „Vor dem Windows-Start gesetzt: Richtlinie „Sperrbildschirm nicht anzeigen“ – kein
+      Sperrbildschirm ab dem ersten Start“ und „… „Microsoft-Benutzererfahrungen deaktivieren“ – wirkt bei Windows
+      Professional nicht (nur Enterprise/Education). Werbe-Platzhalter …“; Agent-Log „… Sperrbildschirm-Richtlinie
+      gesetzt, Richtlinie Microsoft-Benutzererfahrungen gesetzt“
+- [ ] **Erster Start: kein Sperrbildschirm** – Windows zeigt gleich die Anmeldung (bzw. meldet automatisch an)
+- [ ] Registrierung: `HKLM\SOFTWARE\Policies\Microsoft\Windows\Personalization` `NoLockScreen` = 1,
+      `…\Windows\CloudContent` `DisableWindowsConsumerFeatures` = 1
+- [ ] **Startmenü:** stehen WhatsApp, Adobe Express, LinkedIn wieder dabei, ist das bei Pro erwartet (laut Microsoft
+      nur bei Enterprise/Education abschaltbar) – dann Protokoll-Zeile Startmenü mit „Hinweis: Windows Professional –
+      Microsoft kann zusätzlich Werbe-Platzhalter anheften …“ und Zeile *Wiederinstallation …* mit „… bleiben evtl.,
+      von Hand lösen“. Die drei Kacheln mit Rechtsklick → „Von Start lösen“ entfernen, abmelden, anmelden, nach dem
+      Nachlauf (30 min) und nach einem Neustart: **bleiben weg** ____ (wenn nicht: als Bug melden)
+- [ ] Optional mit Windows 11 Enterprise oder Education (Probe-VM): Startmenü **ohne** WhatsApp, Adobe Express,
+      LinkedIn bei der ersten Anmeldung; Log „… – keine Werbe-Apps und Werbe-Platzhalter ab der ersten Anmeldung“
+- [ ] **Zeitstempel in Ortszeit:** Uhrzeit beim Senden ____; Name `start2.bin.okula-<JJJJMMTT-hhmmss>` im Profil und
+      `stamp=` in `start-offline.ok` (vor dem Start mit dem Agent bzw. danach im Profil) zeigen dieselbe Ortszeit
+      (nicht 1 h vor); Agent-Journal „Uhr nach dem Server gestellt (ging 3600 s vor; Hardware-Uhr unverändert)“
+- [ ] Danach in Windows: Uhrzeit stimmt weiterhin (Hardware-Uhr nicht verändert), ohne Internet-Zeitabgleich prüfen
+      (z. B. Netzwerk der VM kurz trennen)
 
 ### 27. Test-VMs mit Gastagent (I-041)
 Nach `git pull && sudo ./install.sh` das Tool neu starten (**kein** neuer Agent-Stick). Eine Test-VM mit Windows 11
