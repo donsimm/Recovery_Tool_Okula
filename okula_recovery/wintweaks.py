@@ -372,10 +372,10 @@ if ([Environment]::OSVersion.Version.Build -ge {START_GPO_BUILD}) {{
         $hints += ('Profile nicht gelesen: {{0}}' -f $_.Exception.Message)
     }}
     foreach ($p in $profiles) {{
-        $dir = Join-Path $p.LocalPath $sub
+        $layoutDir = Join-Path $p.LocalPath $sub
         $done = $false
         foreach ($name in 'start2.bin', 'start.bin') {{
-            $bin = Join-Path $dir $name
+            $bin = Join-Path $layoutDir $name
             if (-not (Test-Path -LiteralPath $bin)) {{ continue }}
             try {{
                 Rename-Item -LiteralPath $bin -NewName ('{{0}}.okula-{{1}}' -f $name, $stamp) -Force -ErrorAction Stop
