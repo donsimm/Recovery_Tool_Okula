@@ -1000,8 +1000,8 @@ Apps (12), …, automatische Anmeldung (Okula)): Startskript abgelegt, wird beim
 **Startmechanismus: Startskript der lokalen Gruppenrichtlinie.** Begründung: dokumentierter Weg, ein Skript beim
 Start **als SYSTEM vor der Anmeldung** laufen zu lassen, auf Windows 10 Pro und 11 Pro gleich; zur Laufzeit sind alle
 Dienste da (AppX-Bereitstellung für `Remove-AppxPackage`, Dienststeuerung, powercfg); offline nur mit Dateien
-einzurichten (kein Hive-Schreiben nötig; seit B-019 setzt der Agent zusätzlich `SyncForegroundPolicy` im Hive, siehe
-„Anmeldung wartet auf das Startskript“). Verworfen: `RunOnce` (läuft erst bei einer Anmeldung), Dienst im
+einzurichten (kein Hive-Schreiben nötig; seit B-020 schreibt der Agent zusätzlich Startmenü- und Widgets-Richtlinie
+offline in den Hive, siehe „Vor der ersten Anmeldung: offline beim Senden“). Verworfen: `RunOnce` (läuft erst bei einer Anmeldung), Dienst im
 SYSTEM-Hive (`cmd`/PowerShell ist kein Dienst – die Dienststeuerung bricht nach 30 s ab), geplante Aufgabe offline
 (binäre, nicht dokumentierte Einträge unter `TaskCache`), `SetupComplete.cmd` (nur nach einer Windows-Installation),
 `HKLM\SYSTEM\Setup\CmdLine` (nicht dokumentiert, läuft vor den Diensten).
@@ -1031,7 +1031,17 @@ schon ganz gelesen), dann der Rückbau – erst danach die Einstellungen. Starte
 Ausführungsrichtlinie per Domänen-Richtlinie erzwungen, Syntaxfehler), läuft der Rest der `.cmd`: Skript löschen,
 „FEHLER PowerShell-Skript nicht gestartet“ ins Protokoll, `gpt.ini`/`scripts.ini` zurücklegen, sich selbst löschen.
 
-**Anmeldung wartet auf das Startskript (B-019).** Befund 24.11.2026 (VM-Win11-clean, Windows 11 Pro 25H2): Ereignis 5016
+**Windows wartet nicht auf Startskripte (Befund B-020, 24.11.2026).** Gesamttest an VM-Win11-clean ab „frisch“ mit
+B-019 und neuem Agent: `SyncForegroundPolicy` = 1 war offline gesetzt (geprüft, sauberer Hive, hivexsh-Weg
+funktioniert), die Gruppenrichtlinie war um 10:31:59 vor der Anmeldung fertig (Ereignis 8000), die Anmeldung kam um
+10:32:01 – das Okula-Skript startete trotzdem erst um 10:32:06. **Windows wartet bei der Anmeldung nicht auf
+Startskripte; auf `SyncForegroundPolicy` ist kein Verlass.** Darum (B-020) setzt der Agent die Richtlinie nicht mehr;
+was vor der ersten Anmeldung wirken muss, schreibt er offline beim Senden (siehe „Vor der ersten Anmeldung: offline
+beim Senden“). Zweiter Befund: `okula-windows-anpassen` und `okula-software` starteten beide um 10:32:06–08 und
+räumten **gleichzeitig** auf (falscher FEHLER „… `Startup\0\0` nicht vorhanden“ im Software-Protokoll) – darum das
+Aufräumen unter einer Sperre (siehe „Gleichzeitige Okula-Startskripte“).
+
+*Vorgeschichte – Anmeldung wartet auf das Startskript (B-019, zurückgebaut mit B-020).* Befund 24.11.2026 (VM-Win11-clean, Windows 11 Pro 25H2): Ereignis 5016
 „Scripts-Erweiterung abgeschlossen in 140 ms“ und die interaktive Anmeldung (4624, Typ 2) um 09:25:28, das Okula-Skript
 begann erst um 09:25:43 – die Startskripte liefen **asynchron**, parallel zur Anmeldung. Folgen: Die laufende Shell
 schrieb `start2.bin` mit dem alten Layout neu (Startmenü-Richtlinie ohne Wirkung), das Wetter blieb (Richtlinie und Paket
@@ -1045,40 +1055,69 @@ für Gruppenrichtlinienskripts* (`MaxGPOScriptWait`, Standard 600 s) gilt für *
 Windows sie ab. Quellen aus dem Gedächtnis, im Auftrag nicht abgerufen (kein Internet); die Wirkung prüft
 [TESTS.md](TESTS.md) Abschnitt 26 „Korrektur B-019“ (5016 vor 4624).
 
-- **Setzen offline (Agent, `deploy.set_sync_policy`, nach `install_startup_script` in `tweak` und `software`):** Windows
-  liest den Wert beim Start, bevor ein Skript läuft – darum `SOFTWARE\Policies\Microsoft\Windows NT\CurrentVersion\
-  Winlogon\SyncForegroundPolicy` = 1 (DWORD) direkt im Hive `Windows\System32\config\SOFTWARE`. Ablauf: Hive mit dem
-  eigenen Leser (`winprofile.Hive`) lesen; Kopf nicht sauber (primäre ≠ sekundäre Sequenznummer, Änderungen stehen noch
-  in `.LOG1/.LOG2`) → nicht schreiben; Kopie `SOFTWARE.okula-tmp` neben dem Original, `hivexsh -w` (libhivex-bin, auf
-  dem Agent-Stick) mit `cd`/`add` (fehlende Schlüssel), `setval`, `commit`; Kopie prüfen (Wert = 1, alle übrigen Werte
-  des Schlüssels und die Stichprobe `CurrentBuild` gleich, Kopf sauber); erst dann in dieselbe Datei zurückschreiben
-  (Rechte bleiben), Inhalt vergleichen, bei einem Fehler das Original zurückschreiben. Da `setval` **alle** Werte des
-  Schlüssels ersetzt, werden die übrigen unverändert als `hex:<Typ>:<Bytes>` mitgeschrieben; Namen ausserhalb von
-  druckbarem ASCII, ein vorhandener Wert anderen Typs oder ein fehlendes `hivexsh` → nicht schreiben.
-- **Stand sichern:** `GroupPolicy\SyncForegroundPolicy.okula-nachher` mit `fehlt` bzw. `dword:<Zahl>`, geschrieben vor
-  dem Hive; scheitert das Schreiben, wird sie wieder gelöscht. Liegt die Datei schon da (zweites Okula-Startskript
-  oder erneut gesendet) und ist der Wert 1, bleibt beides (`"sync": "kept"`) – die Sicherung zeigt den Stand vor dem
-  ersten Startskript. War der Wert schon 1 (eigene Richtlinie), wird nur `dword:1` gesichert.
-- **Fehler = Hinweis, kein Abbruch:** Das Startskript liegt schon; die Antwort des Agents trägt `sync_error`, das Log
-  des Auftrags nennt „Hinweis: Die Anmeldung wartet nicht auf das Startskript (…)“ (`jobs.sync_line`), das Skript läuft
-  dann wie vorher nach der Anmeldung. Bei Erfolg: „Die Anmeldung wartet beim nächsten Start, bis das Startskript fertig
-  ist …“.
-- **Wiederherstellen:** im letzten Okula-Startskript (`Restore-OkulaStart`, nur wenn kein anderes `okula-*.cmd` mehr
-  wartet): `dword:<n>` → Wert zurück, `fehlt` → Wert entfernen (leer angelegte Schlüssel bleiben, ohne Wirkung), dann die
-  Sicherung löschen; Protokoll „SyncForegroundPolicy entfernt wie vorher“. Gilt ab dem nächsten Start. Klappt es nicht:
-  FEHLER-Zeile beim Aufräumen (erst nach dem Aufräumen der Registrierung). Notfall im `.cmd` (PowerShell nicht
-  gestartet): `set /p` liest die Sicherung, `reg add … /t REG_DWORD` bzw. `reg delete`, Sicherung löschen.
-- **Dauer:** *Windows anpassen* braucht heute ~90 s (Gesamtlauf 24.11.) und bleibt damit weit unter 600 s; viele
-  Windows-Funktionen (`Remove-WindowsCapability`) können länger dauern – reicht es nicht, bricht Windows den Rest ab (wie
-  schon vor B-019, der Rückbau ist dann schon gelaufen). *Software installieren* wartet höchstens 540 s auf die
-  geplante Aufgabe (I-020); steht danach noch ein anderes Okula-Startskript aus, höchstens `software.SHARED_WAIT` =
-  180 s, damit *Windows anpassen* genug der 600 s bleibt. Die Aufgabe installiert danach weiter.
-- **Nachlauf bei schon angemeldetem Benutzer:** Läuft das Skript trotzdem nach einer Anmeldung (Richtlinie nicht
-  gesetzt), bekommt die Nachlauf-Aufgabe zusätzlich einen einmaligen Auslöser „jetzt + 30 min“ (mit `EndBoundary`,
-  nötig für `DeleteExpiredTaskAfter`); erkannt an laufenden `explorer.exe`-Prozessen (`Win32_Process`, auch
-  Remote-Sitzungen).
-- **Direktinstallation** (`software.setup_files`, Startskript von der Setup-Partition) bleibt ohne SyncForegroundPolicy:
-  der Agent schreibt dort keinen Hive (Windows entsteht erst beim Setup); dort ruft zusätzlich `SetupComplete.cmd` auf.
+B-019 setzte darum die Richtlinie offline und stellte sie im letzten Startskript wieder her; der Gesamttest B-020 zeigte,
+dass sie nicht wirkt (oben).
+
+- **Altlast SyncForegroundPolicy (seit B-020):** Der Agent setzt den Wert nicht mehr (`deploy.tweak`/`software` ohne
+  Hive-Schreiben dafür). Liegt von einem Agent mit B-019 noch `GroupPolicy\SyncForegroundPolicy.okula-nachher`
+  (`fehlt` bzw. `dword:<Zahl>`), stellt das letzte Okula-Startskript den Stand her (`dword:<n>` → Wert zurück,
+  `fehlt` → Wert entfernen), Protokoll „SyncForegroundPolicy entfernt wie vorher“; Notfall im `.cmd` (PowerShell nicht
+  gestartet): `set /p`, `reg add … /t REG_DWORD` bzw. `reg delete`. Ist die Sicherung beim Fehler schon weg (anderes
+  Skript war schneller), ist das kein Fehler; FEHLER nur, wenn sie danach noch liegt.
+- **Registrierung offline schreiben (`deploy.set_hive_values`, aus B-019 verallgemeinert):** `{Schlüssel: [(Name, Typ,
+  Daten)]}` im Hive `Windows\System32\config\<Hive>` (Standard `SOFTWARE`). Ablauf: Hive mit dem eigenen Leser
+  (`winprofile.Hive`) lesen; sind alle Werte schon so → nichts schreiben; Kopf nicht sauber (primäre ≠ sekundäre
+  Sequenznummer, Änderungen stehen noch in `.LOG1/.LOG2`) → nicht schreiben; Kopie `<Hive>.okula-tmp` neben dem Original,
+  **ein** `hivexsh -w`-Lauf (libhivex-bin, auf dem Agent-Stick): je Schlüssel `cd \…`, `add`/`cd` für fehlende Teile
+  (von einem früheren Block im selben Lauf angelegte Teile nicht nochmals), **ein** `setval` mit allen Werten, am Schluss
+  ein `commit`; Kopie prüfen (neue Werte da, alle übrigen Werte der Schlüssel und die Stichprobe `CurrentBuild` gleich,
+  Kopf sauber); erst dann in dieselbe Datei zurückschreiben (Rechte bleiben), Inhalt vergleichen, bei einem Fehler das
+  Original zurückschreiben. Da `setval` **alle** Werte des Schlüssels ersetzt, werden die übrigen unverändert als
+  `hex:<Typ>:<Bytes>` mitgeschrieben; Namen ausserhalb von druckbarem ASCII oder ein fehlendes `hivexsh` → nicht
+  schreiben (`HiveError`, Hive unverändert). Ein vorhandener Wert gleichen Namens wird ersetzt (auch anderer Typ, z. B.
+  der REG_SZ aus Ä-042).
+- **Dauer:** *Windows anpassen* braucht heute ~90 s (Gesamtlauf 24.11.); `MaxGPOScriptWait` (Standard 600 s) gilt für
+  alle Startskripte zusammen. *Software installieren* wartet höchstens 540 s auf die geplante Aufgabe (I-020); steht
+  danach noch ein anderes Okula-Startskript aus, höchstens `software.SHARED_WAIT` = 180 s. Die Aufgabe installiert
+  danach weiter.
+- **Nachlauf bei schon angemeldetem Benutzer (B-019, bleibt):** Läuft das Skript nach einer Anmeldung, bekommt die
+  Nachlauf-Aufgabe zusätzlich einen einmaligen Auslöser „jetzt + 30 min“ (mit `EndBoundary`, nötig für
+  `DeleteExpiredTaskAfter`); erkannt an laufenden `explorer.exe`-Prozessen (`Win32_Process`, auch Remote-Sitzungen).
+- **Direktinstallation** (`software.setup_files`, Startskript von der Setup-Partition): der Agent schreibt dort keinen
+  Hive (Windows entsteht erst beim Setup); dort ruft zusätzlich `SetupComplete.cmd` auf (Ä-046 offen).
+
+**Vor der ersten Anmeldung: offline beim Senden (B-020).** `wintweaks.offline_request(selected)` schickt mit dem
+Skript nur für die gewählten Optionen `{"start_pins": <JSON>}` (*Startmenü: Werbe-Kacheln entfernen*) bzw.
+`{"widgets": true}` (*Widgets*). Der Agent (`deploy.tweak_offline`, nach `install_startup_script`, Windows aus) liest
+`CurrentBuild` aus dem Hive `SOFTWARE` und schreibt:
+
+| Option | offline |
+|---|---|
+| Startmenü, ab Build 26100 | `%ProgramData%\Okula\StartPins.json` (Inhalt wie im Skript, UTF-8 ohne BOM); `Policies\Microsoft\Windows\Explorer`: `ConfigureStartPins` = 1 (DWORD), `ConfigureStartPinsJSON` = `%ProgramData%\Okula\StartPins.json` (REG_EXPAND_SZ); danach in **allen** Profilen `Users\*\` + `START_LAYOUT_DIR` die Dateien `start2.bin`/`start.bin` → `<Name>.okula-<JJJJMMTT-hhmmss>` (Verknüpfungen wie „All Users“ übersprungen); Marke `%ProgramData%\Okula\start-offline.ok` (`stamp=…`, `profiles=N`) |
+| Startmenü vor Build 26100 | nichts (MDM-Bridge nur zur Laufzeit), Antwort `start: old` |
+| Widgets | `Policies\Microsoft\Dsh\AllowNewsAndInterests` = 0 (DWORD) |
+
+Beide Schlüssel in einem hivexsh-Lauf (`set_hive_values`). Umbenannt und markiert wird nur, wenn die Werte gesetzt sind
+(bzw. schon so waren) – sonst würde die erste Anmeldung ohne Richtlinie eine neue `start2.bin` anlegen. Eine alte Marke
+wird bei jedem *Windows anpassen* zuerst gelöscht. Fehler (Hive unsauber, `CurrentBuild` nicht lesbar, hivexsh …) →
+Antwort `offline_error`, Hive unverändert, nichts umbenannt, keine Marke; Log des Auftrags „Hinweis: Startmenü/Widgets
+nicht vor dem Windows-Start gesetzt (…)“ (`jobs.offline_lines`). Liess sich eine Datei nicht umbenennen: Hinweis, keine
+Marke (das Startskript versucht es nochmals). Ein Agent vor B-020 ignoriert den Auftrag → „Hinweis: Agent zu alt …“.
+Das Startskript setzt Richtlinien und JSON **trotzdem** wie bisher (doppelt schadet nicht, wirkt, falls offline nicht
+ging). Mit Marke überspringt es nur das Umbenennen – und damit auch das Nachholen im Nachlauf (`-StartSids`); die Marke
+wird gelesen und gelöscht, Protokoll „… Startmenü schon beim Senden vor dem Windows-Start zurückgesetzt (Agent: …
+N Profil(e) …)“. Ohne Marke wie B-018/B-019.
+
+**Gleichzeitige Okula-Startskripte (B-020).** `Restore-OkulaStart` (gemeinsam für *Windows anpassen* und *Software
+installieren*) läuft unter einem benannten Mutex `Global\OkulaStartRestore` (`wintweaks.RESTORE_LOCK`, Wartezeit
+höchstens 120 s; danach bzw. ohne Mutex Hinweis „ohne Sperre aufgeräumt“; abgebrochener Halter
+(`AbandonedMutexException`) → Sperre gilt als erhalten). Jedes Skript löscht seine `.ps1`/`.cmd`, **bevor** es die
+Sperre anfordert; die Entscheidung „letztes Skript“ (kein anderes `okula-*.cmd` mehr) fällt unter der Sperre – das
+zweite sieht das erste also erst als fertig, wenn dessen `.cmd` wirklich weg ist. Nur das letzte stellt
+`gpt.ini`/`scripts.ini` und Altlasten her. Ist dort nichts mehr zurückzulegen (kein `*.okula-nachher`, `scripts.ini`
+ohne `okula-*.cmd`), hat das andere Skript schon aufgeräumt → nichts löschen, Hinweis „Gruppenrichtlinie war schon
+zurückgelegt“. Registrierung: scheitert das Entfernen eines Eintrags, zählt `Get-OkulaGpLeft` die verbliebenen
+Okula-Einträge – Hinweis nur, wenn noch einer da ist. Der Notfall-Teil im `.cmd` bleibt ohne Sperre.
 
 **Bausteine** (`wintweaks.OPTIONS`, je Option ein `Invoke-OkulaStep` mit try/catch; Fehler → `FEHLER <Option>: <Grund>`
 im Protokoll, der nächste Baustein läuft; Store-Apps zuletzt, weil am langsamsten):
@@ -1239,8 +1278,9 @@ von Microsoft Learn und in der Ausgabe von `Export-StartLayout` (die Tabellen au
   Lauf / Neustart (der Nachlauf – falls gewählt – holt es einmalig nach …)“. Der Nachlauf bekommt die SIDs als
   `-StartSids "S-1-5-21-…,…"` und benennt einmalig um – nur für diese Profile und nur, wenn das Profil dann nicht
   geladen ist, sonst Hinweis „angemeldet – nicht nachgeholt“. Ohne Nachlauf (Option nicht gewählt oder keine
-  Store-Apps) bleibt es beim Hinweis. Mit SyncForegroundPolicy läuft das Startskript vor der Anmeldung, der Fall ist
-  also die Ausnahme.
+  Store-Apps) bleibt es beim Hinweis. Seit B-020 benennt der Agent schon offline beim Senden um (Marke
+  `start-offline.ok`); dann entfällt dieser Teil im Startskript ganz – er greift nur noch ohne Marke (Agent vor B-020,
+  offline nicht geklappt).
 - **Zusammenspiel Ä-040:** Die Richtlinie betrifft nur die Startmenü-Kacheln; `LayoutModification.xml` der Taskleiste
   (`winprofile.py`) bleibt unberührt, es wird keine Datei im Standardprofil geschrieben.
 - Verworfen: `LayoutModification.json` im Standardprofil (OEM-Weg – nur `primaryOEMPins`/`secondaryOEMPins` mit je
@@ -1257,8 +1297,9 @@ Akkubetrieb. Das Skript entfernt die gewählten Store-Apps nochmals (gleiche Mus
 gleiche Protokoll („Nachlauf … Start/Ende“) und löscht im `finally` sich selbst, den leeren Ordner und zuletzt die
 Aufgabe – auch nach einem Fehler, also genau ein Lauf. Ohne gewählte Store-Apps: „kein Nachlauf nötig“. Aufgabenname,
 Pfad und Befehlszeile nur ASCII. B-019: Ist beim Anlegen schon jemand angemeldet, zusätzlich ein einmaliger Auslöser
-„jetzt + 30 min“ (siehe „Anmeldung wartet auf das Startskript“); mit *Startmenü: Werbe-Kacheln entfernen* holt der
-Nachlauf zuerst das Startmenü angemeldeter Profile nach (`-StartSids`, siehe Startmenü).
+„jetzt + 30 min“ (siehe „Windows wartet nicht auf Startskripte“); mit *Startmenü: Werbe-Kacheln entfernen* holt der
+Nachlauf zuerst das Startmenü angemeldeter Profile nach (`-StartSids`, siehe Startmenü – entfällt, wenn der Agent
+offline umbenannt hat, B-020).
 
 **Bing Search blieb (Befund 18.11.):** Das Muster `Microsoft.Bing*` trifft `Microsoft.BingSearch`. Das Protokoll der VM
 lag nicht vor. Vermutung (nicht belegt): Die App wurde erst nach dem Startskript über den Store nachgeladen bzw.

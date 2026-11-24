@@ -647,6 +647,8 @@ eigenes Startmenü (mehrfach angemeldet), die Registry hat ggf. noch Reste früh
       Startskript und Gruppenrichtlinie aufgeräumt“, Registry wieder ohne `okula-*`-Einträge
 
 **Korrektur B-019 (24.11.) – VM-Win11-clean ab Snapshot „frisch“, Windows 11 Pro 25H2, Konto ohne Passwort**
+*Abgelöst durch B-020 (Gesamttest 24.11.: SyncForegroundPolicy wirkt nicht, Windows meldet trotzdem vor dem Skript
+an) – nicht mehr prüfen, stattdessen „Korrektur B-020“ unten.*
 Nach `git pull && sudo ./install.sh` das Tool neu starten und **den Agent-Stick bzw. Netzwerkstart neu erstellen**
 (Agent-Code geändert). Wie am 24.11.: *Windows anpassen* (alle Optionen bzw. Vorlage wie im Gesamttest) und
 *Software installieren* (virtio-Gasttools) zusammen senden, dann **nur einmal** neu starten.
@@ -673,6 +675,40 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten und **den Agent-Stick 
 - [ ] Optional angemeldet (nur wenn die Anmeldung doch vorher erscheint): Protokoll nennt „<Konto> beim Lauf angemeldet
       – Startmenü dort nicht zurückgesetzt …“ und beim Nachlauf „einmalig um HH:MM“; nach Abmelden und Nachlauf
       „Startmenü von 1 Profil(en) einmalig zurückgesetzt“
+
+**Korrektur B-020 (24.11.) – VM-Win11-clean ab Snapshot „frisch“, Windows 11 Pro 25H2, Konto ohne Passwort**
+Nach `git pull && sudo ./install.sh` das Tool neu starten und **den Agent-Stick bzw. Netzwerkstart neu erstellen**
+(Agent-Code geändert). Wie im Gesamttest: *Windows anpassen* (Vorlage „Clean“ bzw. alle Optionen mit Startmenü und
+Widgets) und *Software installieren* (virtio-Gasttools) zusammen senden, dann **nur einmal** neu starten und sich
+anmelden, sobald die Anmeldung erscheint (auch wenn das Skript noch läuft).
+- [ ] Log des Auftrags *Windows anpassen*: „Vor dem Windows-Start gesetzt: Startmenü-Richtlinie (feste Kacheln),
+      Startmenü von N Profil(en) zurückgesetzt …“ und „Vor dem Windows-Start gesetzt: Richtlinie „Widgets zulassen“
+      aus …“, kein „Hinweis: …“; Agent-Log „… vor dem Windows-Start: Startmenü-Richtlinie gesetzt, …“
+- [ ] Vor dem Neustart (optional, z. B. mit dem Agent bzw. danach im Profil): `start2.bin.okula-<Datum-Zeit>` in jedem
+      Profil mit Startmenü, `C:\ProgramData\Okula\StartPins.json` und `start-offline.ok` vorhanden
+- [ ] **Erste Anmeldung**, auch wenn sie vor dem Ende des Skripts kommt (Uhrzeit Anmeldung ____ / Start der
+      Okula-Protokolle ____): Startmenü zeigt **nur die festen Kacheln** (kein WhatsApp, Adobe Express, LinkedIn …),
+      **kein Wetter** in der Taskleiste – ohne weiteren Neustart
+- [ ] Registrierung: `HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer` `ConfigureStartPins` = 1,
+      `ConfigureStartPinsJSON` gesetzt; `HKLM\SOFTWARE\Policies\Microsoft\Dsh` `AllowNewsAndInterests` = 0;
+      **kein** `SyncForegroundPolicy` unter `…\Policies\Microsoft\Windows NT\CurrentVersion\Winlogon` (Snapshot
+      „frisch“) bzw. Wert wie vorher
+- [ ] `okula-windows-anpassen.log`: Startmenü-Zeile „ok … Startmenü schon beim Senden vor dem Windows-Start
+      zurückgesetzt (Agent: …)“, **ohne** „beim Lauf angemeldet“; `start-offline.ok` danach weg, `StartPins.json` bleibt;
+      Nachlauf-Aufgabe ohne `-StartSids`
+- [ ] **Beide Protokolle ohne FEHLER** (`okula-windows-anpassen.log` und `okula-software.log`): Zeile „Startskript und
+      Gruppenrichtlinie aufräumen/aufgeräumt“ ok – bei einem der beiden ggf. mit Hinweis „Gruppenrichtlinie war schon
+      zurückgelegt (anderes Okula-Startskript)“; kein „… `Startup\0\0` nicht vorhanden“, kein „SyncForegroundPolicy nicht
+      zurückgesetzt“
+- [ ] Danach: `C:\Windows\System32\GroupPolicy` ohne `*.okula-nachher`, `scripts.ini` weg bzw. wie vorher, Registry
+      unter `Group Policy\Scripts\Startup` und `State\Machine\Scripts\Startup` ohne `okula-*`-Einträge
+- [ ] Nach 30 min: Nachlauf gelaufen (Protokoll „Nachlauf … Ende“), Aufgabe verschwunden; Startmenü bleibt
+- [ ] Gegenprobe Fehlerfall: VM hart ausschalten (nicht herunterfahren), mit Agent starten, *Windows anpassen* senden →
+      Log „Hinweis: Startmenü/Widgets nicht vor dem Windows-Start gesetzt (… nicht sauber geschlossen …)“, Windows
+      startet normal, das Startskript setzt es (Protokoll wie B-018/B-019); oder Meldung „Ruhezustand bzw.
+      Schnellstart“ (dann ist dieser Teil nicht prüfbar)
+- [ ] Optional VM mit Windows 11 vor 24H2 (Build < 26100): Log „Startmenü: Windows-Build … vor 24H2 – setzt nur das
+      Startskript“, Widgets trotzdem offline
 
 ### 27. Test-VMs mit Gastagent (I-041)
 Nach `git pull && sudo ./install.sh` das Tool neu starten (**kein** neuer Agent-Stick). Eine Test-VM mit Windows 11
