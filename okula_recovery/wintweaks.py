@@ -3,7 +3,8 @@
 Das Tool erzeugt hier ein Skript für Windows PowerShell 5.1 (Windows 10 22H2, Windows 11) und schickt es an den
 Agent; der legt es als einmaliges Startskript der lokalen Gruppenrichtlinie ab (deploy.install_startup_script).
 Windows wartet bei der Anmeldung nicht auf Startskripte (B-020) – was vor der ersten Anmeldung wirken muss
-(Startmenü, Widgets), schreibt der Agent darum zusätzlich gleich offline (offline_request → deploy.tweak_offline).
+(Startmenü, Widgets, B-021: Sperrbildschirm, Microsoft-Benutzererfahrungen), schreibt der Agent darum zusätzlich
+gleich offline (offline_request → deploy.tweak_offline).
 Beim nächsten Windows-Start läuft das Skript als SYSTEM (evtl. parallel zur Anmeldung):
 1. Skript löschen, Startmechanismus zurückbauen (gpt.ini/scripts.ini von vorher, Einträge unter
    HKLM\\…\\Group Policy\\Scripts) – so läuft es nie ein zweites Mal, auch nicht nach einem Fehler.
@@ -32,6 +33,8 @@ WIN_HEADING = "Entfernen (Standard aus, in keiner Vorlage):"
 AUTOLOGON = "autologon"
 LATER = "later_cleanup"           # Nachlauf (Ä-042) – Baustein entsteht in build_script aus den gewählten Apps
 START_CLEAN = "start_clean"
+LOCKSCREEN = "lockscreen_off"
+NO_REINSTALL = "no_reinstall"
 APPS_HEADING = "Store-Apps entfernen:"
 SERVICES_HEADING = "Abschalten (stoppen, Starttyp „Deaktiviert“):"
 PASSWORD_HINT = ("Das Passwort liegt nach dem Umsetzen im Klartext in der Registrierung (Winlogon) – wie bei der "
@@ -190,7 +193,10 @@ catch {{ throw ('Richtlinie „Widgets zulassen“ aus; ' + $_.Exception.Message
            tooltip=f"Geplante Aufgabe: {LATER_DELAY_MIN} min nach der ersten Anmeldung werden die gewählten "
                    "Store-Apps ein zweites Mal entfernt (Windows lädt Werbe-Apps erst nach der Anmeldung nach). "
                    "Die Aufgabe entfernt sich danach selbst."),
-    Option("no_reinstall", "Apps", "Wiederinstallation von Werbe-Apps sperren", f"""
+    # B-021: DisableWindowsConsumerFeatures setzt der Agent zusätzlich schon beim Senden (offline_request) – laut
+    # Policy CSP Experience/AllowWindowsConsumerFeatures „Post-OOBE app install and redirect tiles“, nur Enterprise und
+    # Education. Für Pro und Home nennt Microsoft Learn keinen Weg gegen die Werbe-Platzhalter im Startmenü.
+    Option(NO_REINSTALL, "Apps", "Wiederinstallation von Werbe-Apps sperren", f"""
 Set-OkulaReg '{POL}\\Windows\\CloudContent' 'DisableWindowsConsumerFeatures' 1
 $users = Invoke-OkulaAllUsers {{
     param($Root)
@@ -202,11 +208,13 @@ $users = Invoke-OkulaAllUsers {{
 $edition = [string](Get-ItemProperty -LiteralPath 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion' `
     -ErrorAction SilentlyContinue).EditionID
 if ($edition -match 'Enterprise|Education') {{ "Richtlinie und stille Installation aus: $users" }}
-else {{ "stille Installation aus: $users; Richtlinie wirkt bei $edition nicht (nur Enterprise/Education)" }}""",
-           tooltip="Die Richtlinie „Microsoft-Benutzererfahrungen deaktivieren“ wirkt nur bei Windows Enterprise "
-                   "und Education. Bei Pro und Home wirken die Werte für die stille App-Installation (alle "
-                   "Benutzer) sowie „Startmenü: Werbe-Kacheln entfernen“ und „Später nachgeladene Apps nochmals "
-                   "entfernen“."),
+else {{ "stille Installation aus: $users; Richtlinie wirkt bei $edition nicht (nur Enterprise/Education) – " +
+       "Werbe-Platzhalter im Startmenü (WhatsApp, LinkedIn, Adobe Express …) bleiben evtl., von Hand lösen" }}""",
+           tooltip="Die Richtlinie „Microsoft-Benutzererfahrungen deaktivieren“ (wird schon beim Senden vor dem "
+                   "Windows-Start gesetzt) wirkt laut Microsoft nur bei Windows Enterprise und Education – dort "
+                   "bleiben auch die Werbe-Platzhalter (WhatsApp, LinkedIn, Adobe Express …) im Startmenü weg. Bei "
+                   "Pro und Home wirken nur die Werte für die stille App-Installation (alle Benutzer) und „Später "
+                   "nachgeladene Apps nochmals entfernen“; die Platzhalter lassen sich dort nur von Hand lösen."),
     Option("onedrive", "Apps", "OneDrive entfernen", f"""
 Get-Process -Name 'OneDrive' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 $notes = @()
@@ -282,8 +290,22 @@ foreach ($a in 'monitor-timeout-ac', 'monitor-timeout-dc', 'standby-timeout-ac',
            "Invoke-OkulaNative 'powercfg.exe' @('/hibernate', 'off') | Out-Null"),
     Option("fastboot_off", "Betrieb", "Schnellstart aus",
            "Set-OkulaReg 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power' 'HiberbootEnabled' 0"),
-    Option("lockscreen_off", "Betrieb", "Sperrbildschirm aus",
-           f"Set-OkulaReg '{POL}\\Windows\\Personalization' 'NoLockScreen' 1"),
+    # B-021: Richtlinie „Do not display the lock screen“ (Policy CSP ADMX_ControlPanelDisplay/
+    # CPL_Personalization_NoLockScreen: Pro, Enterprise, Education ab Windows 11 21H2 bzw. Windows 10 2004 mit
+    # KB5005101; Home nicht aufgeführt). Der Agent setzt sie schon beim Senden (offline_request) – sonst erschiene der
+    # Sperrbildschirm beim ersten Start noch.
+    Option(LOCKSCREEN, "Betrieb", "Sperrbildschirm aus", f"""
+Set-OkulaReg '{POL}\\Windows\\Personalization' 'NoLockScreen' 1
+$edition = [string](Get-ItemProperty -LiteralPath 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion' `
+    -ErrorAction SilentlyContinue).EditionID
+if ($edition -like 'Core*') {{
+    'Richtlinie gesetzt; Hinweis: Windows Home ({{0}}) – laut Microsoft nicht unterstützt, wirkt evtl. nicht' -f $edition
+}} else {{
+    'Richtlinie „Sperrbildschirm nicht anzeigen“ gesetzt ({{0}})' -f $edition
+}}""",
+           tooltip="Richtlinie „Sperrbildschirm nicht anzeigen“: Windows zeigt gleich die Anmeldung. Wird schon beim "
+                   "Senden vor dem Windows-Start gesetzt, wirkt also ab dem ersten Start. Laut Microsoft bei Pro, "
+                   "Enterprise und Education (Windows 11, Windows 10 ab 2004 mit Updates), nicht bei Home."),
     Option("tips_off", "Betrieb", "Tipps, Vorschläge und Benachrichtigungen aus", f"""
 Invoke-OkulaAllUsers {{
     param($Root)
@@ -345,6 +367,17 @@ Invoke-OkulaAllUsers {{
 if ([Environment]::OSVersion.Version.Build -lt 22000) {{
     return 'Windows 10 – ohne Wirkung (gilt nur für Windows 11)'
 }}
+# B-021: Microsoft heftet zusätzlich „dynamically delivered apps“ an (Microsoft Learn, Customize the Windows 11 Start
+# menu); abschalten lässt sich das nur mit Richtlinien für Enterprise/Education (AllowWindowsConsumerFeatures,
+# DisableCloudOptimizedContent) – ehrlicher Hinweis bei Pro/Home
+$edition = [string](Get-ItemProperty -LiteralPath 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion' `
+    -ErrorAction SilentlyContinue).EditionID
+$adsNote = ''
+if ($edition -notmatch 'Enterprise|Education') {{
+    $adsNote = ('; Hinweis: Windows {{0}} – Microsoft kann zusätzlich Werbe-Platzhalter anheften (z. B. WhatsApp, ' +
+                'LinkedIn, Adobe Express); abschalten lässt sich das laut Microsoft nur bei Enterprise/Education, ' +
+                'sonst von Hand (Rechtsklick auf die Kachel → „Von Start lösen“)') -f $edition
+}}
 $json = '{start_pins_json()}'
 if ([Environment]::OSVersion.Version.Build -ge {START_GPO_BUILD}) {{
     # Windows 11 24H2: Gruppenrichtlinie „Configure Start Pins“ wie in StartMenu.admx – Schalter (DWORD 1) und Pfad
@@ -367,10 +400,11 @@ if ([Environment]::OSVersion.Version.Build -ge {START_GPO_BUILD}) {{
         Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
         $offCount = $offline['profiles']
         $offStamp = $offline['stamp']
-        return ('Gruppenrichtlinie ConfigureStartPins gesetzt (Datei {{0}}); Startmenü schon beim Senden vor dem ' +
-                'Windows-Start zurückgesetzt (Agent: Richtlinie gesetzt, Startmenü von {{1}} Profil(en) zurückgesetzt, ' +
-                'start2.bin gesichert als start2.bin.okula-{{2}}) – gilt ab der ersten Anmeldung für neue Konten und ' +
-                'bestehende; eigene Anheftungen der Benutzer gehen dabei verloren') -f $file, $offCount, $offStamp
+        $done = ('Gruppenrichtlinie ConfigureStartPins gesetzt (Datei {{0}}); Startmenü schon beim Senden vor dem ' +
+                 'Windows-Start zurückgesetzt (Agent: Richtlinie gesetzt, Startmenü von {{1}} Profil(en) zurückgesetzt, ' +
+                 'start2.bin gesichert als start2.bin.okula-{{2}}) – gilt ab der ersten Anmeldung für neue Konten und ' +
+                 'bestehende; eigene Anheftungen der Benutzer gehen dabei verloren') -f $file, $offCount, $offStamp
+        return ($done + $adsNote)
     }}
     # Ohne Marke (Agent älter als B-020 oder offline nicht geklappt) wie bisher:
     # B-018: bei bestehenden Profilen hat die gespeicherte start2.bin Vorrang vor der Richtlinie – einmalig
@@ -425,7 +459,7 @@ if ([Environment]::OSVersion.Version.Build -ge {START_GPO_BUILD}) {{
                   'Benutzer dann abgemeldet ist)') -f $who
     }}
     if ($hints) {{ $text += '; Hinweis: ' + ($hints -join '; ') }}
-    return $text
+    return $text + $adsNote
 }}
 try {{
     # Windows 11 vor 24H2: nur Policy CSP Start/ConfigureStartPins über die MDM-Bridge (WMI, als SYSTEM)
@@ -443,10 +477,13 @@ try {{
 }} catch {{
     throw ('Windows 11 vor 24H2: Startmenü nur mit Geräteverwaltung (Policy CSP: {{0}})' -f $_.Exception.Message)
 }}
-'Richtlinie ConfigureStartPins gesetzt (Policy CSP); wirkt bei der nächsten Anmeldung, auch für bestehende Benutzer'""",
-           tooltip="Ersetzt die angehefteten Kacheln im Startmenü von Windows 11 (auch die Platzhalter für "
-                   "WhatsApp, LinkedIn, Clipchamp …, die Windows erst beim Klick installiert) durch Edge, Explorer, "
-                   "Einstellungen, Rechner, Editor, Fotos, Paint, Snipping Tool und Terminal. Ab Windows 11 24H2 "
+('Richtlinie ConfigureStartPins gesetzt (Policy CSP); wirkt bei der nächsten Anmeldung, auch für bestehende ' +
+ 'Benutzer' + $adsNote)""",
+           tooltip="Ersetzt die angehefteten Kacheln im Startmenü von Windows 11 durch Edge, Explorer, "
+                   "Einstellungen, Rechner, Editor, Fotos, Paint, Snipping Tool und Terminal. Werbe-Platzhalter "
+                   "(WhatsApp, LinkedIn, Adobe Express …) kann Microsoft bei Pro und Home trotzdem dazu anheften – "
+                   "abschalten lässt sich das laut Microsoft nur bei Enterprise und Education (mit „Wiederinstallation "
+                   "von Werbe-Apps sperren“), sonst von Hand lösen. Ab Windows 11 24H2 "
                    "über die Gruppenrichtlinie (Liste in C:\\ProgramData\\Okula\\StartPins.json), nur einmal – "
                    "danach lässt sich wieder selbst anheften. Gilt für neue Konten und – einmalig zurückgesetzt – "
                    "für bestehende; eigene Anheftungen der Benutzer gehen dabei verloren. Ältere Windows 11 nur, wenn die Geräteverwaltung die "
@@ -1193,6 +1230,10 @@ def offline_request(selected) -> dict:
         out["start_pins"] = start_pins_json()
     if "apps_widgets" in selected:
         out["widgets"] = True
+    if LOCKSCREEN in selected:              # B-021: Sperrbildschirm erscheint sonst beim ersten Start
+        out["lock_screen_off"] = True
+    if NO_REINSTALL in selected:            # B-021: Werbe-Apps/Platzhalter kommen bei der ersten Anmeldung
+        out["consumer_off"] = True
     return out
 
 

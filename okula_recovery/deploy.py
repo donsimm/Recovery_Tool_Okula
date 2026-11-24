@@ -8,7 +8,8 @@
 - tweak: „Windows anpassen“ (I-039) – ein vom Tool erzeugtes PowerShell-Skript als einmaliges Startskript der
   lokalen Gruppenrichtlinie ablegen (System32/GroupPolicy); vorhandene Richtlinien bleiben, das Skript stellt den
   vorherigen Stand beim Start selbst wieder her. B-020: was vor der ersten Anmeldung wirken muss (Startmenü- und
-  Widgets-Richtlinie, start2.bin umbenennen), schreibt der Agent gleich offline (tweak_offline).
+  Widgets-Richtlinie, start2.bin umbenennen; B-021: Sperrbildschirm, Microsoft-Benutzererfahrungen), schreibt der
+  Agent gleich offline (tweak_offline).
 - software: „Software installieren“ (I-020) – Installer nach ProgramData/Okula/Software und ein Startskript
   (wie tweak), das sie beim nächsten Windows-Start als SYSTEM still installiert.
 - countdown: „Automatisierung startet in 30 s – Esc zum Abbrechen“ am Bildschirm; Esc direkt von der
@@ -723,16 +724,27 @@ def set_hive_values(root: Path, changes: dict[str, list[HiveValue]], hive: str =
     return True
 
 
+def _version_text(root: Path, name: str) -> str:
+    """Zeichenfolge unter Microsoft\\Windows NT\\CurrentVersion im Hive SOFTWARE – leer, wenn nicht lesbar."""
+    try:
+        value = winprofile.Hive(_hive_file(root, "SOFTWARE").read_bytes()).value(_SAMPLE[0], name)
+    except (HiveError, OSError, winprofile.ProfileError, struct.error, IndexError):
+        return ""
+    if not value or value[0] not in (1, REG_EXPAND_SZ):
+        return ""
+    return value[1].decode("utf-16-le", errors="replace").split("\0")[0].strip()
+
+
 def windows_build(root: Path) -> int:
     """Build-Nummer (CurrentBuild) aus dem Hive SOFTWARE – 0, wenn sie sich nicht lesen lässt."""
-    try:
-        value = winprofile.Hive(_hive_file(root, "SOFTWARE").read_bytes()).value(*_SAMPLE)
-    except (HiveError, OSError, winprofile.ProfileError, struct.error, IndexError):
-        return 0
-    if not value or value[0] not in (1, REG_EXPAND_SZ):
-        return 0
-    text = value[1].decode("utf-16-le", errors="replace").split("\0")[0].strip()
+    text = _version_text(root, _SAMPLE[1])
     return int(text) if text.isdigit() else 0
+
+
+def windows_edition(root: Path) -> str:
+    """EditionID aus dem Hive SOFTWARE (z. B. „Professional“, „Core“, „Enterprise“) – leer, wenn nicht lesbar."""
+    text = _version_text(root, "EditionID")
+    return text if text.isascii() and text.isalnum() and len(text) <= 40 else ""
 
 
 # ---------- B-020: vor der ersten Anmeldung wirksam – offline beim Senden von „Windows anpassen“ ----------
@@ -743,6 +755,12 @@ def windows_build(root: Path) -> int:
 #   START_CLEAN ab Build 26100: StartPins.json, Richtlinie ConfigureStartPins/ConfigureStartPinsJSON, start2.bin
 #   (und start.bin) in allen Profilen umbenennen, Marke start-offline.ok für das Startskript
 #   Widgets: Richtlinie AllowNewsAndInterests = 0
+#   B-021: Sperrbildschirm aus – Richtlinie Personalization\NoLockScreen = 1 (Policy CSP
+#   ADMX_ControlPanelDisplay/CPL_Personalization_NoLockScreen: Pro, Enterprise, Education ab Windows 11 21H2 bzw.
+#   Windows 10 2004 mit KB5005101; Home nicht aufgeführt)
+#   B-021: Wiederinstallation sperren – Richtlinie CloudContent\DisableWindowsConsumerFeatures = 1 (Policy CSP
+#   Experience/AllowWindowsConsumerFeatures: „Post-OOBE app install and redirect tiles“, nur Enterprise/Education –
+#   wirkt bei der ersten Anmeldung, darum offline; bei Pro/Home ohne Wirkung, die Edition geht ins Ergebnis)
 # Das Startskript setzt die Werte trotzdem nochmals (doppelt schadet nicht – und wirkt, falls offline nicht ging);
 # mit Marke überspringt es nur das Umbenennen (und damit das Nachholen im Nachlauf).
 
@@ -756,6 +774,8 @@ START_LAYOUT_DIR = ("AppData\\Local\\Packages\\Microsoft.Windows.StartMenuExperi
                     "\\LocalState")
 EXPLORER_KEY = r"Policies\Microsoft\Windows\Explorer"
 DSH_KEY = r"Policies\Microsoft\Dsh"
+LOCK_KEY = r"Policies\Microsoft\Windows\Personalization"          # B-021: NoLockScreen
+CLOUD_KEY = r"Policies\Microsoft\Windows\CloudContent"            # B-021: DisableWindowsConsumerFeatures
 MAX_PINS = 64 * 1024
 
 
@@ -804,14 +824,17 @@ def _drop_marker(root: Path) -> None:
 def tweak_offline(root: Path, spec, run: Callable | None = None, now: float | None = None) -> dict:
     """B-020: Teil von „Windows anpassen“, der vor der ersten Anmeldung wirken muss, offline schreiben.
 
-    spec (vom Tool, nur für gewählte Optionen): {"start_pins": <JSON für ConfigureStartPins>, "widgets": True}.
+    spec (vom Tool, nur für gewählte Optionen): {"start_pins": <JSON für ConfigureStartPins>, "widgets": True,
+    "lock_screen_off": True, "consumer_off": True} (B-021: die beiden letzten).
     Ergebnis für die Antwort: {"offline": {...}} bzw. {"offline_error": Grund} (Hive dann unverändert, nichts
     umbenannt, keine Marke – das Startskript macht es wie bisher) bzw. {} ohne Auftrag."""
     spec = spec if isinstance(spec, dict) else {}
     pins = spec.get("start_pins")
     widgets = bool(spec.get("widgets"))
+    lock = bool(spec.get("lock_screen_off"))
+    consumer = bool(spec.get("consumer_off"))
     _drop_marker(root)                           # alte Marke: sonst überspränge das Skript das Umbenennen
-    if not pins and not widgets:
+    if not pins and not widgets and not lock and not consumer:
         return {}
     try:
         if pins is not None and (not isinstance(pins, str) or len(pins) > MAX_PINS or not pins.isascii()):
@@ -828,13 +851,24 @@ def tweak_offline(root: Path, spec, run: Callable | None = None, now: float | No
                                      ("ConfigureStartPinsJSON", *reg_expand_sz(START_PINS_PATH))]
         if widgets:
             changes[DSH_KEY] = [("AllowNewsAndInterests", *reg_dword(0))]
+        if lock:
+            changes[LOCK_KEY] = [("NoLockScreen", *reg_dword(1))]
+        if consumer:
+            changes[CLOUD_KEY] = [("DisableWindowsConsumerFeatures", *reg_dword(1))]
         if changes:
             set_hive_values(root, changes, run=run)
     except Exception as e:       # nie den Auftrag abbrechen – das Startskript liegt schon und setzt es selbst
         return {"offline_error": str(e) if isinstance(e, ImagingError) else f"{type(e).__name__}: {e}"}
     out: dict = {"build": build}
+    edition = windows_edition(root)
+    if edition:
+        out["edition"] = edition                          # B-021: für ehrliche Hinweise im Tool (Pro/Home)
     if widgets:
         out["widgets"] = True
+    if lock:
+        out["lock_screen_off"] = True
+    if consumer:
+        out["consumer_off"] = True
     if pins:
         out["start"] = "set" if start else "old"           # old: vor 24H2 – nur das Startskript (MDM-Bridge)
     if start:
@@ -898,6 +932,10 @@ def offline_log(result: dict) -> str:
         parts.append(f"Startmenü-Richtlinie gesetzt, Startmenü von {off.get('profiles', 0)} Profil(en) zurückgesetzt")
     if off.get("widgets"):
         parts.append("Widgets-Richtlinie gesetzt")
+    if off.get("lock_screen_off"):
+        parts.append("Sperrbildschirm-Richtlinie gesetzt")
+    if off.get("consumer_off"):
+        parts.append("Richtlinie Microsoft-Benutzererfahrungen gesetzt")
     return ("; vor dem Windows-Start: " + ", ".join(parts)) if parts else ""
 
 

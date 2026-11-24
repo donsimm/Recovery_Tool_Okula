@@ -120,6 +120,7 @@ class TweakOfflineTest(OfflineBase):
 
     def test_only_selected_options(self):
         self.assertEqual(wintweaks.offline_request({"cortana"}), {})
+        self.assertEqual(wintweaks.offline_request({"fastboot_off", "telemetry", "onedrive"}), {})
         self.assertEqual(wintweaks.offline_request({"apps_widgets"}), {"widgets": True})
         self.assertEqual(wintweaks.offline_request({"start_clean"}), {"start_pins": PINS})
         # nur Widgets: kein Startmenü, kein Umbenennen, keine Marke
@@ -321,15 +322,17 @@ class JobLogTest(unittest.TestCase):
         self.assertEqual(jobs.offline_lines({}, {}), [])
         lines = jobs.offline_lines(req, {"offline": {"build": 26100, "start": "set", "profiles": 2,
                                                      "stamp": "20261124-1000", "widgets": True}})
-        self.assertEqual(len(lines), 2)
+        self.assertEqual(len(lines), 3)
         self.assertIn("Startmenü von 2 Profil(en) zurückgesetzt", lines[0])
         self.assertIn("gilt ab der ersten Anmeldung", lines[0])
         self.assertIn("„Widgets zulassen“ aus", lines[1])
+        self.assertTrue(lines[2].startswith("Hinweis: Werbe-Platzhalter im Startmenü"))       # B-021: Edition unbekannt
         old = jobs.offline_lines(req, {"offline": {"build": 22631, "start": "old"}})
         self.assertIn("vor 24H2", old[0])
         err = jobs.offline_lines(req, {"offline_error": "nicht sauber geschlossen"})
-        self.assertTrue(err[0].startswith("Hinweis: Startmenü/Widgets nicht vor dem Windows-Start gesetzt "
+        self.assertTrue(err[0].startswith("Hinweis: Einstellungen vor dem Windows-Start nicht gesetzt "
                                           "(nicht sauber geschlossen)"))
+        self.assertIn("Sperrbildschirm", err[0])
         self.assertIn("Agent zu alt", jobs.offline_lines(req, {})[0])               # Agent vor B-020
         hint = jobs.offline_lines(req, {"offline": {"start": "set", "profiles": 0, "hints": ["x gesperrt"]}})
         self.assertIn("Hinweis: x gesperrt", hint[1])

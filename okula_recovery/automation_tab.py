@@ -438,8 +438,8 @@ class WindowsTweakDialog(Gtk.Dialog):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=14)
         head = Gtk.Label(xalign=0, wrap=True)
         head.set_markup(f"Einstellungen für <b>{GLib.markup_escape_text(device_name)}</b> – Windows setzt sie beim "
-                        "nächsten Start selbst um (als SYSTEM); Startmenü und Widgets setzt der Agent schon beim "
-                        "Senden.")
+                        "nächsten Start selbst um (als SYSTEM); Startmenü, Widgets und Sperrbildschirm setzt der "
+                        "Agent schon beim Senden.")
         box.pack_start(head, False, False, 0)
         row = Gtk.Box(spacing=8)
         row.pack_start(Gtk.Label(label="Vorlage", xalign=0), False, False, 0)

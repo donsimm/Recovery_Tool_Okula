@@ -262,7 +262,13 @@ Doppelklick auf ein Gerät öffnet sein Fenster:
 •  <i>Automatisierung</i>: das Gerät automatisch neu aufsetzen.
 •  <i>Verlauf</i> und <i>Notizen</i>.
 
-Das Tool erkennt ein Gerät beim nächsten Mal wieder, auch nach Monaten."""),
+Das Tool erkennt ein Gerät beim nächsten Mal wieder, auch nach Monaten.
+
+<b>Uhrzeit des Agents:</b> Windows führt die Hardware-Uhr des Geräts in Ortszeit, der Agent liest sie beim Start
+als Weltzeit – ohne Abgleich ginge seine Uhr im Winter 1 h, im Sommer 2 h vor. Darum stellt der Agent seine Uhr
+bei jeder Verbindung nach dem Server (Zeitzone Europe/Zurich); Zeitstempel wie
+<tt>start2.bin.okula-&lt;Datum&gt;</tt> zeigen so die Ortszeit. Die Hardware-Uhr selbst bleibt unverändert –
+Windows zeigt danach weiter die richtige Zeit. Nötig ist dafür ein neuer Agent-Stick bzw. Netzwerkstart."""),
 
     ("Netzwerkstart", """<big><b>Gerät ohne Stick verbinden (Netzwerkstart)</b></big>
 
@@ -770,7 +776,9 @@ beim <b>nächsten Start selbst</b> um. Geht nach einer Installation oder jederze
 •  <b>Updates</b>: Windows Update aus, keine Treiber über Windows Update, keine automatischen App-Updates.
 •  <b>Betrieb</b>: Energieplan Höchstleistung, Bildschirm und Standby nie ausschalten, Ruhezustand aus,
     Schnellstart aus, Sperrbildschirm aus, Tipps, Vorschläge und Benachrichtigungen aus, Einrastfunktion und
-    Anschlagverzögerung aus.
+    Anschlagverzögerung aus. <i>Sperrbildschirm aus</i> setzt die Richtlinie „Sperrbildschirm nicht anzeigen“
+    schon beim Senden (wirkt ab dem ersten Start); laut Microsoft bei Pro, Enterprise und Education, nicht bei
+    Home (dann Hinweis im Log des Auftrags und im Protokoll).
 •  <b>Datenschutz</b>: Telemetrie minimal (bei Windows Pro wirkt das wie „Erforderliche Diagnosedaten“),
     Werbe-ID aus, Standort aus, Fehlerberichte aus, Bing-Suche im Startmenü aus.
 •  <b>Explorer und Desktop</b>: Dateiendungen anzeigen, versteckte Dateien anzeigen, Explorer öffnet
@@ -803,6 +811,12 @@ installiert, Windows lädt sie erst beim Klick oder später im Hintergrund. Daru
     abgemeldet ist, sonst greift es erst nach einem erneuten Lauf. Ältere Windows 11 nehmen die Liste nur über eine
     Geräteverwaltung an – klappt das nicht, steht „Windows 11 vor 24H2: Startmenü nur mit Geräteverwaltung“ als
     FEHLER im Protokoll. Windows 10: ohne Wirkung.
+    <b>Werbe-Platzhalter trotz Richtlinie:</b> Microsoft heftet zusätzlich Apps an, die es selbst auswählt und
+    nachliefert (z. B. WhatsApp, LinkedIn, Adobe Express). Abschalten lässt sich das laut Microsoft nur bei
+    Windows Enterprise und Education (Richtlinie „Microsoft-Benutzererfahrungen deaktivieren“ über
+    <i>Wiederinstallation von Werbe-Apps sperren</i>). Bei Pro und Home gibt es dafür keinen belegten Weg – die
+    Kacheln von Hand entfernen (Rechtsklick auf die Kachel → „Von Start lösen“); die Richtlinie setzt die Liste
+    nur einmal und überschreibt das danach nicht. Log des Auftrags und Protokoll nennen das mit der Edition.
 •  <i>Widgets</i> entfernt die App und setzt zusätzlich die Richtlinie „Widgets zulassen“ auf aus – damit
     verschwindet auch das Wetter aus der Taskleiste, selbst wenn Windows das Paket behält. Die Richtlinie setzt
     der Agent schon beim Senden (kein Wetter bei der ersten Anmeldung), das Startskript nochmals.
@@ -810,9 +824,11 @@ installiert, Windows lädt sie erst beim Klick oder später im Hintergrund. Daru
     nach der ersten Anmeldung werden die gewählten Store-Apps ein zweites Mal entfernt, danach löscht sich die
     Aufgabe selbst (Protokoll wie unten, Abschnitt „Nachlauf“). Ist beim Anlegen schon jemand angemeldet, läuft
     sie zusätzlich einmalig 30 min später.
-•  <i>Wiederinstallation von Werbe-Apps sperren</i>: Die Richtlinie dazu wirkt laut Microsoft nur bei Windows
-    Enterprise und Education. Bei Pro und Home wirken die Werte für die stille App-Installation (alle Benutzer)
-    und die beiden Häkchen oben. Das Protokoll nennt die Edition.
+•  <i>Wiederinstallation von Werbe-Apps sperren</i>: Die Richtlinie „Microsoft-Benutzererfahrungen
+    deaktivieren“ setzt der Agent schon beim Senden; sie wirkt laut Microsoft nur bei Windows Enterprise und
+    Education – dort bleiben ab der ersten Anmeldung auch die Werbe-Platzhalter im Startmenü weg. Bei Pro und Home
+    wirken nur die Werte für die stille App-Installation (alle Benutzer) und der Nachlauf; die Platzhalter bleiben
+    evtl. (siehe oben). Log des Auftrags und Protokoll nennen die Edition.
 
 <b>Passwort:</b> Das Passwort der automatischen Anmeldung liegt danach – wie bei Windows üblich – im
 <b>Klartext in der Registrierung</b> (Winlogon). Bis zum nächsten Start steht es im Startskript auf der Disk;
@@ -827,12 +843,13 @@ Einträge früherer Okula-Startskripte aus der Registrierung entfernt, deren Skr
 (gilt ebenso für <i>Software installieren</i>); klappt das nicht, steht ein Hinweis im Protokoll.
 
 <b>Vor dem Windows-Start:</b> Windows wartet bei der Anmeldung nicht auf das Startskript – die Anmeldung kann
-schon erscheinen, während das Skript noch läuft. Was bei der ersten Anmeldung schon stimmen muss (Startmenü,
-Widgets-Richtlinie), schreibt der Agent darum gleich beim Senden in das ausgeschaltete Windows; das Log des
+schon erscheinen, während das Skript noch läuft. Was beim ersten Start bzw. bei der ersten Anmeldung schon
+stimmen muss (Startmenü, Widgets-Richtlinie, Sperrbildschirm, Richtlinie „Microsoft-Benutzererfahrungen
+deaktivieren“), schreibt der Agent darum gleich beim Senden in das ausgeschaltete Windows; das Log des
 Auftrags nennt es („Vor dem Windows-Start gesetzt: …“). Klappt das nicht (z. B. Windows nicht ganz
-heruntergefahren, Agent zu alt), steht dort ein Hinweis – das Startskript setzt es dann beim Start, und Startmenü
-und Wetter greifen evtl. erst nach einem weiteren Neustart. Die übrigen Einstellungen (z. B. Sperrbildschirm)
-gelten, sobald das Skript gelaufen ist, sicher ab dem nächsten Start.
+heruntergefahren, Agent zu alt), steht dort ein Hinweis – das Startskript setzt es dann beim Start, und Startmenü,
+Wetter und Sperrbildschirm greifen evtl. erst nach einem weiteren Neustart. Die übrigen Einstellungen gelten,
+sobald das Skript gelaufen ist, sicher ab dem nächsten Start.
 Laufen <i>Windows anpassen</i> und <i>Software installieren</i> beim selben Start gleichzeitig, räumen sie
 nacheinander auf (Sperre); was das andere Skript schon aufgeräumt hat, gilt nicht als Fehler.
 

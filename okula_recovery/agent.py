@@ -442,6 +442,39 @@ def run_hwtest(tls, addr, req: dict) -> None:
             disk_locks.release(p)
 
 
+# ---------- B-021: Uhr nach dem Server stellen ----------
+#
+# Befund 24.11.2026: Zeitstempel des Agents 1 h vor (start2.bin.okula-… 17:02 statt 16:02). Ursache: Windows führt
+# die Hardware-Uhr (RTC) in Ortszeit, der Kernel des Live-Systems liest sie beim Start als UTC; die Zeitzone
+# Europe/Zurich (Startparameter timezone=) rechnet dann nochmals +1 h (Winter) bzw. +2 h (Sommer) dazu. Einen
+# Zeitserver hat der Agent nicht. Abhilfe: Jede Anfrage des Tools trägt die Uhrzeit des Servers („now“, wire.send_json);
+# weicht die Uhr des Agents mehr als CLOCK_TOLERANCE ab, stellt er die Systemuhr (clock_settime). Die Hardware-Uhr
+# bleibt unverändert – kein hwclock --systohc, und ohne NTP-Synchronisation schreibt der Kernel die RTC nicht zurück.
+CLOCK_TOLERANCE = 5.0           # s – Laufzeit der Anfrage und kleine Gangunterschiede nicht korrigieren
+CLOCK_MIN = 1_700_000_000       # 14.11.2023 – kleiner: keine gültige Server-Uhr
+CLOCK_MAX = 4_102_444_800       # 1.1.2100
+_clock_lock = threading.Lock()
+
+
+def sync_clock(now, set_time=None) -> float | None:
+    """Systemuhr nach der Server-Uhr stellen (now = Sekunden seit 1970, UTC). Gibt die Korrektur in Sekunden zurück
+    (positiv = Agent ging nach) bzw. None (nichts zu tun, ungültig oder nicht möglich). Fehler nur ins Protokoll."""
+    if isinstance(now, bool) or not isinstance(now, (int, float)) or not CLOCK_MIN < now < CLOCK_MAX:
+        return None
+    with _clock_lock:
+        diff = float(now) - time.time()
+        if abs(diff) <= CLOCK_TOLERANCE:
+            return None
+        try:
+            (set_time or (lambda t: time.clock_settime(time.CLOCK_REALTIME, t)))(float(now))
+        except (OSError, AttributeError) as e:          # kein root (Demo-Gerät) bzw. Plattform ohne clock_settime
+            log(f"Uhr nicht gestellt ({e}) – Zeitstempel des Agents können abweichen")
+            return None
+    when = "vor" if diff < 0 else "nach"
+    log(f"Uhr nach dem Server gestellt (ging {abs(diff):.0f} s {when}; Hardware-Uhr unverändert)")
+    return diff
+
+
 def load_key(path: str) -> bytes | None:
     try:
         key = bytes.fromhex(Path(path).read_text().strip())
@@ -456,6 +489,7 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
         with ctx.wrap_socket(conn, server_side=True) as tls:
             tls.settimeout(900)
             req = wire.recv_json(tls)
+            sync_clock(req.get("now"))                 # B-021: vor dem Auftrag (Zeitstempel, Umbenennen, Marke)
             cmd = req.get("cmd")
             if cmd == "info":
                 wire.send_json(tls, {"type": "info", "hostname": socket.gethostname(), "version": __version__,

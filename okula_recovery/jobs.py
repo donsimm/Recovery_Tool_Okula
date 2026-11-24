@@ -281,8 +281,21 @@ SOFTWARE_NEXT = ("Wird beim nächsten Windows-Start als SYSTEM still installiert
                  "Installationen laufen danach weiter). Protokoll am Gerät: C:\\Windows\\Temp\\okula-software.log")
 
 
-OFFLINE_LATE = ("das Startskript setzt es beim Start; Startmenü bzw. Wetter greifen evtl. erst nach einem weiteren "
-                "Neustart (Windows wartet bei der Anmeldung nicht auf das Startskript)")
+OFFLINE_LATE = ("das Startskript setzt es beim Start; Startmenü, Wetter bzw. Sperrbildschirm greifen evtl. erst nach "
+                "einem weiteren Neustart (Windows wartet bei der Anmeldung nicht auf das Startskript)")
+# B-021: Editionen, für die Microsoft Learn die Richtlinien gegen Werbe-Platzhalter aufführt
+# (Policy CSP Experience/AllowWindowsConsumerFeatures, DisableCloudOptimizedContent)
+ADS_EDITIONS = ("Enterprise", "Education")
+ADS_HINT = ("Werbe-Platzhalter im Startmenü (z. B. WhatsApp, LinkedIn, Adobe Express) kann Microsoft trotzdem dazu "
+            "anheften – abschalten lässt sich das laut Microsoft nur bei Enterprise/Education; sonst von Hand lösen")
+
+
+def _home(edition: str) -> bool:
+    return edition.startswith("Core")                       # Home: Core, CoreN, CoreSingleLanguage …
+
+
+def _ads_allowed(edition: str) -> bool:
+    return not any(e in edition for e in ADS_EDITIONS)
 
 
 def offline_lines(requested: dict | None, result: dict) -> list[str]:
@@ -290,13 +303,20 @@ def offline_lines(requested: dict | None, result: dict) -> list[str]:
     if not requested:
         return []
     if result.get("offline_error"):
-        return [f"Hinweis: Startmenü/Widgets nicht vor dem Windows-Start gesetzt ({result['offline_error']}) – "
+        return [f"Hinweis: Einstellungen vor dem Windows-Start nicht gesetzt ({result['offline_error']}) – "
                 + OFFLINE_LATE]
     off = result.get("offline")
     if not isinstance(off, dict):
         return ["Hinweis: Agent zu alt für die Einstellungen vor dem Windows-Start (Agent-Stick bzw. Netzwerkstart "
                 "neu erstellen) – " + OFFLINE_LATE]
+    edition = str(off.get("edition") or "")
+    name = f"Windows {edition}" if edition else "dieser Edition"
     lines = []
+    if (requested.get("lock_screen_off") and not off.get("lock_screen_off")) or \
+            (requested.get("consumer_off") and not off.get("consumer_off")):
+        # Agent von B-020: kennt die neuen Werte nicht (setzt nur Startmenü/Widgets)
+        lines.append("Hinweis: Agent zu alt für Sperrbildschirm bzw. Werbe-Richtlinie vor dem Windows-Start "
+                     "(Agent-Stick bzw. Netzwerkstart neu erstellen) – " + OFFLINE_LATE)
     if off.get("start") == "set":
         lines.append(f"Vor dem Windows-Start gesetzt: Startmenü-Richtlinie (feste Kacheln), Startmenü von "
                      f"{off.get('profiles', 0)} Profil(en) zurückgesetzt (start2.bin gesichert als "
@@ -309,6 +329,24 @@ def offline_lines(requested: dict | None, result: dict) -> list[str]:
     if off.get("widgets"):
         lines.append("Vor dem Windows-Start gesetzt: Richtlinie „Widgets zulassen“ aus (kein Wetter in der "
                      "Taskleiste)")
+    if off.get("lock_screen_off"):
+        if _home(edition):
+            lines.append(f"Vor dem Windows-Start gesetzt: Richtlinie „Sperrbildschirm nicht anzeigen“ – Hinweis: "
+                         f"{name} laut Microsoft nicht unterstützt, wirkt evtl. nicht")
+        else:
+            lines.append("Vor dem Windows-Start gesetzt: Richtlinie „Sperrbildschirm nicht anzeigen“ – kein "
+                         "Sperrbildschirm ab dem ersten Start")
+    ads_hint = bool(requested.get("start_pins")) and _ads_allowed(edition)
+    if off.get("consumer_off"):
+        if _ads_allowed(edition):
+            lines.append(f"Vor dem Windows-Start gesetzt: Richtlinie „Microsoft-Benutzererfahrungen deaktivieren“ – "
+                         f"wirkt bei {name} nicht (nur Enterprise/Education). {ADS_HINT}")
+            ads_hint = False
+        else:
+            lines.append("Vor dem Windows-Start gesetzt: Richtlinie „Microsoft-Benutzererfahrungen deaktivieren“ – "
+                         "keine Werbe-Apps und Werbe-Platzhalter ab der ersten Anmeldung")
+    if ads_hint:
+        lines.append((f"Hinweis ({name}): " if edition else "Hinweis: ") + ADS_HINT)
     return lines
 
 

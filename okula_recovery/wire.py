@@ -12,6 +12,7 @@ import json
 import socket
 import ssl
 import struct
+import time
 
 PORT = 47812
 PSK_IDENTITY = "okula-recovery"
@@ -74,6 +75,10 @@ def connect(host: str, key: bytes, port: int = PORT, timeout: float = 15.0) -> s
 def send_json(sock: socket.socket, obj: dict) -> None:
     # „replace“: Platzhalter für Bytes in alter Kodierung (z. B. BIOS-Namen in Windows-1252) werden zu „?“,
     # statt die Verbindung mit UnicodeEncodeError abzubrechen (B-005)
+    if "cmd" in obj and "now" not in obj:
+        # B-021: Jede Anfrage des Tools („cmd“ – der Agent sendet nur „type“) trägt die Uhrzeit des Servers
+        # (Sekunden seit 1970, UTC); der Agent stellt danach seine Uhr (agent.sync_clock)
+        obj = {**obj, "now": round(time.time(), 3)}
     payload = json.dumps(obj, ensure_ascii=False).encode("utf-8", "replace")
     sock.sendall(_HEADER.pack(FRAME_JSON, len(payload)) + payload)
 

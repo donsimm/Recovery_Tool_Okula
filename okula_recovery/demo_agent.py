@@ -358,12 +358,12 @@ def tweak(req: dict, log=print) -> dict:
     reply = {"type": "done", "part": f"{DEMO_DISK_PATH}p3", "state": "installed", "replaced": False, "gpo": False,
              "version": 1}
     spec = req.get("offline") if isinstance(req.get("offline"), dict) else {}
-    if spec.get("start_pins") or spec.get("widgets"):          # B-020: Offline-Teil simuliert (Build 26100)
-        off: dict = {"build": 26100}
+    flags = ("widgets", "lock_screen_off", "consumer_off")      # B-021: Sperrbildschirm, Benutzererfahrungen
+    if spec.get("start_pins") or any(spec.get(f) for f in flags):    # B-020: Offline-Teil simuliert (Build 26100)
+        off: dict = {"build": 26100, "edition": "Professional"}
         if spec.get("start_pins"):
             off.update(start="set", profiles=1, stamp=time.strftime("%Y%m%d-%H%M%S"))
-        if spec.get("widgets"):
-            off["widgets"] = True
+        off.update({f: True for f in flags if spec.get(f)})
         reply["offline"] = off
     return reply
 
