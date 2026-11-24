@@ -1,6 +1,6 @@
 # B-020 – Windows anpassen: Startmenü und Widgets offline setzen, Okula-Startskripte gleichzeitig
 
-Status: offen · erstellt 24.11.2026 von der Projektleitung · Freigabe: Dominik 24.11. (Gesamttest an der VM)
+Status: umgesetzt (Commit 62f5b1f, Doku 3f5f493) · erstellt 24.11.2026 von der Projektleitung · Freigabe: Dominik 24.11. (Gesamttest an der VM)
 
 ## Rolle und Einstieg
 
