@@ -788,10 +788,14 @@ Adobe Express, Spotify &amp; Co. sind im Startmenü oft nur <b>Platzhalter</b>: 
 installiert, Windows lädt sie erst beim Klick oder später im Hintergrund. Darum hilft Entfernen allein nicht.
 •  <i>Startmenü: Werbe-Kacheln entfernen (Windows 11)</i> ersetzt die angehefteten Kacheln durch Edge, Explorer,
     Einstellungen, Rechner, Editor, Fotos, Paint, Snipping Tool und Terminal (fehlt eine davon, erscheint ihre
-    Kachel erst nach der Installation). Wirkt bei der nächsten Anmeldung – für bestehende und neue Benutzer, auch
-    bei Windows Pro. Ab Windows 11 24H2 (mit dem Update KB5062660) über die Gruppenrichtlinie „Configure Start
-    Pins“; die Liste liegt in <tt>C:\\ProgramData\\Okula\\StartPins.json</tt> und muss dort bleiben. Windows setzt
-    sie nur einmal, danach lässt sich wieder selbst anheften. Ältere Windows 11 nehmen die Liste nur über eine
+    Kachel erst nach der Installation). Wirkt bei der nächsten Anmeldung, auch bei Windows Pro. Ab Windows 11 24H2
+    (mit dem Update KB5062660) über die Gruppenrichtlinie „Configure Start Pins“; die Liste liegt in
+    <tt>C:\\ProgramData\\Okula\\StartPins.json</tt> und muss dort bleiben. Windows setzt sie nur einmal, danach
+    lässt sich wieder selbst anheften. Gilt für neue Konten und – einmalig zurückgesetzt – für bestehende; eigene
+    Anheftungen der Benutzer gehen dabei verloren: Bei bestehenden Konten hat die gespeicherte Startmenü-Datei
+    <tt>start2.bin</tt> Vorrang, darum wird sie je Konto in <tt>start2.bin.okula-&lt;Datum&gt;</tt> umbenannt
+    (Sicherung, nicht gelöscht); das Protokoll nennt die Anzahl der Konten. Der Nachlauf setzt nichts mehr zurück.
+    Ältere Windows 11 nehmen die Liste nur über eine
     Geräteverwaltung an – klappt das nicht, steht „Windows 11 vor 24H2: Startmenü nur mit Geräteverwaltung“ als
     FEHLER im Protokoll. Windows 10: ohne Wirkung.
 •  <i>Widgets</i> entfernt die App und setzt zusätzlich die Richtlinie „Widgets zulassen“ auf aus – damit
@@ -811,7 +815,9 @@ das Skript löscht sich beim Start als Erstes. Im Protokoll, im Log des Auftrags
 „FEHLER“ mit Grund. Ein Fehler hält die übrigen Einstellungen nicht auf. Beim Entfernen von Apps stehen die
 entfernten Pakete immer in der Zeile, auch wenn es daneben einen Fehler gibt („…, … entfernt; Fehler: …“).
 Vorinstallierte Pakete, die Windows schon mit der App entfernt hat, gelten nicht als Fehler. Ein leerer Ordner
-des Startskripts, den Windows gerade verwendet, bleibt stehen (Hinweis, kein Fehler).
+des Startskripts, den Windows gerade verwendet, bleibt stehen (Hinweis, kein Fehler). Beim Aufräumen werden auch
+Einträge früherer Okula-Startskripte aus der Registrierung entfernt, deren Skript nicht mehr vorhanden ist
+(gilt ebenso für <i>Software installieren</i>); klappt das nicht, steht ein Hinweis im Protokoll.
 
 <b>Gut zu wissen:</b>
 •  Das Startskript läuft genau einmal und entfernt sich danach vollständig. Eine vorhandene lokale

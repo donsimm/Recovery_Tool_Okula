@@ -624,6 +624,28 @@ angepasste sein (der falsche Wert von Ä-042 wird ersetzt).
 - [ ] Selbst eine App anheften, abmelden, anmelden → bleibt angeheftet (`applyOnce`)
 - [ ] Zum Vergleich (Rückmeldung an Okuli): Ist der Bereich **„Empfohlen“** („Erste Schritte“ u. a.) noch da?
 
+**Korrektur B-018 (24.11.) – VM-Win11-clean, Windows 11 Pro 25H2, bestehendes Konto (z. B. „Okula-test“)**
+Nach `git pull && sudo ./install.sh` das Tool neu starten (**kein** neuer Agent-Stick). Das Konto hat vorher ein
+eigenes Startmenü (mehrfach angemeldet), die Registry hat ggf. noch Reste früherer Läufe.
+- [ ] Vorher (Gastagent oder Regedit): unter `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy\Scripts\Startup`
+      und `…\Group Policy\State\Machine\Scripts\Startup` Einträge mit `Script = okula-software.cmd` notieren
+- [ ] *Startmenü: Werbe-Kacheln entfernen (Windows 11)* senden → Neustart → mit dem **bestehenden** Konto anmelden →
+      Startmenü zeigt die festen Kacheln (Edge, Explorer, Einstellungen, Rechner, Editor, Fotos, Paint, Snipping Tool,
+      Terminal)
+- [ ] Im Profil `C:\Users\<Konto>\AppData\Local\Packages\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\LocalState`
+      liegt `start2.bin.okula-<Datum-Zeit>` (Sicherung) und eine neue `start2.bin`
+- [ ] Protokoll „ok Startmenü: Werbe-Kacheln entfernen (Windows 11) (… gilt für neue Konten und – einmalig
+      zurückgesetzt – für bestehende: Startmenü von N Profil(en) zurückgesetzt …)“ – N = Anzahl Konten mit Startmenü;
+      kein FEHLER
+- [ ] Protokoll „ok Startskript und Gruppenrichtlinie aufräumen“ **ohne** InvalidCastException, mit Hinweis
+      „… Eintrag/Einträge von Okula-Startskripten in der Registrierung entfernt“; danach unter beiden Schlüsseln oben
+      **keine** Einträge mit `okula-*` mehr (auch nicht `okula-software.cmd` von früher); übrige Einträge (falls
+      vorhanden) lückenlos 0, 1, …
+- [ ] Selbst eine App anheften, abmelden, nach dem Nachlauf (1 h) bzw. Neustart wieder anmelden → bleibt angeheftet
+      (Nachlauf setzt nichts zurück)
+- [ ] Danach *Software installieren …* (z. B. Gasttools) → Neustart → Protokoll `okula-software.log` Zeile „ok
+      Startskript und Gruppenrichtlinie aufgeräumt“, Registry wieder ohne `okula-*`-Einträge
+
 ### 27. Test-VMs mit Gastagent (I-041)
 Nach `git pull && sudo ./install.sh` das Tool neu starten (**kein** neuer Agent-Stick). Eine Test-VM mit Windows 11
 (z. B. VM-Win11-test), am besten vorher Snapshot „vor Gastagent“. Gasttools aus Fedora virtio-win, stabile Version

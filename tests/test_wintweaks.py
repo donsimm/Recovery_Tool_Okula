@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from okula_recovery import agentclient, deploy, jobs, wintweaks
+from okula_recovery import agentclient, deploy, jobs, software, wintweaks
 
 PASSWORD = "Geh'eim‘Pass„1“"   # mit Anführungszeichen, die PowerShell als Stringende liest
 
@@ -256,6 +256,36 @@ class OptionsTemplatesTest(unittest.TestCase):
         later = wintweaks.build_later_script({"apps_ads"})
         self.assertIn("-and -not @(Get-ChildItem -LiteralPath $folder -Force)", later)
 
+    def test_start_layout_reset_existing_profiles(self):
+        """B-018: ab Build 26100 start2.bin (und start.bin) bestehender Profile umbenennen – nur bei START_CLEAN, nicht
+        vor 24H2 und nicht im Nachlauf; gesperrt = Hinweis, kein Fehler; Protokoll mit Anzahl."""
+        body = steps(wintweaks.build_script({"start_clean"}))["Startmenü: Werbe-Kacheln entfernen (Windows 11)"]
+        gpo = body[body.index("Build -ge 26100"):body.index("MDM_Policy_Config01_Start02")]
+        self.assertIn(f"$sub = '{wintweaks.START_LAYOUT_DIR}'", gpo)
+        self.assertEqual(wintweaks.START_LAYOUT_DIR, "AppData\\Local\\Packages\\"
+                         "Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\\LocalState")
+        self.assertIn("Get-CimInstance -ClassName Win32_UserProfile", gpo)
+        self.assertIn("-not $_.Special -and $_.LocalPath -like \"$usersRoot\\*\"", gpo)
+        self.assertIn("foreach ($name in 'start2.bin', 'start.bin')", gpo)
+        self.assertIn("Rename-Item -LiteralPath $bin -NewName ('{0}.okula-{1}' -f $name, $stamp)", gpo)
+        self.assertNotIn("Remove-Item -LiteralPath $bin", body)                    # umbenennen, nicht löschen
+        # Policy zuerst, dann umbenennen; gesperrte Datei nur als Hinweis
+        self.assertLess(gpo.index("'ConfigureStartPinsJSON' $file"), gpo.index("Rename-Item -LiteralPath $bin"))
+        rename = gpo[gpo.index("Rename-Item -LiteralPath $bin"):]
+        self.assertIn("$hints += ('{0} von {1} nicht umbenannt (Profil geladen?)", rename)
+        self.assertNotIn("throw", gpo)
+        self.assertIn("Startmenü von {1} Profil(en) zurückgesetzt", gpo)
+        self.assertIn("gilt für neue Konten und – einmalig ' +", gpo)
+        self.assertIn("'zurückgesetzt – für bestehende: Startmenü von", gpo)
+        self.assertNotIn("auch für bestehende Benutzer') -f $file", gpo)          # alter, falscher Text
+        self.assertIn("eigene Anheftungen der Benutzer gehen dabei verloren", wintweaks.BY_KEY["start_clean"].tooltip)
+        # vor 24H2 (MDM-Bridge) unverändert, ohne Umbenennen
+        self.assertNotIn("start2.bin", body[body.index("MDM_Policy_Config01_Start02"):])
+        # nur bei START_CLEAN; nie im Nachlauf
+        self.assertNotIn("start2.bin", wintweaks.build_script(set(wintweaks.KEYS) - {"start_clean", "autologon"}))
+        self.assertNotIn("start2.bin", wintweaks.build_later_script(set(wintweaks.KEYS)))
+        self.assertNotIn("start2.bin", wintweaks.RESTORE_START)
+
     def test_widgets_policy(self):
         """B-017: Richtlinie „Widgets zulassen“ aus (Policy CSP NewsAndInterests), auch wenn das Paket bleibt."""
         body = steps(wintweaks.build_script({"apps_widgets"}))["Store-Apps entfernen: Widgets"]
@@ -381,6 +411,39 @@ class ScriptTest(unittest.TestCase):
         # Registrierung des Startskripts wird auch dann noch aufgeräumt
         self.assertLess(fn.index("leerer Ordner"), fn.index("State\\Machine\\Scripts\\Startup"))
         self.assertTrue(fn.rstrip().endswith("if ($notes) { return ($notes -join '; ') }\n}"))
+
+    def test_cleanup_registry_reads_script_value_only(self):
+        """B-018: Wert „Script“ einzeln lesen (ExecTime als 16-Byte-QWORD → InvalidCastException bei
+        Get-ItemProperty), eigene Einträge und Altlasten (okula-*.cmd nicht mehr im Startup-Ordner) entfernen,
+        nachnummerieren, Fehler nur als Hinweis – in beiden Startskripten."""
+        fn = wintweaks.RESTORE_START
+        reg = fn[fn.index("$base = 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Group Policy'"):]
+        self.assertIn("$s = [string]$entry.GetValue('Script')", reg)
+        self.assertNotIn("Get-ItemProperty", reg)
+        self.assertNotIn(").Script", fn)
+        # eigener Name oder Altlast: okula-*.cmd, das nicht mehr im Startup-Ordner liegt
+        self.assertIn("$leaf = ($s -split '[\\\\/]')[-1]", reg)
+        self.assertIn("$stale = ($leaf -like 'okula-*.cmd') -and -not (Test-Path -LiteralPath "
+                      "(Join-Path $OkulaStartup $leaf))", reg)
+        self.assertIn("if (($s -like \"*$OkulaName*\") -or $stale) {", reg)
+        # leere GPO-Liste löschen, sonst nachnummerieren; danach die Liste der GPOs
+        self.assertIn("Remove-Item -LiteralPath $gpo.PSPath -Recurse -Force -ErrorAction Stop", reg)
+        self.assertIn("Update-OkulaGpNumbers $gpo.PSPath", reg)
+        self.assertIn("if ($changed) { Update-OkulaGpNumbers $list }", reg)
+        helper = fn[fn.index("function Update-OkulaGpNumbers"):fn.index("function Restore-OkulaStart")]
+        self.assertIn("Sort-Object { [int]$_.PSChildName }", helper)
+        self.assertIn("Rename-Item -LiteralPath $keys[$i].PSPath -NewName ([string]$i)", helper)
+        # Fehler in der Registrierung: Hinweis, kein Abbruch
+        self.assertNotIn("throw", reg)
+        catch = reg[reg.index("} catch {"):]
+        self.assertIn("$notes += ('Registrierung {0} nicht ganz aufgeräumt (ohne Wirkung)", catch)
+        self.assertIn("Eintrag/Einträge von Okula-Startskripten in der Registrierung entfernt", reg)
+        # gleich in „Windows anpassen“ und „Software installieren“
+        self.assertIn("__RESTORE__", software.SCRIPT)
+        for script in (wintweaks.build_script({"cortana"}), software.SCRIPT.replace("__RESTORE__", fn)):
+            self.assertIn("function Update-OkulaGpNumbers", script)
+            self.assertIn("$s = [string]$entry.GetValue('Script')", script)
+            self.assertIn("$stale = ($leaf -like 'okula-*.cmd')", script)
 
     def test_password_never_in_log_or_plain(self):
         self.assertNotIn(PASSWORD, self.script)

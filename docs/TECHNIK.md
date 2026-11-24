@@ -1169,6 +1169,19 @@ von Microsoft Learn und in der Ausgabe von `Export-StartLayout` (die Tabellen au
 - **Bestehende und neue Benutzer:** Geräte-Richtlinie, gilt laut Microsoft bei der nächsten Anmeldung jedes Benutzers.
   `applyOnce` ab Windows 11 24H2 mit KB5062660: Liste nur einmal, danach heften Benutzer selbst an; ältere Windows 11
   ignorieren `applyOnce` und setzen die Liste bei jeder Anmeldung neu (Benutzer können anheften, es bleibt aber nicht).
+- **Bestehende Profile ab Build 26100 (B-018):** Befund 24.11.2026 (VM-Win11-clean, Windows 11 Pro 25H2): neues Konto
+  bekam die 9 Kacheln sofort, das bestehende erst, nachdem seine `start2.bin` umbenannt war – die gespeicherte Datei
+  hat Vorrang vor der Richtlinie. Darum benennt der Baustein nach dem Setzen der Richtlinie für jedes Profil aus
+  `Win32_UserProfile` (nicht `Special`, `LocalPath` unter `%SystemDrive%\Users`) die Dateien `start2.bin` und – falls
+  vorhanden – `start.bin` in `<Profil>\` + `wintweaks.START_LAYOUT_DIR`
+  (`AppData\Local\Packages\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\LocalState`) in
+  `<Name>.okula-<JJJJMMTT-hhmmss>` um (Sicherung; Windows legt bei der nächsten Anmeldung eine neue an). Das Startskript
+  läuft vor der Anmeldung, also sollte nichts gesperrt sein; klappt das Umbenennen trotzdem nicht (oder lässt sich die
+  Profilliste nicht lesen), steht ein Hinweis in der ok-Zeile, kein FEHLER. Protokoll: „… gilt für neue Konten und –
+  einmalig zurückgesetzt – für bestehende: Startmenü von N Profil(en) zurückgesetzt (start2.bin gesichert als …);
+  eigene Anheftungen der Benutzer gehen dabei verloren“. Bewusst nur im Startskript: der Nachlauf benennt nichts um,
+  damit Benutzer danach selbst anheften können. Vor 24H2 (MDM-Bridge) unverändert. `start2.bin` wird nur umbenannt,
+  nie geschrieben (Format nicht dokumentiert, siehe „Verworfen“).
 - **Zusammenspiel Ä-040:** Die Richtlinie betrifft nur die Startmenü-Kacheln; `LayoutModification.xml` der Taskleiste
   (`winprofile.py`) bleibt unberührt, es wird keine Datei im Standardprofil geschrieben.
 - Verworfen: `LayoutModification.json` im Standardprofil (OEM-Weg – nur `primaryOEMPins`/`secondaryOEMPins` mit je
@@ -1253,6 +1266,20 @@ apps that include built-in Windows images“ (warum auch die vorinstallierten Pa
 seinen Eintrag in `scripts.ini` (Originale und Version bleiben, Ergebnis `shared`). Beim Start laufen beide
 nacheinander; der Rückbau (`wintweaks.RESTORE_START`, auch im Notfall-Teil der `.cmd`) legt `gpt.ini`/`scripts.ini`
 erst zurück, wenn keine andere `okula-*.cmd` mehr im Startup-Ordner liegt.
+
+**Registrierung des Startskripts (B-018).** Windows legt beim Verarbeiten der Richtlinie Einträge unter
+`HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy\Scripts\Startup\<GPO>\<Nr>` und
+`…\Group Policy\State\Machine\Scripts\Startup\<GPO>\<Nr>` an (Wert `Script` = Skriptname, u. a. `ExecTime` als
+REG_QWORD mit 16 Byte). `Get-ItemProperty` wandelt alle Werte um und wirft daran `InvalidCastException`, auch mit
+`-ErrorAction SilentlyContinue` (Befund 24.11.2026) – darum liest `Restore-OkulaStart` nur `$entry.GetValue('Script')`.
+Entfernt werden Einträge des eigenen Skripts (`$OkulaName`) und Altlasten: `Script` endet auf `okula-*.cmd`, die
+Datei liegt aber nicht mehr im Startup-Ordner (Reste von Läufen vor B-018; ein noch wartendes anderes Okula-Skript liegt
+dort und bleibt). Wird eine GPO-Liste leer, wird sie gelöscht; sonst nummeriert `Update-OkulaGpNumbers` die übrigen
+Einträge lückenlos `0, 1, …` nach (Reihenfolge bleibt), danach die GPO-Liste selbst. **Ungeprüft:** ob Windows Lücken
+in der Nummerierung verträgt, ist in keiner gefundenen Quelle belegt – lückenlos entspricht dem, was Windows selbst
+anlegt. Fehler in diesem Teil sind nur ein Hinweis („Registrierung … nicht ganz aufgeräumt (ohne Wirkung)“), die
+Zeile bleibt ok; ohne `scripts.ini` haben die Einträge keine Wirkung. Die Zahl entfernter Einträge steht als Hinweis
+in der Zeile „Startskript und Gruppenrichtlinie aufräumen“ (beide Startskripte).
 
 ## Software installieren (I-020, Software-Bibliothek Ä-041)
 

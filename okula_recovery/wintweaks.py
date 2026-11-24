@@ -67,6 +67,10 @@ PROTECTED = PROTECTED_ALWAYS + PROTECTED_WINDOWS          # im Skript $OkulaKeep
 # Software installieren löschen %ProgramData%\Okula nur, wenn der Ordner leer ist).
 START_PINS_FILE = "StartPins.json"                      # unter %ProgramData%\Okula, UTF-8 ohne BOM
 START_GPO_BUILD = 26100
+# B-018: Ordner der gespeicherten Startmenü-Anheftungen je Profil (start2.bin, ältere start.bin). Bei bestehenden
+# Profilen hat start2.bin Vorrang vor der Richtlinie – START_CLEAN benennt sie ab Build 26100 einmalig um.
+START_LAYOUT_DIR = ("AppData\\Local\\Packages\\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy"
+                    "\\LocalState")
 START_PINS = (
     ("Edge", {"desktopAppLink": "%ALLUSERSPROFILE%\\Microsoft\\Windows\\Start Menu\\Programs\\Microsoft Edge.lnk"}),
     ("Explorer", {"desktopAppLink": "%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\File Explorer.lnk"}),
@@ -353,8 +357,41 @@ if ([Environment]::OSVersion.Version.Build -ge {START_GPO_BUILD}) {{
     Remove-ItemProperty -LiteralPath $key -Name 'ConfigureStartPins' -ErrorAction SilentlyContinue
     Set-OkulaReg $key 'ConfigureStartPins' 1
     Set-OkulaReg $key 'ConfigureStartPinsJSON' $file 'ExpandString'
-    return ('Gruppenrichtlinie ConfigureStartPins gesetzt (Datei {{0}}); wirkt bei der nächsten Anmeldung, auch ' +
-            'für bestehende Benutzer') -f $file
+    # B-018: bei bestehenden Profilen hat die gespeicherte start2.bin Vorrang vor der Richtlinie – einmalig
+    # zurücksetzen (umbenennen, nicht löschen); Windows legt bei der nächsten Anmeldung eine neue an
+    $sub = '{START_LAYOUT_DIR}'
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $usersRoot = Join-Path $env:SystemDrive 'Users'
+    $reset = 0
+    $hints = @()
+    try {{
+        $profiles = @(Get-CimInstance -ClassName Win32_UserProfile -ErrorAction Stop |
+                      Where-Object {{ -not $_.Special -and $_.LocalPath -like "$usersRoot\\*" }})
+    }} catch {{
+        $profiles = @()
+        $hints += ('Profile nicht gelesen: {{0}}' -f $_.Exception.Message)
+    }}
+    foreach ($p in $profiles) {{
+        $dir = Join-Path $p.LocalPath $sub
+        $done = $false
+        foreach ($name in 'start2.bin', 'start.bin') {{
+            $bin = Join-Path $dir $name
+            if (-not (Test-Path -LiteralPath $bin)) {{ continue }}
+            try {{
+                Rename-Item -LiteralPath $bin -NewName ('{{0}}.okula-{{1}}' -f $name, $stamp) -Force -ErrorAction Stop
+                $done = $true
+            }} catch {{
+                $hints += ('{{0}} von {{1}} nicht umbenannt (Profil geladen?): {{2}}' -f $name,
+                           (Split-Path -Leaf $p.LocalPath), $_.Exception.Message)
+            }}
+        }}
+        if ($done) {{ $reset++ }}
+    }}
+    $text = ('Gruppenrichtlinie ConfigureStartPins gesetzt (Datei {{0}}); gilt für neue Konten und – einmalig ' +
+             'zurückgesetzt – für bestehende: Startmenü von {{1}} Profil(en) zurückgesetzt (start2.bin gesichert als ' +
+             'start2.bin.okula-{{2}}); eigene Anheftungen der Benutzer gehen dabei verloren') -f $file, $reset, $stamp
+    if ($hints) {{ $text += '; Hinweis: ' + ($hints -join '; ') }}
+    return $text
 }}
 try {{
     # Windows 11 vor 24H2: nur Policy CSP Start/ConfigureStartPins über die MDM-Bridge (WMI, als SYSTEM)
@@ -377,7 +414,8 @@ try {{
                    "WhatsApp, LinkedIn, Clipchamp …, die Windows erst beim Klick installiert) durch Edge, Explorer, "
                    "Einstellungen, Rechner, Editor, Fotos, Paint, Snipping Tool und Terminal. Ab Windows 11 24H2 "
                    "über die Gruppenrichtlinie (Liste in C:\\ProgramData\\Okula\\StartPins.json), nur einmal – "
-                   "danach lässt sich wieder selbst anheften. Ältere Windows 11 nur, wenn die Geräteverwaltung die "
+                   "danach lässt sich wieder selbst anheften. Gilt für neue Konten und – einmalig zurückgesetzt – "
+                   "für bestehende; eigene Anheftungen der Benutzer gehen dabei verloren. Ältere Windows 11 nur, wenn die Geräteverwaltung die "
                    "Richtlinie annimmt (sonst Fehler im Protokoll). Windows 10: ohne Wirkung."),
     # Dienste – je Häkchen stoppen und Starttyp „Deaktiviert“
     Option("svc_search", "Dienste", "Windows Search", _services("WSearch"), SERVICES_HEADING),
@@ -518,11 +556,23 @@ $secret = $null
 # Rückbau des Startmechanismus – gemeinsam mit „Software installieren“ (I-020, software.py). Stehen mehrere
 # Okula-Startskripte gleichzeitig aus, laufen sie beim selben Start nacheinander; erst das letzte (keine andere
 # okula-*.cmd mehr im Startup-Ordner) legt gpt.ini/scripts.ini von vorher zurück.
-RESTORE_START = r"""function Restore-OkulaStart {
+RESTORE_START = r"""function Update-OkulaGpNumbers([string]$Path) {
+    # Unterschlüssel 0, 1, … nach dem Entfernen lückenlos nachnummerieren (Reihenfolge bleibt). B-018: ob Windows
+    # Lücken verträgt, ist nicht belegt (ungeprüft) – lückenlos entspricht dem, was Windows selbst anlegt.
+    $keys = @(Get-ChildItem -LiteralPath $Path -ErrorAction Stop | Where-Object { $_.PSChildName -match '^\d+$' } |
+              Sort-Object { [int]$_.PSChildName })
+    for ($i = 0; $i -lt $keys.Count; $i++) {
+        if ($keys[$i].PSChildName -ne [string]$i) {
+            Rename-Item -LiteralPath $keys[$i].PSPath -NewName ([string]$i) -ErrorAction Stop
+        }
+    }
+}
+
+function Restore-OkulaStart {
     # Weitere Okula-Startskripte noch offen (z. B. Software installieren): das letzte stellt den Stand her.
-    # Rückgabe: Hinweis fürs Protokoll (oder nichts). Fehler nur, wenn scripts.ini bzw. die Registrierung des
-    # Startskripts bleibt – lässt sich ein leerer, von Windows gerade verwendeter Ordner nicht löschen, ist das nur
-    # ein Hinweis (B-017).
+    # Rückgabe: Hinweis fürs Protokoll (oder nichts). Fehler nur, wenn scripts.ini bleibt – lässt sich ein leerer,
+    # von Windows gerade verwendeter Ordner nicht löschen (B-017) oder ein Eintrag in der Registrierung nicht
+    # entfernen (B-018), ist das nur ein Hinweis.
     $notes = @()
     $others = @(Get-ChildItem -LiteralPath $OkulaStartup -Filter 'okula-*.cmd' -Force -ErrorAction SilentlyContinue |
                 Where-Object { $_.BaseName -ne $OkulaName })
@@ -546,18 +596,43 @@ RESTORE_START = r"""function Restore-OkulaStart {
             }
         }
     }
-    # Einträge, die Windows beim Verarbeiten der Richtlinie für dieses Startskript angelegt hat
+    # Einträge, die Windows beim Verarbeiten der Richtlinie für Okula-Startskripte angelegt hat: dieses Skript und
+    # Reste früherer Läufe (okula-*.cmd, das nicht mehr im Startup-Ordner liegt – B-018). Nur den Wert „Script“
+    # lesen: Get-ItemProperty wandelt alle Werte um und scheitert am 16-Byte-QWORD „ExecTime“ (InvalidCastException).
     $base = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy'
+    $removed = 0
     foreach ($list in "$base\Scripts\Startup", "$base\State\Machine\Scripts\Startup") {
         if (-not (Test-Path -LiteralPath $list)) { continue }
-        foreach ($gpo in @(Get-ChildItem -LiteralPath $list)) {
-            foreach ($entry in @(Get-ChildItem -LiteralPath $gpo.PSPath)) {
-                $s = [string](Get-ItemProperty -LiteralPath $entry.PSPath -ErrorAction SilentlyContinue).Script
-                if ($s -like "*$OkulaName*") { Remove-Item -LiteralPath $entry.PSPath -Recurse -Force }
+        try {
+            $changed = $false
+            foreach ($gpo in @(Get-ChildItem -LiteralPath $list -ErrorAction Stop)) {
+                $gone = $false
+                foreach ($entry in @(Get-ChildItem -LiteralPath $gpo.PSPath -ErrorAction Stop)) {
+                    $s = [string]$entry.GetValue('Script')
+                    if (-not $s) { continue }
+                    $leaf = ($s -split '[\\/]')[-1]
+                    $stale = ($leaf -like 'okula-*.cmd') -and -not (Test-Path -LiteralPath (Join-Path $OkulaStartup $leaf))
+                    if (($s -like "*$OkulaName*") -or $stale) {
+                        Remove-Item -LiteralPath $entry.PSPath -Recurse -Force -ErrorAction Stop
+                        $removed++
+                        $gone = $true
+                    }
+                }
+                if (-not $gone) { continue }
+                $changed = $true
+                if (-not @(Get-ChildItem -LiteralPath $gpo.PSPath -ErrorAction Stop)) {
+                    Remove-Item -LiteralPath $gpo.PSPath -Recurse -Force -ErrorAction Stop
+                } else {
+                    Update-OkulaGpNumbers $gpo.PSPath
+                }
             }
-            if (-not @(Get-ChildItem -LiteralPath $gpo.PSPath)) { Remove-Item -LiteralPath $gpo.PSPath -Recurse -Force }
+            if ($changed) { Update-OkulaGpNumbers $list }
+        } catch {
+            $notes += ('Registrierung {0} nicht ganz aufgeräumt (ohne Wirkung): {1}' -f ($list -replace '^.*\\Group Policy\\', ''),
+                       $_.Exception.Message)
         }
     }
+    if ($removed) { $notes += ('{0} Eintrag/Einträge von Okula-Startskripten in der Registrierung entfernt' -f $removed) }
     if ($notes) { return ($notes -join '; ') }
 }"""
 
