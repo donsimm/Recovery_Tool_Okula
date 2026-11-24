@@ -1,7 +1,8 @@
 """Windows anpassen (I-039): Optionen, Vorlagen und das PowerShell-Skript – ohne GTK.
 
 Das Tool erzeugt hier ein Skript für Windows PowerShell 5.1 (Windows 10 22H2, Windows 11) und schickt es an den
-Agent; der legt es als einmaliges Startskript der lokalen Gruppenrichtlinie ab (deploy.install_startup_script).
+Agent; der legt es als einmaliges Startskript der lokalen Gruppenrichtlinie ab (deploy.install_startup_script) und
+setzt bis dahin SyncForegroundPolicy (B-019, deploy.set_sync_policy), damit die Anmeldung auf das Skript wartet.
 Beim nächsten Windows-Start läuft es als SYSTEM vor der Anmeldung:
 1. Skript löschen, Startmechanismus zurückbauen (gpt.ini/scripts.ini von vorher, Einträge unter
    HKLM\\…\\Group Policy\\Scripts) – so läuft es nie ein zweites Mal, auch nicht nach einem Fehler.
@@ -364,6 +365,7 @@ if ([Environment]::OSVersion.Version.Build -ge {START_GPO_BUILD}) {{
     $usersRoot = Join-Path $env:SystemDrive 'Users'
     $reset = 0
     $hints = @()
+    $busy = @()
     try {{
         $profiles = @(Get-CimInstance -ClassName Win32_UserProfile -ErrorAction Stop |
                       Where-Object {{ -not $_.Special -and $_.LocalPath -like "$usersRoot\\*" }})
@@ -373,6 +375,17 @@ if ([Environment]::OSVersion.Version.Build -ge {START_GPO_BUILD}) {{
     }}
     foreach ($p in $profiles) {{
         $layoutDir = Join-Path $p.LocalPath $sub
+        if ($p.Loaded) {{
+            # B-019: Profil geladen (Benutzer angemeldet) – die laufende Shell schreibt start2.bin mit dem alten
+            # Layout neu. Nicht jetzt umbenennen; der Nachlauf holt es einmalig nach, wenn der Benutzer dann
+            # abgemeldet ist ($script:OkulaStartLater → Aufgabe)
+            if ((Test-Path -LiteralPath (Join-Path $layoutDir 'start2.bin')) -or
+                (Test-Path -LiteralPath (Join-Path $layoutDir 'start.bin'))) {{
+                $script:OkulaStartLater += [string]$p.SID
+                $busy += (Split-Path -Leaf $p.LocalPath)
+            }}
+            continue
+        }}
         $done = $false
         foreach ($name in 'start2.bin', 'start.bin') {{
             $bin = Join-Path $layoutDir $name
@@ -390,6 +403,12 @@ if ([Environment]::OSVersion.Version.Build -ge {START_GPO_BUILD}) {{
     $text = ('Gruppenrichtlinie ConfigureStartPins gesetzt (Datei {{0}}); gilt für neue Konten und – einmalig ' +
              'zurückgesetzt – für bestehende: Startmenü von {{1}} Profil(en) zurückgesetzt (start2.bin gesichert als ' +
              'start2.bin.okula-{{2}}); eigene Anheftungen der Benutzer gehen dabei verloren') -f $file, $reset, $stamp
+    if ($busy) {{
+        $who = $busy -join ', '
+        $text += ('; Hinweis: {{0}} beim Lauf angemeldet – Startmenü dort nicht zurückgesetzt, greift erst nach ' +
+                  'erneutem Lauf / Neustart (der Nachlauf – falls gewählt – holt es einmalig nach, wenn der ' +
+                  'Benutzer dann abgemeldet ist)') -f $who
+    }}
     if ($hints) {{ $text += '; Hinweis: ' + ($hints -join '; ') }}
     return $text
 }}
@@ -572,8 +591,10 @@ function Restore-OkulaStart {
     # Weitere Okula-Startskripte noch offen (z. B. Software installieren): das letzte stellt den Stand her.
     # Rückgabe: Hinweis fürs Protokoll (oder nichts). Fehler nur, wenn scripts.ini bleibt – lässt sich ein leerer,
     # von Windows gerade verwendeter Ordner nicht löschen (B-017) oder ein Eintrag in der Registrierung nicht
-    # entfernen (B-018), ist das nur ein Hinweis.
+    # entfernen (B-018), ist das nur ein Hinweis. B-019: SyncForegroundPolicy nicht zurückgesetzt = Fehler (am Ende,
+    # nach dem Aufräumen der Registrierung).
     $notes = @()
+    $syncError = $null
     $others = @(Get-ChildItem -LiteralPath $OkulaStartup -Filter 'okula-*.cmd' -Force -ErrorAction SilentlyContinue |
                 Where-Object { $_.BaseName -ne $OkulaName })
     if (-not $others) {
@@ -593,6 +614,33 @@ function Restore-OkulaStart {
             if ((Test-Path -LiteralPath $folder) -and -not @(Get-ChildItem -LiteralPath $folder -Force)) {
                 try { Remove-Item -LiteralPath $folder -Force -ErrorAction Stop }
                 catch { $notes += ('leerer Ordner {0} bleibt (wird gerade verwendet, ohne Wirkung)' -f $sub) }
+            }
+        }
+        # B-019: Richtlinie „immer auf das Netzwerk warten“ (SyncForegroundPolicy) wie vor dem Ablegen – der Agent
+        # hat sie gesetzt, damit die Anmeldung auf die Startskripte wartet. Gilt ab dem nächsten Start.
+        $syncSaved = Join-Path $OkulaGp 'SyncForegroundPolicy__AFTER__'
+        if (Test-Path -LiteralPath $syncSaved) {
+            try {
+                $was = ([string](Get-Content -LiteralPath $syncSaved -Raw -ErrorAction Stop)).Trim()
+                $syncKey = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\CurrentVersion\Winlogon'
+                if ($was -match '^dword:(\d+)$') {
+                    $old = $Matches[1]
+                    $v = [BitConverter]::ToInt32([BitConverter]::GetBytes([uint32]$old), 0)
+                    if (-not (Test-Path -LiteralPath $syncKey)) { New-Item -Path $syncKey -Force | Out-Null }
+                    New-ItemProperty -LiteralPath $syncKey -Name 'SyncForegroundPolicy' -Value $v -PropertyType DWord `
+                        -Force -ErrorAction Stop | Out-Null
+                    $notes += ('SyncForegroundPolicy wieder {0} wie vorher' -f $old)
+                } else {
+                    if ((Test-Path -LiteralPath $syncKey) -and
+                        ($null -ne (Get-Item -LiteralPath $syncKey).GetValue('SyncForegroundPolicy'))) {
+                        Remove-ItemProperty -LiteralPath $syncKey -Name 'SyncForegroundPolicy' -ErrorAction Stop
+                    }
+                    $notes += 'SyncForegroundPolicy entfernt wie vorher'
+                }
+                Remove-Item -LiteralPath $syncSaved -Force -ErrorAction Stop
+            } catch {
+                $why = $_.Exception.Message
+                $syncError = 'SyncForegroundPolicy nicht zurückgesetzt (Anmeldung wartet weiter auf das Netzwerk): ' + $why
             }
         }
     }
@@ -633,6 +681,7 @@ function Restore-OkulaStart {
         }
     }
     if ($removed) { $notes += ('{0} Eintrag/Einträge von Okula-Startskripten in der Registrierung entfernt' -f $removed) }
+    if ($syncError) { throw ((@($notes) + $syncError) -join '; ') }
     if ($notes) { return ($notes -join '; ') }
 }"""
 
@@ -667,6 +716,7 @@ COMMON = r"""$OkulaKeep = @(__KEEP__)
 $OkulaKeepAlways = @(__KEEPALWAYS__)
 $script:OkulaOk = 0
 $script:OkulaFailed = 0
+$script:OkulaStartLater = @()       # B-019: SIDs angemeldeter Profile – Startmenü im Nachlauf nachholen
 
 function Write-OkulaLog([string]$Text) {
     $line = '{0}  {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Text
@@ -888,6 +938,8 @@ LATER_HEADER = r"""# Okula Recovery Tool – Windows anpassen, Nachlauf (Ä-042)
 # Erstellt: __CREATED__ · Gerät: __DEVICE__
 # Läuft einmal als geplante Aufgabe (SYSTEM) __DELAY__ min nach der ersten Anmeldung: entfernt Store-Apps, die
 # Windows erst nach der Anmeldung nachlädt, danach die Aufgabe und sich selbst. Protokoll: __LOG__
+# -StartSids: Profile, die beim Startskript angemeldet waren – Startmenü einmalig nachholen (B-019)
+param([string]$StartSids = '')
 $ErrorActionPreference = 'Continue'
 $ProgressPreference = 'SilentlyContinue'
 $OkulaName = '__NAME__'
@@ -913,24 +965,77 @@ LATER_FOOTER = r"""} finally {
 }
 """
 
-# Baustein im Startskript: Nachlauf-Skript ablegen und Aufgabe anlegen
+# Nachlauf (B-019): Startmenü der Profile nachholen, die beim Startskript angemeldet waren – nur, wenn der Benutzer
+# jetzt abgemeldet ist (sonst würde die laufende Shell start2.bin wieder mit dem alten Layout schreiben)
+LATER_START = r"""if ($StartSids) {
+    Invoke-OkulaStep 'Startmenü nachholen (beim Startskript angemeldete Konten)' {
+        $sub = '__LAYOUT__'
+        $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+        $reset = @()
+        $hints = @()
+        foreach ($sid in @($StartSids -split ',' | Where-Object { $_ -match '^S-1-5-21-[\d-]+$' })) {
+            $p = Get-CimInstance -ClassName Win32_UserProfile -Filter ("SID='{0}'" -f $sid) -ErrorAction Stop
+            if (-not $p) { continue }
+            $who = Split-Path -Leaf $p.LocalPath
+            if ($p.Loaded) {
+                $hints += ('{0} angemeldet – nicht nachgeholt, Startmenü greift erst nach erneutem Lauf' -f $who)
+                continue
+            }
+            $layoutDir = Join-Path $p.LocalPath $sub
+            foreach ($name in 'start2.bin', 'start.bin') {
+                $bin = Join-Path $layoutDir $name
+                if (-not (Test-Path -LiteralPath $bin)) { continue }
+                try {
+                    Rename-Item -LiteralPath $bin -NewName ('{0}.okula-{1}' -f $name, $stamp) -Force -ErrorAction Stop
+                    if ($reset -notcontains $who) { $reset += $who }
+                } catch {
+                    $hints += ('{0} von {1} nicht umbenannt: {2}' -f $name, $who, $_.Exception.Message)
+                }
+            }
+        }
+        $text = 'Startmenü von {0} Profil(en) einmalig zurückgesetzt' -f $reset.Count
+        if ($reset) { $text += ' (' + ($reset -join ', ') + ')' }
+        if ($hints) { $text += '; Hinweis: ' + ($hints -join '; ') }
+        $text
+    }
+}"""
+
+# Baustein im Startskript: Nachlauf-Skript ablegen und Aufgabe anlegen. B-019: Ist schon jemand angemeldet (Startskript
+# lief nach der Anmeldung), kommt zum Anmelde-Auslöser ein einmaliger Zeit-Auslöser „jetzt + __DELAY__ min“ dazu –
+# sonst liefe der Nachlauf erst bei der nächsten Anmeldung.
 LATER_BODY = r"""$folder = Join-Path $env:ProgramData 'Okula'
 New-Item -ItemType Directory -Path $folder -Force | Out-Null
 $file = Join-Path $folder '__FILE__'
 $text = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('__B64__'))
 [IO.File]::WriteAllText($file, $text, (New-Object Text.UTF8Encoding $true))
 $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-$action = New-ScheduledTaskAction -Execute $ps -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"' -f $file)
+$arg = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"' -f $file
+$later = @($script:OkulaStartLater | Where-Object { $_ } | Sort-Object -Unique)
+if ($later) { $arg += ' -StartSids "{0}"' -f ($later -join ',') }
+$action = New-ScheduledTaskAction -Execute $ps -Argument $arg
+$end = (Get-Date).AddDays(__DAYS__).ToString('s')
 $trigger = New-ScheduledTaskTrigger -AtLogOn
 $trigger.Delay = 'PT__DELAY__M'
-$trigger.EndBoundary = (Get-Date).AddDays(__DAYS__).ToString('s')
+$trigger.EndBoundary = $end
+$triggers = @($trigger)
+$when = '__DELAY__ min nach der ersten Anmeldung'
+$shell = @(Get-CimInstance -ClassName Win32_Process -Filter "Name='explorer.exe'" -ErrorAction SilentlyContinue)
+if ($shell) {
+    $at = (Get-Date).AddMinutes(__DELAY__)
+    $once = New-ScheduledTaskTrigger -Once -At $at
+    $once.EndBoundary = $end
+    $triggers += $once
+    $when += (' und – da schon jemand angemeldet ist – einmalig um {0}' -f $at.ToString('HH:mm'))
+}
 $principal = New-ScheduledTaskPrincipal -UserId 'S-1-5-18' -LogonType ServiceAccount -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 2) -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew `
     -DeleteExpiredTaskAfter (New-TimeSpan -Days 1)
-Register-ScheduledTask -TaskName '__TASK__' -Action $action -Trigger $trigger -Principal $principal `
+Register-ScheduledTask -TaskName '__TASK__' -Action $action -Trigger $triggers -Principal $principal `
     -Settings $settings -Force -ErrorAction Stop | Out-Null
-'Aufgabe „__TASK__“ angelegt: __DELAY__ min nach der ersten Anmeldung, __COUNT__ App-Gruppe(n)'"""
+$result = 'Aufgabe „__TASK__“ angelegt: ' + $when + ', __COUNT__ App-Gruppe(n)'
+if ($later) { $result += ('; Startmenü von {0} angemeldeten Profil(en) wird dort nachgeholt' -f $later.Count) }
+$result"""
 
 FOOTER = r"""
 Write-OkulaLog ('----- Ende: {0} ok, {1} mit Fehler -----' -f $script:OkulaOk, $script:OkulaFailed)
@@ -967,12 +1072,15 @@ def app_patterns(selected) -> list[str]:
 
 
 def build_later_script(selected, device: str = "", created: float | None = None) -> str:
-    """Nachlauf-Skript (Ä-042): die gewählten Store-Apps nochmals entfernen, danach Aufgabe und Datei löschen."""
+    """Nachlauf-Skript (Ä-042): die gewählten Store-Apps nochmals entfernen, danach Aufgabe und Datei löschen.
+    B-019: mit START_CLEAN zuerst das Startmenü der beim Startskript angemeldeten Profile (-StartSids) nachholen."""
     stamp = time.strftime("%d.%m.%Y %H:%M", time.localtime(created if created is not None else time.time()))
     safe_device = re.sub(r"[^\w .-]", "", device)[:60] or "–"
     head = _fill(LATER_HEADER, CREATED=stamp, DEVICE=safe_device, DELAY=str(LATER_DELAY_MIN), LOG=LOG_PATH,
                  NAME=TWEAK_NAME, TASK=LATER_TASK)
     steps = [_step(o, o.body) for o in OPTIONS if o.key in selected and o.key in APP_KEYS]
+    if START_CLEAN in selected:            # B-019: zuerst (schnell), nur mit -StartSids
+        steps.insert(0, LATER_START.replace("__LAYOUT__", START_LAYOUT_DIR))
     return head + _indent("\n".join(steps)) + "\n" + LATER_FOOTER
 
 

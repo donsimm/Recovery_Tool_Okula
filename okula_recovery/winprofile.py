@@ -129,13 +129,21 @@ class Hive:
 
     def value(self, path: str, name: str) -> tuple[int, bytes] | None:
         """(Typ, Daten) des Werts – None, wenn Schlüssel oder Wert fehlt."""
+        for vname, kind, data in self.values(path) or []:
+            if vname.lower() == name.lower():
+                return kind, data
+        return None
+
+    def values(self, path: str) -> list[tuple[str, int, bytes]] | None:
+        """Alle Werte eines Schlüssels als (Name, Typ, Daten) – None, wenn der Schlüssel fehlt (B-019)."""
         nk = self.find_key(path)
         if nk is None:
             return None
         count, list_off = struct.unpack_from("<I", nk, 36)[0], struct.unpack_from("<I", nk, 40)[0]
         if not count:
-            return None
+            return []
         offsets = self._cell(list_off)
+        out = []
         for i in range(count):
             vk = self._cell(struct.unpack_from("<I", offsets, 4 * i)[0])
             if vk[:2] != b"vk":
@@ -143,17 +151,21 @@ class Hive:
             length, size, data_off, kind, flags = struct.unpack_from("<HIIIH", vk, 2)
             raw = vk[20:20 + length]
             vname = raw.decode("latin-1") if flags & 1 else raw.decode("utf-16-le", errors="replace")
-            if vname.lower() != name.lower():
-                continue
             if size & 0x80000000:                      # Daten direkt im Feld (höchstens 4 Bytes)
-                return kind, struct.pack("<I", data_off)[:size & 0x7FFFFFFF]
+                out.append((vname, kind, struct.pack("<I", data_off)[:size & 0x7FFFFFFF]))
+                continue
             data = self._cell(data_off)
             if data[:2] == b"db" and size > 16344:     # grosse Daten in Segmenten
                 segs, seg_list = struct.unpack_from("<H", data, 2)[0], struct.unpack_from("<I", data, 4)[0]
                 offs = self._cell(seg_list)
                 data = b"".join(self._cell(struct.unpack_from("<I", offs, 4 * j)[0])[:16344] for j in range(segs))
-            return kind, data[:size]
-        return None
+            out.append((vname, kind, data[:size]))
+        return out
+
+    def clean(self) -> bool:
+        """Kopf sauber geschrieben? Primäre und sekundäre Sequenznummer (Offset 4 und 8) gleich – sonst stehen
+        Änderungen noch in den Protokolldateien (.LOG1/.LOG2), und ein Schreiben von aussen wäre unsicher."""
+        return struct.unpack_from("<I", self.data, 4)[0] == struct.unpack_from("<I", self.data, 8)[0]
 
 
 def read_favorites(ntuser: Path) -> bytes | None:

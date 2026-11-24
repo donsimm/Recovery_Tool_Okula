@@ -646,6 +646,34 @@ eigenes Startmenü (mehrfach angemeldet), die Registry hat ggf. noch Reste früh
 - [ ] Danach *Software installieren …* (z. B. Gasttools) → Neustart → Protokoll `okula-software.log` Zeile „ok
       Startskript und Gruppenrichtlinie aufgeräumt“, Registry wieder ohne `okula-*`-Einträge
 
+**Korrektur B-019 (24.11.) – VM-Win11-clean ab Snapshot „frisch“, Windows 11 Pro 25H2, Konto ohne Passwort**
+Nach `git pull && sudo ./install.sh` das Tool neu starten und **den Agent-Stick bzw. Netzwerkstart neu erstellen**
+(Agent-Code geändert). Wie am 24.11.: *Windows anpassen* (alle Optionen bzw. Vorlage wie im Gesamttest) und
+*Software installieren* (virtio-Gasttools) zusammen senden, dann **nur einmal** neu starten.
+- [ ] Vorher (Regedit oder Gastagent): `HKLM\SOFTWARE\Policies\Microsoft\Windows NT\CurrentVersion\Winlogon` –
+      `SyncForegroundPolicy` vorhanden? Wert notieren: ______ (Snapshot „frisch“: vermutlich nicht vorhanden)
+- [ ] Log beider Aufträge im Tool: „Die Anmeldung wartet beim nächsten Start, bis das Startskript fertig ist …“, kein
+      „Hinweis: Die Anmeldung wartet nicht …“; im Agent-Bildschirm/-Log „SyncForegroundPolicy gesetzt“
+- [ ] Beim Start „Bitte warten“, bis die Skripte fertig sind; erst dann erscheint die Anmeldung. Dauer notieren: ______
+- [ ] Ereignisanzeige (System, Quelle GroupPolicy bzw. Sicherheit): Ereignis **5016** (Scripts-Erweiterung) bzw. Ende
+      der Okula-Protokolle **vor** der interaktiven Anmeldung **4624** (Typ 2); `okula-windows-anpassen.log` und
+      `okula-software.log` beginnen vor der Anmeldung
+- [ ] Ohne weiteren Neustart: Startmenü zeigt die festen Kacheln (kein WhatsApp, Adobe Express, LinkedIn …), **kein
+      Wetter** in der Taskleiste, **kein Sperrbildschirm**
+- [ ] Protokoll Startmenü-Zeile ohne „beim Lauf angemeldet“; geplante Aufgabe „Okula Windows anpassen Nachlauf“ mit
+      Auslöser *Bei Anmeldung* (30 min Verzögerung) – Protokollzeile „30 min nach der ersten Anmeldung“ (ohne „einmalig
+      um …“, weil niemand angemeldet war)
+- [ ] Nach 30 min: Nachlauf gelaufen (Protokoll „Nachlauf … Ende“), Aufgabe verschwunden
+- [ ] Danach `SyncForegroundPolicy` wie vorher (nicht vorhanden bzw. alter Wert); Protokoll „Startskript und
+      Gruppenrichtlinie aufräumen (… SyncForegroundPolicy entfernt wie vorher …)“; `C:\Windows\System32\GroupPolicy`
+      ohne `SyncForegroundPolicy.okula-nachher`; nächster Neustart ohne „Bitte warten“
+- [ ] Gegenprobe Fehlerfall: VM hart ausschalten (nicht herunterfahren), mit Agent starten, *Windows anpassen* senden →
+      Log „Hinweis: Die Anmeldung wartet nicht auf das Startskript (… nicht sauber geschlossen …)“, Windows startet
+      normal; oder Meldung „Ruhezustand bzw. Schnellstart“ (dann ist dieser Teil nicht prüfbar)
+- [ ] Optional angemeldet (nur wenn die Anmeldung doch vorher erscheint): Protokoll nennt „<Konto> beim Lauf angemeldet
+      – Startmenü dort nicht zurückgesetzt …“ und beim Nachlauf „einmalig um HH:MM“; nach Abmelden und Nachlauf
+      „Startmenü von 1 Profil(en) einmalig zurückgesetzt“
+
 ### 27. Test-VMs mit Gastagent (I-041)
 Nach `git pull && sudo ./install.sh` das Tool neu starten (**kein** neuer Agent-Stick). Eine Test-VM mit Windows 11
 (z. B. VM-Win11-test), am besten vorher Snapshot „vor Gastagent“. Gasttools aus Fedora virtio-win, stabile Version

@@ -794,15 +794,18 @@ installiert, Windows lädt sie erst beim Klick oder später im Hintergrund. Daru
     lässt sich wieder selbst anheften. Gilt für neue Konten und – einmalig zurückgesetzt – für bestehende; eigene
     Anheftungen der Benutzer gehen dabei verloren: Bei bestehenden Konten hat die gespeicherte Startmenü-Datei
     <tt>start2.bin</tt> Vorrang, darum wird sie je Konto in <tt>start2.bin.okula-&lt;Datum&gt;</tt> umbenannt
-    (Sicherung, nicht gelöscht); das Protokoll nennt die Anzahl der Konten. Der Nachlauf setzt nichts mehr zurück.
-    Ältere Windows 11 nehmen die Liste nur über eine
+    (Sicherung, nicht gelöscht); das Protokoll nennt die Anzahl der Konten. Ist ein Konto beim Lauf angemeldet,
+    bleibt sein Startmenü unverändert (die laufende Sitzung würde es wieder überschreiben; Hinweis im Protokoll) –
+    der Nachlauf holt es einmalig nach, wenn der Benutzer dann abgemeldet ist, sonst greift es erst nach einem
+    erneuten Lauf. Ältere Windows 11 nehmen die Liste nur über eine
     Geräteverwaltung an – klappt das nicht, steht „Windows 11 vor 24H2: Startmenü nur mit Geräteverwaltung“ als
     FEHLER im Protokoll. Windows 10: ohne Wirkung.
 •  <i>Widgets</i> entfernt die App und setzt zusätzlich die Richtlinie „Widgets zulassen“ auf aus – damit
     verschwindet auch das Wetter aus der Taskleiste, selbst wenn Windows das Paket behält.
 •  <i>Später nachgeladene Apps nochmals entfernen (nach der Anmeldung)</i> legt eine geplante Aufgabe an: 30 min
     nach der ersten Anmeldung werden die gewählten Store-Apps ein zweites Mal entfernt, danach löscht sich die
-    Aufgabe selbst (Protokoll wie unten, Abschnitt „Nachlauf“).
+    Aufgabe selbst (Protokoll wie unten, Abschnitt „Nachlauf“). Ist beim Anlegen schon jemand angemeldet, läuft
+    sie zusätzlich einmalig 30 min später.
 •  <i>Wiederinstallation von Werbe-Apps sperren</i>: Die Richtlinie dazu wirkt laut Microsoft nur bei Windows
     Enterprise und Education. Bei Pro und Home wirken die Werte für die stille App-Installation (alle Benutzer)
     und die beiden Häkchen oben. Das Protokoll nennt die Edition.
@@ -819,6 +822,14 @@ des Startskripts, den Windows gerade verwendet, bleibt stehen (Hinweis, kein Feh
 Einträge früherer Okula-Startskripte aus der Registrierung entfernt, deren Skript nicht mehr vorhanden ist
 (gilt ebenso für <i>Software installieren</i>); klappt das nicht, steht ein Hinweis im Protokoll.
 
+<b>Anmeldung wartet:</b> Beim Start zeigt Windows „Bitte warten“, bis das Startskript fertig ist (meist 1–2
+Minuten, höchstens 10 Minuten) – erst dann erscheint die Anmeldung. Damit wirken Startmenü, Widgets und
+Sperrbildschirm schon bei der ersten Anmeldung. Dafür setzt der Agent beim Senden die Richtlinie „Beim Neustart
+des Computers und bei der Anmeldung immer auf das Netzwerk warten“; das Startskript stellt sie danach wieder her
+wie vorher (Protokoll: „SyncForegroundPolicy entfernt wie vorher“). Klappt das Setzen nicht (z. B. Windows nicht
+ganz heruntergefahren), steht im Log des Auftrags ein Hinweis – das Skript läuft dann erst nach der Anmeldung, und
+Startmenü und Wetter greifen evtl. erst nach einem weiteren Neustart.
+
 <b>Gut zu wissen:</b>
 •  Das Startskript läuft genau einmal und entfernt sich danach vollständig. Eine vorhandene lokale
     Gruppenrichtlinie bleibt erhalten.
@@ -831,7 +842,7 @@ Einträge früherer Okula-Startskripte aus der Registrierung entfernt, deren Skr
 •  Frisch zurückgespieltes Master-Image (Ersteinrichtung steht noch aus): Die Einstellungen greifen erst nach
     der Ersteinrichtung bei einem Windows-Start.
 •  Die automatische Anmeldung kann erst beim zweiten Start greifen, wenn sich Windows beim ersten Start schon
-    vor dem Ende des Skripts anmeldet.
+    vor dem Ende des Skripts anmeldet (nur, wenn die Anmeldung nicht wartet – siehe „Anmeldung wartet“).
 •  Rückgängig macht das Tool nichts: Apps lassen sich aus dem Microsoft Store neu installieren, Einstellungen
     in Windows zurückstellen.
 •  Neuer Agent nötig: Agent-Stick bzw. Netzwerkstart nach dem Update neu erstellen (sonst „Agent zu alt“)."""),
@@ -963,7 +974,10 @@ wie es ist.
 2.  Beim ersten Windows-Start (bei einem Master-Image nach der Ersteinrichtung; an einem Gerät mit Windows beim
     nächsten Start) legt das Startskript eine
     einmalige geplante Aufgabe an. Diese installiert die Programme nacheinander still als SYSTEM – auch lange
-    Installationen werden nicht abgebrochen. Kurze Installationen sind fertig, bevor die Anmeldung erscheint.
+    Installationen werden nicht abgebrochen. Kurze Installationen sind fertig, bevor die Anmeldung erscheint: Die
+    Anmeldung wartet höchstens 9 Minuten (steht danach noch <i>Windows anpassen</i> aus: 3 Minuten, Windows lässt
+    allen Startskripten zusammen 10 Minuten), danach installiert die Aufgabe weiter. Wie die Anmeldung wartet,
+    steht im Kapitel <i>Windows anpassen</i>, Abschnitt „Anmeldung wartet“.
 3.  Danach werden die Installer gelöscht. Meldet ein Programm „Neustart nötig“ (3010), startet das Gerät nach
     dem letzten Programm <b>einmal</b> neu.
 Ein Fehler bei einem Programm hält die übrigen nicht auf.

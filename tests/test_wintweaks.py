@@ -259,7 +259,8 @@ class OptionsTemplatesTest(unittest.TestCase):
 
     def test_start_layout_reset_existing_profiles(self):
         """B-018: ab Build 26100 start2.bin (und start.bin) bestehender Profile umbenennen – nur bei START_CLEAN, nicht
-        vor 24H2 und nicht im Nachlauf; gesperrt = Hinweis, kein Fehler; Protokoll mit Anzahl."""
+        vor 24H2; im Nachlauf nur für beim Startskript angemeldete Profile (B-019, eigener Test); gesperrt = Hinweis,
+        kein Fehler; Protokoll mit Anzahl."""
         body = steps(wintweaks.build_script({"start_clean"}))["Startmenü: Werbe-Kacheln entfernen (Windows 11)"]
         gpo = body[body.index("Build -ge 26100"):body.index("MDM_Policy_Config01_Start02")]
         self.assertIn(f"$sub = '{wintweaks.START_LAYOUT_DIR}'", gpo)
@@ -282,9 +283,11 @@ class OptionsTemplatesTest(unittest.TestCase):
         self.assertIn("eigene Anheftungen der Benutzer gehen dabei verloren", wintweaks.BY_KEY["start_clean"].tooltip)
         # vor 24H2 (MDM-Bridge) unverändert, ohne Umbenennen
         self.assertNotIn("start2.bin", body[body.index("MDM_Policy_Config01_Start02"):])
-        # nur bei START_CLEAN; nie im Nachlauf
+        # nur bei START_CLEAN; im Nachlauf nur mit -StartSids (B-019)
         self.assertNotIn("start2.bin", wintweaks.build_script(set(wintweaks.KEYS) - {"start_clean", "autologon"}))
-        self.assertNotIn("start2.bin", wintweaks.build_later_script(set(wintweaks.KEYS)))
+        self.assertNotIn("start2.bin", wintweaks.build_later_script(set(wintweaks.KEYS) - {"start_clean"}))
+        later = wintweaks.build_later_script(set(wintweaks.KEYS))
+        self.assertLess(later.index("if ($StartSids) {"), later.index("start2.bin"))
         self.assertNotIn("start2.bin", wintweaks.RESTORE_START)
 
     def test_widgets_policy(self):
@@ -434,8 +437,8 @@ class ScriptTest(unittest.TestCase):
         helper = fn[fn.index("function Update-OkulaGpNumbers"):fn.index("function Restore-OkulaStart")]
         self.assertIn("Sort-Object { [int]$_.PSChildName }", helper)
         self.assertIn("Rename-Item -LiteralPath $keys[$i].PSPath -NewName ([string]$i)", helper)
-        # Fehler in der Registrierung: Hinweis, kein Abbruch
-        self.assertNotIn("throw", reg)
+        # Fehler in der Registrierung: Hinweis, kein Abbruch (B-019: SyncForegroundPolicy erst ganz am Schluss)
+        self.assertNotIn("throw", reg[:reg.index("if ($syncError) { throw")])
         catch = reg[reg.index("} catch {"):]
         self.assertIn("$notes += ('Registrierung {0} nicht ganz aufgeräumt (ohne Wirkung)", catch)
         self.assertIn("Eintrag/Einträge von Okula-Startskripten in der Registrierung entfernt", reg)

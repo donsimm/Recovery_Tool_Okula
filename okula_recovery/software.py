@@ -1202,6 +1202,9 @@ def history_text(entries: list[Entry]) -> str:
 
 TASK_NAME = "Okula Software installieren"
 START_WAIT = 540            # s – unter den 600 s, nach denen Windows Startskripte abbricht
+# B-019: Die 600 s (MaxGPOScriptWait) gelten für alle Startskripte zusammen. Steht danach noch ein anderes
+# Okula-Startskript aus (Windows anpassen, ~90 s), wartet Software höchstens so lange – die Aufgabe läuft weiter.
+SHARED_WAIT = 180
 PROGRAM_TIMEOUT = 60        # min je Programm (wartet ein Installer auf eine Eingabe, hängt sonst alles)
 REBOOT_DELAY = 60           # s nach dem letzten Programm, wenn eines 3010 meldet
 
@@ -1359,6 +1362,11 @@ function Start-Okula {
     # Startskript zuerst entfernen – so läuft es genau einmal, auch nach einem Fehler
     Remove-Item -LiteralPath (Join-Path $OkulaStartup "$OkulaName.ps1"), (Join-Path $OkulaStartup "$OkulaName.cmd") `
         -Force -ErrorAction SilentlyContinue
+    # B-019: läuft danach noch ein Okula-Startskript (Windows anpassen), kürzer warten – Windows bricht alle
+    # Startskripte zusammen nach 600 s ab (MaxGPOScriptWait)
+    if (@(Get-ChildItem -LiteralPath $OkulaStartup -Filter 'okula-*.cmd' -Force -ErrorAction SilentlyContinue)) {
+        $OkulaWait = [Math]::Min($OkulaWait, __SHAREDWAIT__)
+    }
     try {
         $ErrorActionPreference = 'Stop'
         $note = Restore-OkulaStart
@@ -1455,7 +1463,8 @@ def build_script(entries: list[Entry], device: str = "", created: float | None =
     replace = {"__RESTORE__": wintweaks.RESTORE_START, "__AFTER__": deploy.TWEAK_AFTER, "__CREATED__": stamp,
                "__DEVICE__": safe_device, "__COUNT__": str(len(entries)), "__LOG__": deploy.SOFTWARE_LOG,
                "__NAME__": deploy.SOFTWARE_NAME, "__TASK__": TASK_NAME, "__WAIT__": str(START_WAIT),
-               "__WAITMIN__": str(START_WAIT // 60), "__TIMEOUT__": str(PROGRAM_TIMEOUT),
+               "__WAITMIN__": str(START_WAIT // 60), "__SHAREDWAIT__": str(SHARED_WAIT),
+               "__TIMEOUT__": str(PROGRAM_TIMEOUT),
                "__REBOOT__": str(int(reboot_delay)),
                "__PROGRAMS__": ",\n".join(program_line(e) for e in entries)}
     text = SCRIPT

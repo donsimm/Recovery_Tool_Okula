@@ -345,7 +345,8 @@ def software(sock, req: dict, log=print, report=None) -> None:
         raise ImagingError("Keine Software gewählt")
     files = _receive_files(sock, req, report or (lambda f, p, n: None), ack=False)
     wire.send_json(sock, {"type": "done", "part": f"{DEMO_DISK_PATH}p3", "state": "installed", "files": files,
-                          "bytes": int(req.get("bytes") or 0), "replaced": False, "gpo": False, "version": 1})
+                          "bytes": int(req.get("bytes") or 0), "replaced": False, "gpo": False, "version": 1,
+                          "sync": "set"})
     log(f"Demo: Software abgelegt (simuliert): {', '.join(map(str, req.get('items') or []))}")
 
 
@@ -356,7 +357,7 @@ def tweak(req: dict, log=print) -> dict:
     time.sleep(2)
     log("Demo: Startskript für „Windows anpassen“ abgelegt (simuliert)")
     return {"type": "done", "part": f"{DEMO_DISK_PATH}p3", "state": "installed", "replaced": False, "gpo": False,
-            "version": 1}
+            "version": 1, "sync": "set"}
 
 
 BOOT = {"order": ["0001", "0002", "0003"], "netfirst": False}

@@ -281,6 +281,20 @@ SOFTWARE_NEXT = ("Wird beim nächsten Windows-Start als SYSTEM still installiert
                  "Installationen laufen danach weiter). Protokoll am Gerät: C:\\Windows\\Temp\\okula-software.log")
 
 
+SYNC_SET = ("Die Anmeldung wartet beim nächsten Start, bis das Startskript fertig ist (Richtlinie „Beim Neustart des "
+            "Computers und bei der Anmeldung immer auf das Netzwerk warten“ bis dahin an, danach wie vorher)")
+
+
+def sync_line(result: dict) -> str | None:
+    """B-019: Logzeile zur Richtlinie SyncForegroundPolicy (Antwort des Agents) – None bei einem alten Agent."""
+    if result.get("sync_error"):
+        return (f"Hinweis: Die Anmeldung wartet nicht auf das Startskript ({result['sync_error']}) – Startmenü, "
+                "Widgets und Nachlauf greifen evtl. erst nach einem weiteren Neustart")
+    if result.get("sync"):
+        return SYNC_SET
+    return None
+
+
 def send_software(ip: str, key: bytes, port: int, disk: str, nas_root: str, names: list[str], device: str,
                   log: Callable[[str], None], progress: Callable[[float], None], cancel: threading.Event,
                   later: str = SOFTWARE_LATER):
@@ -295,6 +309,8 @@ def send_software(ip: str, key: bytes, port: int, disk: str, nas_root: str, name
     log(f"  Software auf {result.get('part', disk)} abgelegt ({result.get('files', 0)} Dateien)"
         + (" – noch nicht installierte Auswahl von vorher ersetzt" if result.get("replaced") else ""))
     log("  " + later)
+    if sync_line(result):
+        log("  " + sync_line(result))
     return plan, result
 
 
@@ -748,6 +764,8 @@ def tweak_work(ip: str, key: bytes, port: int, disk: str, script: str, lines: li
                 jm.log(job, TWEAK_GENERALIZED)
             jm.log(job, "Wird beim nächsten Windows-Start umgesetzt (als SYSTEM, vor der Anmeldung). "
                         "Protokoll am Gerät: C:\\Windows\\Temp\\okula-windows-anpassen.log")
+            if sync_line(result):
+                jm.log(job, sync_line(result))
         except Exception as e:
             after(job, None, e)
             raise
