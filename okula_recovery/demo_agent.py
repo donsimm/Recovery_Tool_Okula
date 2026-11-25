@@ -258,13 +258,13 @@ def bootprep(sock, req: dict, log=print, report=None) -> str:
     return "0008"
 
 
-def profiles(busy=frozenset()) -> list[dict]:
+def profiles(busy=frozenset(), bitlocker=None) -> list[dict]:
     return [{"part": f"{DEMO_DISK_PATH}p3", "name": "demo-nvme0n1p3", "disk": DEMO_DISK_PATH, "fstype": "ntfs",
              "size": DISK["partitions"][2]["size"], "label": "Windows", "os": "Windows 11 Pro 24H2",
              "kind": "windows", "users": [{"name": u, "path": f"Users/{u}"} for u in USERS]}]
 
 
-def browse(dev: str, rel: str) -> list[dict]:
+def browse(dev: str, rel: str, bitlocker=None) -> list[dict]:
     rel = rel.strip("/")
     if not rel:
         names = ["Users", "Windows", "Program Files", "Daten"]
@@ -292,7 +292,7 @@ def _selected(sources: list[dict]) -> list[tuple[str, int]]:
     return list(dict.fromkeys(out))
 
 
-def estimate(sources: list[dict]) -> dict:
+def estimate(sources: list[dict], bitlocker=None) -> dict:
     files = _selected(sources)
     return {"type": "estimate", "files": len(files), "bytes": sum(s for _p, s in files), "skipped": 0}
 

@@ -326,14 +326,16 @@ def inspect_root(root: Path) -> dict | None:
     return None
 
 
-def _mount_ro(dev: str, fstype: str, target: Path) -> bool:
+def _mount_ro(dev: str, fstype: str, target: Path, loop: bool = False) -> bool:
+    """Nur lesend einhängen; loop=True für eine Datei (z. B. das entschlüsselte BitLocker-Volume von dislocker)."""
     opts = RO_OPTIONS.get(fstype)
     if not opts:
         return False
-    candidates = [["mount", "-t", fstype, "-o", opts, dev, str(target)]]
+    extra = ",loop" if loop else ""
+    candidates = [["mount", "-t", fstype, "-o", opts + extra, dev, str(target)]]
     if fstype == "ntfs":  # Kernel-Treiber ntfs3, sonst ntfs-3g (beide nur lesend)
-        candidates = [["mount", "-t", "ntfs3", "-o", "ro", dev, str(target)],
-                      ["mount", "-t", "ntfs-3g", "-o", "ro", dev, str(target)]]
+        candidates = [["mount", "-t", "ntfs3", "-o", "ro" + extra, dev, str(target)],
+                      ["mount", "-t", "ntfs-3g", "-o", "ro" + extra, dev, str(target)]]
     for cmd in candidates:
         try:
             if subprocess.run(cmd, capture_output=True, timeout=30).returncode == 0:

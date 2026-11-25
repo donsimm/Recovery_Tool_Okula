@@ -347,8 +347,9 @@ def run_job(tls, addr, req: dict, kind: str) -> None:
         ok = True
         log(f"{label} auf {disk} fertig", show=not bar)
     except (imaging.ImagingError, OSError) as e:
-        log(f"{label} auf {disk} fehlgeschlagen: {e}", show=not bar)
-        wire.send_json(tls, {"type": "error", "message": str(e)})
+        msg = filebackup.scrub(str(e), *filebackup.bitlocker_keys(req.get("bitlocker")).values())  # I-012
+        log(f"{label} auf {disk} fehlgeschlagen: {msg}", show=not bar)
+        wire.send_json(tls, {"type": "error", "message": msg})
     finally:
         if bar:
             # Der Agent läuft vom Stick: nie abziehen, solange er läuft (sonst klappt der Neustart nicht)
@@ -501,20 +502,22 @@ def handle_connection(ctx: ssl.SSLContext, conn: socket.socket, addr) -> None:
             elif cmd in ("profiles", "browse", "estimate"):
                 # kurze Abfragen fürs Backup; hängen Partitionen lesend ein – nicht auf Disks mit Auftrag
                 busy = set(disk_locks.active())
+                keys = filebackup.bitlocker_keys(req.get("bitlocker"))     # I-012: nur lesend, nie ins Log
                 try:
                     with inspect_lock:
                         if cmd == "profiles":
-                            reply = {"type": "profiles", "partitions": filebackup.profiles(busy)}
+                            reply = {"type": "profiles", "partitions": filebackup.profiles(busy, bitlocker=keys)}
                         else:
                             parts = [str(s.get("part") or "") for s in req.get("sources") or []] + \
                                 [str(req.get("part") or "")]
                             if any(p and any(p.startswith(b) for b in busy) for p in parts):
                                 raise imaging.ImagingError("Auf dieser Disk läuft gerade ein Auftrag")
-                            reply = ({"type": "entries", "entries": filebackup.browse(str(req.get("part")),
-                                                                                   str(req.get("path") or ""))}
-                                     if cmd == "browse" else filebackup.estimate(req.get("sources") or []))
+                            reply = ({"type": "entries", "entries": filebackup.browse(
+                                str(req.get("part")), str(req.get("path") or ""), bitlocker=keys)}
+                                     if cmd == "browse" else filebackup.estimate(req.get("sources") or [],
+                                                                                 bitlocker=keys))
                 except (imaging.ImagingError, OSError) as e:
-                    reply = {"type": "error", "message": str(e)}
+                    reply = {"type": "error", "message": filebackup.scrub(str(e), *keys.values())}
                 wire.send_json(tls, reply)
             elif cmd == "inventory":
                 if req.get("refresh") and disk_locks.busy():

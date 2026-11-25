@@ -6,6 +6,11 @@ Pagefile, Ruhezustand, Papierkorb, Temp-Ordner und Caches werden übersprungen, 
 
 Zurückschreiben hängt die Zielpartition schreibend ein (NTFS über ntfs-3g – Windows muss vollständig
 heruntergefahren sein, ohne Schnellstart/Ruhezustand).
+
+BitLocker (I-012): Mit dem Wiederherstellungsschlüssel ({"<partition>": "<schlüssel>"} in der Anfrage) wird eine
+BitLocker-Partition nur lesend geöffnet – `dislocker -r` stellt das entschlüsselte Volume als Datei in einem
+FUSE-Ordner bereit, die Datei wird mit den Schreibschutz-Optionen (`ro,loop`) eingehängt. Schreibend nie.
+Der Schlüssel erscheint in keiner Meldung und keinem Log.
 """
 
 from __future__ import annotations
@@ -13,6 +18,8 @@ from __future__ import annotations
 import fnmatch
 import hashlib
 import os
+import re
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -34,23 +41,111 @@ Report = Callable[[float, str, int], None]
 ImagingError = imaging.ImagingError
 
 
+# ---------- BitLocker (nur lesend) ----------
+
+DISLOCKER = "dislocker"
+DISLOCKER_FILE = "dislocker-file"
+RECOVERY_KEY_RE = re.compile(r"^\d{6}(-\d{6}){7}$")
+STICK_TOO_OLD = "Agent-Stick zu alt für BitLocker – neuen Stick erstellen"
+
+
+def recovery_key(value: str) -> str:
+    """Wiederherstellungsschlüssel in die Form 111111-222222-…: 48 Ziffern in 8 Blöcken à 6 (Bindestriche und
+    Leerzeichen optional). Ungültig → ""."""
+    digits = re.sub(r"[\s-]", "", str(value or ""))
+    if not re.fullmatch(r"\d{48}", digits):
+        return ""
+    return "-".join(digits[i:i + 6] for i in range(0, 48, 6))
+
+
+def bitlocker_keys(value) -> dict[str, str]:
+    """Schlüssel aus einer Anfrage ({"<partition>": "<schlüssel>"}); alles andere wird ignoriert."""
+    if not isinstance(value, dict):
+        return {}
+    return {str(k): str(v) for k, v in value.items() if isinstance(k, str) and isinstance(v, str) and v}
+
+
+def scrub(text: str, *keys: str) -> str:
+    """Schlüssel aus einer Meldung entfernen – mit und ohne Bindestriche, auch jeden 48-Ziffern-Block."""
+    text = str(text or "")
+    for key in keys:
+        if not key:
+            continue
+        for form in {key, key.replace("-", ""), recovery_key(key), recovery_key(key).replace("-", "")}:
+            if len(form) >= 8:
+                text = text.replace(form, "***")
+    text = re.sub(r"\d{6}(?:-\d{6}){7}", "***", text)
+    return re.sub(r"\d{48}", "***", text)
+
+
+def _fuse_unmount(point: Path) -> None:
+    for cmd in (["fusermount3", "-u", str(point)], ["fusermount", "-u", str(point)], ["umount", str(point)]):
+        try:
+            if subprocess.run(cmd, capture_output=True, timeout=60).returncode == 0:
+                return
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+
+
+def _unlock(dev: str, key: str, fuse_dir: Path) -> None:
+    """BitLocker-Partition nur lesend entschlüsseln (`dislocker -r`); danach liegt fuse_dir/dislocker-file bereit."""
+    name = Path(dev).name
+    normal = recovery_key(key)
+    if not normal:
+        raise ImagingError(f"Wiederherstellungsschlüssel für {name} ungültig – 48 Ziffern in 8 Blöcken à 6")
+    if shutil.which(DISLOCKER) is None:
+        raise ImagingError(STICK_TOO_OLD)
+    try:
+        r = subprocess.run([DISLOCKER, "-r", "-V", dev, f"-p{normal}", "--", str(fuse_dir)],
+                           capture_output=True, text=True, timeout=120)
+    except FileNotFoundError:
+        raise ImagingError(STICK_TOO_OLD) from None
+    except subprocess.TimeoutExpired:
+        _fuse_unmount(fuse_dir)
+        raise ImagingError(f"BitLocker-Partition {name} reagiert nicht (dislocker)") from None
+    except OSError as e:
+        raise ImagingError(f"BitLocker-Partition {name} lässt sich nicht öffnen: {scrub(str(e), key)}") from None
+    if r.returncode != 0 or not (fuse_dir / DISLOCKER_FILE).exists():
+        _fuse_unmount(fuse_dir)
+        msg = scrub(f"{r.stderr or ''} {r.stdout or ''}", key).strip()
+        low = msg.lower()
+        if r.returncode != 0 and any(s in low for s in ("decryption mean", "vmk", "recovery", "password",
+                                                         "wrong", "invalid")):
+            raise ImagingError(f"Wiederherstellungsschlüssel passt nicht zu {name}")
+        if "fuse" in low and ("not found" in low or "no such" in low):
+            raise ImagingError(STICK_TOO_OLD)
+        last = msg.splitlines()[-1].strip() if msg else f"Exit-Code {r.returncode}"
+        raise ImagingError(f"BitLocker-Partition {name} lässt sich nicht öffnen: {last[:200]}")
+
+
 # ---------- Einhängen ----------
 
 class Mounts:
-    """Partitionen bei Bedarf einhängen (lesend oder schreibend), am Ende alles wieder aushängen."""
+    """Partitionen bei Bedarf einhängen (lesend oder schreibend), am Ende alles wieder aushängen.
 
-    def __init__(self, write: bool = False):
+    bitlocker: {"<partition>": "<wiederherstellungsschlüssel>"} – nur lesend; schreibend bleibt BitLocker gesperrt."""
+
+    def __init__(self, write: bool = False, bitlocker: dict | None = None):
         self.write = write
+        self.bitlocker = bitlocker_keys(bitlocker)
         self.points: dict[str, Path] = {}
+        self.fuse: dict[str, Path] = {}       # BitLocker: FUSE-Ordner von dislocker je Partition
 
     def __enter__(self) -> "Mounts":
         return self
 
     def __exit__(self, *_exc) -> None:
+        # umgekehrte Reihenfolge: erst das Dateisystem, dann den FUSE-Punkt von dislocker
         for target in self.points.values():
             subprocess.run(["umount", str(target)], capture_output=True, timeout=120)
             try:
                 target.rmdir()
+            except OSError:
+                pass
+        for point in self.fuse.values():
+            _fuse_unmount(point)
+            try:
+                point.rmdir()
             except OSError:
                 pass
 
@@ -65,13 +160,40 @@ class Mounts:
             raise ImagingError(f"{dev} ist bereits eingehängt")
         fs = part.get("fstype") or inventory.probe_fstype(dev)
         if fs.lower() == "bitlocker":
-            raise ImagingError(f"{dev} ist mit BitLocker verschlüsselt – nicht lesbar")
+            if self.write:
+                raise ImagingError(f"{dev} ist mit BitLocker verschlüsselt – nicht beschreibbar")
+            if dev not in self.bitlocker:
+                raise ImagingError(f"{dev} ist mit BitLocker verschlüsselt – nicht lesbar")
+            return self._get_bitlocker(dev)
         WORK.mkdir(parents=True, exist_ok=True)
         target = Path(tempfile.mkdtemp(prefix=f"{Path(dev).name}-", dir=WORK))
         ok = _mount_rw(dev, fs, target) if self.write else inventory._mount_ro(dev, fs, target)
         if not ok:
             target.rmdir()
             raise ImagingError(f"{dev} ({fs or 'unbekannt'}) lässt sich nicht einhängen")
+        self.points[dev] = target
+        return target
+
+    def _get_bitlocker(self, dev: str) -> Path:
+        key = self.bitlocker[dev]
+        name = Path(dev).name
+        WORK.mkdir(parents=True, exist_ok=True)
+        fuse_dir = Path(tempfile.mkdtemp(prefix=f"{name}-bitlocker-", dir=WORK))
+        try:
+            _unlock(dev, key, fuse_dir)
+        except ImagingError:
+            try:
+                fuse_dir.rmdir()
+            except OSError:
+                pass
+            raise
+        self.fuse[dev] = fuse_dir           # ab hier räumt __exit__ auf, auch bei Fehlern
+        inner = fuse_dir / DISLOCKER_FILE
+        fs = inventory.probe_fstype(str(inner))
+        target = Path(tempfile.mkdtemp(prefix=f"{name}-", dir=WORK))
+        if not inventory._mount_ro(str(inner), fs, target, loop=True):
+            target.rmdir()
+            raise ImagingError(f"{dev} (BitLocker, entsperrt: {fs or 'unbekannt'}) lässt sich nicht einhängen")
         self.points[dev] = target
         return target
 
@@ -111,10 +233,14 @@ def _users(root: Path) -> tuple[str, list[dict]]:
     return "", []
 
 
-def profiles(busy: set[str] = frozenset()) -> list[dict]:
-    """Alle lesbaren Partitionen interner Disks mit Betriebssystem und Benutzerprofilen."""
+def profiles(busy: set[str] = frozenset(), bitlocker: dict | None = None) -> list[dict]:
+    """Alle lesbaren Partitionen interner Disks mit Betriebssystem und Benutzerprofilen.
+
+    BitLocker: Eintrag mit bitlocker=True; ohne Schlüssel error „BitLocker – nicht lesbar“, mit passendem
+    Schlüssel (bitlocker={"<partition>": "<schlüssel>"}) Benutzer wie bei NTFS (unlocked=True)."""
     result = []
-    with Mounts() as m:
+    keys = bitlocker_keys(bitlocker)
+    with Mounts(bitlocker=keys) as m:
         for disk in imaging.list_disks():
             if disk["path"] in busy:
                 continue
@@ -123,7 +249,20 @@ def profiles(busy: set[str] = frozenset()) -> list[dict]:
                 entry = {"part": part["path"], "name": part["name"], "disk": disk["path"], "fstype": fs,
                          "size": part["size"], "label": part.get("label", ""), "os": "", "kind": "", "users": []}
                 if fs.lower() == "bitlocker":
-                    entry["error"] = "BitLocker – nicht lesbar"
+                    entry["bitlocker"] = True
+                    if part["path"] not in keys:
+                        entry["error"] = "BitLocker – nicht lesbar"
+                    elif part.get("mounted"):
+                        entry["error"] = f"{part['path']} ist bereits eingehängt"
+                    else:
+                        try:
+                            root = m.get(part["path"])
+                            info = inventory.inspect_root(root) or {}
+                            entry["os"] = info.get("name", "")
+                            entry["kind"], entry["users"] = _users(root)
+                            entry["unlocked"] = True
+                        except (ImagingError, OSError) as e:
+                            entry["error"] = scrub(str(e), keys[part["path"]])
                 elif fs in inventory.RO_OPTIONS and not part.get("mounted"):
                     try:
                         root = m.get(part["path"])
@@ -138,9 +277,9 @@ def profiles(busy: set[str] = frozenset()) -> list[dict]:
     return result
 
 
-def browse(dev: str, rel: str) -> list[dict]:
+def browse(dev: str, rel: str, bitlocker: dict | None = None) -> list[dict]:
     """Inhalt eines Ordners (für „eigene Ordner“) – Ordner zuerst, Links werden nicht verfolgt."""
-    with Mounts() as m:
+    with Mounts(bitlocker=bitlocker) as m:
         root = m.get(dev)
         path = _safe(root, rel) if rel else root
         entries = []
@@ -228,8 +367,8 @@ def collect(sources: list[dict], mounts: Mounts) -> tuple[list[tuple], list[tupl
     return files, skipped
 
 
-def estimate(sources: list[dict]) -> dict:
-    with Mounts() as m:
+def estimate(sources: list[dict], bitlocker: dict | None = None) -> dict:
+    with Mounts(bitlocker=bitlocker) as m:
         files, skipped = collect(sources, m)
     return {"type": "estimate", "files": len(files), "bytes": sum(f[4] for f in files), "skipped": len(skipped)}
 
@@ -239,7 +378,7 @@ def estimate(sources: list[dict]) -> dict:
 def backup(sock, req: dict, log: Callable[[str], None] = print, report: Report | None = None) -> None:
     """Dateien der Quellen zum Tool schicken (je Datei SHA-256); Lesefehler werden gemeldet, nicht abgebrochen."""
     report = report or (lambda f, p, n: None)
-    with Mounts() as m:
+    with Mounts(bitlocker=req.get("bitlocker")) as m:
         files, skipped = collect(req.get("sources") or [], m)
         total = sum(f[4] for f in files) or 1
         wire.send_json(sock, {"type": "plan", "files": len(files), "bytes": total, "skipped": len(skipped)})
