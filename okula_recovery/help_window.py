@@ -718,6 +718,7 @@ Ausschalten, das Wieder-Einschalten nach 3 Tagen und der Stopp-Knopf ■ fragen 
 <b>Ablauf am Gerät:</b>
 1.  Das Gerät startet mit dem Agent (Stick oder Netzwerkstart).
 2.  30 Sekunden Countdown – am Gerät bricht <b>Esc</b> ab, im Tool <i>Abbrechen</i>.
+    Reisst die Verbindung zum Gerät im Countdown ab, startet nichts (gilt als abgebrochen).
 3.  Backup (wenn gewählt), Image zurückspielen, anpassen, Ordner senden.
 4.  Abschluss. Bei Neustart den Agent-Stick erst abziehen, wenn der Bildschirm dunkel wird – sonst
     startet wieder der Agent. Mit Stick einfacher: Abschluss <i>Herunterfahren</i>, dann Stick abziehen.

@@ -47,21 +47,75 @@ def key_path() -> Path:
     return config.config_path().parent / "agent.key"
 
 
-def load_or_create_key() -> bytes:
-    """Gemeinsamer Schlüssel Tool ↔ Agent-Sticks; wird beim ersten Gebrauch erzeugt."""
-    path = key_path()
+def _read_key(path: Path) -> bytes | None:
+    """Schlüssel aus der Datei; None = Datei fehlt. Vorhanden, aber leer/ungültig → AgentError (B-027):
+    nie still einen neuen Schlüssel erzeugen, sonst lehnen alle Agent-Sticks ab."""
     try:
-        key = bytes.fromhex(path.read_text().strip())
-        if len(key) == wire.KEY_LEN:
-            return key
-    except (OSError, ValueError):
-        pass
+        text = path.read_text()
+    except FileNotFoundError:
+        return None
+    except (OSError, UnicodeDecodeError) as e:
+        raise AgentError(f"Schlüsseldatei {path} nicht lesbar: {e}") from None
+    try:
+        key = bytes.fromhex(text.strip())
+    except ValueError:
+        key = b""
+    if len(key) != wire.KEY_LEN:
+        raise AgentError(f"Schlüsseldatei {path} ist leer oder ungültig – Datei aus einer Sicherung zurückholen "
+                         "(Einstellungen übertragen) oder löschen; nach dem Löschen wird ein neuer Schlüssel "
+                         "erzeugt und alle Agent-Sticks müssen neu erstellt werden")
+    return key
+
+
+def load_or_create_key() -> bytes:
+    """Gemeinsamer Schlüssel Tool ↔ Agent-Sticks; wird beim ersten Gebrauch erzeugt.
+    Neu: erst in eine .tmp-Datei (0600), dann atomar an den Platz – nie eine halb geschriebene Schlüsseldatei."""
+    path = key_path()
+    key = _read_key(path)
+    if key is not None:
+        return key
     key = secrets.token_bytes(wire.KEY_LEN)
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        f.write(key.hex() + "\n")
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(key.hex() + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+        try:
+            os.link(tmp, path)            # legt nur an, wenn noch keine Datei da ist (zwei Erstaufrufe)
+        except FileExistsError:
+            return _read_key(path) or key
+        except OSError:
+            os.replace(tmp, path)         # Dateisystem ohne harte Links
+        _fsync_dir(path.parent)
+    finally:
+        tmp.unlink(missing_ok=True)
     return key
+
+
+def _fsync_dir(path: Path) -> None:
+    """Ordnereintrag auf die Platte bringen; manche Netzlaufwerke können das nicht – dann ohne."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
+
+
+def _fsync_file(fh) -> None:
+    fh.flush()
+    try:
+        os.fsync(fh.fileno())
+    except OSError as e:
+        if e.errno not in (errno.EINVAL, errno.ENOTSUP, errno.EOPNOTSUPP):
+            raise
 
 
 def _hint(message: str) -> str:
@@ -237,21 +291,47 @@ def image_dir(nas_root: str | Path, machine: str, disk: str, now: datetime | Non
     return Path(nas_root) / "images" / safe_name(machine) / f"{stamp}_{Path(disk).name}"
 
 
+def _new_image_dir(base: Path) -> tuple[Path, Path]:
+    """Freien Ordnernamen suchen (…, …-2, …-3); legt den .partial-Arbeitsordner an.
+    Ein .partial-Rest gleichen Namens wird übersprungen, nicht gelöscht (kann zu einem laufenden Auftrag gehören)."""
+    base.parent.mkdir(parents=True, exist_ok=True)
+    for n in range(1, 1000):
+        final = base if n == 1 else base.with_name(f"{base.name}-{n}")
+        work = final.with_name(final.name + ".partial")
+        if final.exists() or work.exists():
+            continue
+        try:
+            work.mkdir()
+        except FileExistsError:
+            continue                      # gleichzeitig angelegt
+        return final, work
+    raise AgentError(f"Kein freier Ordnername für das Image in {base.parent}")
+
+
+def _missing_files(meta: dict, current: dict | None) -> str:
+    """B-027: Was fehlt noch, damit das Image vollständig ist? Leer = vollständig."""
+    if "plan" not in meta:
+        return "Beginn der Übertragung (begin)"
+    if current is not None:
+        return f"Ende von {current['name']}"
+    got = {f["name"] for f in meta["files"]}
+    missing = [s["file"] for s in meta["plan"]
+               if isinstance(s, dict) and s.get("file") and not s.get("optional") and s["file"] not in got]
+    return ", ".join(missing)
+
+
 def create_image(ip: str, key: bytes, disk: str, nas_root: str | Path, machine: str,
                  progress: Progress, cancel: threading.Event, port: int = wire.PORT,
                  source: dict | None = None) -> Path:
-    final = image_dir(nas_root, machine, disk)
-    if final.exists():
-        final = final.with_name(final.name + time.strftime("%S"))
-    work = final.with_name(final.name + ".partial")
-    work.mkdir(parents=True)
+    final, work = _new_image_dir(image_dir(nas_root, machine, disk))
 
     meta: dict = {"format": "okula-image", "version": 1, "tool_version": __version__, "machine": machine,
                   "source": source or {}, "agent_ip": ip, "started": datetime.now().isoformat(timespec="seconds"),
                   "files": []}
     current = None
-    sock = _connect(ip, key, port)
+    sock = None
     try:
+        sock = _connect(ip, key, port)
         # partclone liest zuerst die Belegungs-Bitmap; bei grossen HDDs kommen minutenlang keine Daten
         sock.settimeout(900)
         wire.send_json(sock, {"cmd": "image", "disk": disk})
@@ -290,7 +370,9 @@ def create_image(ip: str, key: bytes, disk: str, nas_root: str | Path, machine: 
                 name = str(msg.get("file") or "")
                 if not SAFE_FILE_RE.match(name) or name == IMAGE_META:
                     raise wire.ProtocolError(f"Ungültiger Dateiname vom Agent: {name!r}")
-                current = {"name": name, "fh": open(work / name, "xb"), "hash": hashlib.sha256(), "size": 0}
+                if current is not None:
+                    raise wire.ProtocolError(f"Neue Datei {name}, bevor {current['name']} fertig ist")
+                current ={"name": name, "fh": open(work / name, "xb"), "hash": hashlib.sha256(), "size": 0}
                 state = {"phase": "file", "file": name, "part": msg.get("part", ""), "total": msg.get("total", 0),
                          "pct": None}
                 progress(state)
@@ -299,6 +381,7 @@ def create_image(ip: str, key: bytes, disk: str, nas_root: str | Path, machine: 
             elif t == "file_end":
                 if current is None or msg.get("file") != current["name"]:
                     raise wire.ProtocolError("file_end ohne passende Datei")
+                _fsync_file(current["fh"])
                 current["fh"].close()
                 digest = current["hash"].hexdigest()
                 if msg.get("sha256") != digest or msg.get("size") != current["size"]:
@@ -308,12 +391,19 @@ def create_image(ip: str, key: bytes, disk: str, nas_root: str | Path, machine: 
             elif t == "error":
                 raise AgentError(_hint(str(msg.get("message", "Fehler auf dem Agent"))))
             elif t == "end":
+                missing = _missing_files(meta, current)
+                if missing:
+                    raise AgentError(f"Image unvollständig: {missing} fehlt – Image wurde verworfen")
                 break
 
         meta["completed"] = datetime.now().isoformat(timespec="seconds")
         meta["bytes"] = received
-        (work / IMAGE_META).write_text(json.dumps(meta, indent=2, ensure_ascii=False))
+        with open(work / IMAGE_META, "w") as fh:
+            fh.write(json.dumps(meta, indent=2, ensure_ascii=False))
+            _fsync_file(fh)
+        _fsync_dir(work)
         work.rename(final)
+        _fsync_dir(final.parent)
         progress({"phase": "done", "path": str(final), "total_bytes": received})
         return final
     except OSError as e:
@@ -327,7 +417,8 @@ def create_image(ip: str, key: bytes, disk: str, nas_root: str | Path, machine: 
     finally:
         if current is not None:
             current["fh"].close()
-        sock.close()
+        if sock is not None:
+            sock.close()
         if work.exists():
             shutil.rmtree(work, ignore_errors=True)  # nur unser eigener .partial-Ordner
 
@@ -741,40 +832,52 @@ def _send_files(ip: str, key: bytes, port: int, request: dict, files, total: int
 def countdown(ip: str, key: bytes, seconds: int, title: str, cancel: threading.Event,
               tick: Callable[[int], None] = lambda left: None, port: int = wire.PORT) -> str:
     """Countdown am Gerät (Esc bricht ab) und im Tool (cancel). Ergebnis: start | esc | tool.
-    Alter Agent ohne Countdown: nur im Tool herunterzählen."""
+    Nur ein alter Agent ohne Countdown („Unbekannter Befehl“) lässt das Tool selbst herunterzählen.
+    B-027: Ist das Gerät nicht erreichbar, bricht die Verbindung ab oder meldet es kein Ergebnis, gibt es einen
+    AgentError („abgebrochen“) – nie „start“, denn ein Esc am Gerät könnte verloren gegangen sein."""
+    lost = "Verbindung zum Gerät während des Countdowns abgebrochen – nicht gestartet"
     end = time.monotonic() + seconds
-    sock = None
+    sock = _connect(ip, key, port)
     try:
-        sock = _connect(ip, key, port)
-        wire.send_json(sock, {"cmd": "countdown", "seconds": seconds, "title": title})
-    except (AgentError, OSError):
-        sock = None
-    try:
+        try:
+            wire.send_json(sock, {"cmd": "countdown", "seconds": seconds, "title": title})
+        except OSError as e:
+            raise AgentError(f"{lost} ({e})") from None
         while True:
             left = end - time.monotonic()
             tick(max(0, int(left + 0.999)))
             if cancel.is_set():
                 return "tool"
-            if sock is not None:
-                sock.settimeout(max(0.1, min(0.5, left + 5)))
-                try:
-                    reply = wire.recv_json(sock)
-                except (TimeoutError, ssl.SSLError) as e:
-                    if isinstance(e, ssl.SSLError) and "timed out" not in str(e):
-                        sock = None
-                    reply = None
-                except (OSError, wire.ProtocolError):
-                    sock, reply = None, None
-                if reply is not None:
-                    if reply.get("type") == "countdown":
-                        return str(reply.get("result") or "start")
-                    sock = None  # alter Agent („Unbekannter Befehl“): selbst zählen
-            elif left <= 0:
-                return "start"
-            else:
+            if sock is None:              # alter Agent: im Tool herunterzählen
+                if left <= 0:
+                    return "start"
                 time.sleep(min(0.5, left))
-            if sock is not None and left < -10:
-                return "start"
+                continue
+            sock.settimeout(max(0.1, min(0.5, left + 5)))
+            try:
+                reply = wire.recv_json(sock)
+            except TimeoutError:
+                reply = None
+            except ssl.SSLError as e:
+                if "timed out" not in str(e):
+                    raise AgentError(f"{lost} ({e})") from None
+                reply = None
+            except (OSError, wire.ProtocolError) as e:
+                raise AgentError(f"{lost} ({e})") from None
+            if reply is None:
+                if left < -10:
+                    raise AgentError("Gerät meldet das Ende des Countdowns nicht – nicht gestartet")
+                continue
+            if reply.get("type") == "countdown":
+                result = reply.get("result")
+                if result in ("start", "esc", "tool"):
+                    return result
+                raise AgentError(f"Unbekanntes Countdown-Ergebnis vom Gerät: {result!r} – nicht gestartet")
+            message = str(reply.get("message") or reply.get("type") or "")
+            if "Unbekannter Befehl" not in message:
+                raise AgentError(f"Countdown am Gerät abgelehnt: {message} – nicht gestartet")
+            sock.close()
+            sock = None
     finally:
         if sock is not None:
             sock.close()

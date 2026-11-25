@@ -945,3 +945,15 @@ Agent-Stick – nur das Tool). VM mit BitLocker auf der Windows-Partition (Snaps
 - [ ] *Auf Gerät installieren …* mit einer ISO: während der Übertragung ISO löschen/verschieben → Meldung
 - [ ] Optional: alte Demo-Images auf dem NAS, eines davon wird gerade zurückgespielt → *Alte Demo-Images vom NAS
       löschen …* nennt es nicht, Statuszeile „1 Demo-Image übersprungen …“
+### B-027 Image nur vollständig fertig, Ordnername, Esc im Countdown
+(Nummer setzt Okuli beim Zusammenführen.) Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer
+Agent-Stick – nur das Tool).
+- [ ] Demo-Gerät einschalten, *Disk-Image erstellen* → „fertig“, Ordner `images/DEMO-PC/<JJJJ-MM-TT_HHMM>_<disk>`
+      ohne `.partial`, *Image zurückspielen* aufs Demo-Gerät klappt (Prüfung ok)
+- [ ] Gleich danach (selbe Minute) ein zweites Disk-Image → Ordner `…-2`; beide Images im Archiv sichtbar
+- [ ] Optional: von Hand einen leeren Ordner `<gleicher Name>-2.partial` anlegen, dann Image in derselben Minute →
+      Ordner `…-3`, der `.partial`-Ordner bleibt unberührt (danach von Hand löschen)
+- [ ] Automatisierung am Gerät/VM mit Agent: im Countdown am Gerät **Esc** → Verlauf „am Gerät mit Esc abgebrochen“,
+      nichts gelöscht
+- [ ] Optional: im Countdown das Netzwerkkabel ziehen bzw. VM-Netz trennen → Verlauf „Automatisierung abgebrochen:
+      Verbindung zum Gerät während des Countdowns abgebrochen – nicht gestartet“, nichts gelöscht

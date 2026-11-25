@@ -335,6 +335,184 @@ class MaliciousAgentTest(unittest.TestCase):
         server.close()
 
 
+class FakeAgent:
+    """Agent-Attrappe über echtes TLS-PSK: beantwortet eine Verbindung mit festen Frames (dict = JSON, bytes = Daten)."""
+
+    def __init__(self, frames, linger: float = 5.0, close_after: float | None = None):
+        self.key = bytes(32)
+        self.server = socket.create_server(("127.0.0.1", 0))
+        self.port = self.server.getsockname()[1]
+        self.request = None
+        threading.Thread(target=self._serve, args=(frames, linger, close_after), daemon=True).start()
+
+    def _serve(self, frames, linger, close_after):
+        try:
+            conn, _ = self.server.accept()
+        except OSError:
+            return
+        with wire.server_context(self.key).wrap_socket(conn, server_side=True) as tls:
+            self.request = wire.recv_json(tls)
+            for f in frames:
+                if isinstance(f, bytes):
+                    wire.send_data(tls, f)
+                else:
+                    wire.send_json(tls, f)
+            if close_after is not None:
+                time.sleep(close_after)
+                return
+            tls.settimeout(linger)
+            try:
+                tls.recv(1)
+            except OSError:
+                pass
+
+    def close(self):
+        self.server.close()
+
+
+def file_frames(name: str, data: bytes, end: bool = True) -> list:
+    frames = [{"type": "file", "file": name}, data]
+    if end:
+        frames.append({"type": "file_end", "file": name, "size": len(data),
+                       "sha256": hashlib.sha256(data).hexdigest()})
+    return frames
+
+
+PLAN = [{"file": "sda.sfdisk", "kind": "command", "optional": True},
+        {"file": "sda-head.img", "kind": "range"},
+        {"file": "sda1.dd.img", "kind": "pipe", "part": "sda1"},
+        {"file": None, "kind": "skip", "part": "sda2", "reason": "swap"}]
+BEGIN = {"type": "begin", "disk": {"name": "sda"}, "plan": PLAN}
+
+
+class ImageCompleteTest(unittest.TestCase):
+    """B-027: Ein Image gilt nur als fertig, wenn alle Dateien des Plans vollständig angekommen sind."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.nas = Path(self.tmp.name) / "nas"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_agent(self, frames):
+        fake = FakeAgent(frames)
+        try:
+            return agentclient.create_image("127.0.0.1", fake.key, "/dev/sda", self.nas, "PC", lambda e: None,
+                                            threading.Event(), port=fake.port)
+        finally:
+            fake.close()
+
+    def assert_nothing_left(self):
+        self.assertEqual([p.name for p in (self.nas / "images" / "PC").iterdir()], [])
+
+    def test_complete_image(self):
+        path = self.run_agent([BEGIN, *file_frames("sda-head.img", b"H" * 100),
+                               *file_frames("sda1.dd.img", b"D" * 5000), {"type": "end"}])
+        self.assertFalse(path.name.endswith(".partial"))
+        self.assertEqual(sorted(p.name for p in path.iterdir()), ["okula-image.json", "sda-head.img", "sda1.dd.img"])
+        meta = agentclient.load_image(path)
+        self.assertEqual([f["name"] for f in meta["files"]], ["sda-head.img", "sda1.dd.img"])
+
+    def test_end_with_open_file(self):
+        with self.assertRaisesRegex(agentclient.AgentError, "Image unvollständig: Ende von sda1.dd.img fehlt"):
+            self.run_agent([BEGIN, *file_frames("sda-head.img", b"H"),
+                            *file_frames("sda1.dd.img", b"D" * 10, end=False), {"type": "end"}])
+        self.assert_nothing_left()
+
+    def test_end_without_begin(self):
+        with self.assertRaisesRegex(agentclient.AgentError, "Image unvollständig: Beginn"):
+            self.run_agent([{"type": "end"}])
+        self.assert_nothing_left()
+
+    def test_end_with_missing_plan_file(self):
+        with self.assertRaisesRegex(agentclient.AgentError, "Image unvollständig: sda1.dd.img fehlt"):
+            self.run_agent([BEGIN, *file_frames("sda-head.img", b"H"), {"type": "end"}])
+        self.assert_nothing_left()
+
+    def test_second_file_while_first_open(self):
+        with self.assertRaisesRegex(agentclient.AgentError, "bevor sda-head.img fertig"):
+            self.run_agent([BEGIN, *file_frames("sda-head.img", b"H", end=False),
+                            *file_frames("sda1.dd.img", b"D")])
+        self.assert_nothing_left()
+
+    def test_folder_collision_and_partial_rest(self):
+        base = self.nas / "images" / "PC" / "2026-11-25_1000_sda"
+        base.mkdir(parents=True)
+        rest = base.with_name(base.name + "-2.partial")
+        rest.mkdir()
+        (rest / "sda-head.img").write_bytes(b"alt")
+        frames = [BEGIN, *file_frames("sda-head.img", b"H"), *file_frames("sda1.dd.img", b"D"), {"type": "end"}]
+        with mock.patch.object(agentclient, "image_dir", lambda *a, **k: base):
+            path = self.run_agent(frames)
+        self.assertEqual(path.name, "2026-11-25_1000_sda-3")
+        self.assertEqual((rest / "sda-head.img").read_bytes(), b"alt")    # Rest bleibt unangetastet
+        self.assertEqual(sorted(p.name for p in base.parent.iterdir()),
+                         ["2026-11-25_1000_sda", "2026-11-25_1000_sda-2.partial", "2026-11-25_1000_sda-3"])
+
+    def test_new_image_dir_names(self):
+        base = self.nas / "x" / "img"
+        final, work = agentclient._new_image_dir(base)
+        self.assertEqual((final, work.name), (base, "img.partial"))
+        final2, work2 = agentclient._new_image_dir(base)          # img.partial ist noch da
+        self.assertEqual((final2.name, work2.name), ("img-2", "img-2.partial"))
+
+    def test_unreachable_agent_leaves_no_partial(self):
+        server = socket.create_server(("127.0.0.1", 0))
+        port = server.getsockname()[1]
+        server.close()
+        with self.assertRaisesRegex(agentclient.AgentError, "nicht erreichbar"):
+            agentclient.create_image("127.0.0.1", bytes(32), "/dev/sda", self.nas, "PC", lambda e: None,
+                                     threading.Event(), port=port)
+        self.assert_nothing_left()
+
+
+class CountdownTest(unittest.TestCase):
+    """B-027: Verbindungsverlust im Countdown heisst „abgebrochen“, nie „start“."""
+
+    def test_connection_lost_after_accept(self):
+        fake = FakeAgent([], close_after=0.3)
+        try:
+            with self.assertRaisesRegex(agentclient.AgentError, "abgebrochen – nicht gestartet"):
+                agentclient.countdown("127.0.0.1", fake.key, 1, "Test", threading.Event(), port=fake.port)
+        finally:
+            fake.close()
+        self.assertEqual(fake.request["cmd"], "countdown")
+
+    def test_result_from_agent(self):
+        fake = FakeAgent([{"type": "countdown", "result": "esc"}])
+        try:
+            self.assertEqual(agentclient.countdown("127.0.0.1", fake.key, 5, "Test", threading.Event(),
+                                                   port=fake.port), "esc")
+        finally:
+            fake.close()
+
+    def test_old_agent_counts_in_tool(self):
+        fake = FakeAgent([{"type": "error", "message": "Unbekannter Befehl: countdown"}])
+        ticks = []
+        try:
+            self.assertEqual(agentclient.countdown("127.0.0.1", fake.key, 1, "Test", threading.Event(),
+                                                   ticks.append, port=fake.port), "start")
+        finally:
+            fake.close()
+        self.assertEqual(ticks[0], 1)
+
+    def test_other_error_is_no_start(self):
+        fake = FakeAgent([{"type": "error", "message": "beschäftigt"}])
+        try:
+            with self.assertRaisesRegex(agentclient.AgentError, "abgelehnt: beschäftigt"):
+                agentclient.countdown("127.0.0.1", fake.key, 1, "Test", threading.Event(), port=fake.port)
+        finally:
+            fake.close()
+
+    def test_unreachable_is_no_start(self):
+        server = socket.create_server(("127.0.0.1", 0))
+        port = server.getsockname()[1]
+        server.close()
+        with self.assertRaisesRegex(agentclient.AgentError, "nicht erreichbar"):
+            agentclient.countdown("127.0.0.1", bytes(32), 1, "Test", threading.Event(), port=port)
+
+
 class KeyTest(unittest.TestCase):
     def test_key_created_once_with_0600(self):
         with tempfile.TemporaryDirectory() as d, mock.patch.dict("os.environ", {"XDG_CONFIG_HOME": d}):
@@ -343,6 +521,21 @@ class KeyTest(unittest.TestCase):
             self.assertEqual(k1, k2)
             self.assertEqual(len(k1), 32)
             self.assertEqual(agentclient.key_path().stat().st_mode & 0o777, 0o600)
+            self.assertEqual([p.name for p in agentclient.key_path().parent.iterdir()], ["agent.key"])  # kein .tmp
+
+    def test_broken_key_file_is_not_replaced(self):
+        """B-027: leere oder kaputte Schlüsseldatei → Fehler mit Pfad, Datei bleibt unverändert."""
+        for content in ("", "kaputt\n", "abcd\n"):
+            with self.subTest(content=content), tempfile.TemporaryDirectory() as d, \
+                    mock.patch.dict("os.environ", {"XDG_CONFIG_HOME": d}):
+                path = agentclient.key_path()
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content)
+                with self.assertRaises(agentclient.AgentError) as cm:
+                    agentclient.load_or_create_key()
+                self.assertIn(str(path), str(cm.exception))
+                self.assertIn("ungültig", str(cm.exception))
+                self.assertEqual(path.read_text(), content)
 
 
 if __name__ == "__main__":

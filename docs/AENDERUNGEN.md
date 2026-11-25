@@ -41,7 +41,6 @@ steht im jeweiligen Protokoll-Eintrag.
 
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
-| B-027 | 🟡 | offen | Okuli (Review) | **Image gilt als fertig, obwohl eine Datei offen ist oder fehlt.** `agentclient.py:310`: bei `end` keine Prüfung auf offene Datei, fehlendes `begin` oder Dateien aus `plan`; zudem kein `fsync` vor dem Umbenennen. Am Code bestätigt. Dazu R-client 7 (Ordnername-Kollision `.partial`), R-client 8 (Schlüsseldatei atomar schreiben). [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) | 25.11. |
 | B-028 | 🟡 | offen | Okuli (Review) | **Fehler werden als ok/Erfolg gemeldet (Sammelpunkt).** Automatisierung: `customize`-Ergebnisse `error`/`not_generalized`/leer nur geloggt, Lauf „erfolgreich“ (`automation.py:633`, am Code bestätigt; auch `jobs.py:462` restore_work), `r['part']` evtl. KeyError; `_execute` ohne `except` → Lauf bleibt „running“ (R-client 5); Esc-Countdown bei Verbindungsabbruch (R-client 9); Abbruch überdeckt Fehler (R-client 10). Windows-Skripte: `copy` unattend/SetupComplete und `xcopy` ohne errorlevel-Prüfung (R-win 1), fehlende Installer „übersprungen“ statt FEHLER (R-win 2), Hinweise ohne „Hinweis: “-Präfix (R-win 4), `reg unload` verschluckt (R-win 3). [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) | 25.11. |
 | B-023 | ⚪ | offen | Okuli | **Protokoll „Windows anpassen“ uneinheitlich, Startmenü meldet Hinweis trotz Paket.** VM-Test 25.11. (VM-Win11-clean, Direktinstallation, Vorlage Clean geändert, Pro Build 26200): Startmenü zeigt nur die Okula-Kacheln, `StartPins.ppkg` vom Tool installiert – trotzdem steht in der Zeile „Startmenü: Werbe-Kacheln entfernen“ und in „Wiederinstallation von Werbe-Apps sperren“ weiter der lange Pro-Hinweis (WhatsApp, LinkedIn, Adobe Express … von Hand lösen). Erwartet laut B-022: knappes „ok“, wenn das Paket greift. Zudem schreibt die erste Zeile (vor dem ersten Start, `winsetup.py`) „Startmenue“ und „ - “ statt Umlaut und „–“ und verweist auf eine „Zeile Startmenue beim ersten Start“, die es nicht gibt | 25.11. |
 | B-024 | ⚪ | offen | Okuli | **OneDrive entfernen meldet ok trotz Fehlercode.** Protokoll 25.11.: „OneDrive entfernen (OneDriveSetup /uninstall: -2147219813, Autostart entfernt: 2 Profile)“ mit Status ok. Rückgabewert prüfen (bekannter harmloser Code oder echter Fehler?) und entsprechend Hinweis statt ok melden | 25.11. |
@@ -289,6 +288,21 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 25.11.2026
+- **B-027 – Image galt als fertig, obwohl eine Datei offen war oder fehlte** (Von: Okuli (Review), 25.11.; Prompt
+  [B-027](prompts/B-027-image-vollstaendig.md); [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) R-client 1, 7, 8, 9).
+  Nur `agentclient.py`: Bei `end` ohne `begin`, mit offener Datei oder mit fehlender Datei aus dem Plan (ausser
+  `optional`, z. B. `.sfdisk`) gibt es „Image unvollständig: … fehlt – Image wurde verworfen“, der `.partial`-Ordner
+  wird aufgeräumt. Eine neue Datei, bevor die vorige fertig ist, gilt als Protokollfehler. Dateien und
+  `okula-image.json` werden vor dem Umbenennen geflusht und mit `fsync` geschrieben, danach Arbeits- und Elternordner
+  (Netzlaufwerke ohne Ordner-`fsync`: ohne). Ordnername: freier Name in einer Schleife (`…-2`, `…-3`); ein
+  `.partial`-Rest gleichen Namens wird übersprungen, nicht gelöscht. Ist der Agent nicht erreichbar, bleibt kein
+  leerer `.partial`-Ordner mehr liegen. Schlüsseldatei: neu über `.tmp` (0600) und atomar an den Platz (harter Link,
+  sonst `os.replace`); vorhanden, aber leer/ungültig → Fehler mit Pfad, Datei bleibt unverändert (kein stiller neuer
+  Schlüssel mehr). Countdown: Verbindungsabbruch, keine Rückmeldung 10 s nach Ablauf, unbekanntes Ergebnis, andere
+  Fehlermeldung oder Gerät nicht erreichbar → `AgentError` (Automatisierung: „abgebrochen“), nie „start“; selbst
+  gezählt wird nur noch bei „Unbekannter Befehl“ (alter Agent). Am Agent nichts geändert, kein neuer Agent-Stick
+  nötig. Hilfe (F1) „Automatisierung“ ergänzt. Tests `ImageCompleteTest`, `CountdownTest`, `KeyTest` in
+  `tests/test_imaging.py`. Prüfung [TESTS.md](TESTS.md) „B-027“.
 - **B-025 – Automatisierung löscht BitLocker-Disk ohne Backup** (Von: Okuli (Review), 25.11.; Prompt
   [B-025](prompts/B-025-automatisierung-bitlocker-backup.md); [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) R-client 2;
   realer Fall HP ZBook). Backup „Benutzerdaten“: hat eine Partition der Zieldisk im Profil-Ergebnis des Agents ein
