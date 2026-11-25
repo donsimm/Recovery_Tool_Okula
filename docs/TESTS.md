@@ -1,8 +1,8 @@
 # Prüfliste – was geprüft ist und was am realen System noch offen ist
 
-Stand: 29.10.2026. Abhaken mit `[x]`, Probleme mit Datum und Fehlermeldung darunter notieren.
+Stand: 25.11.2026 (Übersicht der offenen Prüfungen unten). Abhaken mit `[x]`, Probleme mit Datum und Fehlermeldung darunter notieren.
 
-Legende **Geprüft:** **A** = automatischer Test (Loop-Disks/QEMU, `python3 -m unittest`, 240 Tests) ·
+Legende **Geprüft:** **A** = automatischer Test (Loop-Disks/QEMU, `python3 -m unittest`, 864 Tests am 25.11.) ·
 **V** = Oberfläche in der Vorschau geprüft (virtuelle Anzeige, Screenshot) · **R** = von dir am realen System
 bestätigt.
 
@@ -68,6 +68,31 @@ bestätigt.
 | Ä-043 Installer-Erkennung: Typ, Parameter, Name/Version/Hersteller der 37 Installer in `Verteilen\Software` (nur gelesen) | A | 18.11.2026, Umsetzungs-Agent; Oberfläche (GTK) ohne Bildschirm nicht geprüft |
 
 ## Offen – am realen System testen
+
+### Übersicht (Stand 25.11.2026)
+
+Die Häkchen in den Abschnitten unten wurden nicht laufend nachgeführt – viele Punkte sind durch spätere Durchgänge
+überholt. Massgeblich ist diese Übersicht; beim nächsten Testtag Abschnitt für Abschnitt mit Dominik abhaken oder
+streichen.
+
+**Am 24./25.11. an VM-Win11-clean bestätigt (R):** Ä-046 (neue Maschine in einem Durchgang: Direktinstallation mit
+Software + Windows anpassen), B-020/B-021 (Startmenü, Widgets, Sperrbildschirm offline, Zeitstempel Ortszeit), B-022
+(Startmenü über das Bereitstellungspaket des Tools, auch ohne ADK auf dem Gerät), Ä-042/I-039 Vorlage „Clean“ (Protokoll
+ohne Fehler). Noch nicht geprüft daraus: Zurückspielen mit *Danach anpassen*, Automatisierung mit Vorlage, Windows Home.
+
+**Als Nächstes prüfen (Priorität):**
+
+| Was | Wo | Abschnitt |
+|---|---|---|
+| B-025 Automatisierung bricht bei BitLocker ab | Gerät mit BitLocker (z. B. ZBook) | „B-025“ |
+| B-026 Image während des Zurückspielens gesperrt | Demo-Gerät | „B-026“ |
+| Ä-045 Neustart-Knöpfe | VM und echtes Gerät mit Agent-Stick | „Ä-045“ |
+| Automatisierung ganzer Ablauf | echtes Gerät | 5 |
+| B-013 Setup-Partition bei OEM-Schlüssel | Gerät mit Schlüssel im BIOS | 18 |
+| B-004 EliteBook UEFI ohne CSM | HP EliteBook 850 G1 | – ([AENDERUNGEN.md](AENDERUNGEN.md)) |
+| Master-Image mit Audit-Modus und Admin-Einstellungen | VM | 3, 17, 22 |
+| Software-Bibliothek und Software installieren | VM | 23, 25, 28 |
+| Netzwerk-Reiter, Hardware-Test, BIOS an echter HP-Hardware | echtes Gerät | 2, 15 |
 
 ### 1. Fixes von heute
 - [ ] **B-009** (Werkzeugsuche in `imaging.py`): Disk-Image erstellen und zurückspielen funktioniert wie bisher –
