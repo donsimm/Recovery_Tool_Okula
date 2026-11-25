@@ -38,6 +38,10 @@ Dominik hat installiert und den Agent-Stick neu gemacht (Stand Ä-046; B-022 bra
    kein Sperrbildschirm, Startmenü nur Okula-Kacheln (Paket vom Tool), kein Wetter, Protokoll einheitlich
    (Datum, Umlaute, Startmenü „ok“ statt Hinweis, wenn das Paket greift), Agent-Zeitstempel in Ortszeit.
    Optional: Zurückspielen mit *Danach anpassen*.
+   **Durchgang 1 (25.11., 13:09–13:14, snap-8):** Startmenü nur Okula-Kacheln (Paket vom Tool ✔), kein Wetter,
+   kein Sperrbildschirm (Option aber nicht gewählt – nicht in Clean → Ä-047), Protokoll 42 ok/0 Fehler, Zeitstempel
+   Ortszeit. Befunde: B-023 (Startmenü-Hinweis trotz Paket, „Startmenue“), B-024 (OneDrive-Rückgabewert).
+   **Durchgang 2** mit „Sperrbildschirm aus“ läuft.
 2. **Danach Aufräumen** (Dominik 25.11., „sinnvollen Stand finden“): Version taggen; Code-Review in Abschnitten
    (Lese-Agenten sonnet, z. B. `ui.py` > 3400 Zeilen); Doku entrümpeln (Zeile „Als Nächstes“ in AENDERUNGEN.md ist
    riesig, offene Tests in TESTS.md sichten); Okulis Regeln und Gedächtnis gemeinsam durchgehen; Ideen einsortieren
