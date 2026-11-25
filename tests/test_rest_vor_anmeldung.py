@@ -128,7 +128,9 @@ class ToolLogTest(unittest.TestCase):
         self.assertIn("Werbe-Platzhalter im Startmenü (z. B. WhatsApp, LinkedIn, Adobe Express)", pro[2])
         ent = jobs.offline_lines(req, {"offline": {**base, "edition": "Enterprise"}})
         self.assertIn("keine Werbe-Apps und Werbe-Platzhalter ab der ersten Anmeldung", ent[2])
-        self.assertNotIn("von Hand", "\n".join(ent))
+        # kein Werbe-Hinweis bei Enterprise („von Hand“ steht auch im B-022-Hinweis zum Startmenü – darum gezielt)
+        self.assertFalse(any("Werbe-Platzhalter" in line and "von Hand" in line for line in ent))
+        self.assertFalse(any(jobs.ADS_HINT in line for line in ent))
         # nur Startmenü gewählt: Hinweis bei Pro, nicht bei Education
         only = {"start_pins": PINS}
         lines = jobs.offline_lines(only, {"offline": {**base, "consumer_off": False, "edition": "Professional"}})
