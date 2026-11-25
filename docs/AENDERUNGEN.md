@@ -17,7 +17,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 |---|---|---|---|
 | 🐞 Bugs | 6 | 0 | 0 |
 | 🔧 Änderungen | 9 | 0 | 0 |
-| 💡 Ideen | 22 | 0 | 0 |
+| 💡 Ideen | 23 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 **Stand 25.11.2026 – Version 0.2.0 (Tag `v0.2.0`):** letzter VM-Durchgang grün (VM-Win11-clean: Direktinstallation
@@ -30,7 +30,7 @@ Frühere Stände: Protokoll unten und `git log`.
 2. Kleines aus dem VM-Test: **Ä-047** (Sperrbildschirm in Clean), **B-023** (Protokoll Startmenü/Umlaute), **B-024** (OneDrive).
 3. **Ä-048** Robustheit (Sammelpunkt Review), **Ä-049** `ui.py` aufteilen; zweite Review-Runde (`vm.py`, Dialoge, übrige Module).
 4. Am realen Gerät: **B-013** (OEM-Schlüssel), **B-004** (EliteBook UEFI), offene Prüfungen [TESTS.md](TESTS.md) „Übersicht“.
-5. Danach Ideen nach Priorität (u. a. I-012 BitLocker entsperren, I-042, Ä-006/Ä-010).
+5. Danach Ideen nach Priorität (u. a. 🔴 I-012 BitLocker entsperren – hochgestuft 25.11., macht aus dem Abbruch von B-025 ein echtes Backup; I-042, Ä-006/Ä-010).
 
 **Am Server nach jedem Update:** `git pull && sudo ./install.sh`, Tool neu starten; ob ein neuer Agent-Stick nötig ist,
 steht im jeweiligen Protokoll-Eintrag.
@@ -71,7 +71,7 @@ steht im jeweiligen Protokoll-Eintrag.
 | I-008 | 🟡 | offen | Claude | **Benachrichtigungen:** E-Mail (SMTP) oder Push (ntfy/Teams) bei Fehlern, beim Ende einer Automatisierung, bei knappem NAS-Speicher, bei SMART-Warnungen und bei fehlgeschlagener Image-Prüfung |
 | I-009 | 🟡 | offen | Claude | **Disk sicher löschen (Ausmusterung, Leasing-Rückgabe):** NVMe Sanitize/Format, ATA Secure Erase oder `blkdiscard`, sonst Überschreiben. Danach ein Löschprotokoll als PDF mit Seriennummer, Methode, Datum und Prüfung (Nachweis nach revDSG) |
 | I-011 | 🟡 | offen | Claude/Dominik | **Multicast – ein Image gleichzeitig auf viele Geräte (von Hand, Variante B):** eigener Menüpunkt **Extras → Multicast …** mit eigenem Fenster, ähnlich wie Netzwerkstart (PXE): Image wählen (Master zuerst), Geräteliste mit Haken (Status verbunden/nicht verbunden, Zieldisk je Gerät), Knopf zum Einschalten und Agent starten, „Starten“ wartet, bis alle gewählten Geräte bereit sind, dann ein Datenstrom für alle (udpcast `udp-sender`/`udp-receiver`). Fortschritt je Gerät; fällt eines aus, laufen die anderen weiter. Danach je Gerät Anpassen (Name, Windows-Schlüssel) bei Master-Images. Nicht in die Automatisierung eingebaut (Entscheid Dominik 31.10.). Voraussetzungen: gleiches Netz/VLAN, Kabel, Firewall-Ports für udpcast; neuer Agent-Stick nötig. Heute läuft jeder Restore einzeln |
-| I-012 | 🟡 | offen | Claude | **BitLocker entsperren:** Den Wiederherstellungsschlüssel pro Gerät hinterlegen (nur root-lesbar) und im Agent mit `dislocker` öffnen. Dann sichert partclone nur die belegten Blöcke statt einer `dd`-Rohkopie (Images viel kleiner), und auch ein Datei-Backup wird möglich |
+| I-012 | 🔴 | offen | Claude | **BitLocker entsperren:** Den Wiederherstellungsschlüssel pro Gerät hinterlegen (nur root-lesbar) und im Agent mit `dislocker` öffnen. Dann sichert partclone nur die belegten Blöcke statt einer `dd`-Rohkopie (Images viel kleiner), und auch ein Datei-Backup wird möglich |
 | I-014 | ⚪ | offen | Claude | **Treiber für Master-Images:** Treiberordner pro Modell auf dem NAS; nach dem Restore nach `Windows\Drivers\Okula` kopieren und in `unattend.xml` per `DriverPaths` (offlineServicing) einbinden. Damit passt ein Master auf verschiedene Hardware |
 | I-015 | ⚪ | offen | Claude | **Firmware/BIOS über den Agent:** `fwupd`/LVFS, wo der Hersteller es unterstützt (Dell, Lenovo, teilweise HP). Die BIOS-Version steht schon im Inventar; Hinweis anzeigen, wenn sie veraltet ist |
 | I-016 | 🔴 | offen | Claude | **Schutz vor Ransomware und Fehllöschung:** Das Tool-Konto hat heute volles Schreib- und Löschrecht auf dem NAS; wer den Server übernimmt, kann alle Backups löschen. Lösung: unveränderliche NAS-Snapshots (Synology Snapshot Replication mit Immutable), auf die das Tool-Konto keinen Zugriff hat, und ein Papierkorb im Tool (heute: „keinen Papierkorb – gelöschte Daten sind weg“). Das NCSC/BACS empfiehlt Offline- oder WORM-Medien und mindestens zwei Generationen |
@@ -87,6 +87,7 @@ steht im jeweiligen Protokoll-Eintrag.
 | I-036 | ⚪ | offen | Okuli | **Hardware-Fehler (MCE/WHEA) anzeigen:** Der Agent liest Kernel-Meldungen `mce: [Hardware Error]` (bzw. `rasdaemon`) und meldet sie im Tool (Gerätefenster, Verlauf, Hinweis in der Liste). Anlass B-010 (CPU 3 meldet laufend Fehler). Passt zu I-033 Hardware-Test |
 | I-040 | ⚪ | offen | Okuli/Dominik | **Windows-Aktivierung im Blick:** Der Agent liest den OEM-Key aus der Firmware (ACPI-Tabelle MSDM, unter Windows `(Get-CimInstance SoftwareLicensingService).OA3xOriginalProductKey`) und, wenn Windows läuft, den Aktivierungsstatus; das Tool zeigt beides im Gerätefenster bzw. Inventar. Beim Aufsetzen wird der passende allgemeine Setup-Key (RTM-Key) der Edition gesetzt, damit sich ein Gerät mit digitaler Lizenz oder Firmware-Key online von selbst aktiviert. Nur lizenzkonforme Wege (kein KMS-Emulator o. ä.); bei VMs gilt weiter „OEM-Key nie übernehmen“ (I-001). Anlass: Frage Dominik 19.11. zu GVLK/RTM-Keys |
 | I-042 | 🟡 | offen | Dominik | **Microsoft 365 Apps einzeln installieren:** Neuer Bibliothekstyp „Office (Click-to-Run)“ mit dem Office Deployment Tool. Laden: `setup.exe /download` einmal komplett auf das NAS (Deutsch, 64 Bit, Produkt `O365BusinessRetail` bzw. `O365ProPlusRetail` – mit Learn klären). Auswahl in *Software installieren …* (und *OS installieren* / *Danach anpassen*): Apps einzeln anhaken (Word, Excel, PowerPoint, Outlook, OneNote, Access, Publisher, OneDrive = `Groove`, Teams); das Tool erzeugt je Auftrag eine `config.xml` mit `ExcludeApp` für alles Nicht-Gewählte, Installation still über das Startskript ohne Internet (`SourcePath` lokal). Nachinstallieren einzelner Apps auf einem Gerät mit Office: gleiche Sprachen → neue `ExcludeApp`-Liste ersetzt die alte (Microsoft Learn, ODT-Konfigurationsoptionen). Aktivierung: Anmeldung des Kunden mit dem Microsoft-Konto, kein Schlüssel im Tool. Offen: Updatekanal, neues vs. klassisches Outlook, Publisher-Ende. Von Dominik 24.11. |
+| I-043 | ⚪ | offen | Dominik | **Ordner einfärben:** Ordner in der Geräteliste (Kunden/Gruppen) und im Archiv (Images/ISOs) bekommen per Kontextmenü „Farbe …“ eine von etwa 8 festen Farben (oder keine); Anzeige als Farbpunkt bzw. -balken in der Liste, lesbar im hellen und dunklen Design. Farbe wird mit dem Ordner gespeichert und bleibt beim Verschieben/Umbenennen erhalten. Hilfe-Kapitel mitführen. Cockpit-Idee ID-0003 (11.11.), Umfang „beide“ Dominik 25.11. |
 
 Umgesetzte Ideen: Windows-Master-Image mit Sysprep ([MASTER-IMAGE.md](MASTER-IMAGE.md)), Ordner an Geräte senden
 ([ORDNER-SENDEN.md](ORDNER-SENDEN.md)), Automatisierung ([AUTOMATISIERUNG.md](AUTOMATISIERUNG.md)),
