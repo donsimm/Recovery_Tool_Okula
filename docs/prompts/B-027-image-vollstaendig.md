@@ -1,6 +1,6 @@
 # B-027 – Image gilt als fertig, obwohl eine Datei offen ist oder fehlt
 
-Status: freigegeben · erstellt 25.11.2026 von der Projektleitung (Code-Review) · Freigabe: Dominik 25.11.
+Status: abgenommen (Okuli 25.11., Commit 8a0b686) · erstellt 25.11.2026 von der Projektleitung (Code-Review) · Freigabe: Dominik 25.11.
 
 ## Rolle und Einstieg
 

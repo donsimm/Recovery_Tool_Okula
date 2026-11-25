@@ -1,6 +1,6 @@
 # B-028 – Fehler werden als ok/Erfolg gemeldet (Sammelpunkt)
 
-Status: freigegeben · erstellt 25.11.2026 von der Projektleitung (Code-Review) · Freigabe: Dominik 25.11.
+Status: abgenommen (Okuli 25.11., Commits 5517106, c824914) · erstellt 25.11.2026 von der Projektleitung (Code-Review) · Freigabe: Dominik 25.11.
 
 ## Rolle und Einstieg
 

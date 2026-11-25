@@ -15,18 +15,18 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
-| 🐞 Bugs | 6 | 0 | 0 |
+| 🐞 Bugs | 4 | 0 | 0 |
 | 🔧 Änderungen | 9 | 0 | 0 |
 | 💡 Ideen | 24 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 **Stand 25.11.2026 – Version 0.2.0 (Tag `v0.2.0`):** letzter VM-Durchgang grün (VM-Win11-clean: Direktinstallation
 mit Windows anpassen „Clean“, Startmenü über das Bereitstellungspaket des Tools – auch ohne ADK, kein Sperrbildschirm,
-Protokoll ohne Fehler). Code-Review [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md); B-025 und B-026 daraus erledigt.
+Protokoll ohne Fehler). Code-Review [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md); B-025 bis B-028 daraus erledigt.
 Frühere Stände: Protokoll unten und `git log`.
 
 **Als Nächstes** (Reihenfolge Dominik 25.11.):
-1. Aus dem Review: **B-027** (Image unvollständig als fertig), **B-028** (Fehler als ok gemeldet) – zwei Agenten parallel.
+1. ~~B-027, B-028~~ erledigt 25.11. (am realen System ungeprüft, [TESTS.md](TESTS.md) „B-027“, „B-028“). Klein dazu: Startdialog bei kaputter Schlüsseldatei (`ui.py:135`) und Verlauf „abgebrochen“ von Hand gestarteter Aufträge (`ui.py:4202`) → bei Ä-048.
 2. **I-012** BitLocker entsperren (🔴, macht aus dem Abbruch von B-025 ein echtes Backup).
 3. **I-042** Microsoft 365 Apps einzeln installieren (Office).
 4. **I-043** Ordner einfärben (Geräteliste und Archiv).
