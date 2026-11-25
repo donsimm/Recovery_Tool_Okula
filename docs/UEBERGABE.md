@@ -1,64 +1,60 @@
-# Übergabe – 17.11.2026, ca. 14:15
+# Übergabe – 25.11.2026, ca. 09:30
 
 Sitzung „Okuli“ (Projektleitung). Nächste Sitzung: `CLAUDE.md` → `docs/PROJEKTLEITUNG.md` → diese Datei →
 `docs/EINGANG.md` → `~/okuli/UEBERGABE.md` → Dominik den Stand nennen.
 
-## Stand
+**Limit:** Dominik 25.11.: vorerst **keine Agenten starten** (5-Stunden-Limit). Agenten nur nach der Modell-Tabelle in
+`~/okuli/agenten/REGELN.md` (sonnet/opus medium, high nur für Architektur/heikle Fehler), grosse Bauten allein.
 
-Abgenommen, zusammengeführt und gepusht (zuletzt 62c2a2d5 + Übergabe-Commit):
-- **I-039** Windows anpassen … (Vorlagen Player/Laptop, automatische Anmeldung; Startskript der lokalen
-  Gruppenrichtlinie) – Test 19 offen.
-- **B-014** (mit Ä-039) Windows-Partition vor dem Formatieren an Anfang/Ende nullen, Prüfung nach dem Schreiben,
-  `install.cmd` sucht auch „OKULAWIN“, Diagnose im Fehlerfall – Test 20 offen.
-- **B-015** `install.cmd` setzt Windows Boot Manager an erste Stelle (AMI-Firmware des CompactPlayers legte „UEFI OS“
-  für die Setup-Partition davor) – Test 20 offen.
-- **I-037** Grafikkarte(n) im Inventar und in der Übersicht – Test 21: CompactPlayer ✔ (Dominik 17.11.), Rest offen.
-- **Ä-040** CopyProfile + Taskleiste (`LayoutModification.xml`) beim Zurückspielen eines Masters, Häkchen
-  „Einstellungen des Administrators übernehmen (Master)“ – Test 22 offen.
-- Dominik hat am Server installiert und den neuen Agent-Stick (Stand bis I-037) erstellt; **Ä-040 noch nicht
-  installiert** (nach I-020 alles zusammen: `git pull && sudo ./install.sh`, Tool neu starten, neuer Agent-Stick).
+## Stand (alles gepusht, Branch `claude/blissful-goldberg-mo3xda`, zuletzt a07af6d0)
 
-**Läuft:** Agent **I-020** (Software aus `Verteilen\Software` automatisch installieren; Prompt
-`docs/prompts/I-020-software.md`, opus high, gestartet ca. 14:05, Branch `agent/I-020`, Basis 62c2a2d5).
-Ergebnis: `~/.claude/agenten/auftraege.md` bzw. `holen.sh . I-020`.
+Abgenommen 24./25.11. (Tests 850 OK, skipped 69):
+- **B-018** Startmenü bestehender Konten, Registry-Reste – an der VM geprüft.
+- **B-019** SyncForegroundPolicy – wirkungslos (Windows wartet nicht auf Startskripte), abgelöst durch B-020.
+- **B-020** Startmenü/Widgets offline beim Senden (hivexsh), Mutex für gleichzeitige Startskripte – an der VM ab
+  „frisch“ geprüft (Wetter weg, Protokolle ohne FEHLER, Nachlauf nach 30 min).
+- **B-021** Sperrbildschirm offline (`NoLockScreen`), `DisableWindowsConsumerFeatures` offline, Agent-Uhr nach dem
+  Server (`now` in jeder Anfrage, `agent.sync_clock`), ehrliche Hinweise zu Werbe-Platzhaltern. **An der VM
+  ungeprüft:** Sperrbildschirm (Option beim Test nicht angehakt), Agent-Uhr.
+- **Ä-045** Zwei Neustart-Knöpfe (BootNext im Agent) – an der VM geprüft (Dominik: „Knöpfe haben funktioniert“).
+  Offen: Abschluss „Neustart“ der Automatisierung noch alt (bewusst wegen Ä-046), echtes Gerät mit Stick.
+- **Ä-046** Windows anpassen beim Aufsetzen (OS installieren, Danach anpassen, Automatisierung inkl. Vorlagen) – an der
+  VM (Direktinstallation, Win11 Pro 25H2 26200.8037) geprüft: ein Durchgang, Software → Anpassen vor der ersten
+  Anmeldung, kein Wetter, Nachlauf 09:05 ok. Zurückspielen/Automatisierung ungeprüft.
+- **B-022** Startmenü-Liste auf neu installiertem Windows: Gruppenrichtlinie „Configure Start Pins“ wirkt dort nicht
+  (KB5062660 „gradual rollout“). Lösung: **Bereitstellungspaket** `okula_recovery/assets/startpins/StartPins.ppkg`
+  (+ `StartPins.ppkg.json` = `start_pins_json()`), von Okuli mit ICD (ADK in VM-Win11-clean, `C:\okuli`) erzeugt.
+  Von Hand an der VM geprüft: `Install-ProvisioningPackage … -QuietInstall` → PolicyManager hat `ConfigureStartPins`,
+  nach Ab-/Anmelden (start2.bin umbenannt) **genau die 9 Okula-Kacheln, ohne WhatsApp/Adobe Express/LinkedIn**.
+  **Ungeprüft:** das Tool gibt das Paket selbst mit (Direktinstallation/Agent/Startskript). Ändert sich die
+  Kachelliste, Paket neu erzeugen (Anleitung TECHNIK.md; ICD aus dem ADK-Ordner aufrufen, `/StoreFile:` relativ).
 
-**Master CompactPlayer (Win10 Pro 22H2):** am CompactPlayer 1 gebaut (Audit-Modus, Updates, `master-einrichten.ps1`:
-Store-Apps/OneDrive weg, Windows Update aus, NVIDIA 474.82 Standard, VLC, Adobe Reader, Software + Test Files auf
-Public Desktop) – Dominik: „hat funktioniert“; spielt ihn gerade auf eine VM. Skript und Installer:
-NAS `Verteilen\Content\Installations Tools\`. Anordnung von Symbolen/Taskleiste ging verloren → Ä-040.
+Dominik hat installiert und den Agent-Stick neu gemacht (Stand Ä-046; B-022 braucht keinen neuen Stick).
 
-## Offen und als Nächstes
+## Als Nächstes
 
-1. **I-020 abnehmen**: Agent-Branch basiert auf 62c2a2d5, main hat danach den Übergabe-Commit (nur
-   `docs/UEBERGABE.md`) → vor `merge --ff-only` den Branch auf main rebasen (`git rebase claude/blissful-goldberg-mo3xda
-   agent/I-020`), Tests, Diff (v. a. 10-Minuten-Grenze der Startskripte, Erkennung der Installer), pushen, aufräumen.
-2. **B-016** (GRUB „font.pf2 not found“ beim Stick-Start, harmlos): in `AENDERUNGEN.md` eintragen (🐞, ⚪, Dominik
-   17.11.), Prompt `docs/prompts/B-016-grub-font.md` (freigegeben, noch **nicht committet**) committen, Agent starten
-   (Kurzname B-016, opus medium).
-3. Danach Dominik: `git pull && sudo ./install.sh`, Tool neu starten, **neuer Agent-Stick** (Ä-040, I-020, B-016).
-4. Tests am realen System offen: 16, 17, 18, 19, 20, 21 (Laptop/VM/Video-Server), 22, dazu ältere (1, 2, 3, 5, 7, 9–15).
-5. Vorschlag danach: I-005/I-006 (Aufbewahrung, zweite Kopie); B-013 (OEM-Schlüssel) prüfen, sobald ein Gerät mit
-   BIOS-Schlüssel da ist.
+1. **Letzter VM-Durchgang (ohne Agenten):** `git pull && sudo ./install.sh`, Tool neu starten. VM-Win11-clean:
+   Direktinstallation mit virtio + Windows anpassen **Clean mit allen Häkchen** (inkl. Sperrbildschirm). Prüfen:
+   kein Sperrbildschirm, Startmenü nur Okula-Kacheln (Paket vom Tool), kein Wetter, Protokoll einheitlich
+   (Datum, Umlaute, Startmenü „ok“ statt Hinweis, wenn das Paket greift), Agent-Zeitstempel in Ortszeit.
+   Optional: Zurückspielen mit *Danach anpassen*.
+2. **Danach Aufräumen** (Dominik 25.11., „sinnvollen Stand finden“): Version taggen; Code-Review in Abschnitten
+   (Lese-Agenten sonnet, z. B. `ui.py` > 3400 Zeilen); Doku entrümpeln (Zeile „Als Nächstes“ in AENDERUNGEN.md ist
+   riesig, offene Tests in TESTS.md sichten); Okulis Regeln und Gedächtnis gemeinsam durchgehen; Ideen einsortieren
+   (22 im Tool + ID-0003, S-0001, S-0002 im Cockpit/Sekretär).
+3. Nach dem Aufräumen: Ä-045-Nacharbeit (Automatisierung), I-042 Microsoft 365 einzeln, B-013/B-004 an echten Geräten.
 
-## Entscheide dieser Sitzung (in AENDERUNGEN.md „📌 Entscheidungen“: ja)
-
-- I-039 Windows anpassen: eigene Funktion, Startskript beim nächsten Start, Vorlagen fest, autologon dabei; riskante
-  TuningPack-Punkte bewusst nicht.
-- Ä-040: Master-Einstellungen ohne Skripte, im Tool (viele Master geplant).
-- I-020: Software-Ordner statt winget (feste Versionen, offline, Spezialsoftware; winget unter Win10 ohne Store kaum).
-- B-015: Setup-Einträge der Firmware nicht automatisch entfernen (Agent-Entscheid, Begründung in TECHNIK.md).
+## Offen / Beobachtungen
+- **HP ZBook (Intel Core Ultra):** Agent-Stick „Selected boot image did not authenticate“ (Secure Boot). Empfehlung
+  an Dominik: BIOS F10 → Security → Secure Boot Configuration → „Enable MS UEFI CA key“ = Yes. Ergebnis offen; falls
+  nicht: veralteter shim (Sperrliste) → B-Eintrag für den Stick-Bau.
+- Erster B-020-Lauf am 24.11. (snap-5) zeigte das alte Startmenü – mit B-022 erklärt (Gruppenrichtlinie nicht
+  freigeschaltet).
+- VM-Win11-clean läuft (Direktinstallation 25.11., Konto „Okula“, ADK installiert, Testdateien `start2.bin.okuli-*`).
 
 ## Learnings
-
-- **Dominik hat wenig Zeit für Fehlersuche am Gerät** („eigentlich hab ich gar keine Zeit für so zeugs“): kürzester
-  Weg zuerst (fertige Befehle), Diagnose nur wenn nötig; Fehlersuche lieber selbst an der VM.
-- WinPE-Umgehungen B-014/B-015 (falls alter Stick): `format C: /fs:ntfs /q /y`, `echo Okula > C:\okula-<id>.target`
-  (**.target nicht vergessen**), `D:\okula\install.cmd D`; Startreihenfolge: `bcdedit /set {fwbootmgr} displayorder
-  {bootmgr} /addfirst`. Editor mit install.log nie schliessen (fährt herunter); cmd über Datei → Öffnen → cmd.exe.
-- CompactPlayer: NVIDIA GT 740 (Kepler) → Standard-Treiber 474.82 (DCH braucht Store für die Systemsteuerung); Disk
-  vorher MBR/Legacy, jetzt UEFI/GPT.
-- Agenten-Kurznamen ohne Umlaut (`AE-040` für Ä-040), sonst lehnt `agent.sh` ab.
-- Agent kann am 5-h-Limit abbrechen („Fehler: True“ im Protokoll) → mit Session-ID fortsetzen (`agent.sh … <session-id>`).
-- Während ein Agent läuft, nichts committen (sonst kein `--ff-only`); Prompts vorher nur als Datei anlegen.
-- Okuli-Starter: Dash-Symbol „Okuli“ (`~/.local/share/applications/okuli.desktop` → `~/.local/bin/okuli-start`,
-  startet in `~/okuli` mit „sitzung lesen“); GNOME ohne Desktop-Icons-Erweiterung.
+- Windows wartet bei der Anmeldung nicht auf Startskripte – was vor der ersten Anmeldung wirken muss, offline setzen.
+- „Configure Start Pins“ per Gruppenrichtlinie ist stufenweise freigeschaltet; das Bereitstellungspaket (Policy CSP)
+  wirkt bei Pro ohne MDM. WMI-Bridge `MDM_Policy_Config01_Start02` hat dort kein `ConfigureStartPins`.
+- Vor dem Start eines VM-Tests prüfen, ob die VM wirklich auf „frisch“ steht (neue Disk `snap-N`).
+- Software still als SYSTEM aus dem Internet installieren blockiert die Claude-Code-Prüfung → Dominik installiert.
