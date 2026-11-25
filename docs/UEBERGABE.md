@@ -1,66 +1,53 @@
-# Übergabe – 25.11.2026, ca. 09:30
+# Übergabe – 25.11.2026, ca. 16:30
 
 Sitzung „Okuli“ (Projektleitung). Nächste Sitzung: `CLAUDE.md` → `docs/PROJEKTLEITUNG.md` → diese Datei →
 `docs/EINGANG.md` → `~/okuli/UEBERGABE.md` → Dominik den Stand nennen.
 
-**Limit:** Dominik 25.11.: vorerst **keine Agenten starten** (5-Stunden-Limit). Agenten nur nach der Modell-Tabelle in
-`~/okuli/agenten/REGELN.md` (sonnet/opus medium, high nur für Architektur/heikle Fehler), grosse Bauten allein.
+**Agenten:** wieder erlaubt (Pause am Vormittag galt nur dem 5h-Limit). Strikt nach Modell-Tabelle in
+`~/okuli/agenten/REGELN.md`: Reviews sonnet medium, Umsetzung opus medium, high nur für Architektur/heikle Fehler.
+**Neu 25.11.:** Agenten können `python3 -m unittest discover -s tests -t .` jetzt ausführen (Zusatz-Tool
+`"Bash(python3 -m unittest:*)"` und im Auftrag ausdrücklich: ohne cd, ohne Pipe, ohne `2>&1`).
 
-## Stand (alles gepusht, Branch `claude/blissful-goldberg-mo3xda`, zuletzt a07af6d0)
+## Stand (alles gepusht, Branch `claude/blissful-goldberg-mo3xda`, zuletzt bd76066, Tests 864 OK, skipped 69)
 
-Abgenommen 24./25.11. (Tests 850 OK, skipped 69):
-- **B-018** Startmenü bestehender Konten, Registry-Reste – an der VM geprüft.
-- **B-019** SyncForegroundPolicy – wirkungslos (Windows wartet nicht auf Startskripte), abgelöst durch B-020.
-- **B-020** Startmenü/Widgets offline beim Senden (hivexsh), Mutex für gleichzeitige Startskripte – an der VM ab
-  „frisch“ geprüft (Wetter weg, Protokolle ohne FEHLER, Nachlauf nach 30 min).
-- **B-021** Sperrbildschirm offline (`NoLockScreen`), `DisableWindowsConsumerFeatures` offline, Agent-Uhr nach dem
-  Server (`now` in jeder Anfrage, `agent.sync_clock`), ehrliche Hinweise zu Werbe-Platzhaltern. **An der VM
-  ungeprüft:** Sperrbildschirm (Option beim Test nicht angehakt), Agent-Uhr.
-- **Ä-045** Zwei Neustart-Knöpfe (BootNext im Agent) – an der VM geprüft (Dominik: „Knöpfe haben funktioniert“).
-  Offen: Abschluss „Neustart“ der Automatisierung noch alt (bewusst wegen Ä-046), echtes Gerät mit Stick.
-- **Ä-046** Windows anpassen beim Aufsetzen (OS installieren, Danach anpassen, Automatisierung inkl. Vorlagen) – an der
-  VM (Direktinstallation, Win11 Pro 25H2 26200.8037) geprüft: ein Durchgang, Software → Anpassen vor der ersten
-  Anmeldung, kein Wetter, Nachlauf 09:05 ok. Zurückspielen/Automatisierung ungeprüft.
-- **B-022** Startmenü-Liste auf neu installiertem Windows: Gruppenrichtlinie „Configure Start Pins“ wirkt dort nicht
-  (KB5062660 „gradual rollout“). Lösung: **Bereitstellungspaket** `okula_recovery/assets/startpins/StartPins.ppkg`
-  (+ `StartPins.ppkg.json` = `start_pins_json()`), von Okuli mit ICD (ADK in VM-Win11-clean, `C:\okuli`) erzeugt.
-  Von Hand an der VM geprüft: `Install-ProvisioningPackage … -QuietInstall` → PolicyManager hat `ConfigureStartPins`,
-  nach Ab-/Anmelden (start2.bin umbenannt) **genau die 9 Okula-Kacheln, ohne WhatsApp/Adobe Express/LinkedIn**.
-  **Ungeprüft:** das Tool gibt das Paket selbst mit (Direktinstallation/Agent/Startskript). Ändert sich die
-  Kachelliste, Paket neu erzeugen (Anleitung TECHNIK.md; ICD aus dem ADK-Ordner aufrufen, `/StoreFile:` relativ).
-
-Dominik hat installiert und den Agent-Stick neu gemacht (Stand Ä-046; B-022 braucht keinen neuen Stick).
+- **Tag `v0.2.0`** (4ec57fc) nach dem letzten VM-Durchgang: VM-Win11-clean, Direktinstallation + Windows anpassen
+  „Clean“ – Startmenü nur Okula-Kacheln über das Paket vom Tool (frisches Windows **ohne ADK**), kein Wetter, kein
+  Sperrbildschirm (Durchgang 2 mit Option), Protokoll 68 ok/0 Fehler, Zeitstempel Ortszeit. Windows Home ungeprüft.
+- Befunde daraus erfasst: **B-023** (Startmenü-Hinweis trotz Paket, „Startmenue“), **B-024** (OneDrive-Rückgabewert),
+  **Ä-047** (Sperrbildschirm in Vorlage Clean).
+- **Code-Review** (4 Lese-Agenten sonnet): `docs/REVIEW-2026-11-25.md`, 34 Befunde. Erfasst als B-025–B-028, Ä-048
+  (Robustheit, Sammelpunkt), Ä-049 (`ui.py` aufteilen, Mixin-Vorschlag im Bericht).
+- **B-025** (Automatisierung löscht BitLocker-Disk ohne Backup → bricht jetzt ab) und **B-026** (Image/ISO/Ordner
+  während eines Auftrags gegen Löschen/Verschieben/Umbenennen gesperrt) umgesetzt (opus medium), von Okuli
+  abgenommen (Diff, Tests). **Am realen System ungeprüft** – TESTS.md „B-025“, „B-026“.
+  Server: `git pull && sudo ./install.sh`, Tool neu starten, kein neuer Agent-Stick.
+- **Doku aufgeräumt:** AENDERUNGEN.md Kopf = Kurzstand + „Als Nächstes“ (5 Punkte); TESTS.md „Übersicht (Stand
+  25.11.)“ mit bestätigten und priorisierten offenen Prüfungen (die Häkchen in den alten Abschnitten sind nicht gepflegt).
 
 ## Als Nächstes
 
-1. **Letzter VM-Durchgang (ohne Agenten):** `git pull && sudo ./install.sh`, Tool neu starten. VM-Win11-clean:
-   Direktinstallation mit virtio + Windows anpassen **Clean mit allen Häkchen** (inkl. Sperrbildschirm). Prüfen:
-   kein Sperrbildschirm, Startmenü nur Okula-Kacheln (Paket vom Tool), kein Wetter, Protokoll einheitlich
-   (Datum, Umlaute, Startmenü „ok“ statt Hinweis, wenn das Paket greift), Agent-Zeitstempel in Ortszeit.
-   Optional: Zurückspielen mit *Danach anpassen*.
-   **Durchgang 1 (25.11., 13:09–13:14, snap-8):** Startmenü nur Okula-Kacheln (Paket vom Tool ✔), kein Wetter,
-   kein Sperrbildschirm (Option aber nicht gewählt – nicht in Clean → Ä-047), Protokoll 42 ok/0 Fehler, Zeitstempel
-   Ortszeit. Befunde: B-023 (Startmenü-Hinweis trotz Paket, „Startmenue“), B-024 (OneDrive-Rückgabewert).
-   **Durchgang 2 (25.11., 13:50–13:55) grün:** mit „Sperrbildschirm aus“ und weiteren Optionen – 68 ok/0 Fehler,
-   kein Sperrbildschirm (offline + Skript), Startmenü nur Okula-Kacheln auf frischem Windows **ohne ADK** (Paket
-   braucht das ADK nur zum Erzeugen). Ungeprüft: Windows Home. → **Tag v0.2.0**.
-2. **Danach Aufräumen** (Dominik 25.11., „sinnvollen Stand finden“): Version taggen; Code-Review in Abschnitten
-   (Lese-Agenten sonnet, z. B. `ui.py` > 3400 Zeilen); Doku entrümpeln (Zeile „Als Nächstes“ in AENDERUNGEN.md ist
-   riesig, offene Tests in TESTS.md sichten); Okulis Regeln und Gedächtnis gemeinsam durchgehen; Ideen einsortieren
-   (22 im Tool + ID-0003, S-0001, S-0002 im Cockpit/Sekretär).
-3. Nach dem Aufräumen: Ä-045-Nacharbeit (Automatisierung), I-042 Microsoft 365 einzeln, B-013/B-004 an echten Geräten.
+1. **Ordnung weiter** (Dominik 25.11.): Okulis Regeln und Gedächtnis gemeinsam durchgehen; Ideen einsortieren
+   (22 im Tool + ID-0003 „Ordner einfärben“, S-0001, S-0002 im Cockpit/Sekretär). I-012 (BitLocker entsperren)
+   hochstufen vorschlagen – realer Fall ZBook 25.11.
+2. **B-027, B-028** mit zwei Umsetzungs-Agenten (opus medium); Prompts nach Muster `docs/prompts/B-025-…`, Quelle
+   `docs/REVIEW-2026-11-25.md`. Dann Ä-047, B-023, B-024 (klein, zusammen möglich).
+3. Zweite Review-Runde (`vm.py`, `help_window.py`, Dialoge, übrige Module), danach Ä-048/Ä-049.
+4. Am realen Gerät: B-025 (ZBook mit BitLocker), B-026 (Demo-Gerät), B-013, B-004, Ä-045 mit Stick.
 
 ## Offen / Beobachtungen
-- **HP ZBook (Intel Core Ultra):** Agent-Stick „Selected boot image did not authenticate“ (Secure Boot). Empfehlung
-  an Dominik: BIOS F10 → Security → Secure Boot Configuration → „Enable MS UEFI CA key“ = Yes → **hat geholfen**
-  (Dominik 25.11.). Kandidat für die Hilfe (F1) / Vorabprüfung (Ä-010): Hinweis bei „did not authenticate“.
-- Erster B-020-Lauf am 24.11. (snap-5) zeigte das alte Startmenü – mit B-022 erklärt (Gruppenrichtlinie nicht
-  freigeschaltet).
-- VM-Win11-clean läuft (Direktinstallation 25.11., Konto „Okula“, ADK installiert, Testdateien `start2.bin.okuli-*`).
+- **HP ZBook Fury G1i** (SN 5CG5345KVV, Philippe): CPU drosselt wegen Wärme, Lüfter 100 %. BIOS 01.05.01 = neuestes
+  (HP-Liste Board 8DE2), Einstellungen Werkszustand, Lüfter sauber → Empfehlung HP-Garantie mit F2-Diagnose (Failure ID).
+  Backup der Benutzerordner scheitert an BitLocker → Empfehlung: in Windows kopieren, **Wiederherstellungsschlüssel
+  vor dem Service sichern**. Secure-Boot-Hinweis („Enable MS UEFI CA key“) in Ä-010 aufgenommen.
+- VM-Win11-clean läuft (Durchgang 2, snap-8). Disk lässt sich nur lesend prüfen:
+  `qemu-nbd --read-only -c /dev/nbd0 --image-opts driver=qcow2,file.driver=file,file.filename=<snap>,file.locking=off`,
+  dann `ntfs-3g -o ro`. Protokoll: `C:\Windows\Temp\okula-windows-anpassen.log`.
 
 ## Learnings
+- Protokolle aus einer laufenden VM selbst lesen statt Dominik abtippen lassen (qemu-nbd nur lesend, siehe oben).
+- Vorlage „Clean“ enthält nicht alle Optionen – bei Tests „alle Häkchen“ die Kopfzeile „(geändert)“ und die Zeilen
+  im Protokoll prüfen, nicht nur das Ergebnis am Bildschirm.
+- Zwei Agenten parallel ändern beide `AENDERUNGEN.md`/`TESTS.md` → beim Zusammenführen Konflikt; Auftrag: „nur
+  eigenen Eintrag ändern“, Kurzübersicht danach selbst nachführen.
 - Windows wartet bei der Anmeldung nicht auf Startskripte – was vor der ersten Anmeldung wirken muss, offline setzen.
-- „Configure Start Pins“ per Gruppenrichtlinie ist stufenweise freigeschaltet; das Bereitstellungspaket (Policy CSP)
-  wirkt bei Pro ohne MDM. WMI-Bridge `MDM_Policy_Config01_Start02` hat dort kein `ConfigureStartPins`.
-- Vor dem Start eines VM-Tests prüfen, ob die VM wirklich auf „frisch“ steht (neue Disk `snap-N`).
-- Software still als SYSTEM aus dem Internet installieren blockiert die Claude-Code-Prüfung → Dominik installiert.
+- „Configure Start Pins“ per Gruppenrichtlinie ist stufenweise freigeschaltet; das Bereitstellungspaket wirkt bei Pro.
