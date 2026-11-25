@@ -114,22 +114,28 @@ class ToolLogTest(unittest.TestCase):
         home = jobs.offline_lines(req, {"offline": {"edition": "Core", "lock_screen_off": True}})
         self.assertIn("Windows Core laut Microsoft nicht unterstützt, wirkt evtl. nicht", home[0])
 
+    @mock.patch.object(wintweaks, "start_pins_ppkg", lambda: None)          # B-022: ohne Bereitstellungspaket
     def test_ads_hint_per_edition(self):
         req = {"start_pins": PINS, "consumer_off": True}
         base = {"build": 26100, "start": "set", "profiles": 1, "stamp": "s", "consumer_off": True}
         pro = jobs.offline_lines(req, {"offline": {**base, "edition": "Professional"}})
-        self.assertEqual(len(pro), 2)                                    # Hinweis nur einmal
-        self.assertIn("wirkt bei Windows Professional nicht (nur Enterprise/Education)", pro[1])
-        self.assertIn("Werbe-Platzhalter im Startmenü (z. B. WhatsApp, LinkedIn, Adobe Express)", pro[1])
+        # Startmenü gesetzt, B-022-Hinweis zur Wirkung der Gruppenrichtlinie (eigene Aussage), Werbe-Hinweis
+        self.assertEqual(len(pro), 3)
+        self.assertEqual(pro[1], "Hinweis Startmenü: " + wintweaks.START_GPO_HINT)
+        ads = [line for line in pro if "Werbe-Platzhalter" in line]
+        self.assertEqual(len(ads), 1)                                    # Werbe-Hinweis nur einmal
+        self.assertIn("wirkt bei Windows Professional nicht (nur Enterprise/Education)", pro[2])
+        self.assertIn("Werbe-Platzhalter im Startmenü (z. B. WhatsApp, LinkedIn, Adobe Express)", pro[2])
         ent = jobs.offline_lines(req, {"offline": {**base, "edition": "Enterprise"}})
-        self.assertIn("keine Werbe-Apps und Werbe-Platzhalter ab der ersten Anmeldung", ent[1])
+        self.assertIn("keine Werbe-Apps und Werbe-Platzhalter ab der ersten Anmeldung", ent[2])
         self.assertNotIn("von Hand", "\n".join(ent))
         # nur Startmenü gewählt: Hinweis bei Pro, nicht bei Education
         only = {"start_pins": PINS}
         lines = jobs.offline_lines(only, {"offline": {**base, "consumer_off": False, "edition": "Professional"}})
         self.assertTrue(lines[-1].startswith("Hinweis (Windows Professional): Werbe-Platzhalter"))
         edu = jobs.offline_lines(only, {"offline": {**base, "consumer_off": False, "edition": "Education"}})
-        self.assertEqual(len(edu), 1)
+        self.assertEqual(len(edu), 2)                                    # Startmenü + B-022-Hinweis, kein Werbe-Hinweis
+        self.assertFalse(any("Werbe-Platzhalter" in line for line in edu))
 
     def test_agent_of_b020(self):
         """Agent von B-020: kennt Sperrbildschirm und Benutzererfahrungen nicht (setzt nur Widgets)."""
