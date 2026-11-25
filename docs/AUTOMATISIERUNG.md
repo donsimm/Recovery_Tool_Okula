@@ -26,7 +26,7 @@ Stand: **umgesetzt** (29.10.2026). Details in [TECHNIK.md](TECHNIK.md), Bedienun
 
 | # | Schritt | Einstellung |
 |---|---|---|
-| 1 | Vorher sichern | Option ein/aus; Auswahl **Benutzerdaten** oder **ganze Disk (Disk-Image)** |
+| 1 | Vorher sichern | Option ein/aus; Auswahl **Benutzerdaten** oder **ganze Disk (Disk-Image)**. Benutzerdaten: ist eine Partition der Zieldisk nicht lesbar (BitLocker, Ruhezustand/Schnellstart), bricht der Lauf ab – nichts gelöscht (B-025) |
 | 2 | Image zurückspielen | Auswahl: **Master-Image** (markierte Images) oder **eigenes Image** |
 | 3 | Anpassen: Gerätename aus dem Tool, Windows-Key | läuft **immer** (siehe [MASTER-IMAGE.md](MASTER-IMAGE.md)) |
 | 4 | Ordner senden: Software, Test Files, Content-Projekte | Option im Reiter (siehe [ORDNER-SENDEN.md](ORDNER-SENDEN.md)) |

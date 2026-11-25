@@ -29,7 +29,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): ~~Ä-007~~ ✔ → ~~B-012~~ ✔ → **I
 
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
-| B-025 | 🔴 | offen | Okuli (Review) | **Automatisierung löscht BitLocker-Disk ohne Backup.** Backup „Benutzerdaten“ gewählt, Zieldisk BitLocker (oder unlesbar): `get_profiles` liefert keine Benutzer (`filebackup.py:125` „BitLocker – nicht lesbar“), `automation.py:570` loggt nur „nichts zu sichern“ und löscht dann. Gewähltes Backup ohne Ergebnis muss abbrechen (Ausnahme: Disk ohne Windows). Am Code bestätigt (Okuli). [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) R-client 2 | 25.11. |
 | B-026 | 🔴 | offen | Okuli (Review) | **Image lässt sich löschen/verschieben, während es zurückgespielt wird.** `Job.source` wird nur bei Backups gesetzt (`ui.py:4068/4081`), `on_delete_image`/Drag-and-Drop prüfen nichts → Restore bricht mitten im Schreiben ab, Kundendisk halb beschrieben. Bei Restore/Install/Automatisierung Image-Pfad in `Job.source`, Löschen/Verschieben/Demo-Aufräumen dagegen prüfen. Am Code bestätigt. [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) R-ui 1 | 25.11. |
 | B-027 | 🟡 | offen | Okuli (Review) | **Image gilt als fertig, obwohl eine Datei offen ist oder fehlt.** `agentclient.py:310`: bei `end` keine Prüfung auf offene Datei, fehlendes `begin` oder Dateien aus `plan`; zudem kein `fsync` vor dem Umbenennen. Am Code bestätigt. Dazu R-client 7 (Ordnername-Kollision `.partial`), R-client 8 (Schlüsseldatei atomar schreiben). [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) | 25.11. |
 | B-028 | 🟡 | offen | Okuli (Review) | **Fehler werden als ok/Erfolg gemeldet (Sammelpunkt).** Automatisierung: `customize`-Ergebnisse `error`/`not_generalized`/leer nur geloggt, Lauf „erfolgreich“ (`automation.py:633`, am Code bestätigt; auch `jobs.py:462` restore_work), `r['part']` evtl. KeyError; `_execute` ohne `except` → Lauf bleibt „running“ (R-client 5); Esc-Countdown bei Verbindungsabbruch (R-client 9); Abbruch überdeckt Fehler (R-client 10). Windows-Skripte: `copy` unattend/SetupComplete und `xcopy` ohne errorlevel-Prüfung (R-win 1), fehlende Installer „übersprungen“ statt FEHLER (R-win 2), Hinweise ohne „Hinweis: “-Präfix (R-win 4), `reg unload` verschluckt (R-win 3). [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) | 25.11. |
@@ -278,6 +277,17 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 25.11.2026
+- **B-025 – Automatisierung löscht BitLocker-Disk ohne Backup** (Von: Okuli (Review), 25.11.; Prompt
+  [B-025](prompts/B-025-automatisierung-bitlocker-backup.md); [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) R-client 2;
+  realer Fall HP ZBook). Backup „Benutzerdaten“: hat eine Partition der Zieldisk im Profil-Ergebnis des Agents ein
+  `error` (BitLocker oder nicht einhängbar, z. B. Ruhezustand/Schnellstart), bricht der Lauf in Schritt 1 ab, bevor
+  etwas gelöscht wird (`automation.backup_blocker`, `AutomationError`): Phase Fehler, Automatisierung bleibt
+  eingeschaltet, Meldung in Verlauf und Banner, z. B. „Backup nicht möglich: nvme0n1p3 ist mit BitLocker verschlüsselt –
+  nichts gelöscht. BitLocker in Windows ausschalten oder Backup „ganze Disk“ wählen.“ Ohne Fehler und ohne Benutzer
+  (leere Disk, Linux ohne /home) wie bisher weiter. Fehler auf anderen Disks zählen nicht. Andere Datei-Backups vor
+  dem Löschen gibt es nicht (Backup-Dialoge zeigen den Fehler je Partition an, löschen nichts). Hilfe (F1)
+  „Automatisierung“ und AUTOMATISIERUNG.md ergänzt. Tests `BackupBlockerTest` in `tests/test_automation.py`. Prüfung
+  [TESTS.md](TESTS.md) „B-025“.
 - **B-022 – Startmenü-Liste wirkt auf neu installiertem Windows nicht** (Von: Okuli, 25.11.; Prompt
   [B-022](prompts/B-022-startmenue-neuinstallation.md); Befund VM-Win11-clean, Direktinstallation mit Ä-046, Windows 11
   Pro 25H2 26200.8037). **Ursache** (Belege TECHNIK.md „Startmenü auf neu installiertem Windows (B-022)“): belegt –

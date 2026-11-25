@@ -682,6 +682,8 @@ Mit der Automatisierung setzt das Tool ein Gerät selbst neu auf, sobald es mit 
 <b>Einrichten (einmal pro Gerät):</b>
 1.  Gerät öffnen → Reiter <i>Automatisierung</i>.
 2.  <b>Backup</b> (Option): vorher sichern – nur Benutzerdaten (schnell) oder die ganze Disk als Disk-Image.
+    Ist mit <i>Benutzerdaten</i> eine Partition der Zieldisk nicht lesbar (BitLocker, Windows im Ruhezustand
+    oder mit Schnellstart heruntergefahren), bricht die Automatisierung ab und löscht nichts.
 3.  <b>Image zurückspielen</b>: Master-Image oder ein eigenes Image wählen, dazu die Zieldisk.
     Ist die Zieldisk kleiner: <i>Image dafür anpassen</i> anhaken (Kapitel <i>Image zurückspielen</i>).
 4.  <b>Anpassen</b> (läuft immer, nur bei Master-Images): Gerätename und Windows-Schlüssel,

@@ -896,3 +896,14 @@ Agent-Stick – nur Skript und Tool). VM-Win11-clean, Windows 11 Pro 25H2, Snaps
       „ok Startmenü … Bereitstellungspaket StartPins.ppkg installiert“, **kein** „Hinweis Startmenü“ im Log des
       Auftrags, Startmenü bei der ersten Anmeldung mit festen Kacheln; `Get-ProvisioningPackage -AllInstalledPackages`
       zeigt „Okula StartPins“; danach eigene Kachel anheften, ab-/anmelden → bleibt sie (`applyOnce` über die CSP)?
+
+### B-025 Automatisierung bricht bei BitLocker ohne Backup ab
+(Nummer setzt Okuli beim Zusammenführen.) Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer
+Agent-Stick – nur das Tool). VM mit BitLocker auf der Windows-Partition (Snapshot vorher) oder HP ZBook mit BitLocker.
+- [ ] Automatisierung mit *Backup* „Benutzerdaten“ einschalten, Gerät mit dem Agent starten → Lauf bricht in
+      Schritt 1/5 ab: Banner am Gerät und Verlauf „Automatisierung fehlgeschlagen – Schritt 1/5 Backup: Backup nicht
+      möglich: <Partition> ist mit BitLocker verschlüsselt – nichts gelöscht …“; Automatisierung bleibt eingeschaltet
+- [ ] Disk unverändert: Windows startet danach wie vorher (bzw. VM: Disk-Prüfsumme vor/nach gleich)
+- [ ] Optional Windows mit Schnellstart heruntergefahren (ohne BitLocker): Abbruch mit „… lässt sich nicht lesen (…)
+      – nichts gelöscht. Windows ganz herunterfahren …“ – nur wenn der Agent die Partition tatsächlich nicht einhängt
+- [ ] Gegenprobe: dieselbe Disk mit *Backup* „ganze Disk“ → Lauf geht weiter (Disk-Image, dann Zurückspielen)

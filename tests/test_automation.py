@@ -289,6 +289,76 @@ class EngineTest(unittest.TestCase):
         self.assertEqual(self.engine.text(bad), "Automatisierung: Einstellungen unvollständig")
 
 
+class BackupBlockerTest(unittest.TestCase):
+    """B-025: Backup „Benutzerdaten“ und eine nicht lesbare Partition auf der Zieldisk → abbrechen, nichts löschen."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.nas = Path(self.tmp.name)
+        (self.nas / "images/Master").mkdir(parents=True)
+        self.restored, self.backed_up = [], []
+        self.profiles = []
+        disk = {"path": "/dev/nvme0n1", "serial": "S1", "model": "SSD", "size": 512e9, "partitions": []}
+        self.patches = [
+            mock.patch.object(agentclient, "get_info", lambda ip, key, port: {"disks": [disk]}),
+            mock.patch.object(agentclient, "image_source", lambda image, source=None: {"source": {}}),
+            mock.patch.object(agentclient, "restore_image",
+                              lambda *a, **k: self.restored.append(a[3]) or (_ for _ in ()).throw(
+                                  RuntimeError("Attrappe: hier wäre gelöscht worden"))),
+            mock.patch("okula_recovery.backups.get_profiles", lambda ip, key, port: self.profiles),
+            mock.patch("okula_recovery.backups.run_backup", lambda *a, **k: self.backed_up.append(a[4]) or "b")]
+        for p in self.patches:
+            p.start()
+
+    def tearDown(self):
+        for p in self.patches:
+            p.stop()
+        self.tmp.cleanup()
+
+    def run_work(self):
+        s = automation.Settings(enabled=True, image="images/Master", disk_key="S1", backup=True,
+                                backup_mode="files", finish="none")
+        dev = SimpleNamespace(id="d1", name="HP-ZBook", windows_key=("", ""))
+        error = {}
+        jm = jobs.JobManager()
+        job = jm.start("d1", "auto", "automatisierung", "Automatisierung",
+                       automation.automation_work("10.0.0.1", b"k" * 32, 1, dev, s, str(self.nas), error))
+        self.assertTrue(wait_for(lambda: not job.running))
+        return error, "\n".join(job.log)
+
+    def part(self, name, **kw):
+        return {"part": f"/dev/{name}", "name": name, "disk": "/dev/nvme0n1", "fstype": "ntfs", "size": 1,
+                "label": "", "os": "", "kind": "", "users": [], **kw}
+
+    def test_bitlocker_aborts(self):
+        self.profiles = [self.part("nvme0n1p1", fstype="vfat"),
+                         self.part("nvme0n1p3", fstype="BitLocker", error="BitLocker – nicht lesbar")]
+        error, _log = self.run_work()
+        self.assertEqual(self.restored, [])                       # kein Löschauftrag an den Agent
+        self.assertEqual(self.backed_up, [])
+        self.assertEqual(error["step"], "Schritt 1/5 Backup")
+        self.assertEqual(error["message"], "Backup nicht möglich: nvme0n1p3 ist mit BitLocker verschlüsselt – "
+                                           "nichts gelöscht. BitLocker in Windows ausschalten oder Backup „ganze "
+                                           "Disk“ wählen.")
+
+    def test_unreadable_aborts(self):
+        self.profiles = [self.part("nvme0n1p3", error="Windows ist im Ruhezustand"),
+                         self.part("nvme0n1p4", users=[{"name": "Anna", "path": "Users/Anna"}], kind="windows")]
+        error, _log = self.run_work()
+        self.assertEqual((self.restored, self.backed_up), ([], []))
+        self.assertIn("nvme0n1p3 lässt sich nicht lesen (Windows ist im Ruhezustand) – nichts gelöscht",
+                      error["message"])
+        self.assertIn("Schnellstart", error["message"])
+
+    def test_no_profiles_without_error_continues(self):
+        other = dict(self.part("sda1", error="BitLocker – nicht lesbar", fstype="BitLocker"), disk="/dev/sda")
+        self.profiles = [self.part("nvme0n1p1", fstype="ext4"), other]   # Fehler nur auf einer anderen Disk
+        error, log = self.run_work()
+        self.assertIn("Keine Benutzerprofile auf der Zieldisk – nichts zu sichern", log)
+        self.assertEqual(self.restored, ["/dev/nvme0n1"])          # läuft weiter bis zum Zurückspielen
+        self.assertEqual(error["step"], "Schritt 2/5 Image zurückspielen")
+
+
 @unittest.skipUnless(can_run() and all(map(shutil.which, ("mkfs.ntfs", "ntfs-3g", "partclone.ntfs"))),
                      "braucht root, Loop-Devices, ntfs-3g und partclone")
 class AutomationE2ETest(unittest.TestCase):

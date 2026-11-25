@@ -499,6 +499,20 @@ class Engine:
         self.on_change(dev.id)
 
 
+def backup_blocker(profiles: list[dict]) -> str:
+    """B-025: Meldung, wenn eine Partition der Zieldisk nicht lesbar ist (Backup „Benutzerdaten“ unmöglich)."""
+    for p in profiles:
+        if not p.get("error"):
+            continue
+        name = p.get("name") or p.get("part") or "Partition"
+        if (p.get("fstype") or "").lower() == "bitlocker":
+            return (f"Backup nicht möglich: {name} ist mit BitLocker verschlüsselt – nichts gelöscht. "
+                    "BitLocker in Windows ausschalten oder Backup „ganze Disk“ wählen.")
+        return (f"Backup nicht möglich: {name} lässt sich nicht lesen ({p['error']}) – nichts gelöscht. "
+                "Windows ganz herunterfahren (Schnellstart aus, kein Ruhezustand) oder Backup „ganze Disk“ wählen.")
+    return ""
+
+
 def automation_work(ip: str, key: bytes, port: int, dev, s: Settings, nas_root: str | None, error: dict):
     """Die fünf Schritte als Auftrag (läuft im Auftrags-Thread). error bekommt Schritt und Meldung."""
     from okula_recovery import backups, linuxsetup, winunattend
@@ -560,9 +574,11 @@ def automation_work(ip: str, key: bytes, port: int, dev, s: Settings, nas_root: 
             elif s.backup:
                 begin(0, "Benutzerdaten sichern")
                 sources, users = [], []
-                for p in backups.get_profiles(ip, key, port):
-                    if p.get("disk") != target:
-                        continue
+                profiles = [p for p in backups.get_profiles(ip, key, port) if p.get("disk") == target]
+                unreadable = backup_blocker(profiles)
+                if unreadable:      # B-025: nicht lesbare Partition → nicht ohne Backup löschen
+                    raise AutomationError(unreadable)
+                for p in profiles:
                     for u in p.get("users") or []:
                         sources += backups.profile_sources(p["part"], u["path"], p.get("kind", ""),
                                                            list(backups.DEFAULT_CATEGORIES))
