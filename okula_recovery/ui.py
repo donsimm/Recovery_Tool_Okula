@@ -841,6 +841,13 @@ class MainWindow(Gtk.ApplicationWindow):
         old = list(self._old_demo_images)
         if root is None or not old:
             return
+        busy = [i for i in old if self.jobs.in_use(i.path)]      # B-026: wird gerade zurückgespielt → bleibt
+        old = [i for i in old if i not in busy]
+        if busy:
+            self.status(f"{len(busy)} Demo-Image{'s' if len(busy) != 1 else ''} übersprungen – wird gerade "
+                        "verwendet, erst nach Ende löschen")
+        if not old:
+            return
         if not confirm(self, f"{len(old)} alte Demo-Image{'s' if len(old) != 1 else ''} vom NAS löschen?",
                        "Diese Images stammen vom Demo-Gerät (Attrappen) und sind auf dem NAS überflüssig:\n"
                        + "\n".join(f"· {i.path.relative_to(root)}" for i in old[:10])
@@ -849,6 +856,8 @@ class MainWindow(Gtk.ApplicationWindow):
 
         def work():
             for img in old:
+                if self.jobs.in_use(img.path):       # seit der Rückfrage gestartet
+                    continue
                 rel = os.path.relpath(img.path, root)
                 nasfiles.delete(root, nasfiles.parent(rel), [os.path.basename(rel)])
         self._archive_op(work, f"{len(old)} alte Demo-Images vom NAS gelöscht")
@@ -951,6 +960,14 @@ class MainWindow(Gtk.ApplicationWindow):
             self.refresh_files()
         run_async(op, finished)
 
+    def _in_use(self, what: str, *paths: str | Path, parent: Gtk.Window | None = None) -> bool:
+        """B-026: Liest ein laufender Auftrag einen der Pfade (bzw. etwas darin)? Dann Meldung, True = nichts tun."""
+        job = self.jobs.in_use(*paths)
+        if job is None:
+            return False
+        confirm_error(parent or self, jobs.busy_message(what, job))
+        return True
+
     def on_new_archive_folder(self, _btn) -> None:
         root = self._nas_root()
         if root is None:
@@ -989,12 +1006,16 @@ class MainWindow(Gtk.ApplicationWindow):
         if kind == "iso":
             path = model[it][self.C_PATH]
             old = os.path.basename(path)
+            if self._in_use(f"„{old}“", path):          # B-026
+                return
             new = ask_text(self, "ISO umbenennen", f"Neuer Name für „{old}“:", old)
             if new and new.strip() != old:
                 self._archive_op(lambda: oslib.rename_iso(root, path, new), f"Umbenannt in „{new.strip()}“")
             return
         if kind == "osfolder" and "/" in rel:
             old = rel.rsplit("/", 1)[-1]
+            if self._in_use(f"Ordner „{rel}“", os.path.join(root, oslib.OS_DIR, rel)):      # B-026
+                return
             new = ask_text(self, "Ordner umbenennen", f"Neuer Name für „{old}“:", old)
             if new and new.strip() != old:
                 self._expand_after_os = rel.rsplit("/", 1)[0]
@@ -1004,6 +1025,8 @@ class MainWindow(Gtk.ApplicationWindow):
             return
         rel = model[it][self.C_REL]
         old = rel.rsplit("/", 1)[-1]
+        if self._in_use(f"Ordner „{rel}“", os.path.join(root, archive.ARCHIVE_DIR, rel)):      # B-026
+            return
         new = ask_text(self, "Ordner umbenennen", f"Neuer Name für „{old}“:", old)
         if new and new.strip() != old:
             self._archive_op(lambda: archive.rename_folder(root, rel, new), f"Umbenannt in „{new.strip()}“")
@@ -1013,6 +1036,8 @@ class MainWindow(Gtk.ApplicationWindow):
         model, it = self._selected_image_row()
         if root and it is not None and model[it][self.C_KIND] == "image":
             path = model[it][self.C_PATH]
+            if self._in_use(f"„{os.path.basename(path)}“", path):
+                return
             self._archive_op(lambda: archive.move_image(root, path, None), "Nach „Nicht einsortiert“ verschoben")
 
     def _on_drag_get(self, view, _context, selection, _info, _time) -> None:
@@ -1069,10 +1094,13 @@ class MainWindow(Gtk.ApplicationWindow):
         root = self._nas_root()
         if root is None:
             return
+        # B-026: liest ein laufender Auftrag das Image/die ISO bzw. etwas im Ordner → nicht verschieben
+        busy = (lambda: self._in_use(f"Ordner „{rel}“", os.path.join(root, archive.ARCHIVE_DIR, rel))) \
+            if kind == "folder" else (lambda: self._in_use(f"„{os.path.basename(path)}“", path))
         if kind == "iso":
             if dest_area != "os" or not dest_rel:
                 self.status("ISOs bitte in einen Ordner unter „Betriebssysteme“ ziehen")
-            elif dest_rel != rel:
+            elif dest_rel != rel and not busy():
                 self._expand_after_os = dest_rel
                 self._archive_op(lambda: oslib.move_iso(root, path, dest_rel), f"Verschoben nach „{dest_rel}“")
             return
@@ -1081,11 +1109,11 @@ class MainWindow(Gtk.ApplicationWindow):
             return
         if kind == "image":
             if dest_area == "unsorted":
-                if area != "unsorted":
+                if area != "unsorted" and not busy():
                     self._archive_op(lambda: archive.move_image(root, path, None),
                                      "Nach „Nicht einsortiert“ verschoben")
             elif dest_rel:
-                if not (area == "archive" and rel == dest_rel):
+                if not (area == "archive" and rel == dest_rel) and not busy():
                     self._expand_after_refresh = dest_rel
                     self._archive_op(lambda: archive.move_image(root, path, dest_rel),
                                      f"Verschoben nach „{dest_rel}“")
@@ -1095,7 +1123,7 @@ class MainWindow(Gtk.ApplicationWindow):
             current_parent = rel.rsplit("/", 1)[0] if "/" in rel else ""
             if dest_area == "unsorted":
                 self.status("Ordner können nicht nach „Nicht einsortiert“ verschoben werden")
-            elif dest_rel != current_parent and dest_rel != rel:
+            elif dest_rel != current_parent and dest_rel != rel and not busy():
                 self._expand_after_refresh = dest_rel
                 folder = rel.rsplit("/", 1)[-1]
                 self._archive_op(lambda: archive.move_folder(root, rel, dest_rel), f"Ordner „{folder}“ verschoben")
@@ -1393,6 +1421,8 @@ class MainWindow(Gtk.ApplicationWindow):
         root, names = self._nas_root(), self._selected_files()
         if not root or len(names) != 1:
             return
+        if self._in_use(f"„{names[0]}“", os.path.join(root, self.files_rel, names[0])):       # B-026
+            return
         new = ask_text(self, "Umbenennen", f"Neuer Name für „{names[0]}“:", names[0])
         if new and new != names[0]:
             rel = self.files_rel
@@ -1412,14 +1442,18 @@ class MainWindow(Gtk.ApplicationWindow):
             return
         if model[it][self.C_KIND] == "folder":
             rel = model[it][self.C_REL]
-            self._archive_op(lambda: archive.delete_folder(root, rel), f"Ordner „{rel}“ gelöscht")
+            if not self._in_use(f"Ordner „{rel}“", os.path.join(root, archive.ARCHIVE_DIR, rel)):     # B-026
+                self._archive_op(lambda: archive.delete_folder(root, rel), f"Ordner „{rel}“ gelöscht")
             return
         if model[it][self.C_KIND] == "osfolder" and "/" in model[it][self.C_REL]:
             rel = model[it][self.C_REL]
-            self._archive_op(lambda: oslib.delete_folder(root, rel), f"Ordner „{rel}“ gelöscht")
+            if not self._in_use(f"Ordner „{rel}“", os.path.join(root, oslib.OS_DIR, rel)):            # B-026
+                self._archive_op(lambda: oslib.delete_folder(root, rel), f"Ordner „{rel}“ gelöscht")
             return
         if model[it][self.C_KIND] == "iso":
             path = model[it][self.C_PATH]
+            if self._in_use(f"„{os.path.basename(path)}“", path):
+                return
             if confirm(self, f"„{os.path.basename(path)}“ endgültig löschen?",
                        f"{model[it][self.C_NAME]} · {model[it][self.C_SIZE]}\n\n"
                        "Das NAS hat keinen Papierkorb für das Tool – gelöschte Daten sind weg."):
@@ -1440,7 +1474,12 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _confirm_delete(self, root: str, rel: str, names: list[str], parent: Gtk.Window | None = None,
                         extra: str = "") -> None:
-        """Erst Umfang zählen (kann bei Images dauern), dann nachfragen, dann löschen."""
+        """Erst Umfang zählen (kann bei Images dauern), dann nachfragen, dann löschen.
+        B-026: liest ein laufender Auftrag einen der Einträge (bzw. etwas darin) → Meldung, nichts löschen."""
+        paths = [os.path.join(root, rel, n) for n in names]
+        what = f"„{names[0]}“" if len(names) == 1 else f"{len(names)} Einträge"
+        if self._in_use(what, *paths, parent=parent):
+            return
         self.status("Umfang wird ermittelt …")
 
         def ask(result) -> None:
@@ -1448,11 +1487,12 @@ class MainWindow(Gtk.ApplicationWindow):
                 self.status(f"Fehler: {result}")
                 return
             files, size = result
-            what = f"„{names[0]}“" if len(names) == 1 else f"{len(names)} Einträge"
             if not confirm(parent or self, f"{what} endgültig löschen?",
                            extra + f"{files} Datei(en), {nas.format_size(size)} in NAS: /{rel}\n\n"
                            "Das NAS hat keinen Papierkorb für das Tool – gelöschte Daten sind weg."):
                 self.status("Löschen abgebrochen")
+                return
+            if self._in_use(what, *paths, parent=parent):        # seit der Rückfrage gestartet
                 return
             self.status(f"Wird gelöscht: {what} …")
             self._file_op(lambda: nasfiles.delete(root, rel, names), f"{what} gelöscht")
@@ -1848,9 +1888,7 @@ class MainWindow(Gtk.ApplicationWindow):
         rel_path = os.path.relpath(b.path, root)
         if rel_path.startswith(".."):
             return
-        busy = [j for j in self.jobs.jobs if j.running and j.source == str(b.path)]
-        if busy:
-            confirm_error(parent or self, "Dieses Backup wird gerade zurückgespielt bzw. heruntergeladen.")
+        if self._in_use("Dieses Backup", b.path, parent=parent):       # B-026: gemeinsame Prüfung
             return
         extra = f"{b.device} · {b.created:%d.%m.%Y %H:%M} · {b.summary}\n" + (f"Notiz: {b.note}\n" if b.note else "")
         self._confirm_delete(root, nasfiles.parent(rel_path), [os.path.basename(rel_path)], parent, extra + "\n")
@@ -2796,7 +2834,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
         def begin() -> None:
             try:
-                self.jobs.start(dev.id, "restore", expected, f"Zwilling: {what}", work)
+                self.jobs.start(dev.id, "restore", expected, f"Zwilling: {what}", work, source=image["path"])
             except agentclient.AgentError as e:
                 confirm_error(self._parent_for(dev), str(e))
 
@@ -3791,7 +3829,7 @@ class MainWindow(Gtk.ApplicationWindow):
             work = jobs.restore_work(agent.ip, self.key, agent.control_port, image, target, source_disk, verify,
                                      after, customize,
                                      {"target_size": adapt, "nas_root": root} if adapt else None, soft, tw)
-            self.jobs.start(dev.id, "restore", target, f"Zurückspielen {label} → {target}", work)
+            self.jobs.start(dev.id, "restore", target, f"Zurückspielen {label} → {target}", work, source=image)
             self.open_device(dev).show_jobs()
 
         vm_info = None
@@ -3842,7 +3880,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
         def begin() -> None:
             try:
-                self.jobs.start(dev.id, "restore", target, what, work)
+                self.jobs.start(dev.id, "restore", target, what, work, source=image)
             except agentclient.AgentError as e:
                 confirm_error(self._parent_for(dev), str(e))
                 return
@@ -3925,7 +3963,7 @@ class MainWindow(Gtk.ApplicationWindow):
             else:
                 work = jobs.linux_install_work(agent.ip, self.key, agent.control_port, str(iso.path), iso.meta,
                                                disk["path"], int(disk["size"]), opts, after)
-            self.jobs.start(dev.id, kind, disk["path"], what, work)
+            self.jobs.start(dev.id, kind, disk["path"], what, work, source=iso.path)
             self.open_device(dev).show_jobs()
 
         InstallDialog(parent, agent, isos, dev, start, preselect, nas_root=soft_root)

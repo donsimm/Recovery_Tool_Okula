@@ -1363,6 +1363,12 @@ Alle Aktionen über Rechtsklick.
 •  <i>Boot-Stick erstellen …</i> und <i>Auf Gerät installieren …</i>
 •  <i>ISO hinzufügen …</i>: neue ISO aufnehmen.
 
+<b>Während eines Auftrags gesperrt</b>
+Liest ein laufender Auftrag ein Image oder eine ISO (Zurückspielen, Zwilling, Installation, Automatisierung)
+oder ein Backup, lässt es sich nicht löschen, umbenennen oder verschieben – auch nicht der Ordner, in dem es liegt.
+Es erscheint die Meldung „… wird gerade von ‚Auftrag‘ verwendet – erst nach Ende löschen/verschieben“.
+<i>Alte Demo-Images vom NAS löschen …</i> überspringt solche Images.
+
 <b>Aktualisieren</b>
 <i>Tools → Images aktualisieren</i> (F5) liest die Liste neu vom NAS,
 zum Beispiel nachdem Dateien direkt auf das NAS kopiert wurden."""),

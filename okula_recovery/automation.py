@@ -461,6 +461,7 @@ class Engine:
             try:
                 run.job = self.jobs.start(dev.id, "auto", "automatisierung", f"Automatisierung ({dev.name})",
                                           wrapped)
+                run.job.source = str(Path(self._root(dev) or "/", s.image)) if s.image else ""   # B-026
             except agentclient.AgentError as e:
                 error["message"] = str(e)
                 finished.set()

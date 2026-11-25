@@ -15,7 +15,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
-| 🐞 Bugs | 8 | 0 | 0 |
+| 🐞 Bugs | 6 | 0 | 0 |
 | 🔧 Änderungen | 9 | 0 | 0 |
 | 💡 Ideen | 22 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
@@ -29,7 +29,6 @@ Vorschlag Reihenfolge (Analyse 31.10.): ~~Ä-007~~ ✔ → ~~B-012~~ ✔ → **I
 
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
-| B-026 | 🔴 | offen | Okuli (Review) | **Image lässt sich löschen/verschieben, während es zurückgespielt wird.** `Job.source` wird nur bei Backups gesetzt (`ui.py:4068/4081`), `on_delete_image`/Drag-and-Drop prüfen nichts → Restore bricht mitten im Schreiben ab, Kundendisk halb beschrieben. Bei Restore/Install/Automatisierung Image-Pfad in `Job.source`, Löschen/Verschieben/Demo-Aufräumen dagegen prüfen. Am Code bestätigt. [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) R-ui 1 | 25.11. |
 | B-027 | 🟡 | offen | Okuli (Review) | **Image gilt als fertig, obwohl eine Datei offen ist oder fehlt.** `agentclient.py:310`: bei `end` keine Prüfung auf offene Datei, fehlendes `begin` oder Dateien aus `plan`; zudem kein `fsync` vor dem Umbenennen. Am Code bestätigt. Dazu R-client 7 (Ordnername-Kollision `.partial`), R-client 8 (Schlüsseldatei atomar schreiben). [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) | 25.11. |
 | B-028 | 🟡 | offen | Okuli (Review) | **Fehler werden als ok/Erfolg gemeldet (Sammelpunkt).** Automatisierung: `customize`-Ergebnisse `error`/`not_generalized`/leer nur geloggt, Lauf „erfolgreich“ (`automation.py:633`, am Code bestätigt; auch `jobs.py:462` restore_work), `r['part']` evtl. KeyError; `_execute` ohne `except` → Lauf bleibt „running“ (R-client 5); Esc-Countdown bei Verbindungsabbruch (R-client 9); Abbruch überdeckt Fehler (R-client 10). Windows-Skripte: `copy` unattend/SetupComplete und `xcopy` ohne errorlevel-Prüfung (R-win 1), fehlende Installer „übersprungen“ statt FEHLER (R-win 2), Hinweise ohne „Hinweis: “-Präfix (R-win 4), `reg unload` verschluckt (R-win 3). [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) | 25.11. |
 | B-023 | ⚪ | offen | Okuli | **Protokoll „Windows anpassen“ uneinheitlich, Startmenü meldet Hinweis trotz Paket.** VM-Test 25.11. (VM-Win11-clean, Direktinstallation, Vorlage Clean geändert, Pro Build 26200): Startmenü zeigt nur die Okula-Kacheln, `StartPins.ppkg` vom Tool installiert – trotzdem steht in der Zeile „Startmenü: Werbe-Kacheln entfernen“ und in „Wiederinstallation von Werbe-Apps sperren“ weiter der lange Pro-Hinweis (WhatsApp, LinkedIn, Adobe Express … von Hand lösen). Erwartet laut B-022: knappes „ok“, wenn das Paket greift. Zudem schreibt die erste Zeile (vor dem ersten Start, `winsetup.py`) „Startmenue“ und „ - “ statt Umlaut und „–“ und verweist auf eine „Zeile Startmenue beim ersten Start“, die es nicht gibt | 25.11. |
@@ -288,6 +287,18 @@ Neueste zuoberst.
   dem Löschen gibt es nicht (Backup-Dialoge zeigen den Fehler je Partition an, löschen nichts). Hilfe (F1)
   „Automatisierung“ und AUTOMATISIERUNG.md ergänzt. Tests `BackupBlockerTest` in `tests/test_automation.py`. Prüfung
   [TESTS.md](TESTS.md) „B-025“.
+- **B-026 – Image liess sich löschen/verschieben, während es zurückgespielt wird** (Von: Okuli (Review), 25.11.;
+  Prompt [B-026](prompts/B-026-image-loeschen-waehrend-restore.md); [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md)
+  R-ui 1). **Umgesetzt:** Zurückspielen (auch „VM-Disk vergrössern und zurückspielen“), Zwilling, Windows-/Linux-
+  Installation und Automatisierung tragen das gelesene Image bzw. die ISO in `Job.source` ein (`JobManager.start(…,
+  source=…)`). Gemeinsame Prüfung `JobManager.in_use(*pfade)` / `busy_paths()`: gesperrt, wenn ein laufender Auftrag
+  den Pfad, etwas darin oder einen Pfad in diesem Ordner liest. Geprüft vor: Image/ISO löschen, Ordner löschen (Archiv
+  und Betriebssysteme), Verschieben per Maus (Image, ISO, Ordner), „Nach „Nicht einsortiert““, Umbenennen (Ordner,
+  ISO, Reiter „Dateien“), Löschen im Reiter „Dateien“ (über `_confirm_delete`, nochmals nach der Rückfrage) und
+  `delete_backup` (gleiche Prüfung statt eigener). Meldung „… wird gerade von „<Auftrag>“ verwendet – erst nach Ende
+  löschen/verschieben.“, nichts passiert. „Alte Demo-Images vom NAS löschen …“ überspringt belegte Images (Hinweis in
+  der Statuszeile). Hilfe (F1) „Images verwalten“ ergänzt. Tests `tests/test_inuse.py`. Nicht erfasst: Programme der
+  Software-Bibliothek, die ein Auftrag gerade überträgt (Löschen in der Software-Bibliothek prüft nicht).
 - **B-022 – Startmenü-Liste wirkt auf neu installiertem Windows nicht** (Von: Okuli, 25.11.; Prompt
   [B-022](prompts/B-022-startmenue-neuinstallation.md); Befund VM-Win11-clean, Direktinstallation mit Ä-046, Windows 11
   Pro 25H2 26200.8037). **Ursache** (Belege TECHNIK.md „Startmenü auf neu installiertem Windows (B-022)“): belegt –

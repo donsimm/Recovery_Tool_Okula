@@ -8,6 +8,7 @@ on_change ein (wird aus dem Auftrags-Thread aufgerufen).
 from __future__ import annotations
 
 import itertools
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -39,7 +40,7 @@ class Job:
     phase: str = ""                # Schritt bei mehrstufigen Aufträgen, z. B. „Image prüfen (1/2)“
     phase_fraction: float = 0.0    # Fortschritt innerhalb des Schritts
     phase_started: float = 0.0     # time.monotonic() beim Start des Schritts
-    source: str = ""               # gelesener Backup-Ordner (darf währenddessen nicht gelöscht werden)
+    source: str = ""               # gelesenes Image/ISO/Backup auf dem NAS (B-026: währenddessen gesperrt)
     rebased: tuple[float, float] | None = None  # (Zeit, Fortschritt) bei geänderter Bandbreite: Restzeit ab da
 
     @property
@@ -83,6 +84,20 @@ class Job:
 # Aufträge mit Datenstrom Tool ↔ Agent (Bandbreite gilt); „download“ liest nur vom NAS
 NETWORK_KINDS = {"image", "restore", "install", "linux", "backup", "filerestore", "auto", "deliver",
                  "software"}
+
+
+def _norm(path: str | Path) -> str:
+    return os.path.normpath(os.path.abspath(str(path)))
+
+
+def _inside(path: str, folder: str) -> bool:
+    """path ist folder selbst oder liegt darin (beide normalisiert)."""
+    return path == folder or path.startswith(folder.rstrip(os.sep) + os.sep)
+
+
+def busy_message(what: str, job: Job) -> str:
+    """B-026: Meldung, wenn Löschen/Verschieben gesperrt ist."""
+    return f"{what} wird gerade von „{job.title}“ verwendet – erst nach Ende löschen/verschieben."
 
 
 def eta_text(seconds: float | None) -> str:
@@ -142,12 +157,27 @@ class JobManager:
         return (f"{len(active)} Aufträge", sum(j.fraction for j in active) / len(active),
                 eta_text(None if None in rests else max(rests)))
 
+    def busy_paths(self) -> list[tuple[str, Job]]:
+        """B-026: (gelesener Pfad, Auftrag) aller laufenden Aufträge, die eine Datei/einen Ordner vom NAS lesen."""
+        with self.lock:
+            return [(_norm(j.source), j) for j in self.jobs if j.running and j.source]
+
+    def in_use(self, *paths: str | Path) -> Job | None:
+        """B-026: Laufender Auftrag, der einen der Pfade liest – auch eine Datei *in* einem der Ordner bzw. der
+        Ordner, in dem einer der Pfade liegt (Image-Ordner). None = frei zum Löschen/Verschieben."""
+        wanted = [_norm(p) for p in paths if p]
+        for source, job in self.busy_paths():
+            if any(_inside(source, p) or _inside(p, source) for p in wanted):
+                return job
+        return None
+
     def start(self, device_id: str, kind: str, disk: str, title: str,
-              work: Callable[["Job", "JobManager"], str]) -> Job:
+              work: Callable[["Job", "JobManager"], str], source: str | Path = "") -> Job:
+        """source: gelesenes Image/ISO/Backup auf dem NAS (B-026: Löschen/Verschieben gesperrt, solange es läuft)."""
         with self.lock:
             if any(j.running and j.device_id == device_id and j.disk == disk for j in self.jobs):
                 raise agentclient.AgentError(f"Auf {disk} läuft bereits ein Auftrag")
-            job = Job(next(self._ids), device_id, kind, disk, title)
+            job = Job(next(self._ids), device_id, kind, disk, title, source=str(source) if source else "")
             self.jobs.append(job)
         self.log(job, f"{title} gestartet")
         if kind in NETWORK_KINDS and self.start_note:

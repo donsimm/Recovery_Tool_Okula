@@ -907,3 +907,16 @@ Agent-Stick – nur das Tool). VM mit BitLocker auf der Windows-Partition (Snaps
 - [ ] Optional Windows mit Schnellstart heruntergefahren (ohne BitLocker): Abbruch mit „… lässt sich nicht lesen (…)
       – nichts gelöscht. Windows ganz herunterfahren …“ – nur wenn der Agent die Partition tatsächlich nicht einhängt
 - [ ] Gegenprobe: dieselbe Disk mit *Backup* „ganze Disk“ → Lauf geht weiter (Disk-Image, dann Zurückspielen)
+### B-026 Image während des Zurückspielens gesperrt
+(Nummer setzt Okuli beim Zusammenführen.) Demo-Gerät einschalten, *Image zurückspielen* mit einem Demo-Image starten
+(läuft lange genug); bei einer echten VM ebenso mit einem Image im Archiv-Ordner.
+- [ ] Während der Auftrag läuft: Rechtsklick auf das Image → *Löschen …* → Meldung „„…“ wird gerade von
+      „Zurückspielen …“ verwendet – erst nach Ende löschen/verschieben.“, keine Rückfrage, nichts gelöscht
+- [ ] Image mit der Maus in einen anderen Ordner bzw. *Nach „Nicht einsortiert“* → gleiche Meldung, bleibt liegen
+- [ ] Ordner, in dem das Image liegt: mit der Maus verschieben, *Umbenennen …*, *Löschen (nur leer)* → Meldung
+- [ ] Reiter „Dateien“: Image-Ordner bzw. übergeordneten Ordner löschen oder umbenennen → Meldung
+- [ ] Anderes Image im selben Bereich lässt sich weiterhin verschieben
+- [ ] Restore läuft durch („fertig“), danach lässt sich das Image wieder löschen/verschieben
+- [ ] *Auf Gerät installieren …* mit einer ISO: während der Übertragung ISO löschen/verschieben → Meldung
+- [ ] Optional: alte Demo-Images auf dem NAS, eines davon wird gerade zurückgespielt → *Alte Demo-Images vom NAS
+      löschen …* nennt es nicht, Statuszeile „1 Demo-Image übersprungen …“
