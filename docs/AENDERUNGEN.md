@@ -30,7 +30,7 @@ Frühere Stände: Protokoll unten und `git log`.
 2. Kleines aus dem VM-Test: **Ä-047** (Sperrbildschirm in Clean), **B-023** (Protokoll Startmenü/Umlaute), **B-024** (OneDrive).
 3. **Ä-048** Robustheit (Sammelpunkt Review), **Ä-049** `ui.py` aufteilen; zweite Review-Runde (`vm.py`, Dialoge, übrige Module).
 4. Am realen Gerät: **B-013** (OEM-Schlüssel), **B-004** (EliteBook UEFI), offene Prüfungen [TESTS.md](TESTS.md) „Übersicht“.
-5. Danach Ideen nach Priorität (u. a. I-012 BitLocker entsperren – Fall ZBook 25.11., I-042, Ä-006/Ä-010).
+5. Danach Ideen nach Priorität (u. a. I-012 BitLocker entsperren, I-042, Ä-006/Ä-010).
 
 **Am Server nach jedem Update:** `git pull && sudo ./install.sh`, Tool neu starten; ob ein neuer Agent-Stick nötig ist,
 steht im jeweiligen Protokoll-Eintrag.

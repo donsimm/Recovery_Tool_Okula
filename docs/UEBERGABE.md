@@ -8,7 +8,7 @@ Sitzung „Okuli“ (Projektleitung). Nächste Sitzung: `CLAUDE.md` → `docs/PR
 **Neu 25.11.:** Agenten können `python3 -m unittest discover -s tests -t .` jetzt ausführen (Zusatz-Tool
 `"Bash(python3 -m unittest:*)"` und im Auftrag ausdrücklich: ohne cd, ohne Pipe, ohne `2>&1`).
 
-## Stand (alles gepusht, Branch `claude/blissful-goldberg-mo3xda`, zuletzt bd76066, Tests 864 OK, skipped 69)
+## Stand (alles gepusht, Branch `claude/blissful-goldberg-mo3xda`, letzter Code-Commit 3595413 (B-026), Tests 864 OK, skipped 69)
 
 - **Tag `v0.2.0`** (4ec57fc) nach dem letzten VM-Durchgang: VM-Win11-clean, Direktinstallation + Windows anpassen
   „Clean“ – Startmenü nur Okula-Kacheln über das Paket vom Tool (frisches Windows **ohne ADK**), kein Wetter, kein
@@ -28,17 +28,13 @@ Sitzung „Okuli“ (Projektleitung). Nächste Sitzung: `CLAUDE.md` → `docs/PR
 
 1. **Ordnung weiter** (Dominik 25.11.): Okulis Regeln und Gedächtnis gemeinsam durchgehen; Ideen einsortieren
    (22 im Tool + ID-0003 „Ordner einfärben“, S-0001, S-0002 im Cockpit/Sekretär). I-012 (BitLocker entsperren)
-   hochstufen vorschlagen – realer Fall ZBook 25.11.
+   hochstufen vorschlagen.
 2. **B-027, B-028** mit zwei Umsetzungs-Agenten (opus medium); Prompts nach Muster `docs/prompts/B-025-…`, Quelle
    `docs/REVIEW-2026-11-25.md`. Dann Ä-047, B-023, B-024 (klein, zusammen möglich).
 3. Zweite Review-Runde (`vm.py`, `help_window.py`, Dialoge, übrige Module), danach Ä-048/Ä-049.
-4. Am realen Gerät: B-025 (ZBook mit BitLocker), B-026 (Demo-Gerät), B-013, B-004, Ä-045 mit Stick.
+4. Am realen Gerät: B-025 (Gerät/VM mit BitLocker), B-026 (Demo-Gerät), B-013, B-004, Ä-045 mit Stick.
 
 ## Offen / Beobachtungen
-- **HP ZBook Fury G1i** (SN 5CG5345KVV, Philippe): CPU drosselt wegen Wärme, Lüfter 100 %. BIOS 01.05.01 = neuestes
-  (HP-Liste Board 8DE2), Einstellungen Werkszustand, Lüfter sauber → Empfehlung HP-Garantie mit F2-Diagnose (Failure ID).
-  Backup der Benutzerordner scheitert an BitLocker → Empfehlung: in Windows kopieren, **Wiederherstellungsschlüssel
-  vor dem Service sichern**. Secure-Boot-Hinweis („Enable MS UEFI CA key“) in Ä-010 aufgenommen.
 - VM-Win11-clean läuft (Durchgang 2, snap-8). Disk lässt sich nur lesend prüfen:
   `qemu-nbd --read-only -c /dev/nbd0 --image-opts driver=qcow2,file.driver=file,file.filename=<snap>,file.locking=off`,
   dann `ntfs-3g -o ro`. Protokoll: `C:\Windows\Temp\okula-windows-anpassen.log`.

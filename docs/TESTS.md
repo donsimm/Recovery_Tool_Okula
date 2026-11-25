@@ -84,7 +84,7 @@ ohne Fehler). Noch nicht geprüft daraus: Zurückspielen mit *Danach anpassen*, 
 
 | Was | Wo | Abschnitt |
 |---|---|---|
-| B-025 Automatisierung bricht bei BitLocker ab | Gerät mit BitLocker (z. B. ZBook) | „B-025“ |
+| B-025 Automatisierung bricht bei BitLocker ab | VM oder Gerät mit BitLocker | „B-025“ |
 | B-026 Image während des Zurückspielens gesperrt | Demo-Gerät | „B-026“ |
 | Ä-045 Neustart-Knöpfe | VM und echtes Gerät mit Agent-Stick | „Ä-045“ |
 | Automatisierung ganzer Ablauf | echtes Gerät | 5 |
@@ -924,7 +924,7 @@ Agent-Stick – nur Skript und Tool). VM-Win11-clean, Windows 11 Pro 25H2, Snaps
 
 ### B-025 Automatisierung bricht bei BitLocker ohne Backup ab
 (Nummer setzt Okuli beim Zusammenführen.) Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer
-Agent-Stick – nur das Tool). VM mit BitLocker auf der Windows-Partition (Snapshot vorher) oder HP ZBook mit BitLocker.
+Agent-Stick – nur das Tool). VM mit BitLocker auf der Windows-Partition (Snapshot vorher) oder ein Gerät mit BitLocker.
 - [ ] Automatisierung mit *Backup* „Benutzerdaten“ einschalten, Gerät mit dem Agent starten → Lauf bricht in
       Schritt 1/5 ab: Banner am Gerät und Verlauf „Automatisierung fehlgeschlagen – Schritt 1/5 Backup: Backup nicht
       möglich: <Partition> ist mit BitLocker verschlüsselt – nichts gelöscht …“; Automatisierung bleibt eingeschaltet
