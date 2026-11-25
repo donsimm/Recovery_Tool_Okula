@@ -17,7 +17,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 |---|---|---|---|
 | 🐞 Bugs | 6 | 0 | 0 |
 | 🔧 Änderungen | 9 | 0 | 0 |
-| 💡 Ideen | 23 | 0 | 0 |
+| 💡 Ideen | 24 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 **Stand 25.11.2026 – Version 0.2.0 (Tag `v0.2.0`):** letzter VM-Durchgang grün (VM-Win11-clean: Direktinstallation
@@ -25,12 +25,14 @@ mit Windows anpassen „Clean“, Startmenü über das Bereitstellungspaket des 
 Protokoll ohne Fehler). Code-Review [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md); B-025 und B-026 daraus erledigt.
 Frühere Stände: Protokoll unten und `git log`.
 
-**Als Nächstes:**
-1. Aus dem Review: **B-027** (Image unvollständig als fertig), **B-028** (Fehler als ok gemeldet).
-2. Kleines aus dem VM-Test: **Ä-047** (Sperrbildschirm in Clean), **B-023** (Protokoll Startmenü/Umlaute), **B-024** (OneDrive).
-3. **Ä-048** Robustheit (Sammelpunkt Review), **Ä-049** `ui.py` aufteilen; zweite Review-Runde (`vm.py`, Dialoge, übrige Module).
-4. Am realen Gerät: **B-013** (OEM-Schlüssel), **B-004** (EliteBook UEFI), offene Prüfungen [TESTS.md](TESTS.md) „Übersicht“.
-5. Danach Ideen nach Priorität (u. a. 🔴 I-012 BitLocker entsperren – hochgestuft 25.11., macht aus dem Abbruch von B-025 ein echtes Backup; I-042, Ä-006/Ä-010).
+**Als Nächstes** (Reihenfolge Dominik 25.11.):
+1. Aus dem Review: **B-027** (Image unvollständig als fertig), **B-028** (Fehler als ok gemeldet) – zwei Agenten parallel.
+2. **I-012** BitLocker entsperren (🔴, macht aus dem Abbruch von B-025 ein echtes Backup).
+3. **I-042** Microsoft 365 Apps einzeln installieren (Office).
+4. **I-043** Ordner einfärben (Geräteliste und Archiv).
+5. Danach: Kleines aus dem VM-Test (**Ä-047**, **B-023**, **B-024**), Datensicherheit (**I-016**, **I-006**, **Ä-003**),
+   **I-017** Rescue, **I-011** Multicast; **Ä-048**/**Ä-049** und zweite Review-Runde.
+6. Am realen Gerät: **B-013** (OEM-Schlüssel), **B-004** (EliteBook UEFI), offene Prüfungen [TESTS.md](TESTS.md) „Übersicht“.
 
 **Am Server nach jedem Update:** `git pull && sudo ./install.sh`, Tool neu starten; ob ein neuer Agent-Stick nötig ist,
 steht im jeweiligen Protokoll-Eintrag.
