@@ -41,7 +41,9 @@ Dominik hat installiert und den Agent-Stick neu gemacht (Stand Ä-046; B-022 bra
    **Durchgang 1 (25.11., 13:09–13:14, snap-8):** Startmenü nur Okula-Kacheln (Paket vom Tool ✔), kein Wetter,
    kein Sperrbildschirm (Option aber nicht gewählt – nicht in Clean → Ä-047), Protokoll 42 ok/0 Fehler, Zeitstempel
    Ortszeit. Befunde: B-023 (Startmenü-Hinweis trotz Paket, „Startmenue“), B-024 (OneDrive-Rückgabewert).
-   **Durchgang 2** mit „Sperrbildschirm aus“ läuft.
+   **Durchgang 2 (25.11., 13:50–13:55) grün:** mit „Sperrbildschirm aus“ und weiteren Optionen – 68 ok/0 Fehler,
+   kein Sperrbildschirm (offline + Skript), Startmenü nur Okula-Kacheln auf frischem Windows **ohne ADK** (Paket
+   braucht das ADK nur zum Erzeugen). Ungeprüft: Windows Home. → **Tag v0.2.0**.
 2. **Danach Aufräumen** (Dominik 25.11., „sinnvollen Stand finden“): Version taggen; Code-Review in Abschnitten
    (Lese-Agenten sonnet, z. B. `ui.py` > 3400 Zeilen); Doku entrümpeln (Zeile „Als Nächstes“ in AENDERUNGEN.md ist
    riesig, offene Tests in TESTS.md sichten); Okulis Regeln und Gedächtnis gemeinsam durchgehen; Ideen einsortieren
