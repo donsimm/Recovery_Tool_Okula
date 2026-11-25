@@ -17,7 +17,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 |---|---|---|---|
 | 🐞 Bugs | 4 | 0 | 0 |
 | 🔧 Änderungen | 9 | 0 | 0 |
-| 💡 Ideen | 24 | 0 | 0 |
+| 💡 Ideen | 23 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 **Stand 25.11.2026 – Version 0.2.0 (Tag `v0.2.0`):** letzter VM-Durchgang grün (VM-Win11-clean: Direktinstallation
@@ -27,7 +27,7 @@ Frühere Stände: Protokoll unten und `git log`.
 
 **Als Nächstes** (Reihenfolge Dominik 25.11.):
 1. ~~B-027, B-028~~ erledigt 25.11. (am realen System ungeprüft, [TESTS.md](TESTS.md) „B-027“, „B-028“). Klein dazu: Startdialog bei kaputter Schlüsseldatei (`ui.py:135`) und Verlauf „abgebrochen“ von Hand gestarteter Aufträge (`ui.py:4202`) → bei Ä-048.
-2. **I-012** BitLocker entsperren (🔴, macht aus dem Abbruch von B-025 ein echtes Backup).
+2. ~~I-012~~ BitLocker entsperren erledigt 25.11. (am realen System ungeprüft, [TESTS.md](TESTS.md) „I-012“; neuer Agent-Stick und Netzwerkstart nötig). Offen dazu: Ausführungsrecht `packaging/okula-bitlocker` im Repo (install.sh setzt 0755), Schlüssel beim Zusammenführen zweier Geräte übernehmen.
 3. **I-042** Microsoft 365 Apps einzeln installieren (Office).
 4. **I-043** Ordner einfärben (Geräteliste und Archiv).
 5. Danach: Kleines aus dem VM-Test (**Ä-047**, **B-023**, **B-024**), Datensicherheit (**I-016**, **I-006**, **Ä-003**),
