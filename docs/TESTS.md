@@ -847,7 +847,7 @@ Agent-Stick – Direktinstallation über die Setup-Partition, Zurückspielen und
       die Aufgabe weg
 - [ ] `scripts.ini`/`gpt.ini` unter `C:\Windows\System32\GroupPolicy` danach weg, Setup-Partition weg, C: gross
 - [ ] Optional: Programm mit Rückgabewert 3010 (Neustart nötig) – Neustart erst nach *Windows anpassen*
-      (Protokollzeile „Neustart in 60 s …“)
+      (Protokollzeile „Neustart 60 s nach Windows anpassen …“, seit B-022 vor den Zeilen des Skripts)
 - [ ] Optional (B-013): Gerät mit OEM-Schlüssel im BIOS – Log-Hinweis; Richtlinien (Startmenü, Wetter,
       Sperrbildschirm) trotzdem ab dem ersten Start; übrige Einstellungen beim ersten Start über das Startskript
 **Zurückspielen mit Danach anpassen**
@@ -860,3 +860,39 @@ Agent-Stick – Direktinstallation über die Setup-Partition, Zurückspielen und
       und bei einem anderen Gerät *Anwenden* → Auswahl übernommen; Tool neu starten → Auswahl noch da
 - [ ] Einschalten: Rückfrage nennt „Windows anpassen: Vorlage Clean: …“; Durchlauf → Log und Verlauf „Windows
       anpassen (…) – wird beim ersten Windows-Start umgesetzt“, am Gerät wie oben
+
+### B-022 Startmenü auf neu installiertem Windows, Protokoll der Direktinstallation
+(Nummer setzt Okuli beim Zusammenführen.) Nach `git pull && sudo ./install.sh` das Tool neu starten (**kein** neuer
+Agent-Stick – nur Skript und Tool). VM-Win11-clean, Windows 11 Pro 25H2, Snapshot vorher. Hintergrund und Wege:
+[TECHNIK.md](TECHNIK.md) „Startmenü auf neu installiertem Windows (B-022)“.
+**Ohne Bereitstellungspaket (Stand nach dem Zusammenführen)**
+- [ ] Direktinstallation mit *Windows anpassen* „Clean“: Vorschau bzw. Log des Auftrags mit „Hinweis Startmenü:
+      Microsoft schaltet die Gruppenrichtlinie … stufenweise frei …“; Tooltip *Startmenü: Werbe-Kacheln entfernen*
+      nennt dasselbe
+- [ ] Protokoll `okula-windows-anpassen.log`: Startmenü-Zeile mit Status **„Hinweis“** (nicht „ok“), „Wirkung nicht
+      sicher – …“; letzte Zeile „Ende: N ok, 1 mit Hinweis, 0 mit Fehler“
+- [ ] Erste Anmeldung: Startmenü notieren (feste Kacheln oder Standard-Layout) – beides ist mit dem Hinweis ehrlich
+      gemeldet; bei Standard-Layout gilt der Befund von B-022 weiter
+- [ ] *Image zurückspielen* → *Danach anpassen* bzw. *Windows anpassen …* am Gerät: Log „Vor dem Windows-Start
+      gesetzt: Startmenü-Richtlinie …, sofern Windows die Richtlinie annimmt“, danach „Hinweis Startmenü: …“
+**Protokoll der Direktinstallation einheitlich**
+- [ ] Im Protokoll beginnen **alle** Zeilen mit `JJJJ-MM-TT hh:mm:ss` – auch die erste aus der Setup-Umgebung
+      („ok … Vor dem ersten Start gesetzt …“) und, mit Software, „Software wird noch installiert …“
+- [ ] `Get-Content C:\Windows\Temp\okula-windows-anpassen.log` in **Windows PowerShell 5.1** und im Editor: Umlaute
+      richtig („Startmenü“, nicht „StartmenÃ¼“); Datei beginnt mit BOM (`Format-Hex … | Select-Object -First 1`: EF BB BF)
+- [ ] Optional mit Programm, das 3010 meldet: Zeile „Neustart 60 s nach Windows anpassen …“ steht **vor** den Zeilen
+      des Skripts, ebenfalls im einheitlichen Format; Nachlauf hängt danach ohne zweiten BOM an
+**Bereitstellungspaket erzeugen und prüfen (Okuli, an einer Windows-VM)**
+- [ ] Windows Configuration Designer (Store-App) installieren; *Erweiterte Bereitstellung* bzw. Kommandozeile
+      `icd.exe /Build-ProvisioningPackage /CustomizationXML:customizations.xml /PackagePath:StartPins.ppkg` mit
+      `okula_recovery/assets/startpins/customizations.xml` (in der GUI: Laufzeiteinstellungen → Policies → Start →
+      ConfigureStartPins = JSON aus `StartPins.json`, eine Zeile; Besitzer IT-Administrator, ohne Verschlüsselung
+      und Signatur)
+- [ ] Von Hand an VM-Win11-clean (frisch installiert, Standard-Layout): `Install-ProvisioningPackage -PackagePath
+      StartPins.ppkg -QuietInstall` als Administrator → abmelden, `start2.bin` umbenennen, anmelden → **feste
+      Kacheln?** (entscheidet, ob das Paket den Befund löst)
+- [ ] Wenn ja: `StartPins.ppkg` und `StartPins.ppkg.json` (= Inhalt von `StartPins.json`) nach
+      `okula_recovery/assets/startpins/` committen; Tests grün; Direktinstallation „Clean“ erneut → Protokoll
+      „ok Startmenü … Bereitstellungspaket StartPins.ppkg installiert“, **kein** „Hinweis Startmenü“ im Log des
+      Auftrags, Startmenü bei der ersten Anmeldung mit festen Kacheln; `Get-ProvisioningPackage -AllInstalledPackages`
+      zeigt „Okula StartPins“; danach eigene Kachel anheften, ab-/anmelden → bleibt sie (`applyOnce` über die CSP)?

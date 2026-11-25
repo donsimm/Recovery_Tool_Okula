@@ -1,6 +1,6 @@
 # B-022 – Startmenü-Liste wirkt auf neu installiertem Windows nicht
 
-Status: offen · erstellt 25.11.2026 von der Projektleitung · Freigabe: Dominik 25.11.
+Status: umgesetzt (Commit ebd016f, Doku im Folge-Commit) · erstellt 25.11.2026 von der Projektleitung · Freigabe: Dominik 25.11.
 
 ## Rolle und Einstieg
 

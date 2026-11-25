@@ -1353,6 +1353,79 @@ von Microsoft Learn und in der Ausgabe von `Export-StartLayout` (die Tabellen au
   höchstens 4 Kacheln **zusätzlich** zu den Microsoft-Kacheln, „dynamically delivered apps“ bleiben; nur neue Benutzer),
   `start2.bin` (binär, nicht dokumentiert), `HideRecommendedSection` (nimmt auch zuletzt geöffnete Dateien weg).
 
+**Startmenü auf neu installiertem Windows (B-022).** Befund 25.11.2026 (Okuli, VM-Win11-clean, Direktinstallation mit
+Ä-046, Windows 11 Pro 25H2 26200.8037): Richtlinie und JSON vor dem ersten Start gesetzt (Setup-Umgebung), Datei
+lesbar, Gruppenrichtlinie vor der Anmeldung fertig, neues Profil ohne `start2.bin` – trotzdem Standard-Layout, auch
+nach erneuter Anmeldung mit umbenannter `start2.bin` und ohne `applyOnce`. Am 24.11. wirkte dieselbe Richtlinie auf
+der länger betriebenen VM (ab „frisch“); einmal (erster Lauf 24.11.) auch dort nicht.
+- **Ursache – belegt:** Die GPO-Variante gibt es erst „starting with Windows 11, version 24H2 with KB5062660“
+  (Microsoft Learn, „Customize the Start layout“, Reiter GPO). Der Support-Artikel zu KB5062660 (22.07.2025, Build
+  26100.4770) führt die Neuerung „Start menu“ („Boolean option to the Configure Start Pins policy … apply Start menu
+  pins once“) unter **„Gradual rollout“**: „users receive the updates at different times, and it might not be
+  immediately available to all users“. Er nennt dabei nur die CSP („optionally applied through the existing
+  configuration Service Provider (CSP)“), keine Gruppenrichtlinie. – **Belegt, dass es nicht daran liegt:** Edition
+  (Policy CSP *ConfigureStartPins*: Pro ab 21H2) und „temporary enterprise feature control“ (Liste auf Learn,
+  „Enterprise feature control in Windows 11“, enthält das Startmenü nicht).
+- **Plausibel:** Die Gruppenrichtlinie hängt an derselben stufenweisen Freischaltung wie die Neuerung aus KB5062660;
+  ein frisch installiertes Gerät hat die Freischaltung noch nicht (sie kommt online und mit der Zeit), ein länger
+  betriebenes schon – das erklärt beide Befunde (24.11. wirkte, 25.11. nicht; erster Lauf 24.11. ebenfalls nicht).
+- **Vermutung (nicht belegt):** Wann bzw. wodurch die Freischaltung kommt (Online-Konfiguration, Zeit seit
+  Installation, kumulatives Update). Microsoft dokumentiert dafür keinen Schalter.
+- **Weg 1 – Bereitstellungspaket (PPKG), gewählt:** Learn („Customize the Start layout“, Reiter PPKG):
+  `Policies/Start/ConfigureStartPins`, Wert = JSON in einer Zeile. Provisioning setzt die Policy CSP ohne
+  Geräteverwaltung („Quickly configure … devices … without a mobile device management (MDM) infrastructure“,
+  „Provisioning packages overview“) – also nicht über die Gruppenrichtlinie und damit (plausibel) ohne deren
+  Freischaltung. *Erzeugen:* nur mit Windows Configuration Designer (Store-App oder ADK, `icd.exe
+  /Build-ProvisioningPackage /CustomizationXML:… /PackagePath:…`); das Format (.ppkg) ist nicht dokumentiert, unter
+  Linux also nicht erzeugbar. Signieren ist nicht nötig (unsigniert: Zustimmung bei interaktiver Installation,
+  `-QuietInstall` „without any customer interaction“). Darum einmal erzeugen und ins Repo legen:
+  `okula_recovery/assets/startpins/customizations.xml` (Vorlage, `wintweaks.start_pins_customizations_xml()`, Test
+  prüft Gleichheit; feste Paket-ID `wintweaks.START_PPKG_ID`, OwnerType ITAdmin) → daraus `StartPins.ppkg` und
+  daneben `StartPins.ppkg.json` = Inhalt von `StartPins.json` beim Erzeugen. Das Tool gibt das Paket nur mit, wenn
+  beide Dateien da sind und die Liste noch stimmt (`wintweaks.start_pins_ppkg()`); ändert sich `START_PINS`, Paket neu
+  erzeugen. *Anwenden:* Der Baustein schreibt es als Base64 aus dem Skript nach `%ProgramData%\Okula\StartPins.ppkg` und
+  ruft `Install-ProvisioningPackage -QuietInstall -ForceInstall -LogsDirectoryPath %WINDIR%\Temp\okula-startpins-ppkg`
+  (Learn: nur Windows 11 Client; Admin-Rechte – das Skript läuft als SYSTEM). Das gilt für alle drei Wege von *Windows
+  anpassen*: Direktinstallation (aus `SetupComplete.cmd`, vor der ersten Anmeldung), Agent offline + Startskript
+  (B-020; das Startskript kann parallel zur ersten Anmeldung laufen – dann greift das Paket evtl. erst bei der nächsten
+  Anmeldung) und Startskript allein. Vor 24H2 ersetzt ein installiertes Paket die MDM-Bridge. Fehler beim Paket: kein
+  Abbruch, Grund in der Zeile, Gruppenrichtlinie läuft wie bisher. Die Gruppenrichtlinie (offline und im Skript) bleibt
+  zusätzlich gesetzt (wirkt, wo freigeschaltet). *Nicht gewählt:* Paket in `C:\Recovery\Customizations` legen – laut
+  Learn („How provisioning works“) wendet Windows Pakete dort bei OOBE immer an, auch unsigniert, aber nur bei OOBE
+  (nicht bei schon eingerichteten Geräten des Agent-Wegs) und der Ordner gehört zu „Reset this PC“; über das Skript ist
+  es für alle Wege gleich. *Offen:* Ob `applyOnce` über die CSP greift (der KB-Artikel nennt die CSP, aber unter
+  „Gradual rollout“) – sonst setzt Windows die Liste bei jeder Anmeldung neu. Ob das Paket als SYSTEM aus
+  `SetupComplete.cmd` installiert, prüft Okuli an der VM ([TESTS.md](TESTS.md) „B-022“).
+- **Weg 2 – `LayoutModification.json` im Standardprofil (OEM):** bleibt verworfen (siehe oben: nur 4 + 4 Kacheln
+  **zusätzlich**, Microsoft-Kacheln bleiben, nur neue Benutzer).
+- **Weg 3 – Gruppenrichtlinie allein:** bleibt, solange kein Paket beiliegt – mit **ehrlichem Hinweis**
+  (`wintweaks.START_GPO_HINT`): Protokoll am Gerät mit Status **„Hinweis“** statt „ok“ („Wirkung nicht sicher – …“,
+  `Invoke-OkulaStep` wertet einen Rückgabetext „Hinweis: …“ so aus, Zähler „mit Hinweis“ in der Schlusszeile), Log des
+  Auftrags („Hinweis Startmenü: …“ nach „Vor dem Windows-Start gesetzt …“), Vorschau der Direktinstallation, Tooltip,
+  Hilfe. `install.cmd` schreibt „Startmenue-Richtlinie … (Wirkung: siehe Zeile Startmenue beim ersten Start)“.
+- **Nicht gemacht:** Wirkung am Gerät erkennen (z. B. `start2.bin` nach der Anmeldung auswerten) – Format nicht
+  dokumentiert, nicht belegbar. WMI-Bridge: `MDM_Policy_Config01_Start02` hat bei Pro ohne MDM-Anmeldung keine
+  Eigenschaft `ConfigureStartPins` (Befund Okuli) – bleibt nur vor 24H2 als Versuch.
+
+Quellen B-022 (abgerufen 25.11.2026): Microsoft Learn „Customize the Start layout for managed Windows devices“
+(Stand 15.07.2026; Reiter CSP/GPO/PPKG, `applyOnce`), „Start Policy CSP“ (Stand 23.11.2026; *ConfigureStartPins*
+Pro ab 21H2, GPO-Zuordnung StartMenu.admx), „Enterprise feature control in Windows 11“, „Provisioning packages
+overview“, „How provisioning works in Windows“, „Apply a provisioning package“, „Windows Configuration Designer
+command line interface“, „Create a provisioning package with multivariant settings“ (Aufbau `customizations.xml`),
+PowerShell „Install-ProvisioningPackage“; support.microsoft.com „July 22, 2025—KB5062660 (OS Build 26100.4770)
+Preview“ (Abschnitt „Gradual rollout“ → „Start menu“).
+
+**Protokoll der Direktinstallation (B-022):** `install.cmd` und `SetupComplete.cmd` legen
+`okula-windows-anpassen.log` mit cmd an – ohne BOM und mit `%DATE% %TIME%` („25.11.2026  8:28:45,79“). Das Skript
+gleicht beim ersten Schreiben (`Initialize-OkulaLog` in `Write-OkulaLog`, auch im Nachlauf) einmalig an: Datei ohne
+BOM → lesen, Zeilen mit Datum von cmd (`wintweaks.LOG_DATE_DE` Tag.Monat.Jahr, `LOG_DATE_US` „Tue 11/25/2026“) ins
+Format `yyyy-MM-dd HH:mm:ss`, andere Zeilen unverändert, über eine Zwischendatei als UTF-8 mit BOM zurückschreiben;
+danach hängt `Add-Content -Encoding UTF8` an (ohne zweiten BOM). Fehler dabei: still, das Protokoll läuft weiter. Die
+Neustart-Zeile der Software schreibt `SetupComplete.cmd` jetzt vor dem Skript („Neustart 60 s nach Windows anpassen
+…“) – nach dem Skript schreibt cmd nichts mehr hinein. Nicht angeglichen wird, wenn das Skript gar nicht läuft (dann
+bleiben die Zeilen von cmd, wie sie sind). Zeit in cmd zerlegen wurde verworfen: `%DATE%` hängt von der Sprache der
+Setup-Umgebung ab, `wmic` fehlt in neuen Versionen.
+
 **Nachlauf (Ä-042)** – Option „Später nachgeladene Apps nochmals entfernen (nach der Anmeldung)“: Werbe-Apps lädt
 Windows erst nach der ersten Anmeldung bzw. nach Store-Updates. Der Baustein (immer als letzter) schreibt
 `%ProgramData%\Okula\okula-windows-anpassen-nachlauf.ps1` (UTF-8 mit BOM, Inhalt Base64 im Startskript, enthält nur die
@@ -1401,8 +1474,9 @@ on the taskbar“, GPO *Allow widgets*, `SOFTWARE\Policies\Microsoft\Dsh`, NewsA
 Windows 11 Start menu“ (OEM, ebenfalls Tabelle `packagedAppID`, Beispiel `packagedAppId`). Am Gerät: `StartMenu.admx`
 der VM-Win11-test (Okuli, 19.11.). HResult 0x80070002/0x80070003 = Win32-Fehler 2/3 (Datei/Pfad nicht gefunden).
 
-**Protokoll:** `C:\Windows\Temp\okula-windows-anpassen.log` (UTF-8, Zeitstempel, „ok“/„FEHLER“ je Baustein mit Kurzinfo,
-z. B. entfernte Apps; am Ende „Ende: N ok, M mit Fehler“).
+**Protokoll:** `C:\Windows\Temp\okula-windows-anpassen.log` (UTF-8 mit BOM, Zeitstempel, „ok“/„Hinweis“/„FEHLER“ je
+Baustein mit Kurzinfo, z. B. entfernte Apps; am Ende „Ende: N ok, H mit Hinweis, M mit Fehler“ – „Hinweis“ seit B-022
+für gelaufene Bausteine mit unsicherer Wirkung, Zeilen der Direktinstallation siehe „Protokoll der Direktinstallation“).
 
 **Sicherheit Passwort (automatische Anmeldung):** nie im Protokoll am Gerät, im Log des Auftrags, im Verlauf, in
 Vorlagen oder im Agent-Log (der Agent protokolliert den Skriptinhalt nicht). Im Skript steht es Base64-kodiert (gegen
