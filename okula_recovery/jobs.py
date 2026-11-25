@@ -95,6 +95,34 @@ def _inside(path: str, folder: str) -> bool:
     return path == folder or path.startswith(folder.rstrip(os.sep) + os.sep)
 
 
+def is_cancel_error(e: BaseException) -> bool:
+    """B-028: Ist die Ausnahme selbst der Abbruch (AgentError(„Abgebrochen …“), Cancelled …)? Ein anderer Fehler
+    bleibt ein Fehler, auch wenn danach noch Abbrechen gedrückt wurde."""
+    return type(e).__name__ == "Cancelled" or str(e).lstrip().lower().startswith("abgebrochen")
+
+
+def image_has_windows(src: dict) -> bool:
+    """B-028: Enthält die Quelle eines Images (agentclient.image_source) eine NTFS-Partition (Windows erwartet)?"""
+    parts = (src.get("source") or {}).get("partitions") or []
+    return (any((p.get("fstype") or "").lower() == "ntfs" for p in parts)
+            or any((st.get("variant") or "").lower() == "ntfs" for st in src.get("steps") or []))
+
+
+def customize_problems(results: list[dict], windows: bool = False) -> list[str]:
+    """B-028: Ergebnisse von agentclient.customize, die kein Erfolg sind – „error“, „not_generalized“ und, wenn ein
+    Windows-Image zurückgespielt wurde, kein Windows in der Ergebnisliste. Leer = alles angepasst."""
+    out = []
+    for r in results:
+        part, action = r.get("part", "?"), r.get("action")
+        if action == "error":
+            out.append(f"{part}: Anpassen fehlgeschlagen ({r.get('detail') or 'unbekannter Fehler'})")
+        elif action == "not_generalized":
+            out.append(f"{part}: Windows ist nicht mit Sysprep vorbereitet – Name und Key NICHT gesetzt")
+    if windows and not out and not any(r.get("system") == "windows" for r in results):
+        out.append("Kein Windows auf der Zieldisk gefunden – Name und Key NICHT gesetzt")
+    return out
+
+
 def busy_message(what: str, job: Job) -> str:
     """B-026: Meldung, wenn Löschen/Verschieben gesperrt ist."""
     return f"{what} wird gerade von „{job.title}“ verwendet – erst nach Ende löschen/verschieben."
@@ -191,8 +219,10 @@ class JobManager:
                 job.state, job.fraction = DONE, 1.0
                 self.log(job, f"Fertig{': ' + job.result if job.result else ''}")
             except Exception as e:  # jeder Fehler gehört ins Log des Auftrags
-                job.state = CANCELLED if job.cancel.is_set() else FAILED
-                self.log(job, f"{'Abgebrochen' if job.cancel.is_set() else 'Fehler'}: {e}")
+                # B-028: nur der Abbruch selbst zählt als abgebrochen – ein Fehler davor behält seine Ursache
+                cancelled = job.cancel.is_set() and is_cancel_error(e)
+                job.state = CANCELLED if cancelled else FAILED
+                self.log(job, f"{'Abgebrochen' if cancelled else 'Fehler'}: {e}")
             finally:
                 job.ended, job.t_end = time.time(), time.monotonic()
                 self.on_change(job)
@@ -434,6 +464,14 @@ def software_work(ip: str, key: bytes, port: int, disk: str, nas_root: str, name
     return work
 
 
+def _has_windows(image: str | Path, source_disk: str | None) -> bool:
+    """B-028: Windows im Image erwartet? Lässt sich die Quelle nicht lesen, gilt: nein (keine Zusatzwarnung)."""
+    try:
+        return image_has_windows(agentclient.image_source(image, source_disk))
+    except Exception:  # nur für die Warnung – das Zurückspielen ist schon gelungen
+        return False
+
+
 def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source_disk: str | None, verify: bool,
                  after: Callable[[Job, str | None, Exception | None], None], customize: dict | None = None,
                  adapt: dict | None = None, software: dict | None = None, tweak: dict | None = None):
@@ -471,6 +509,7 @@ def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source
             jm.log(job, "Schritt 1/2: Image auf dem NAS prüfen (Prüfsummen) – danach wird zurückgespielt")
 
         current = {"path": image, "disk": source_disk}
+        problems: list[str] = []
         try:
             if adapt:
                 from okula_recovery import shrink
@@ -489,15 +528,21 @@ def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source
                 copy_profile = bool(customize.get("copy_profile"))
                 jm.log(job, "Anpassen: Gerätename und Windows-Schlüssel"
                        + (", Einstellungen des Administrators" if copy_profile else "") + " (Master-Image)")
-                for r in agentclient.customize(ip, key, target, customize["unattend"], customize["hostname"], port,
-                                               copy_profile=copy_profile):
-                    jm.log(job, f"  {r['part']}: " + {
+                results = agentclient.customize(ip, key, target, customize["unattend"], customize["hostname"], port,
+                                                copy_profile=copy_profile)
+                for r in results:
+                    action = r.get("action", "")
+                    jm.log(job, f"  {r.get('part', '?')}: " + {
                         "unattend": "Windows (Master) – Name/Key gesetzt, richtet sich beim ersten Start ein",
                         "hostname": f"Linux – Hostname {customize['hostname']}",
                         "not_generalized": "Windows ist nicht mit Sysprep vorbereitet – Name und Key NICHT gesetzt",
-                        "none": "nichts zu tun"}.get(r["action"], r.get("detail") or r["action"]))
-                    if copy_profile and r["action"] == "unattend":
-                        jm.log(job, f"  {r['part']}: {winunattend.taskbar_log(r)}")
+                        "none": "nichts zu tun"}.get(action, r.get("detail") or action or "unbekanntes Ergebnis"))
+                    if copy_profile and action == "unattend":
+                        jm.log(job, f"  {r.get('part', '?')}: {winunattend.taskbar_log(r)}")
+                # B-028: Fehler beim Anpassen nicht als „angepasst“ melden – Warnung im Ergebnis
+                problems = customize_problems(results, _has_windows(current["path"], current["disk"]))
+                for p in problems:
+                    jm.log(job, f"  Warnung: {p}")
             if software and software.get("names"):
                 try:
                     send_software(ip, key, port, target, software["nas_root"], list(software["names"]),
@@ -513,7 +558,11 @@ def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source
             after(job, None, e)
             raise
         after(job, image, None)
-        return f"{target} zurückgespielt" + (" und angepasst" if customize else "") \
+        if problems:
+            adapted = f", Warnung beim Anpassen: {'; '.join(problems)}"
+        else:
+            adapted = " und angepasst" if customize else ""
+        return f"{target} zurückgespielt" + adapted \
             + (", Software wird beim ersten Start installiert" if software and software.get("names") else "") \
             + (", Windows anpassen beim ersten Start" if tweak else "")
 

@@ -402,11 +402,33 @@ class Engine:
             return
         try:
             self._execute(dev, agent, run)
+        except Exception as e:  # B-028: der Lauf darf nie auf „läuft“ stehen bleiben
+            self._internal_error(dev, run, e)
         finally:
             with self.cond:
                 self.running -= 1
                 self.cond.notify_all()
             self._update_positions()
+
+    def _internal_error(self, dev, run: Run, e: Exception) -> None:
+        """B-028: Ausnahme ausserhalb des Auftrags (Speichern, Verlauf, Anzeige): Lauf als Fehler beenden. Jeder
+        Schritt einzeln geschützt – oft ist gerade Speichern oder Verlauf die Ursache."""
+        run.text = f"Automatisierung fehlgeschlagen (Tool): {e}"
+        try:
+            s = settings(dev)
+            s.last_error = run.text
+            self._save(dev, s)
+        except Exception:
+            pass
+        try:
+            self.store.add_history(dev, "automatisierung", run.text, ok=False)
+        except Exception:
+            pass
+        run.phase = "error"
+        try:
+            self.on_change(dev.id)
+        except Exception:
+            pass
 
     def _update_positions(self) -> None:
         with self.cond:
@@ -483,8 +505,9 @@ class Engine:
         else:
             message = error.get("message") or (run.job.log[-1].split(" ", 1)[-1] if run.job and run.job.log
                                                else "unbekannter Fehler")
-            if run.cancel.is_set():
-                message = "im Tool abgebrochen"
+            if run.cancel.is_set() and (run.job is None and not error.get("message")
+                                        or run.job is not None and run.job.state == jobs.CANCELLED):
+                message = "im Tool abgebrochen"     # B-028: nur der Abbruch selbst, sonst bleibt die Ursache
             s = settings(dev)
             s.last_error = f"{error.get('step', '')}: {message}".strip(": ")
             self._save(dev, s)
@@ -639,18 +662,25 @@ def automation_work(ip: str, key: bytes, port: int, dev, s: Settings, nas_root: 
             begin(2, f"Name „{dev.name}“" + (", Windows-Schlüssel" if dev.windows_key[0] else "")
                   + (", Einstellungen des Administrators" if s.copy_profile else ""))
             xml = winunattend.master_unattend(dev.name, dev.windows_key[0], s.swiss, s.account, s.copy_profile)
-            for r in agentclient.customize(ip, key, target, xml, linuxsetup.hostname(dev.name), port,
-                                           copy_profile=s.copy_profile):
+            results = agentclient.customize(ip, key, target, xml, linuxsetup.hostname(dev.name), port,
+                                            copy_profile=s.copy_profile)
+            for r in results:
+                action = r.get("action", "")
                 what = {"unattend": f"Windows (Master): Name {winunattend.computer_name(dev.name)}"
                                     + (", Key gesetzt" if dev.windows_key[0] else "") + " – richtet sich beim "
                                     "ersten Start ein",
                         "hostname": f"Linux: Hostname {linuxsetup.hostname(dev.name)}",
                         "not_generalized": "Windows ist nicht mit Sysprep vorbereitet – Name und Key NICHT gesetzt "
                                            "(Master-Image mit Sysprep erstellen)",
-                        "none": "nichts zu tun", "error": r.get("detail", "Fehler")}.get(r["action"], r["action"])
-                jm.log(job, f"  {r['part']}: {what}")
-                if s.copy_profile and r["action"] == "unattend":
-                    jm.log(job, f"  {r['part']}: {winunattend.taskbar_log(r)}")
+                        "none": "nichts zu tun", "error": r.get("detail", "Fehler")}.get(action, action or "?")
+                jm.log(job, f"  {r.get('part', '?')}: {what}")
+                if s.copy_profile and action == "unattend":
+                    jm.log(job, f"  {r.get('part', '?')}: {winunattend.taskbar_log(r)}")
+            # B-028: nicht angepasst (Fehler, ohne Sysprep, kein Windows im Windows-Master) = Automatisierung
+            # fehlgeschlagen – kein „erfolgreich“, kein Neustart, Automatisierung bleibt an
+            problems = jobs.customize_problems(results, jobs.image_has_windows(src))
+            if problems:
+                raise AutomationError("Nicht angepasst – " + "; ".join(problems))
             # Software installieren (I-020): Installer und Startskript, installiert beim ersten Start
             if s.install_software:
                 from okula_recovery import software

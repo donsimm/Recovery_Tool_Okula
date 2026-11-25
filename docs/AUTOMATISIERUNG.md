@@ -64,6 +64,16 @@ Nach Schritt 5 setzt das Tool die Startreihenfolge auf „lokal“ zurück (fall
 
 - Jeder Schritt mit Startzeit, Dauer und Ergebnis im **Verlauf des Geräts**.
 - Bei Fehler: Schritt und Meldung im Verlauf, Status „Fehler“ in der Übersicht.
+- **Anpassen nicht gelungen (B-028, 25.11.2026):** Meldet `customize` für eine Partition `error` oder
+  `not_generalized` oder – wenn das Image eine NTFS-Partition hat (Windows erwartet) – gar kein Windows, gilt
+  Schritt 3 als **Fehler** (`jobs.customize_problems`): kein „Automatisierung erfolgreich“, kein Abschluss/Neustart,
+  das Häkchen bleibt an. Beim Zurückspielen von Hand (`jobs.restore_work`) steht im Ergebnis „Warnung beim Anpassen: …“
+  statt „und angepasst“.
+- **Abbruch und Fehler (B-028):** Als „abgebrochen“ zählt ein Auftrag nur, wenn die Ausnahme selbst der Abbruch ist
+  (`jobs.is_cancel_error`: Meldung beginnt mit „Abgebrochen“ bzw. Klasse `Cancelled`). Ein Fehler, nach dem noch
+  Abbrechen geklickt wurde, behält seine Ursache in Log, Verlauf und Banner.
+- **Fehler im Tool selbst (B-028):** Wirft der Ablauf ausserhalb des Auftrags (Speichern, Verlauf, Anzeige), endet der
+  Lauf mit Status „Fehler“ und Eintrag im Verlauf – er bleibt nie auf „läuft“ stehen.
 
 ## Entscheide (29.10.2026)
 

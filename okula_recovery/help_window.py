@@ -729,6 +729,10 @@ Ausschalten, das Wieder-Einschalten nach 3 Tagen und der Stopp-Knopf ■ fragen 
 •  Steckt eine andere Disk im Gerät, bricht das Tool ab. Es wird nichts gelöscht.
 •  Bei einem Fehler steht das in der Liste (rot), im Gerätefenster und am Bildschirm des Geräts.
     Für einen neuen Versuch das Gerät neu starten.
+•  Als Fehler gilt auch, wenn das Anpassen nicht gelingt: Master-Image ohne Sysprep, kein Windows gefunden
+    oder Fehler beim Schreiben von Name und Windows-Schlüssel. Dann gibt es keinen Abschluss (kein Neustart),
+    und die Automatisierung bleibt eingeschaltet.
+•  Wird nach einem Fehler noch <i>Abbrechen</i> geklickt, bleibt die eigentliche Ursache im Verlauf stehen.
 •  Es laufen höchstens 2 Geräte gleichzeitig (ändern: <i>Menü → Einstellungen …</i>). Die anderen warten.
 •  Alles anhalten: oben über der Geräteliste der Stopp-Knopf ■. Pausiert ist er rot. Nochmals klicken = weiter."""),
 
@@ -1534,6 +1538,8 @@ Damit kommen nur die NAS-Einstellungen mit (ohne Passwort)."""),
 
 <b>Name oder Windows-Schlüssel wurden nicht gesetzt</b>
 •  Das geht nur bei einem Master-Image, das mit Sysprep vorbereitet wurde. Das Log sagt es.
+•  Beim Zurückspielen von Hand steht dann im Ergebnis <i>Warnung beim Anpassen</i> statt <i>angepasst</i>.
+    Die Automatisierung meldet in diesem Fall einen Fehler und startet das Gerät nicht neu.
 
 <b>Fehlermeldung „Hilfsprogramm … sudo-Regel“</b>
 •  Auf dem Server einmal <tt>sudo ./install.sh</tt> im Tool-Ordner ausführen."""),

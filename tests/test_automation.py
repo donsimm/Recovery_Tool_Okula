@@ -166,6 +166,12 @@ class EngineTest(unittest.TestCase):
                 if dev.name == "Kaputt":
                     error.update(step="Schritt 2/5 Image zurückspielen", message="Image beschädigt")
                     raise RuntimeError("Image beschädigt")
+                if dev.name in ("Spät", "Abbruch"):          # B-028: Abbrechen gedrückt, bevor der Fehler ankommt
+                    wait_for(lambda: self.engine.run(dev.id).job is not None)
+                    self.engine.cancel(dev.id)
+                    message = "Verbindung zum Agent verloren" if dev.name == "Spät" else "Abgebrochen – Zieldisk leer"
+                    error.update(step="Schritt 2/5 Image zurückspielen", message=message)
+                    raise agentclient.AgentError(message)
                 return "ok"
             return work
 
@@ -289,6 +295,48 @@ class EngineTest(unittest.TestCase):
         self.assertEqual(self.engine.text(bad), "Automatisierung: Einstellungen unvollständig")
 
 
+    def test_error_then_cancel_keeps_cause(self):
+        """B-028 (R-client 10): Fehler und danach Abbrechen → Ursache bleibt in Verlauf, Banner und Auftrag."""
+        late, real = self.device("Spät"), self.device("Abbruch")
+        for d in (late, real):
+            self.release.setdefault(d.id, threading.Event()).set()
+        self.cfg.automation_max = 2
+        self.engine.consider(late, self.agent())
+        self.engine.consider(real, self.agent())
+        self.assertTrue(wait_for(lambda: self.engine.run(late.id).phase == "error"))
+        self.assertTrue(wait_for(lambda: self.engine.run(real.id).phase == "error"))
+        self.assertEqual(self.engine.run(late.id).job.state, jobs.FAILED)
+        self.assertEqual(automation.settings(late).last_error,
+                         "Schritt 2/5 Image zurückspielen: Verbindung zum Agent verloren")
+        self.assertTrue(any("Verbindung zum Agent verloren" in lines[0] for lines, _e in self.banners))
+        self.assertIn("Fehler: Verbindung zum Agent verloren", self.engine.run(late.id).job.log[-1])
+        self.assertEqual(self.engine.run(real.id).job.state, jobs.CANCELLED)          # echter Abbruch
+        self.assertEqual(automation.settings(real).last_error, "Schritt 2/5 Image zurückspielen: im Tool abgebrochen")
+
+    def test_exception_in_execute_not_stuck(self):
+        """B-028 (R-client 5): Ausnahme ausserhalb des Auftrags → Fehler statt „läuft“, Platz wird frei."""
+        broken, nxt = self.device("Defekt"), self.device("Danach")
+        for d in (broken, nxt):
+            self.release.setdefault(d.id, threading.Event()).set()
+        real_start = self.jm.start
+
+        def start(device_id, *a, **k):
+            if device_id == broken.id:
+                raise OSError("Kein Platz auf dem Gerät")
+            return real_start(device_id, *a, **k)
+
+        with mock.patch.object(self.jm, "start", start):
+            self.engine.consider(broken, self.agent())
+            self.assertTrue(wait_for(lambda: self.engine.run(broken.id).phase == "error"))
+            run = self.engine.run(broken.id)
+            self.assertIn("Kein Platz auf dem Gerät", run.text)
+            self.assertTrue(any("Kein Platz auf dem Gerät" in h["text"] and h.get("ok") is False
+                                for h in broken.history))
+            self.assertTrue(automation.settings(broken).enabled)          # bleibt an
+            self.engine.consider(nxt, self.agent())                        # Platz (automation_max=1) frei
+            self.assertTrue(wait_for(lambda: self.engine.run(nxt.id).phase == "done"))
+
+
 class BackupBlockerTest(unittest.TestCase):
     """B-025: Backup „Benutzerdaten“ und eine nicht lesbare Partition auf der Zieldisk → abbrechen, nichts löschen."""
 
@@ -357,6 +405,130 @@ class BackupBlockerTest(unittest.TestCase):
         self.assertIn("Keine Benutzerprofile auf der Zieldisk – nichts zu sichern", log)
         self.assertEqual(self.restored, ["/dev/nvme0n1"])          # läuft weiter bis zum Zurückspielen
         self.assertEqual(error["step"], "Schritt 2/5 Image zurückspielen")
+
+
+class CustomizeResultTest(unittest.TestCase):
+    """B-028: Anpassen nicht gelungen (error, not_generalized, kein Windows im Windows-Master) → Fehler, kein Abschluss."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.nas = Path(self.tmp.name)
+        (self.nas / "images/Master").mkdir(parents=True)
+        self.results = []
+        self.windows = True
+        self.finished = []
+        disk = {"path": "/dev/nvme0n1", "serial": "S1", "model": "SSD", "size": 512e9, "partitions": []}
+
+        def image_source(image, source=None):
+            fs = "ntfs" if self.windows else "ext4"
+            return {"source": {"partitions": [{"name": "sda1", "fstype": "vfat"}, {"name": "sda2", "fstype": fs}]},
+                    "steps": [{"kind": "pcl", "variant": fs, "part": "sda2"}]}
+
+        self.patches = [
+            mock.patch.object(agentclient, "get_info", lambda ip, key, port: {"disks": [disk]}),
+            mock.patch.object(agentclient, "image_source", image_source),
+            mock.patch.object(agentclient, "restore_image", lambda *a, **k: None),
+            mock.patch.object(agentclient, "customize", lambda *a, **k: self.results),
+            mock.patch.object(agentclient, "banner", lambda *a, **k: self.finished.append(a[2]) or True),
+            mock.patch.object(agentclient, "power", lambda *a, **k: self.finished.append("power"))]
+        for p in self.patches:
+            p.start()
+
+    def tearDown(self):
+        for p in self.patches:
+            p.stop()
+        self.tmp.cleanup()
+
+    def run_work(self):
+        s = automation.Settings(enabled=True, image="images/Master", disk_key="S1", finish="reboot")
+        dev = SimpleNamespace(id="d1", name="HP-ZBook", windows_key=("", ""))
+        error = {}
+        jm = jobs.JobManager()
+        job = jm.start("d1", "auto", "automatisierung", "Automatisierung",
+                       automation.automation_work("10.0.0.1", b"k" * 32, 1, dev, s, str(self.nas), error))
+        self.assertTrue(wait_for(lambda: not job.running))
+        return job, error, "\n".join(job.log)
+
+    def assert_failed(self, expected):
+        job, error, log = self.run_work()
+        self.assertEqual(job.state, jobs.FAILED, log)
+        self.assertEqual(error["step"], "Schritt 3/5 Anpassen")
+        self.assertIn(expected, error["message"])
+        self.assertEqual(self.finished, [])                # kein „fertig“-Banner, kein Neustart
+        return log
+
+    def test_error_without_part(self):
+        self.results = [{"action": "error", "detail": "ntfs-3g: Fehler beim Einhängen"}]   # früher KeyError
+        log = self.assert_failed("?: Anpassen fehlgeschlagen (ntfs-3g: Fehler beim Einhängen)")
+        self.assertIn("  ?: ntfs-3g: Fehler beim Einhängen", log)
+
+    def test_not_generalized(self):
+        self.results = [{"part": "/dev/nvme0n1p3", "system": "windows", "action": "not_generalized"}]
+        self.assert_failed("/dev/nvme0n1p3: Windows ist nicht mit Sysprep vorbereitet")
+
+    def test_empty_with_windows(self):
+        self.assert_failed("Kein Windows auf der Zieldisk gefunden")
+
+    def test_empty_without_windows_ok(self):
+        self.windows = False                               # z. B. Linux-Image ohne erkanntes System
+        job, _error, log = self.run_work()
+        self.assertEqual(job.state, jobs.DONE, log)
+        self.assertIn("power", self.finished)
+
+    def test_unattend_ok(self):
+        self.results = [{"part": "/dev/nvme0n1p3", "system": "windows", "action": "unattend"}]
+        job, _error, log = self.run_work()
+        self.assertEqual(job.state, jobs.DONE, log)
+        self.assertIn("power", self.finished)
+
+
+class RestoreCustomizeWarningTest(unittest.TestCase):
+    """B-028: Image zurückspielen mit Anpassen – nicht angepasst = Warnung im Ergebnis statt „und angepasst“."""
+
+    def restore(self, results, windows=True):
+        lines = []
+        src = {"source": {"partitions": [{"name": "sda3", "fstype": "ntfs" if windows else "ext4"}]}}
+        with mock.patch.object(agentclient, "restore_image", lambda *a, **k: None), \
+                mock.patch.object(agentclient, "image_source", lambda image, disk=None: src), \
+                mock.patch.object(agentclient, "customize", lambda *a, **k: results):
+            work = jobs.restore_work("127.0.0.1", b"k", 1, "/nas/x", "/dev/sda", None, False, lambda j, p, e: None,
+                                     {"unattend": "<xml/>", "hostname": "pc"})
+            text = work(SimpleNamespace(cancel=threading.Event(), phase=""),
+                        SimpleNamespace(log=lambda _j, line: lines.append(line), progress=lambda *a, **k: None))
+        return text, "\n".join(lines)
+
+    def test_warnings(self):
+        text, log = self.restore([{"action": "error", "detail": "kaputt"}])          # ohne part: kein KeyError
+        self.assertEqual(text, "/dev/sda zurückgespielt, Warnung beim Anpassen: ?: Anpassen fehlgeschlagen (kaputt)")
+        self.assertIn("Warnung: ?: Anpassen fehlgeschlagen (kaputt)", log)
+        text, _log = self.restore([{"part": "/dev/sda3", "system": "windows", "action": "not_generalized"}])
+        self.assertIn("Warnung beim Anpassen: /dev/sda3: Windows ist nicht mit Sysprep vorbereitet", text)
+        text, _log = self.restore([])
+        self.assertIn("Kein Windows auf der Zieldisk gefunden", text)
+        self.assertNotIn("angepasst", text)
+
+    def test_ok(self):
+        text, _log = self.restore([{"part": "/dev/sda3", "system": "windows", "action": "unattend"}])
+        self.assertEqual(text, "/dev/sda zurückgespielt und angepasst")
+        text, _log = self.restore([], windows=False)
+        self.assertEqual(text, "/dev/sda zurückgespielt und angepasst")
+
+
+class CustomizeProblemsTest(unittest.TestCase):
+    def test_problems(self):
+        self.assertEqual(jobs.customize_problems([{"part": "a", "system": "linux", "action": "hostname"}], False), [])
+        self.assertEqual(jobs.customize_problems([], True),
+                         ["Kein Windows auf der Zieldisk gefunden – Name und Key NICHT gesetzt"])
+        self.assertEqual(jobs.customize_problems([{"part": "a", "system": "windows", "action": "unattend"}], True), [])
+        self.assertTrue(jobs.image_has_windows({"source": {"partitions": [{"fstype": "ntfs"}]}}))
+        self.assertTrue(jobs.image_has_windows({"steps": [{"variant": "ntfs"}]}))
+        self.assertFalse(jobs.image_has_windows({"source": {}, "steps": [{"variant": "extfs"}]}))
+
+    def test_is_cancel_error(self):
+        self.assertTrue(jobs.is_cancel_error(agentclient.AgentError("Abgebrochen – die Zieldisk ist jetzt leer")))
+        self.assertTrue(jobs.is_cancel_error(agentclient.AgentError("abgebrochen")))
+        self.assertFalse(jobs.is_cancel_error(agentclient.AgentError("Verbindung zum Agent verloren")))
+        self.assertFalse(jobs.is_cancel_error(OSError("Broken pipe")))
 
 
 @unittest.skipUnless(can_run() and all(map(shutil.which, ("mkfs.ntfs", "ntfs-3g", "partclone.ntfs"))),
