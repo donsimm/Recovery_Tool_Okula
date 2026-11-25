@@ -50,8 +50,8 @@ class ChoiceTest(unittest.TestCase):
         body = wintweaks.BY_KEY[wintweaks.START_CLEAN].body
         self.assertIn("$offline['source'] -eq 'setup'", body)
         self.assertIn("schon bei der Installation vor dem", body)
-        # Setup-Fall kommt vor der Meldung des Agents (B-020)
-        self.assertLess(body.index("'source'"), body.index("schon beim Senden"))
+        # Setup-Fall kommt vor der Meldung des Agents (B-020) – Rückgabetext, nicht der Kommentar davor
+        self.assertLess(body.index("'source'"), body.index("Startmenü schon beim Senden vor dem"))
 
 
 OFFLINE_ALL = {"start_pins": wintweaks.start_pins_json(), "widgets": True, "lock_screen_off": True,
