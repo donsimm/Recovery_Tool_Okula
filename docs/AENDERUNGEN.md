@@ -95,6 +95,13 @@ Gerätename = Name im Tool.
 
 ## 📌 Entscheidungen
 
+- **BitLocker entsperren (I-012, Dominik 25.11.2026):** nur **lesend** (`dislocker -r`) und nur für Datei-Backups
+  (Benutzerdaten, Ordner/Partitionen, Durchsuchen). Bewusst **nicht**: Disk-Image aus belegten Blöcken (Kundendaten lägen
+  unverschlüsselt auf dem NAS – erst mit Ä-003), Schreiben auf BitLocker (Software, Anpassen, Restore). Schlüssel:
+  Standard beim Auftrag eingeben, Häkchen „Für dieses Gerät speichern“ → nur root-lesbar unter
+  `/etc/okula-recovery/bitlocker/`, nie in Inventar, Export oder Webinterface; Automatisierung sichert nur mit
+  gespeichertem Schlüssel. Nur Wiederherstellungsschlüssel, kein Benutzerpasswort. Prompt
+  [I-012](prompts/I-012-bitlocker-entsperren.md).
 - **Startmenü auf neu installiertem Windows (B-022, Umsetzungs-Agent 25.11.2026):** Gruppenrichtlinie „Configure
   Start Pins“ bleibt (offline und im Skript, wirkt, wo freigeschaltet), aber **kein „ok“ ohne Wirkung**: Status
   „Hinweis“ im Protokoll und Hinweis im Log, solange kein Bereitstellungspaket wirkt. Sicherer Weg laut Learn ist das
