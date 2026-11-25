@@ -3771,9 +3771,11 @@ class MainWindow(Gtk.ApplicationWindow):
                              "hostname": linuxsetup.hostname(dev.name), "copy_profile": copy_profile}
             soft = {"nas_root": root, "names": list(custom["software"]), "device": dev.name} \
                 if custom is not None and custom.get("software") else None     # I-020
+            tw = {**custom["tweak"], "device": dev.name} \
+                if custom is not None and custom.get("tweak") else None        # Ä-046
             if grow_gb and dev.is_vm:           # Ä-037: Snapshot erst nach dem Vergrössern (im Auftrag)
                 self._grow_restore(dev, image, source_disk, target, verify, shutdown, label, customize, grow_gb,
-                                   snapshot, soft)
+                                   snapshot, soft, tw)
                 return
             if snapshot and dev.is_vm:           # Häkchen „Vorher Snapshot“; Fehler → Dialog meldet, kein Auftrag
                 self.vm_auto_snapshot(dev, "Zurückspielen")
@@ -3783,10 +3785,12 @@ class MainWindow(Gtk.ApplicationWindow):
                               shutdown)
                 if error is None and soft:
                     GLib.idle_add(self._software_history, dev.id, soft)
+                if error is None and tw:
+                    GLib.idle_add(self._tweak_history, dev.id, tw, "wird beim ersten Windows-Start umgesetzt")
 
             work = jobs.restore_work(agent.ip, self.key, agent.control_port, image, target, source_disk, verify,
                                      after, customize,
-                                     {"target_size": adapt, "nas_root": root} if adapt else None, soft)
+                                     {"target_size": adapt, "nas_root": root} if adapt else None, soft, tw)
             self.jobs.start(dev.id, "restore", target, f"Zurückspielen {label} → {target}", work)
             self.open_device(dev).show_jobs()
 
@@ -3800,7 +3804,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _grow_restore(self, dev: devices.Device, image: str, source_disk: str | None, target: str, verify: bool,
                       shutdown: bool, label: str, customize: dict | None, grow_gb: int, snapshot: bool,
-                      soft: dict | None = None) -> None:
+                      soft: dict | None = None, tw: dict | None = None) -> None:
         """Ä-037: Ein Auftrag „VM-Disk vergrössern und zurückspielen“ – VM herunterfahren → Disk vergrössern →
         Einschalten und Agent starten → ggf. Snapshot → Zurückspielen (Ablauf in jobs.grow_restore_work)."""
         name, key = dev.vm["name"], self.key
@@ -3819,8 +3823,10 @@ class MainWindow(Gtk.ApplicationWindow):
                               shutdown)
                 if error is None and soft:
                     GLib.idle_add(self._software_history, dev.id, soft)
+                if error is None and tw:                                       # Ä-046
+                    GLib.idle_add(self._tweak_history, dev.id, tw, "wird beim ersten Windows-Start umgesetzt")
             return jobs.restore_work(agent.ip, key, agent.control_port, image, target, source_disk, verify, after,
-                                     customize, None, soft)
+                                     customize, None, soft, tw)
 
         def grown(old: int, new: int) -> None:
             GLib.idle_add(self._vm_disk_grown, dev, old, new)

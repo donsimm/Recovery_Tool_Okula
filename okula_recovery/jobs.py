@@ -402,11 +402,13 @@ def software_work(ip: str, key: bytes, port: int, disk: str, nas_root: str, name
 
 def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source_disk: str | None, verify: bool,
                  after: Callable[[Job, str | None, Exception | None], None], customize: dict | None = None,
-                 adapt: dict | None = None, software: dict | None = None):
+                 adapt: dict | None = None, software: dict | None = None, tweak: dict | None = None):
     """customize: {"unattend", "hostname", "copy_profile"} – danach Master-Image anpassen (Name, Key …; Ä-040:
     Einstellungen des Administrators, Taskleiste).
     adapt: {"target_size", "nas_root"} – Image zuerst für die kleinere Zieldisk anpassen (neues Image).
-    software: {"nas_root", "names", "device"} – danach Software installieren (I-020, beim ersten Start)."""
+    software: {"nas_root", "names", "device"} – danach Software installieren (I-020, beim ersten Start).
+    tweak: {"template", "keys", "device"} – danach Windows anpassen (Ä-046: Startskript nach der Software,
+    Offline-Teil wie „Windows anpassen“)."""
     def work(job: Job, jm: JobManager) -> str:
         def progress(ev: dict) -> None:
             phase = ev.get("phase")
@@ -470,12 +472,16 @@ def restore_work(ip: str, key: bytes, port: int, image: str, target: str, source
                                   job.cancel)
                 except Exception as e:
                     raise agentclient.AgentError(f"Zurückgespielt, aber Software nicht übertragen: {e}") from None
+            if tweak:                       # Ä-046: nach der Software (scripts.ini: Software zuerst)
+                jm.progress(job, 1.0, "Windows anpassen wird übertragen", "Windows anpassen", 0.5)
+                send_tweak_choice(ip, key, port, target, tweak, lambda line: jm.log(job, line))
         except Exception as e:
             after(job, None, e)
             raise
         after(job, image, None)
         return f"{target} zurückgespielt" + (" und angepasst" if customize else "") \
-            + (", Software wird beim ersten Start installiert" if software and software.get("names") else "")
+            + (", Software wird beim ersten Start installiert" if software and software.get("names") else "") \
+            + (", Windows anpassen beim ersten Start" if tweak else "")
 
     return work
 
@@ -833,17 +839,7 @@ def tweak_work(ip: str, key: bytes, port: int, disk: str, script: str, lines: li
                 jm.log(job, line)
             jm.log(job, "Einstellungen werden übertragen …")
             jm.progress(job, 0.3, "Einstellungen werden übertragen …")
-            result = agentclient.tweak(ip, key, disk, script, port, **({"offline": offline} if offline else {}))
-            how = "ersetzt (noch nicht umgesetzte Einstellungen von vorher verworfen)" if result.get("replaced") \
-                else "abgelegt"
-            jm.log(job, f"Startskript auf {result.get('part', disk)} {how}"
-                        + (" – vorhandene lokale Gruppenrichtlinie bleibt erhalten" if result.get("gpo") else ""))
-            if result.get("state") == "generalized":
-                jm.log(job, TWEAK_GENERALIZED)
-            jm.log(job, "Wird beim nächsten Windows-Start umgesetzt (als SYSTEM). "
-                        "Protokoll am Gerät: C:\\Windows\\Temp\\okula-windows-anpassen.log")
-            for line in offline_lines(offline, result):
-                jm.log(job, line)
+            send_tweak(ip, key, port, disk, script, offline, lambda line: jm.log(job, line))
         except Exception as e:
             after(job, None, e)
             raise
@@ -851,4 +847,43 @@ def tweak_work(ip: str, key: bytes, port: int, disk: str, script: str, lines: li
         return "wird beim nächsten Windows-Start umgesetzt"
 
     return work
+
+
+def send_tweak(ip: str, key: bytes, port: int, disk: str, script: str, offline: dict | None,
+               log: Callable[[str], None]) -> dict:
+    """Windows anpassen ans Gerät (I-039, Ä-046 auch nach dem Zurückspielen und in der Automatisierung):
+    Startskript ablegen und den Teil vor der ersten Anmeldung offline schreiben (B-020); Antwort des Agents."""
+    result = agentclient.tweak(ip, key, disk, script, port, **({"offline": offline} if offline else {}))
+    how = "ersetzt (noch nicht umgesetzte Einstellungen von vorher verworfen)" if result.get("replaced") \
+        else "abgelegt"
+    log(f"Startskript auf {result.get('part', disk)} {how}"
+        + (" – vorhandene lokale Gruppenrichtlinie bleibt erhalten" if result.get("gpo") else ""))
+    if result.get("shared"):
+        log("Ein weiteres Okula-Startskript (Software installieren) steht noch aus – beide laufen beim nächsten "
+            "Start, das letzte stellt die Gruppenrichtlinie wieder her")
+    if result.get("state") == "generalized":
+        log(TWEAK_GENERALIZED)
+    log("Wird beim nächsten Windows-Start umgesetzt (als SYSTEM). "
+        "Protokoll am Gerät: C:\\Windows\\Temp\\okula-windows-anpassen.log")
+    for line in offline_lines(offline, result):
+        log(line)
+    return result
+
+
+def send_tweak_choice(ip: str, key: bytes, port: int, disk: str, tweak: dict, log: Callable[[str], None]) -> str:
+    """Ä-046: Auswahl {"template", "keys", "device"} nach dem Zurückspielen bzw. in der Automatisierung senden.
+    Rückgabe: Kurzform für den Verlauf. Fehler als AgentError („Zurückgespielt, aber …“)."""
+    from okula_recovery import wintweaks
+    choice = wintweaks.clean_choice(tweak)
+    if choice is None:
+        return ""
+    log(f"Windows anpassen ({wintweaks.choice_summary(choice)}):")
+    for line in wintweaks.describe_lines(choice["keys"]):
+        log(line)
+    try:
+        script = wintweaks.choice_script(choice, str(tweak.get("device") or ""))
+        send_tweak(ip, key, port, disk, script, wintweaks.choice_offline(choice), lambda line: log("  " + line))
+    except Exception as e:
+        raise agentclient.AgentError(f"Zurückgespielt, aber Windows anpassen nicht übertragen: {e}") from None
+    return wintweaks.choice_history(choice)
 

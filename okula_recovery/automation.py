@@ -55,6 +55,8 @@ class Settings:
     copy_profile: bool = True        #    Einstellungen des Administrators übernehmen (Ä-040: CopyProfile, Taskleiste)
     install_software: list[str] = field(default_factory=list)   # Software installieren (I-020): Einträge aus
     #                                    der Software-Bibliothek (Ä-041, über den key aufgelöst), beim ersten Start
+    tweak: dict | None = None        #    Windows anpassen (Ä-046): {"template", "keys"} (wintweaks.choice), nach
+    #                                    der Software beim ersten Start; ohne automatische Anmeldung
     software: bool = False           # 4: Ordner senden
     testfiles: bool = False
     projects: list[str] = field(default_factory=list)
@@ -70,6 +72,8 @@ class Settings:
         s.projects = [str(p) for p in s.projects or [] if p]
         s.install_software = [str(p) for p in s.install_software or [] if p] \
             if isinstance(s.install_software, list) else []
+        from okula_recovery import wintweaks
+        s.tweak = wintweaks.clean_choice(s.tweak)          # Ä-046: unbekannte Optionen/Anmeldung fallen weg
         if s.image_mode not in ("master", "own"):
             s.image_mode = "master"
         if s.finish not in FINISH:
@@ -88,7 +92,8 @@ class Settings:
 
 # Was eine Vorlage enthält (ohne gerätebezogene Werte wie Zieldisk und Zustand)
 TEMPLATE_FIELDS = ("rearm", "backup", "backup_mode", "image_mode", "image", "adapt_smaller", "source_disk", "swiss",
-                   "account", "copy_profile", "install_software", "software", "testfiles", "projects", "finish")
+                   "account", "copy_profile", "install_software", "tweak", "software", "testfiles", "projects",
+                   "finish")
 
 
 def settings(dev) -> Settings:
@@ -163,6 +168,9 @@ def confirm_summary(dev, s: Settings, connected: bool, image_name: str = "") -> 
         lines.append("Snapshot vorher: " + ("ja" if s.snapshot else "nein"))
     if s.install_software:
         lines.append(f"Software installieren: {len(s.install_software)} Programm(e) beim ersten Start")
+    if s.tweak:
+        from okula_recovery import wintweaks
+        lines.append(f"Windows anpassen: {wintweaks.choice_summary(s.tweak)} – beim ersten Start")
     lines.append(f"Abschluss: {FINISH[s.finish]}")
     if s.rearm:
         lines.append(f"Nach dem Durchlauf in {REARM_LABEL} wieder aktiv.")
@@ -469,6 +477,8 @@ class Engine:
                                    (f" – wird in {REARM_LABEL} wieder eingeschaltet" if s.rearm else ""), ok=True)
             if error.get("software"):        # I-020
                 self.store.add_history(dev, "automatisierung", error["software"], ok=True)
+            if error.get("tweak"):           # Ä-046
+                self.store.add_history(dev, "automatisierung", error["tweak"], ok=True)
         else:
             message = error.get("message") or (run.job.log[-1].split(" ", 1)[-1] if run.job and run.job.log
                                                else "unbekannter Fehler")
@@ -631,6 +641,11 @@ def automation_work(ip: str, key: bytes, port: int, dev, s: Settings, nas_root: 
                                                    lambda line: jm.log(job, line),
                                                    lambda f: step(2, f, "Software wird übertragen"), job.cancel)
                 error["software"] = software.history_text(plan.entries)
+            # Windows anpassen (Ä-046): nach der Software, Startskript und Offline-Teil wie „Windows anpassen“
+            if s.tweak:
+                step(2, 0.9, "Windows anpassen wird übertragen")
+                error["tweak"] = jobs.send_tweak_choice(ip, key, port, target, {**s.tweak, "device": dev.name},
+                                                        lambda line: jm.log(job, "  " + line))
 
             # 4 Ordner senden
             if s.items:
