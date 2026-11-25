@@ -64,6 +64,10 @@ Der Projektleitung ist es auch dann nicht erlaubt, den App-Code anzufassen, wenn
 - **Abnahme:** Diff lesen, alle Tests laufen lassen, und wo möglich selbst am Server prüfen (ohne sudo, nur
   Probe-Objekte, danach aufräumen; z. B. Probe-VMs mit `virsh`, Bildschirm per `virsh screenshot`). Das ist kein
   App-Code und darum erlaubt – Dominiks eigene VMs/Geräte dabei nicht anfassen.
+- **Protokolle aus einer laufenden VM selbst lesen** statt Dominik abtippen lassen – nur lesend:
+  `qemu-nbd --read-only -c /dev/nbd0 --image-opts driver=qcow2,file.driver=file,file.filename=<snap>,file.locking=off`,
+  dann `ntfs-3g -o ro`; danach aushängen und `qemu-nbd -d /dev/nbd0`. Windows anpassen schreibt nach
+  `C:\Windows\Temp\okula-windows-anpassen.log`.
 - **Während ein Agent arbeitet:** Er hat seine eigene Kopie; Okuli ändert in der Zeit keine Dateien, die der Agent
   auch ändert (v. a. `docs/AENDERUNGEN.md`, `docs/TESTS.md`), damit `--ff-only` bzw. ein Rebase glatt geht.
 
