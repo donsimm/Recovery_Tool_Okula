@@ -1,6 +1,6 @@
 # Ä-046 – Windows anpassen beim Aufsetzen mitgeben: neue Maschine in einem Durchgang
 
-Status: offen · erstellt 24.11.2026 von der Projektleitung · Freigabe: Dominik 24.11.
+Status: umgesetzt (Commit 474ad30, b33d035, 7f97dfc) · erstellt 24.11.2026 von der Projektleitung · Freigabe: Dominik 24.11.
 
 ## Rolle und Einstieg
 
