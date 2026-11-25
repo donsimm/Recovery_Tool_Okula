@@ -21,6 +21,8 @@ import json
 import re
 import time
 from dataclasses import dataclass
+from pathlib import Path
+from xml.sax.saxutils import escape as xml_escape
 
 from okula_recovery.deploy import (START_GPO_BUILD, START_LAYOUT_DIR, START_MARKER, START_PINS_FILE, TWEAK_AFTER,
                                    TWEAK_LOG, TWEAK_NAME)
@@ -94,6 +96,70 @@ def start_pins_json() -> str:
     setzt die Liste nur einmal, danach heften Benutzer selbst an; ältere Windows 11 ignorieren es (Liste bei jeder
     Anmeldung)."""
     return json.dumps({"applyOnce": True, "pinnedList": [pin for _n, pin in START_PINS]}, separators=(",", ":"))
+
+
+# B-022: Die Gruppenrichtlinie „Configure Start Pins“ kam mit KB5062660 – laut Support-Artikel unter „Gradual rollout“
+# (stufenweise freigeschaltet). Befund 25.11.2026: Auf einem frisch installierten Windows 11 Pro 25H2 (26200.8037) wirkte
+# sie gar nicht (Standard-Startmenü), auf einer länger betriebenen VM schon. Darum kein „ok“ ohne Wirkung: Hinweis in
+# Protokoll, Log des Auftrags, Tooltip und Hilfe.
+START_GPO_HINT = ("Microsoft schaltet die Gruppenrichtlinie „Configure Start Pins“ stufenweise frei (KB5062660) – auf "
+                  "frisch installierten Geräten greift sie evtl. nicht, dann bleibt das Standard-Startmenü (Kacheln "
+                  "von Hand lösen bzw. anheften)")
+
+# B-022: Bereitstellungspaket (Provisioning Package) mit Policies/Start/ConfigureStartPins – laut Microsoft Learn
+# („Customize the Start layout“, Reiter PPKG) der Weg ohne Geräteverwaltung über die Policy CSP (Pro ab Windows 11
+# 21H2), unabhängig von der Gruppenrichtlinie. Erzeugen lässt es sich nur mit Windows Configuration Designer (Windows,
+# Format nicht dokumentiert) aus START_PPKG_XML; das fertige Paket liegt als START_PPKG_FILE daneben, zusammen mit
+# START_PPKG_SOURCE (= start_pins_json() beim Erzeugen). Nur wenn beide da sind und die Liste noch stimmt, gibt das Tool
+# das Paket mit (start_pins_ppkg) – sonst Gruppenrichtlinie allein mit Hinweis. Anleitung: docs/TECHNIK.md.
+ASSETS_DIR = Path(__file__).resolve().parent / "assets" / "startpins"
+START_PPKG_XML = "customizations.xml"
+START_PPKG_FILE = "StartPins.ppkg"
+START_PPKG_SOURCE = "StartPins.ppkg.json"
+START_PPKG_ID = "{5c0f6a2e-8b1d-4f3a-9d6e-0b7a4c2e1f53}"     # fest – dasselbe Paket ersetzt sich beim Neu-Installieren
+START_PPKG_LOGS = "okula-startpins-ppkg"                      # Protokolle von Install-ProvisioningPackage (Windows\Temp)
+PPKG_LINE = "$ppkg = ''"                # im Baustein START_CLEAN; build_script setzt das Paket (Base64) ein, falls da
+
+
+def start_pins_customizations_xml() -> str:
+    """customizations.xml für Windows Configuration Designer (icd.exe /Build-ProvisioningPackage) – Aufbau wie im
+    Beispiel von Microsoft Learn („Create a provisioning package with multivariant settings“), Einstellung
+    Policies/Start/ConfigureStartPins mit dem JSON in einer Zeile."""
+    return ('<?xml version="1.0" encoding="utf-8"?>\n'
+            "<WindowsCustomizations>\n"
+            '  <PackageConfig xmlns="urn:schemas-Microsoft-com:Windows-ICD-Package-Config.v1.0">\n'
+            f"    <ID>{START_PPKG_ID}</ID>\n"
+            "    <Name>Okula StartPins</Name>\n"
+            "    <Version>1.0</Version>\n"
+            "    <OwnerType>ITAdmin</OwnerType>\n"
+            "    <Rank>0</Rank>\n"
+            "  </PackageConfig>\n"
+            '  <Settings xmlns="urn:schemas-microsoft-com:windows-provisioning">\n'
+            "    <Customizations>\n"
+            "      <Common>\n"
+            "        <Policies>\n"
+            "          <Start>\n"
+            f"            <ConfigureStartPins>{xml_escape(start_pins_json())}</ConfigureStartPins>\n"
+            "          </Start>\n"
+            "        </Policies>\n"
+            "      </Common>\n"
+            "    </Customizations>\n"
+            "  </Settings>\n"
+            "</WindowsCustomizations>\n")
+
+
+def start_pins_ppkg(folder: Path | None = None) -> bytes | None:
+    """Fertiges Bereitstellungspaket – nur wenn es zur aktuellen Liste passt (START_PPKG_SOURCE = start_pins_json());
+    sonst None (Gruppenrichtlinie allein, mit Hinweis)."""
+    folder = ASSETS_DIR if folder is None else folder
+    try:
+        data = (folder / START_PPKG_FILE).read_bytes()
+        source = (folder / START_PPKG_SOURCE).read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not data or source != start_pins_json():
+        return None
+    return data
 
 
 @dataclass(frozen=True)
@@ -379,6 +445,29 @@ if ($edition -notmatch 'Enterprise|Education') {{
                 'sonst von Hand (Rechtsklick auf die Kachel → „Von Start lösen“)') -f $edition
 }}
 $json = '{start_pins_json()}'
+# B-022: Bereitstellungspaket (Policy CSP Start/ConfigureStartPins), falls das Tool eines mitgibt – wirkt laut Microsoft
+# Learn ohne Geräteverwaltung und hängt nicht an der stufenweise freigeschalteten Gruppenrichtlinie (KB5062660)
+{PPKG_LINE}
+$ppkgOk = $false
+$pinNote = ''
+if ($ppkg) {{
+    try {{
+        $pfolder = Join-Path $env:ProgramData 'Okula'
+        New-Item -ItemType Directory -Path $pfolder -Force | Out-Null
+        $pfile = Join-Path $pfolder '{START_PPKG_FILE}'
+        [IO.File]::WriteAllBytes($pfile, [Convert]::FromBase64String($ppkg))
+        $plogs = Join-Path $env:SystemRoot 'Temp\\{START_PPKG_LOGS}'
+        Install-ProvisioningPackage -PackagePath $pfile -QuietInstall -ForceInstall -LogsDirectoryPath $plogs `
+            -ErrorAction Stop | Out-Null
+        $ppkgOk = $true
+        $pinNote = '; Bereitstellungspaket {START_PPKG_FILE} installiert (Policy CSP Start/ConfigureStartPins)'
+    }} catch {{
+        $pinNote = '; Bereitstellungspaket {START_PPKG_FILE} nicht installiert: ' + $_.Exception.Message
+    }}
+}}
+# B-022: ohne wirksames Paket kein „ok“ – die Gruppenrichtlinie greift auf frisch installierten Geräten evtl. nicht
+$pinHint = ''
+if (-not $ppkgOk) {{ $pinHint = 'Hinweis: Wirkung nicht sicher – {START_GPO_HINT}; ' }}
 if ([Environment]::OSVersion.Version.Build -ge {START_GPO_BUILD}) {{
     # Windows 11 24H2: Gruppenrichtlinie „Configure Start Pins“ wie in StartMenu.admx – Schalter (DWORD 1) und Pfad
     # zur JSON-Datei (REG_EXPAND_SZ); die Datei bleibt in %ProgramData%\\Okula liegen
@@ -404,13 +493,13 @@ if ([Environment]::OSVersion.Version.Build -ge {START_GPO_BUILD}) {{
             # Ä-046: Direktinstallation – die Setup-Umgebung hat die Richtlinie vor dem ersten Start gesetzt
             $setup = ('Gruppenrichtlinie ConfigureStartPins gesetzt (Datei {{0}}); schon bei der Installation vor dem ' +
                       'ersten Start gesetzt (Setup-Umgebung, noch kein Benutzerprofil) – gilt ab der ersten Anmeldung') -f $file
-            return ($setup + $adsNote)
+            return ($pinHint + $setup + $pinNote + $adsNote)
         }}
         $done = ('Gruppenrichtlinie ConfigureStartPins gesetzt (Datei {{0}}); Startmenü schon beim Senden vor dem ' +
                  'Windows-Start zurückgesetzt (Agent: Richtlinie gesetzt, Startmenü von {{1}} Profil(en) zurückgesetzt, ' +
                  'start2.bin gesichert als start2.bin.okula-{{2}}) – gilt ab der ersten Anmeldung für neue Konten und ' +
                  'bestehende; eigene Anheftungen der Benutzer gehen dabei verloren') -f $file, $offCount, $offStamp
-        return ($done + $adsNote)
+        return ($pinHint + $done + $pinNote + $adsNote)
     }}
     # Ohne Marke (Agent älter als B-020 oder offline nicht geklappt) wie bisher:
     # B-018: bei bestehenden Profilen hat die gespeicherte start2.bin Vorrang vor der Richtlinie – einmalig
@@ -465,7 +554,12 @@ if ([Environment]::OSVersion.Version.Build -ge {START_GPO_BUILD}) {{
                   'Benutzer dann abgemeldet ist)') -f $who
     }}
     if ($hints) {{ $text += '; Hinweis: ' + ($hints -join '; ') }}
-    return $text + $adsNote
+    return $pinHint + $text + $pinNote + $adsNote
+}}
+if ($ppkgOk) {{
+    # Windows 11 vor 24H2: das Paket setzt dieselbe Policy CSP – die MDM-Bridge ist dann nicht nötig
+    return ('Richtlinie ConfigureStartPins über Bereitstellungspaket gesetzt (Policy CSP); wirkt bei der nächsten ' +
+            'Anmeldung, auch für bestehende Benutzer' + $pinNote + $adsNote)
 }}
 try {{
     # Windows 11 vor 24H2: nur Policy CSP Start/ConfigureStartPins über die MDM-Bridge (WMI, als SYSTEM)
@@ -492,8 +586,9 @@ try {{
                    "von Werbe-Apps sperren“), sonst von Hand lösen. Ab Windows 11 24H2 "
                    "über die Gruppenrichtlinie (Liste in C:\\ProgramData\\Okula\\StartPins.json), nur einmal – "
                    "danach lässt sich wieder selbst anheften. Gilt für neue Konten und – einmalig zurückgesetzt – "
-                   "für bestehende; eigene Anheftungen der Benutzer gehen dabei verloren. Ältere Windows 11 nur, wenn die Geräteverwaltung die "
-                   "Richtlinie annimmt (sonst Fehler im Protokoll). Windows 10: ohne Wirkung."),
+                   "für bestehende; eigene Anheftungen der Benutzer gehen dabei verloren. Achtung: "
+                   + START_GPO_HINT + " – das Protokoll nennt das als Hinweis. Ältere Windows 11 nur, wenn die "
+                   "Geräteverwaltung die Richtlinie annimmt (sonst Fehler im Protokoll). Windows 10: ohne Wirkung."),
     # Dienste – je Häkchen stoppen und Starttyp „Deaktiviert“
     Option("svc_search", "Dienste", "Windows Search", _services("WSearch"), SERVICES_HEADING),
     Option("svc_xbox", "Dienste", "Xbox-Dienste",
@@ -846,14 +941,54 @@ Invoke-OkulaStep 'Startskript und Gruppenrichtlinie aufräumen' {
 }
 """
 
+# B-022: Datum und Zeit, wie cmd sie mit %DATE% %TIME% ins Protokoll schreibt (install.cmd, SetupComplete.cmd) –
+# deutsch (Tag.Monat.Jahr, Befund „25.11.2026  8:28:45,79“) bzw. US-Englisch (Wochentag Monat/Tag/Jahr). Gruppen:
+# 1, 2 = Tag/Monat bzw. Monat/Tag, 3 = Jahr, 4–6 = Zeit, 7 = Rest. Im Skript ConvertTo-OkulaLogLine (nur ASCII, kein ').
+LOG_DATE_DE = r"^\s*(\d{1,2})\.(\d{1,2})\.(\d{4}) +(\d{1,2}):(\d{2}):(\d{2})(?:[.,]\d+)? +(.*)$"
+LOG_DATE_US = r"^\s*[A-Za-z]{2,3} (\d{1,2})/(\d{1,2})/(\d{4}) +(\d{1,2}):(\d{2}):(\d{2})(?:[.,]\d+)? +(.*)$"
+
 # Gemeinsam mit dem Nachlauf: Schutzliste, Zähler, Protokoll
 COMMON = r"""$OkulaKeep = @(__KEEP__)
 $OkulaKeepAlways = @(__KEEPALWAYS__)
 $script:OkulaOk = 0
+$script:OkulaHint = 0               # B-022: Baustein gelaufen, Wirkung aber nicht sicher („Hinweis“ statt „ok“)
 $script:OkulaFailed = 0
 $script:OkulaStartLater = @()       # B-019: SIDs angemeldeter Profile – Startmenü im Nachlauf nachholen
+$script:OkulaLogReady = $false
+
+function ConvertTo-OkulaLogLine([string]$Line) {
+    # B-022: Zeile aus cmd (%DATE% %TIME%, z. B. „25.11.2026  8:28:45,79“ bzw. „Tue 11/25/2026  8:28:45.79“) ins
+    # Format des Skripts („2026-11-25 08:28:45“); andere Zeilen bleiben, wie sie sind
+    foreach ($p in @(@('__LOGDE__', 1, 2), @('__LOGUS__', 2, 1))) {
+        $m = [regex]::Match($Line, $p[0])
+        if (-not $m.Success) { continue }
+        return ('{0:D4}-{1:D2}-{2:D2} {3:D2}:{4}:{5}  {6}' -f [int]$m.Groups[3].Value, [int]$m.Groups[$p[2]].Value,
+                [int]$m.Groups[$p[1]].Value, [int]$m.Groups[4].Value, $m.Groups[5].Value, $m.Groups[6].Value,
+                $m.Groups[7].Value)
+    }
+    return $Line
+}
+
+function Initialize-OkulaLog {
+    # B-022: install.cmd und SetupComplete.cmd (Direktinstallation) legen das Protokoll an – ohne BOM und mit dem
+    # Datum von cmd. Beim ersten Schreiben des Skripts einmalig angleichen und als UTF-8 mit BOM neu schreiben (sonst
+    # zeigen Windows PowerShell 5.1 und ältere Editoren die Umlaute falsch); keine Zeile geht verloren. Fehlt die
+    # Datei, legt Add-Content sie mit BOM an.
+    $script:OkulaLogReady = $true
+    try {
+        if (-not (Test-Path -LiteralPath $OkulaLog)) { return }
+        $bytes = [IO.File]::ReadAllBytes($OkulaLog)
+        if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { return }
+        $old = (New-Object Text.UTF8Encoding $false).GetString($bytes)
+        $lines = @(foreach ($l in ($old -split "`r?`n")) { ConvertTo-OkulaLogLine $l })
+        $tmp = $OkulaLog + '.okula-neu'
+        [IO.File]::WriteAllText($tmp, ($lines -join "`r`n"), (New-Object Text.UTF8Encoding $true))
+        Move-Item -LiteralPath $tmp -Destination $OkulaLog -Force -ErrorAction Stop
+    } catch { }
+}
 
 function Write-OkulaLog([string]$Text) {
+    if (-not $script:OkulaLogReady) { Initialize-OkulaLog }
     $line = '{0}  {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Text
     try { Add-Content -LiteralPath $OkulaLog -Value $line -Encoding UTF8 -ErrorAction Stop } catch { }
 }"""
@@ -863,6 +998,12 @@ FUNCTIONS = r"""function Invoke-OkulaStep([string]$Label, [scriptblock]$Action) 
     try {
         $ErrorActionPreference = 'Stop'
         $note = @(& $Action) | Where-Object { $_ -is [string] -and $_ } | Select-Object -Last 1
+        if ($note -like 'Hinweis: *') {
+            # B-022: gelaufen, Wirkung aber nicht sicher – kein „ok“
+            $script:OkulaHint++
+            Write-OkulaLog "Hinweis $Label ($($note.Substring(9)))"
+            return
+        }
         $script:OkulaOk++
         if ($note) { Write-OkulaLog "ok      $Label ($note)" } else { Write-OkulaLog "ok      $Label" }
     } catch {
@@ -1088,7 +1229,8 @@ try {
 """
 
 LATER_FOOTER = r"""} finally {
-    Write-OkulaLog ('----- Nachlauf Ende: {0} ok, {1} mit Fehler -----' -f $script:OkulaOk, $script:OkulaFailed)
+    Write-OkulaLog ('----- Nachlauf Ende: {0} ok, {1} mit Hinweis, {2} mit Fehler -----' -f $script:OkulaOk,
+                    $script:OkulaHint, $script:OkulaFailed)
     if ($PSCommandPath) { Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue }
     # nur einen leeren Ordner löschen – StartPins.json (Startmenü-Richtlinie, B-017) bleibt
     $folder = Join-Path $env:ProgramData 'Okula'
@@ -1173,7 +1315,8 @@ if ($later) { $result += ('; Startmenü von {0} angemeldeten Profil(en) wird dor
 $result"""
 
 FOOTER = r"""
-Write-OkulaLog ('----- Ende: {0} ok, {1} mit Fehler -----' -f $script:OkulaOk, $script:OkulaFailed)
+Write-OkulaLog ('----- Ende: {0} ok, {1} mit Hinweis, {2} mit Fehler -----' -f $script:OkulaOk, $script:OkulaHint,
+               $script:OkulaFailed)
 """
 
 
@@ -1188,7 +1331,8 @@ def _keep_list(items=PROTECTED) -> str:
 def _fill(text: str, **values: str) -> str:
     # gemeinsame Teile zuerst (enthalten selbst Platzhalter)
     text = (text.replace("__COMMON__", COMMON).replace("__FUNCTIONS__", FUNCTIONS)
-            .replace("__KEEPALWAYS__", _keep_list(PROTECTED_ALWAYS)).replace("__KEEP__", _keep_list()))
+            .replace("__KEEPALWAYS__", _keep_list(PROTECTED_ALWAYS)).replace("__KEEP__", _keep_list())
+            .replace("__LOGDE__", LOG_DATE_DE).replace("__LOGUS__", LOG_DATE_US))
     for k, v in values.items():
         text = text.replace(f"__{k}__", v)
     return text
@@ -1228,6 +1372,15 @@ def later_body(selected, device: str = "", created: float | None = None) -> str:
                  DELAY=str(LATER_DELAY_MIN), DAYS=str(LATER_DAYS), TASK=LATER_TASK, COUNT=str(count))
 
 
+def start_clean_body(ppkg: bytes | None = None) -> str:
+    """Baustein START_CLEAN – B-022: mit dem Bereitstellungspaket (Base64), falls eines zur Liste passt."""
+    data = start_pins_ppkg() if ppkg is None else ppkg
+    body = BY_KEY[START_CLEAN].body
+    if not data:
+        return body
+    return body.replace(PPKG_LINE, f"$ppkg = '{base64.b64encode(data).decode('ascii')}'", 1)
+
+
 def offline_request(selected) -> dict:
     """B-020: Teil für den Agent, der vor der ersten Anmeldung wirken muss – nur für die gewählten Optionen. Der
     Agent schreibt ihn offline (deploy.tweak_offline; Startmenü erst ab Build 26100, aus dem Hive gelesen)."""
@@ -1264,7 +1417,8 @@ def build_script(selected, user: str = "", password: str = "", device: str = "",
     steps = []
     for o in order:
         body = autologon_body(user, password) if o.key == AUTOLOGON else \
-            later_body(selected, device, created) if o.key == LATER else o.body
+            later_body(selected, device, created) if o.key == LATER else \
+            start_clean_body() if o.key == START_CLEAN else o.body
         steps.append(_step(o, body))
     return head + "\n" + "\n".join(steps) + "\n" + FOOTER
 

@@ -317,16 +317,23 @@ class RestoreLockTest(unittest.TestCase):
 
 
 class JobLogTest(unittest.TestCase):
+    @mock.patch.object(wintweaks, "start_pins_ppkg", lambda: None)          # B-022: ohne Bereitstellungspaket
     def test_offline_lines(self):
         req = {"start_pins": PINS, "widgets": True}
         self.assertEqual(jobs.offline_lines({}, {}), [])
         lines = jobs.offline_lines(req, {"offline": {"build": 26100, "start": "set", "profiles": 2,
                                                      "stamp": "20261124-1000", "widgets": True}})
-        self.assertEqual(len(lines), 3)
+        self.assertEqual(len(lines), 4)
         self.assertIn("Startmenü von 2 Profil(en) zurückgesetzt", lines[0])
-        self.assertIn("gilt ab der ersten Anmeldung", lines[0])
-        self.assertIn("„Widgets zulassen“ aus", lines[1])
-        self.assertTrue(lines[2].startswith("Hinweis: Werbe-Platzhalter im Startmenü"))       # B-021: Edition unbekannt
+        self.assertIn("gilt ab der ersten Anmeldung, sofern Windows die Richtlinie annimmt", lines[0])
+        # B-022: ohne Bereitstellungspaket ehrlicher Hinweis – die Gruppenrichtlinie greift evtl. nicht
+        self.assertEqual(lines[1], "Hinweis Startmenü: " + wintweaks.START_GPO_HINT)
+        self.assertIn("„Widgets zulassen“ aus", lines[2])
+        self.assertTrue(lines[3].startswith("Hinweis: Werbe-Platzhalter im Startmenü"))       # B-021: Edition unbekannt
+        with mock.patch.object(wintweaks, "start_pins_ppkg", lambda: b"PKG"):             # mit Paket kein Hinweis
+            with_pkg = jobs.offline_lines(req, {"offline": {"start": "set", "profiles": 0}})
+        self.assertEqual(len(with_pkg), 2)                                              # Startmenü, Werbe-Platzhalter
+        self.assertFalse(any(line.startswith("Hinweis Startmenü") for line in with_pkg))
         old = jobs.offline_lines(req, {"offline": {"build": 22631, "start": "old"}})
         self.assertIn("vor 24H2", old[0])
         err = jobs.offline_lines(req, {"offline_error": "nicht sauber geschlossen"})

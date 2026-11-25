@@ -129,7 +129,9 @@ def tweak_offline_cmd(offline: dict) -> str:
         return ""
     done = [what for key, what in (("widgets", "Widgets aus"), ("lock_screen_off", "kein Sperrbildschirm"),
                                    ("consumer_off", "Microsoft-Benutzererfahrungen aus")) if offline.get(key)]
-    start_text = (", " if done else "") + "Startmenue-Richtlinie mit festen Kacheln"
+    # B-022: gesetzt heisst nicht wirksam – ob die Gruppenrichtlinie greift, steht beim Baustein Startmenue des Skripts
+    start_text = (", " if done else "") + ("Startmenue-Richtlinie mit festen Kacheln (Wirkung: siehe Zeile Startmenue "
+                                           "beim ersten Start)")
     lines = [
         "rem Ae-046: Windows anpassen - Richtlinien vor dem ersten Start offline setzen (wie der Agent, B-020/B-021)",
         'set "TWLOG=%W%:\\Windows\\Temp\\okula-windows-anpassen.log"',
@@ -340,12 +342,14 @@ def tweak_start(software: bool) -> str:
                  "rem anpassen; ganz am Schluss wieder ausloesen (letzter Befehl, SetupComplete ist dann fertig)\n"
                  'set "OKULA_NEUSTART="\n'
                  "shutdown /a >nul 2>&1\n"
-                 'if not errorlevel 1 set "OKULA_NEUSTART=1"\n')
+                 'if not errorlevel 1 set "OKULA_NEUSTART=1"\n'
+                 "rem B-022: Zeile vor dem Skript schreiben - es gleicht beim ersten Schreiben alle Zeilen von cmd an\n"
+                 "rem (Datum, UTF-8 mit BOM); eine Zeile danach bliebe im Format von cmd\n"
+                 f'if defined OKULA_NEUSTART >>"%WINDIR%\\Temp\\{deploy.TWEAK_NAME}.log" echo %DATE% %TIME%  '
+                 f"Neustart {sw.REBOOT_DELAY} s nach Windows anpassen - Software meldete Neustart noetig\n")
     text += 'cmd /c "%OKULA_TW%"\n'
     if software:
         text += ("if not defined OKULA_NEUSTART goto ohneanpassen\n"
-                 f'>>"%WINDIR%\\Temp\\{deploy.TWEAK_NAME}.log" echo %DATE% %TIME%  Neustart in '
-                 f"{sw.REBOOT_DELAY} s - Software meldete Neustart noetig\n"
                  f"shutdown /r /t {sw.REBOOT_DELAY} /c \"Okula Recovery Tool: Software installiert, Windows angepasst "
                  "- Neustart\" /d p:4:2 >nul 2>&1\n")
     return text + ":ohneanpassen\n"
@@ -477,4 +481,6 @@ def describe(plan: Plan) -> list[str]:
         from okula_recovery import wintweaks
         lines.append(f"Windows anpassen ({wintweaks.choice_summary(plan.tweak)}) – vor der ersten Anmeldung"
                      + (", nach der Software" if plan.software else ""))
+        if wintweaks.START_CLEAN in plan.tweak.get("keys", ()) and not wintweaks.start_pins_ppkg():
+            lines.append("Hinweis Startmenü: " + wintweaks.START_GPO_HINT)          # B-022
     return lines

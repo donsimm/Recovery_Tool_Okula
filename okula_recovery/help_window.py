@@ -835,6 +835,15 @@ installiert, Windows lädt sie erst beim Klick oder später im Hintergrund. Daru
     abgemeldet ist, sonst greift es erst nach einem erneuten Lauf. Ältere Windows 11 nehmen die Liste nur über eine
     Geräteverwaltung an – klappt das nicht, steht „Windows 11 vor 24H2: Startmenü nur mit Geräteverwaltung“ als
     FEHLER im Protokoll. Windows 10: ohne Wirkung.
+    <b>Greift evtl. nicht auf frisch installierten Geräten:</b> Microsoft schaltet die Gruppenrichtlinie
+    „Configure Start Pins“ stufenweise frei (Update KB5062660). Auf einem neu installierten Windows 11 Pro blieb
+    trotz gesetzter Richtlinie das Standard-Startmenü (Outlook, Store, Xbox …), auf einem länger betriebenen
+    Gerät wirkte sie. Darum steht die Zeile im Protokoll als „Hinweis“ statt „ok“ („Wirkung nicht sicher“), und
+    das Log des Auftrags nennt es ebenso – dann die Kacheln von Hand lösen bzw. anheften. Sicher wirkt laut
+    Microsoft ein <b>Bereitstellungspaket</b> (<tt>StartPins.ppkg</tt>, Einstellung
+    Policies/Start/ConfigureStartPins): Liegt es dem Tool bei, installiert das Skript es zusätzlich (Protokoll
+    „Bereitstellungspaket StartPins.ppkg installiert“, dann „ok“). Erzeugen lässt es sich nur unter Windows mit
+    Windows Configuration Designer; die Vorlage liegt im Tool unter <tt>assets/startpins/customizations.xml</tt>.
     <b>Werbe-Platzhalter trotz Richtlinie:</b> Microsoft heftet zusätzlich Apps an, die es selbst auswählt und
     nachliefert (z. B. WhatsApp, LinkedIn, Adobe Express). Abschalten lässt sich das laut Microsoft nur bei
     Windows Enterprise und Education (Richtlinie „Microsoft-Benutzererfahrungen deaktivieren“ über
@@ -858,8 +867,11 @@ installiert, Windows lädt sie erst beim Klick oder später im Hintergrund. Daru
 <b>Klartext in der Registrierung</b> (Winlogon). Bis zum nächsten Start steht es im Startskript auf der Disk;
 das Skript löscht sich beim Start als Erstes. Im Protokoll, im Log des Auftrags und im Verlauf steht es nie.
 
-<b>Protokoll am Gerät:</b> <tt>C:\\Windows\\Temp\\okula-windows-anpassen.log</tt> – je Einstellung „ok“ oder
-„FEHLER“ mit Grund. Ein Fehler hält die übrigen Einstellungen nicht auf. Beim Entfernen von Apps stehen die
+<b>Protokoll am Gerät:</b> <tt>C:\\Windows\\Temp\\okula-windows-anpassen.log</tt> – je Einstellung „ok“,
+„Hinweis“ (gelaufen, Wirkung aber nicht sicher) oder „FEHLER“ mit Grund; die letzte Zeile zählt alle drei. Ein
+Fehler hält die übrigen Einstellungen nicht auf. Bei der Direktinstallation beginnt die Datei mit Zeilen der
+Setup-Umgebung; beim ersten Start gleicht das Skript deren Datum an („2026-11-25 08:28:45“) und speichert die
+Datei als UTF-8 mit BOM – so zeigen auch Windows PowerShell und ältere Editoren die Umlaute richtig. Beim Entfernen von Apps stehen die
 entfernten Pakete immer in der Zeile, auch wenn es daneben einen Fehler gibt („…, … entfernt; Fehler: …“).
 Vorinstallierte Pakete, die Windows schon mit der App entfernt hat, gelten nicht als Fehler. Ein leerer Ordner
 des Startskripts, den Windows gerade verwendet, bleibt stehen (Hinweis, kein Fehler). Beim Aufräumen werden auch

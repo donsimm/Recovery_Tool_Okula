@@ -320,9 +320,13 @@ def offline_lines(requested: dict | None, result: dict) -> list[str]:
     if off.get("start") == "set":
         lines.append(f"Vor dem Windows-Start gesetzt: Startmenü-Richtlinie (feste Kacheln), Startmenü von "
                      f"{off.get('profiles', 0)} Profil(en) zurückgesetzt (start2.bin gesichert als "
-                     f"start2.bin.okula-{off.get('stamp', '…')}) – gilt ab der ersten Anmeldung")
+                     f"start2.bin.okula-{off.get('stamp', '…')}) – gilt ab der ersten Anmeldung, sofern Windows die "
+                     "Richtlinie annimmt")
         if off.get("hints"):
             lines.append("Hinweis: " + "; ".join(map(str, off["hints"])) + " – das Startskript versucht es nochmals")
+        from okula_recovery import wintweaks
+        if not wintweaks.start_pins_ppkg():                    # B-022: kein „gesetzt = wirkt“
+            lines.append("Hinweis Startmenü: " + wintweaks.START_GPO_HINT)
     elif off.get("start") == "old":
         lines.append(f"Startmenü: Windows-Build {off.get('build')} vor 24H2 – setzt nur das Startskript "
                      "(Geräteverwaltung)")

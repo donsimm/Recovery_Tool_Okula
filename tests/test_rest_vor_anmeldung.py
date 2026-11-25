@@ -168,9 +168,10 @@ class ScriptTextTest(unittest.TestCase):
         self.assertLess(note, body.index("$json = '"))
         self.assertIn("if ($edition -notmatch 'Enterprise|Education') {", body)
         self.assertIn("abschalten lässt sich das laut Microsoft nur bei Enterprise/Education", body)
-        # in allen drei Rückgaben: mit Marke, ohne Marke, vor 24H2 (MDM-Bridge)
-        self.assertIn("return ($done + $adsNote)", body)
-        self.assertIn("return $text + $adsNote", body)
+        # in allen Rückgaben: mit Marke, ohne Marke, vor 24H2 (Paket bzw. MDM-Bridge) – B-022: mit Hinweis zur Wirkung
+        self.assertIn("return ($pinHint + $done + $pinNote + $adsNote)", body)
+        self.assertIn("return $pinHint + $text + $pinNote + $adsNote", body)
+        self.assertIn("'Anmeldung, auch für bestehende Benutzer' + $pinNote + $adsNote)", body)
         self.assertIn("'Benutzer' + $adsNote)", body)
 
     def test_no_reinstall_text(self):

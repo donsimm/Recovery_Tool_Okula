@@ -248,9 +248,11 @@ class OptionsTemplatesTest(unittest.TestCase):
         self.assertIn("Set-OkulaReg $key 'ConfigureStartPinsJSON' $file 'ExpandString'", gpo)
         self.assertNotIn("$json 'String'", body)                                   # kein JSON-Text mehr
         self.assertNotIn("'ConfigureStartPins' $json", body)
-        # 24H2-Zweig endet mit return (B-021: mit Hinweis zu Werbe-Platzhaltern) – die MDM-Bridge danach läuft nur
-        # vor 24H2
-        self.assertRegex(gpo, r"\n\s*return \$text \+ \$adsNote\n\s*\}\n\s*try \{\n")
+        # 24H2-Zweig endet mit return (B-021: mit Hinweis zu Werbe-Platzhaltern; B-022: Hinweis zur Wirkung und
+        # Ergebnis des Bereitstellungspakets) – Paket bzw. MDM-Bridge danach laufen nur vor 24H2
+        self.assertRegex(gpo, r"\n\s*return \$pinHint \+ \$text \+ \$pinNote \+ \$adsNote\n\s*\}\n"
+                              r"\s*if \(\$ppkgOk\) \{\n")
+        self.assertLess(body.index("über Bereitstellungspaket gesetzt"), body.index("$ns = 'root"))
         # vor 24H2: MDM-Bridge, sonst ehrlich als Fehler
         mdm = body[body.index("MDM_Policy_Config01_Start02"):]
         self.assertIn("throw ('Windows 11 vor 24H2: Startmenü nur mit Geräteverwaltung", mdm)
@@ -361,7 +363,8 @@ class ScriptTest(unittest.TestCase):
         # Paketlisten nur einmal lesen (10-Minuten-Grenze der Startskripte)
         self.assertEqual(self.script.count("Get-AppxProvisionedPackage -Online"), 1)
         self.assertEqual(self.script.count("Get-AppxPackage -AllUsers"), 1)
-        self.assertTrue(self.script.rstrip().endswith("-f $script:OkulaOk, $script:OkulaFailed)"))
+        self.assertTrue(self.script.rstrip().endswith("-f $script:OkulaOk, $script:OkulaHint,\n"
+                                                      "               $script:OkulaFailed)"))
         # Frameworks und Treiber-Apps nie, vorinstallierte Pakete mit
         for keep in ("*VCLibs*", "*NET.Native*", "*UI.Xaml*", "*NVIDIA*", "*Realtek*", "*Intel*", "*WindowsAppRuntime*",
                      "Microsoft.WindowsCalculator", "Microsoft.Paint", "Microsoft.MicrosoftEdge*"):
