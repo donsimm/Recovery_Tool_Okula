@@ -46,8 +46,8 @@ Dominik hat installiert und den Agent-Stick neu gemacht (Stand Ä-046; B-022 bra
 
 ## Offen / Beobachtungen
 - **HP ZBook (Intel Core Ultra):** Agent-Stick „Selected boot image did not authenticate“ (Secure Boot). Empfehlung
-  an Dominik: BIOS F10 → Security → Secure Boot Configuration → „Enable MS UEFI CA key“ = Yes. Ergebnis offen; falls
-  nicht: veralteter shim (Sperrliste) → B-Eintrag für den Stick-Bau.
+  an Dominik: BIOS F10 → Security → Secure Boot Configuration → „Enable MS UEFI CA key“ = Yes → **hat geholfen**
+  (Dominik 25.11.). Kandidat für die Hilfe (F1) / Vorabprüfung (Ä-010): Hinweis bei „did not authenticate“.
 - Erster B-020-Lauf am 24.11. (snap-5) zeigte das alte Startmenü – mit B-022 erklärt (Gruppenrichtlinie nicht
   freigeschaltet).
 - VM-Win11-clean läuft (Direktinstallation 25.11., Konto „Okula“, ADK installiert, Testdateien `start2.bin.okuli-*`).
