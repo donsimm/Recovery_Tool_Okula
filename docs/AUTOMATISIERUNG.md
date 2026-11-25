@@ -26,7 +26,7 @@ Stand: **umgesetzt** (29.10.2026). Details in [TECHNIK.md](TECHNIK.md), Bedienun
 
 | # | Schritt | Einstellung |
 |---|---|---|
-| 1 | Vorher sichern | Option ein/aus; Auswahl **Benutzerdaten** oder **ganze Disk (Disk-Image)**. Benutzerdaten: ist eine Partition der Zieldisk nicht lesbar (BitLocker, Ruhezustand/Schnellstart), bricht der Lauf ab – nichts gelöscht (B-025) |
+| 1 | Vorher sichern | Option ein/aus; Auswahl **Benutzerdaten** oder **ganze Disk (Disk-Image)**. Benutzerdaten: ist eine Partition der Zieldisk nicht lesbar (BitLocker, Ruhezustand/Schnellstart), bricht der Lauf ab – nichts gelöscht (B-025). BitLocker mit im Gerätefenster hinterlegtem Wiederherstellungsschlüssel: Partition nur lesend geöffnet, Benutzerdaten gesichert (I-012); ohne bzw. mit falschem Schlüssel Abbruch („… BitLocker-Schlüssel im Gerätefenster hinterlegen …“) |
 | 2 | Image zurückspielen | Auswahl: **Master-Image** (markierte Images) oder **eigenes Image** |
 | 3 | Anpassen: Gerätename aus dem Tool, Windows-Key | läuft **immer** (siehe [MASTER-IMAGE.md](MASTER-IMAGE.md)) |
 | 4 | Ordner senden: Software, Test Files, Content-Projekte | Option im Reiter (siehe [ORDNER-SENDEN.md](ORDNER-SENDEN.md)) |
@@ -43,6 +43,9 @@ Nach Schritt 5 setzt das Tool die Startreihenfolge auf „lokal“ zurück (fall
    schaltet das Tool es **wieder ein** – ausser im Reiter ist „Nach 3 Tagen wieder einschalten“ aus. Die Übersicht zeigt
    in dieser Zeit z. B. *„wieder aktiv in 5 h“*.
 3. **Zieldisk über die Seriennummer** festgelegt, nicht `/dev/sda`. Andere Disk eingebaut → Abbruch, nichts gelöscht.
+   **BitLocker (I-012):** gesichert wird nur mit gespeichertem Wiederherstellungsschlüssel (nur root-lesbar,
+   `/etc/okula-recovery/bitlocker/`); das Tool fragt nie nach einem Schlüssel und verändert die BitLocker-Disk vor dem
+   Zurückspielen nie. Details [TECHNIK.md](TECHNIK.md) „BitLocker entsperren (I-012)“.
 4. **Hauptschalter** zum Pausieren aller Automatisierungen.
 5. **Vorab prüfen:** passt das Image auf die Disk, ist es unbeschädigt – erst danach wird etwas gelöscht.
 6. **Rückfrage beim Einschalten von Hand (Ä-007):** Häkchen *Auto* und Schalter im Reiter zeigen zuerst eine rote

@@ -40,9 +40,12 @@ AGENT_MODULES = ("__init__.py", "agent.py", "biosread.py", "deploy.py", "discove
 # lz4/lzop/pigz/bzip2: zum Zurückspielen von Clonezilla-Images
 # smartmontools/libhivex-bin/ntfs-3g: Geräte-Erfassung (SMART, Windows-Version, NTFS lesend)
 # pciutils: Grafikkarten (lspci; die Datenbank pci.ids kommt als Abhängigkeit über libpci3 mit, ~0.5 MB)
+# dislocker/fuse3: BitLocker mit Wiederherstellungsschlüssel nur lesend öffnen (I-012; dislocker zieht
+# libdislocker0.7t64, libfuse3-4 und libruby3.3 mit, fuse3 bringt fusermount3 zum Aushängen)
 BUNDLED_PACKAGES = ("partclone", "zstd", "pigz", "lz4", "lzop", "bzip2", "xz-utils",
                     "smartmontools", "libhivex-bin", "ntfs-3g", "pciutils",
-                    "efibootmgr", "dosfstools", "wimtools")  # Windows-Direktinstallation
+                    "efibootmgr", "dosfstools", "wimtools",  # Windows-Direktinstallation
+                    "dislocker", "fuse3")
 # Ohne Paketliste des ISO nie überlagern (Basis jedes Systems)
 NEVER_BUNDLE = ("libc6", "libgcc-s1", "libstdc++6", "gcc-")
 PACKAGE_DIR = Path(__file__).resolve().parent

@@ -84,6 +84,7 @@ ohne Fehler). Noch nicht geprüft daraus: Zurückspielen mit *Danach anpassen*, 
 
 | Was | Wo | Abschnitt |
 |---|---|---|
+| I-012 BitLocker mit Wiederherstellungsschlüssel sichern (neuer Agent-Stick) | VM oder Gerät mit BitLocker | „I-012“ |
 | B-025 Automatisierung bricht bei BitLocker ab | VM oder Gerät mit BitLocker | „B-025“ |
 | B-026 Image während des Zurückspielens gesperrt | Demo-Gerät | „B-026“ |
 | B-027 Image nur vollständig fertig, Esc im Countdown | Demo-Gerät, VM mit Agent | „B-027“ |
@@ -982,3 +983,35 @@ Agent-Stick – die Windows-Skripte erzeugt das Tool beim Senden).
       Endzeile zählt sie als Hinweis
 - [ ] Optional Direktinstallation mit Software: läuft wie bisher bis „Okula: fertig“ (Kopien ohne Fehler,
       `install.log` ohne „FEHLER“)
+
+### I-012 BitLocker entsperren (nur lesend, Datei-Backup)
+Nach `git pull && sudo ./install.sh` das Tool neu starten. **Neuer Agent-Stick nötig** (dislocker, fuse3) und
+Netzwerkstart neu vorbereiten (*Tools → Netzwerkstart (PXE) …*). VM mit BitLocker auf der Windows-Partition
+(Snapshot vorher, Wiederherstellungsschlüssel notieren: `manage-bde -protectors -get C:`) oder ein Gerät mit BitLocker.
+- [ ] Stick-Erstellung meldet keinen Fehler beim Mitliefern von dislocker; am Agent `dislocker` vorhanden
+- [ ] Mit **altem** Stick: *Backup erstellen …* → Schlüssel eingeben → „Agent-Stick zu alt für BitLocker – neuen
+      Stick erstellen“
+- [ ] *Backup erstellen …* → Rahmen *BitLocker* mit der Partition, Schlüssel einfügen (mit/ohne Bindestriche) →
+      *Entsperren* → Benutzer erscheinen, Partition „BitLocker (entsperrt, nur lesend)“; Benutzerdaten sichern → Backup
+      auf dem NAS, Dateien lesbar
+- [ ] *Eigene Ordner* aufklappen und *Grösse berechnen* auf der entsperrten Partition funktionieren
+- [ ] **Falscher Schlüssel** (gültiges Format, andere Ziffern – z. B. Schlüssel einer anderen VM) → „Wiederherstellungsschlüssel
+      passt nicht zu <Partition>“, nichts gespeichert; Tippfehler in einem Block → Meldung „Block n … ungültig“
+      (bestätigt die Blockprüfung durch 11 mit einem echten Schlüssel)
+- [ ] Nach dem Backup: Windows startet normal, BitLocker unverändert (`manage-bde -status`), keine Wiederherstellungs-
+      abfrage; am Agent nichts mehr eingehängt (`mount | grep okula-backup` leer, kein `dislocker`-Prozess)
+- [ ] Häkchen *Für dieses Gerät speichern* → `sudo ls -la /etc/okula-recovery/bitlocker/`: Ordner `drwx------ root`,
+      Datei `<Geräte-ID>.json` `-rw------- root`; Dialog erneut öffnen → Partition ohne Eingabe entsperrt
+- [ ] Gerätefenster → *Übersicht*: „BitLocker-Schlüssel hinterlegt: ja“; *Entfernen* → „nein“, Datei weg;
+      *Schlüssel hinterlegen …* → wieder „ja“; Verlauf nur „BitLocker-Schlüssel … hinterlegt/entfernt“ (ohne Ziffern)
+- [ ] **Automatisierung** mit Backup „Benutzerdaten“ und gespeichertem Schlüssel → Backup in Schritt 1/5 (Log
+      „BitLocker wird mit dem hinterlegten Schlüssel nur lesend geöffnet: …“), danach Zurückspielen
+- [ ] Automatisierung ohne gespeicherten Schlüssel → Abbruch „… BitLocker-Schlüssel im Gerätefenster hinterlegen oder
+      Backup „ganze Disk“ wählen.“, nichts gelöscht; mit falschem gespeichertem Schlüssel → Abbruch „… hinterlegte
+      Wiederherstellungsschlüssel passt nicht …“, nichts gelöscht
+- [ ] **Nichts verrät den Schlüssel:** Inventar-Export (CSV/PDF), *Einstellungen exportieren*, Geräte-JSON
+      (`~/.local/share/okula-recovery/geraete/`), Auftrags-Log und Verlauf nach den Ziffern durchsuchen (`grep -r <6 Ziffern>`)
+      → kein Treffer; ebenso das Agent-Log am Gerät
+- [ ] Schreibend bleibt gesperrt: *Backup zurückspielen* bietet die BitLocker-Partition nicht als Ziel an; *Windows
+      anpassen*/*Software installieren*/*Ordner senden* → „nichts gesendet“ bzw. „nicht beschreibbar“
+- [ ] Gerät löschen → Schlüsseldatei unter `/etc/okula-recovery/bitlocker/` ist weg

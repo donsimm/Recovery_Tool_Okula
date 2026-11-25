@@ -71,7 +71,6 @@ steht im jeweiligen Protokoll-Eintrag.
 | I-008 | 🟡 | offen | Claude | **Benachrichtigungen:** E-Mail (SMTP) oder Push (ntfy/Teams) bei Fehlern, beim Ende einer Automatisierung, bei knappem NAS-Speicher, bei SMART-Warnungen und bei fehlgeschlagener Image-Prüfung |
 | I-009 | 🟡 | offen | Claude | **Disk sicher löschen (Ausmusterung, Leasing-Rückgabe):** NVMe Sanitize/Format, ATA Secure Erase oder `blkdiscard`, sonst Überschreiben. Danach ein Löschprotokoll als PDF mit Seriennummer, Methode, Datum und Prüfung (Nachweis nach revDSG) |
 | I-011 | 🟡 | offen | Claude/Dominik | **Multicast – ein Image gleichzeitig auf viele Geräte (von Hand, Variante B):** eigener Menüpunkt **Extras → Multicast …** mit eigenem Fenster, ähnlich wie Netzwerkstart (PXE): Image wählen (Master zuerst), Geräteliste mit Haken (Status verbunden/nicht verbunden, Zieldisk je Gerät), Knopf zum Einschalten und Agent starten, „Starten“ wartet, bis alle gewählten Geräte bereit sind, dann ein Datenstrom für alle (udpcast `udp-sender`/`udp-receiver`). Fortschritt je Gerät; fällt eines aus, laufen die anderen weiter. Danach je Gerät Anpassen (Name, Windows-Schlüssel) bei Master-Images. Nicht in die Automatisierung eingebaut (Entscheid Dominik 31.10.). Voraussetzungen: gleiches Netz/VLAN, Kabel, Firewall-Ports für udpcast; neuer Agent-Stick nötig. Heute läuft jeder Restore einzeln |
-| I-012 | 🔴 | offen | Claude | **BitLocker entsperren:** Den Wiederherstellungsschlüssel pro Gerät hinterlegen (nur root-lesbar) und im Agent mit `dislocker` öffnen. Dann sichert partclone nur die belegten Blöcke statt einer `dd`-Rohkopie (Images viel kleiner), und auch ein Datei-Backup wird möglich |
 | I-014 | ⚪ | offen | Claude | **Treiber für Master-Images:** Treiberordner pro Modell auf dem NAS; nach dem Restore nach `Windows\Drivers\Okula` kopieren und in `unattend.xml` per `DriverPaths` (offlineServicing) einbinden. Damit passt ein Master auf verschiedene Hardware |
 | I-015 | ⚪ | offen | Claude | **Firmware/BIOS über den Agent:** `fwupd`/LVFS, wo der Hersteller es unterstützt (Dell, Lenovo, teilweise HP). Die BIOS-Version steht schon im Inventar; Hinweis anzeigen, wenn sie veraltet ist |
 | I-016 | 🔴 | offen | Claude | **Schutz vor Ransomware und Fehllöschung:** Das Tool-Konto hat heute volles Schreib- und Löschrecht auf dem NAS; wer den Server übernimmt, kann alle Backups löschen. Lösung: unveränderliche NAS-Snapshots (Synology Snapshot Replication mit Immutable), auf die das Tool-Konto keinen Zugriff hat, und ein Papierkorb im Tool (heute: „keinen Papierkorb – gelöschte Daten sind weg“). Das NCSC/BACS empfiehlt Offline- oder WORM-Medien und mindestens zwei Generationen |
@@ -294,6 +293,27 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 25.11.2026
+- **I-012 – BitLocker entsperren (nur lesend, für Datei-Backups)** (Von: Claude; Entscheide Dominik 25.11.; Prompt
+  [I-012](prompts/I-012-bitlocker-entsperren.md)). **Agent:** `profiles`, `browse`, `estimate` und `backup` nehmen
+  optional `bitlocker: {"<partition>": "<schlüssel>"}`; `filebackup.Mounts` öffnet die Partition mit
+  `dislocker -r` (FUSE) und hängt `dislocker-file` mit `ro,loop` ein, Aufräumen umgekehrt auch bei Fehlern.
+  Format geprüft, falscher Schlüssel → „Wiederherstellungsschlüssel passt nicht zu <Partition>“, Meldungen und
+  Agent-Log ohne Schlüssel; `profiles` meldet `bitlocker: true`. Schreibend (`Mounts(write=True)`, `deploy`) bleibt
+  BitLocker gesperrt; ohne dislocker „Agent-Stick zu alt für BitLocker – neuen Stick erstellen“. **Tool:**
+  `bitlocker_keys.py` (Format + Blockprüfung durch 11, Ablage pro Gerät nur root-lesbar unter
+  `/etc/okula-recovery/bitlocker/`, Ordner 0700/Datei 0600, atomar, Rechte geprüft) über den neuen Root-Helfer
+  `okula-bitlocker` (sudo, Schlüssel nur über stdin; `install.sh`). *Backup erstellen …*: Rahmen *BitLocker* mit
+  Feld *Wiederherstellungsschlüssel* (verdeckt, Einfügen möglich), Häkchen *Für dieses Gerät speichern* (nur
+  passender Schlüssel), Knopf *Entsperren*; gespeicherter Schlüssel automatisch, danach Profile neu. Automatisierung:
+  Benutzerdaten mit gespeichertem Schlüssel; ohne/falscher Schlüssel Abbruch wie B-025 (Meldung um
+  „BitLocker-Schlüssel im Gerätefenster hinterlegen“ ergänzt), nichts gelöscht. Gerätefenster → *Übersicht*:
+  *BitLocker-Schlüssel hinterlegt* ja/nein mit *Schlüssel hinterlegen …*/*Entfernen*; Gerät bzw. VM löschen löscht
+  die Schlüssel mit. Nie in Geräte-JSON, Inventar, Exporten, Logs oder Verlauf. Bewusst **nicht**: Disk-Image aus
+  belegten Blöcken (bleibt Rohkopie), Schreiben auf BitLocker, Benutzerpasswort; Schlüssel beim Zusammenführen von
+  Geräten nicht übernommen. **Neuer Agent-Stick und Netzwerkstart neu vorbereiten nötig** (`dislocker`, `fuse3` in
+  `stick.BUNDLED_PACKAGES`). Hilfe (F1) „Datei-Backup“, „Automatisierung“, „Gerät verbinden“, „Inventar, Garantie,
+  Windows 11“, „Probleme lösen“; TECHNIK.md „BitLocker entsperren (I-012)“, AUTOMATISIERUNG.md. Tests
+  `tests/test_bitlocker.py`, `BackupBlockerTest` in `tests/test_automation.py`. Prüfung [TESTS.md](TESTS.md) „I-012“.
 - **B-028 – Fehler werden als ok/Erfolg gemeldet (Sammelpunkt)** (Von: Okuli (Review), 25.11.; Prompt
   [B-028](prompts/B-028-fehler-als-ok.md); [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) R-client 4, 5, 10, R-win 1–4).
   **Tool:** Anpassen-Ergebnis `error`/`not_generalized` bzw. kein Windows, obwohl das Image eine NTFS-Partition hat

@@ -250,7 +250,8 @@ Doppelklick auf ein Gerät öffnet sein Fenster:
     (Kapitel <i>Virtuelle Maschinen</i>, Abschnitt „Digitaler Zwilling“).
 •  <i>Aufträge</i>: was gerade läuft, mit Fortschritt und Log.
 •  <i>Übersicht</i>: Hersteller, Modell, Seriennummer, Starttasten, Prozessor, Arbeitsspeicher, Grafikkarte,
-    Windows 11, Garantie bis, Windows-Schlüssel.
+    Windows 11, Garantie bis, Windows-Schlüssel, bei BitLocker <i>BitLocker-Schlüssel hinterlegt</i>
+    (Kapitel <i>Datei-Backup</i>).
     <i>Grafikkarte</i>: Hersteller und Modell, z. B. „NVIDIA GeForce GT 740 (GK107)“, dahinter die PCI-Adresse.
     Bei mehreren Karten (z. B. Video-Server) steht jede einzeln als <i>Grafikkarte 1</i>, <i>Grafikkarte 2</i> …
     nach PCI-Adresse – so lassen sich gleiche Modelle unterscheiden. Der Tooltip zeigt IDs, Hersteller der Karte
@@ -466,7 +467,29 @@ Ideal vor einer Neuinstallation: Dateien sichern, neu installieren, Dateien zur�
 
 Windows vor dem Zurückspielen <b>ganz</b> herunterfahren (Shift-Taste gedrückt halten + „Herunterfahren“).
 
-Mit <i>Notiz …</i> lässt sich die Notiz ändern. <i>Löschen …</i> entfernt ein Backup vom NAS."""),
+Mit <i>Notiz …</i> lässt sich die Notiz ändern. <i>Löschen …</i> entfernt ein Backup vom NAS.
+
+<b>BitLocker: Benutzerdaten mit dem Wiederherstellungsschlüssel sichern</b>
+Eine mit BitLocker verschlüsselte Partition lässt sich mit dem <b>Wiederherstellungsschlüssel</b> (48 Ziffern in
+8 Blöcken à 6) öffnen – <b>nur lesend</b>, BitLocker und Windows bleiben am Gerät unverändert. Der Schlüssel steht
+im Microsoft-Konto des Kunden (aka.ms/myrecoverykey), im Ausdruck oder bei der Firma (Entra ID/Active Directory).
+Ein Benutzerpasswort bzw. die PIN reicht nicht.
+1.  <i>Backup erstellen …</i> öffnen. Oben steht der Rahmen <i>BitLocker</i> mit der gesperrten Partition.
+2.  Den Schlüssel ins Feld <i>Wiederherstellungsschlüssel</i> tippen oder einfügen (verdeckt, <i>Anzeigen</i>
+    zeigt ihn). Bindestriche sind nicht nötig.
+3.  Auf Wunsch <i>Für dieses Gerät speichern</i> anhaken – dann braucht es den Schlüssel beim nächsten Mal nicht
+    mehr, und die Automatisierung kann Benutzerdaten sichern.
+4.  Auf <i>Entsperren</i> klicken: Die Benutzer der Partition erscheinen wie bei einem normalen Windows.
+    Ein gespeicherter Schlüssel wird beim Öffnen des Dialogs von selbst verwendet.
+Passt der Schlüssel nicht, steht „Wiederherstellungsschlüssel passt nicht zu …“ – gespeichert wird nur ein
+passender Schlüssel. Das geht für <i>Benutzerdaten</i>, <i>Ganze Partitionen</i> und <i>Eigene Ordner</i>.
+Ein <b>Disk-Image</b> bleibt eine 1:1-Kopie der verschlüsselten Daten; zurückschreiben (Backup zurückspielen,
+Windows anpassen, Software, Ordner senden) geht auf BitLocker nie.
+Gespeicherte Schlüssel liegen nur für root lesbar auf dem Server – nie im Inventar, im Export, im Verlauf oder im
+Log. Im Gerätefenster unter <i>Übersicht → BitLocker-Schlüssel hinterlegt</i> stehen <i>ja</i>/<i>nein</i> und die
+Knöpfe <i>Schlüssel hinterlegen …</i> (Partition wählen, Schlüssel eingeben) und <i>Entfernen</i>. Wird das Gerät
+gelöscht, werden auch seine Schlüssel gelöscht.
+Meldung „Agent-Stick zu alt für BitLocker“: Agent-Stick bzw. Netzwerkstart neu erstellen."""),
 
     ("Master-Image", """<big><b>Master-Image: ein Windows für viele Geräte</b></big>
 
@@ -684,6 +707,9 @@ Mit der Automatisierung setzt das Tool ein Gerät selbst neu auf, sobald es mit 
 2.  <b>Backup</b> (Option): vorher sichern – nur Benutzerdaten (schnell) oder die ganze Disk als Disk-Image.
     Ist mit <i>Benutzerdaten</i> eine Partition der Zieldisk nicht lesbar (BitLocker, Windows im Ruhezustand
     oder mit Schnellstart heruntergefahren), bricht die Automatisierung ab und löscht nichts.
+    BitLocker: Ist im Gerätefenster ein BitLocker-Schlüssel hinterlegt (<i>Übersicht → BitLocker-Schlüssel
+    hinterlegt</i>), öffnet die Automatisierung die Partition damit nur lesend und sichert die Benutzerdaten.
+    Ohne hinterlegten oder mit falschem Schlüssel: Abbruch, nichts gelöscht (Kapitel <i>Datei-Backup</i>).
 3.  <b>Image zurückspielen</b>: Master-Image oder ein eigenes Image wählen, dazu die Zieldisk.
     Ist die Zieldisk kleiner: <i>Image dafür anpassen</i> anhaken (Kapitel <i>Image zurückspielen</i>).
 4.  <b>Anpassen</b> (läuft immer, nur bei Master-Images): Gerätename und Windows-Schlüssel,
@@ -1100,6 +1126,11 @@ Die Angaben stehen im Gerätefenster unter <i>Übersicht</i> und <i>Disks</i>.
 Für Dell und HP braucht es einen Schlüssel vom Hersteller: <i>Menü → Einstellungen … → Garantie-Abfrage</i>.
 Ohne Schlüssel, ohne Internet oder bei einem anderen Hersteller: mit <i>Von Hand …</i> das Datum eintragen.
 
+<b>BitLocker</b> (<i>Übersicht → BitLocker-Schlüssel hinterlegt</i>)
+Die Zeile erscheint, wenn das Inventar eine BitLocker-Partition zeigt oder ein Schlüssel hinterlegt ist:
+<i>ja</i>/<i>nein</i>, dazu <i>Schlüssel hinterlegen …</i> und <i>Entfernen</i>. Der Schlüssel selbst wird nie
+angezeigt und nie exportiert (Kapitel <i>Datei-Backup</i>).
+
 <b>Inventar exportieren</b>
 <i>Menü → Inventar exportieren (CSV/PDF) …</i> oder Rechtsklick auf einen Ordner bzw. ein Gerät
 → <i>Inventar exportieren …</i>
@@ -1506,7 +1537,13 @@ Damit kommen nur die NAS-Einstellungen mit (ohne Passwort)."""),
 <b>Windows lässt sich nicht sichern oder zurückspielen</b>
 •  Meldung „Ruhezustand bzw. Schnellstart“: Windows starten und ganz herunterfahren
     (Shift-Taste gedrückt halten + „Herunterfahren“).
-•  Mit BitLocker verschlüsselte Disks kann das Tool nur 1:1 sichern, nicht die Dateien lesen.
+•  Mit BitLocker verschlüsselte Disks: Ein Disk-Image ist immer eine 1:1-Kopie. Dateien (Benutzerdaten,
+    Partitionen, eigene Ordner) lassen sich mit dem Wiederherstellungsschlüssel nur lesend sichern
+    (Kapitel <i>Datei-Backup</i>). Schreiben auf BitLocker (Backup zurückspielen, Windows anpassen, Software,
+    Ordner senden) geht nicht – dafür BitLocker in Windows ausschalten.
+•  „Wiederherstellungsschlüssel passt nicht zu …“: Schlüssel prüfen (zu dieser Partition, nicht von einem anderen
+    Laufwerk) und im Gerätefenster neu hinterlegen.
+•  „Agent-Stick zu alt für BitLocker“: Agent-Stick bzw. Netzwerkstart neu erstellen.
 
 <b>Zieldisk zu klein</b>
 •  Beim Zurückspielen <i>Für diese Disk anpassen</i> anhaken (Kapitel <i>Image zurückspielen</i>).

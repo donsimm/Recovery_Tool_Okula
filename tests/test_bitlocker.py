@@ -319,5 +319,13 @@ class KeyStoreTest(unittest.TestCase):
             self.assertNotIn(KEY_PLAIN.encode(), data)
 
 
+class StickTest(unittest.TestCase):
+    def test_dislocker_on_stick_and_netboot(self):
+        from okula_recovery import stick
+        # Agent-Stick und Netzwerkstart bauen den Agent-Teil mit derselben Liste (stick.install_agent)
+        self.assertIn("dislocker", stick.BUNDLED_PACKAGES)
+        self.assertIn("fuse3", stick.BUNDLED_PACKAGES)
+
+
 if __name__ == "__main__":
     unittest.main()

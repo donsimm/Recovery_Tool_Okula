@@ -964,7 +964,7 @@ Im Gerätefenster **„Backup erstellen …“** (auch Rechtsklick auf das Gerä
 - **Ganze Partitionen:** alle Dateien einer Partition.
 - **Eigene Ordner:** Dateibaum des Geräts (lädt beim Aufklappen), Ordner/Dateien anhaken.
 
-Immer übersprungen: Auslagerungs-/Ruhezustandsdatei, Papierkorb, *System Volume Information*, Temp-Ordner, Browser-/Programm-Caches, Office-Sperrdateien. BitLocker-Partitionen sind nicht lesbar. **„Grösse berechnen“** zählt vorher Dateien und Grösse und vergleicht mit dem freien NAS-Platz.
+Immer übersprungen: Auslagerungs-/Ruhezustandsdatei, Papierkorb, *System Volume Information*, Temp-Ordner, Browser-/Programm-Caches, Office-Sperrdateien. BitLocker-Partitionen nur mit Wiederherstellungsschlüssel, nur lesend (Abschnitt [BitLocker entsperren](#bitlocker-entsperren-i-012)). **„Grösse berechnen“** zählt vorher Dateien und Grösse und vergleicht mit dem freien NAS-Platz.
 
 **Ablage** auf dem NAS unter `Backups/<Gerät>/<Datum_Zeit>/`:
 - **Normale Dateien** (`Dateien/<Partition>/…`) – im Reiter *Dateien* durchsuchbar, einzelne Dateien direkt herausholbar.
@@ -979,6 +979,60 @@ Dazu `okula-backup.json` (Gerät, Auswahl, übersprungene Dateien mit Grund) und
 - **Herunterladen in einen Ordner** auf dem Server oder einem eingesteckten Laufwerk (auch aus dem Archiv).
 
 **Notiz und Löschen:** Beim Erstellen optional eine Notiz eingeben (z. B. „vor Neuinstallation“, Ticketnummer); später ändern über **„Notiz …“** (Reiter *Backups* im Gerätefenster oder rechts, auch per Rechtsklick). Die Notiz steht in `okula-backup.json` auf dem NAS und erscheint in der Liste. **„Löschen …“** entfernt das Backup nach Rückfrage endgültig vom NAS; solange es zurückgespielt oder heruntergeladen wird, ist Löschen gesperrt.
+
+### BitLocker entsperren (I-012)
+
+Mit dem **Wiederherstellungsschlüssel** (48 Ziffern, 8 Blöcke à 6) öffnet der Agent eine BitLocker-Partition **nur
+lesend** – für Datei-Backups (Benutzerdaten, ganze Partitionen, eigene Ordner, Durchsuchen, Grösse berechnen).
+Entscheide Dominik 25.11.2026 ([AENDERUNGEN.md](AENDERUNGEN.md) „📌 Entscheidungen“): kein Disk-Image aus belegten
+Blöcken (bleibt Rohkopie, sonst lägen Kundendaten unverschlüsselt auf dem NAS – erst mit Ä-003), nie schreiben, kein
+Benutzerpasswort.
+
+**Ablauf am Agent** (`filebackup.Mounts`): Die Anfragen `profiles`, `browse`, `estimate` und `backup` tragen optional
+`bitlocker: {"<partition>": "<schlüssel>"}`. Für eine Partition mit Dateisystem `BitLocker` und Schlüssel:
+1. Format prüfen (`filebackup.recovery_key`), sonst „… ungültig – 48 Ziffern …“; fehlt `dislocker` → „Agent-Stick zu
+   alt für BitLocker – neuen Stick erstellen“.
+2. `dislocker -r -V <dev> -p<schlüssel> -- <WORK>/<name>-bitlocker-…` (FUSE, **`-r` = nur lesend**). Fehler mit
+   „decryption mean“/VMK/Passwort → „Wiederherstellungsschlüssel passt nicht zu <Partition>“, sonst die letzte Zeile
+   von dislocker – immer ohne Schlüssel (`filebackup.scrub`, entfernt auch jeden 48-Ziffern-Block).
+3. `<fuse>/dislocker-file` mit den Schreibschutz-Optionen plus `loop` einhängen (`inventory._mount_ro(…, loop=True)`,
+   NTFS: `ntfs3`/`ntfs-3g` `ro,loop`).
+4. Aufräumen in umgekehrter Reihenfolge, auch bei Fehlern: `umount` des Dateisystems, dann `fusermount3 -u`
+   (Rückfall `fusermount -u`, `umount`) und Ordner löschen.
+`profiles` meldet BitLocker-Partitionen mit `bitlocker: true`; ohne Schlüssel `error: "BitLocker – nicht lesbar"`, mit
+passendem Schlüssel Benutzer wie bei NTFS und `unlocked: true`. Schreibende Wege bleiben gesperrt:
+`Mounts(write=True)` → „… nicht beschreibbar“ auch mit Schlüssel, `deploy._candidates` unverändert. Fehlermeldungen
+und Agent-Log (`run_job`) werden vom Schlüssel gesäubert; die Anfrage selbst wird nie geloggt.
+
+**Speicher im Tool** (`bitlocker_keys.py`): Standard = Schlüssel beim Auftrag eingeben; mit Häkchen „Für dieses Gerät
+speichern“ (nur wenn er passt) pro Gerät unter `/etc/okula-recovery/bitlocker/<Geräte-ID>.json` (Ordner 0700, Datei
+0600, root) als `{"keys": {"/dev/nvme0n1p3": "…"}}`. Geschrieben atomar (temporäre Datei 0600 mit `O_EXCL`, `fsync`,
+`os.replace`, Ordner-`fsync`); gelesen nur, wenn Ordner und Datei root gehören und für niemanden sonst zugänglich sind
+(sonst Fehler „Rechte … falsch“). Das Tool läuft als Benutzer und fragt den Root-Helfer `/usr/local/sbin/okula-bitlocker`
+per `sudo -n` (`has`, `get`, `set --stdin`, `delete`; Schlüssel nur über stdin, Antwort „OK …“/„ERROR …“) – eingerichtet
+von `install.sh` (sudoers wie bei `okula-warranty`). Prüfung beim Eingeben: 48 Ziffern, jeder 6er-Block durch 11
+teilbar und kleiner als 11 · 65536 = 720896 (Block = 11 × 16-Bit-Wert, letzte Ziffer = Prüfziffer; Quelle:
+dislocker `src/accesses/rp/recovery_password.c`, `valid_block` – am realen System bestätigen). Ist nur ein Schlüssel
+gespeichert, gilt er auch für eine anders benannte Partition (`for_partitions`, z. B. andere Disk-Reihenfolge).
+**Nie** in Geräte-JSON, Inventar, Inventar-Export, Einstellungs-Export/-Übertragung, Logs oder Verlauf (Verlauf nur
+„BitLocker-Schlüssel für <Partition> hinterlegt/entfernt“). Hinweis: Wer das Tool-Konto bedient, kann über den
+Helfer die Schlüssel lesen – das Tool braucht sie im Klartext für die Anfrage an den Agent.
+
+**Oberfläche:** *Backup erstellen …* zeigt bei gesperrter BitLocker-Partition den Rahmen *BitLocker* (Partition,
+Feld *Wiederherstellungsschlüssel* verdeckt mit *Anzeigen*, Häkchen *Für dieses Gerät speichern*, Knopf
+*Entsperren*); ein gespeicherter Schlüssel wird beim Öffnen von selbst verwendet, danach werden die Profile neu
+abgefragt. Gerätefenster → *Übersicht*: Zeile *BitLocker-Schlüssel hinterlegt* (ja/nein, Stand vom Root-Helfer im
+Hintergrund) mit *Schlüssel hinterlegen …* und *Entfernen* – nur sichtbar, wenn das Inventar eine BitLocker-Partition
+zeigt (Dateisystem oder System „verschlüsselt (BitLocker)“) oder ein Schlüssel hinterlegt ist. Gerät bzw. VM löschen
+löscht die Schlüssel mit (`MainWindow.forget_bitlocker`). Nicht übernommen beim Zusammenführen von Geräten.
+
+**Automatisierung:** Backup „Benutzerdaten“ fragt die Profile, holt bei gesperrter BitLocker-Partition den
+gespeicherten Schlüssel, fragt erneut mit Schlüssel und sichert dann wie gewohnt (`run_backup(…, bitlocker=…)`).
+Ohne Schlüssel bzw. mit falschem Schlüssel Abbruch wie B-025, nichts gelöscht.
+
+**Agent-Stick / Netzwerkstart:** `dislocker` und `fuse3` in `stick.BUNDLED_PACKAGES` (Abhängigkeiten
+`libdislocker0.7t64`, `libfuse3-4`, `libruby3.3` kommen über `apt-cache depends` mit) – **neuer Agent-Stick bzw.
+Netzwerkstart neu vorbereiten nötig**.
 
 ## Ordner an Geräte senden
 
