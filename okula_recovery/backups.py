@@ -258,8 +258,9 @@ def read_index(backup: Path) -> list[tuple[str, int, int, str]]:
 
 def run_backup(ip: str, key: bytes, port: int, disk: str, sources: list[dict], root: str | Path, device: dict,
                mode: str, storage: str, description: list[str], progress: Progress,
-               cancel: threading.Event, note: str = "") -> Path:
-    """Backup vom Agent holen und auf dem NAS ablegen. device: {id, name}. Gibt den Backup-Ordner zurück."""
+               cancel: threading.Event, note: str = "", bitlocker: dict | None = None) -> Path:
+    """Backup vom Agent holen und auf dem NAS ablegen. device: {id, name}. Gibt den Backup-Ordner zurück.
+    bitlocker: Wiederherstellungsschlüssel {partition: schlüssel} – nur an den Agent, nie ins Manifest."""
     final = backup_root(root, device.get("name", "")) / time.strftime("%Y-%m-%d_%H%M")
     if final.exists():
         final = final.with_name(final.name + time.strftime("%S"))
@@ -271,7 +272,7 @@ def run_backup(ip: str, key: bytes, port: int, disk: str, sources: list[dict], r
     sock = agentclient._connect(ip, key, port)
     try:
         sock.settimeout(900)
-        wire.send_json(sock, {"cmd": "backup", "disk": disk, "sources": sources})
+        wire.send_json(sock, _with_keys({"cmd": "backup", "disk": disk, "sources": sources}, bitlocker))
         plan = agentclient._expect(sock, "plan")
         progress({"phase": "plan", "files": plan.get("files", 0), "bytes": plan.get("bytes", 0)})
         total = int(plan.get("bytes") or 0) or 1
@@ -463,13 +464,21 @@ def _ask(ip: str, key: bytes, port: int, req: dict, wanted: str, timeout: int = 
         return agentclient._expect(sock, wanted)
 
 
-def get_profiles(ip: str, key: bytes, port: int) -> list[dict]:
-    return _ask(ip, key, port, {"cmd": "profiles"}, "profiles").get("partitions", [])
+def _with_keys(req: dict, bitlocker: dict | None) -> dict:
+    """I-012: BitLocker-Schlüssel {partition: schlüssel} nur mitschicken, wenn vorhanden (nie loggen)."""
+    if bitlocker:
+        req["bitlocker"] = dict(bitlocker)
+    return req
 
 
-def browse(ip: str, key: bytes, port: int, part: str, path: str) -> list[dict]:
-    return _ask(ip, key, port, {"cmd": "browse", "part": part, "path": path}, "entries", 120).get("entries", [])
+def get_profiles(ip: str, key: bytes, port: int, bitlocker: dict | None = None) -> list[dict]:
+    return _ask(ip, key, port, _with_keys({"cmd": "profiles"}, bitlocker), "profiles").get("partitions", [])
 
 
-def estimate(ip: str, key: bytes, port: int, sources: list[dict]) -> dict:
-    return _ask(ip, key, port, {"cmd": "estimate", "sources": sources}, "estimate", 900)
+def browse(ip: str, key: bytes, port: int, part: str, path: str, bitlocker: dict | None = None) -> list[dict]:
+    req = _with_keys({"cmd": "browse", "part": part, "path": path}, bitlocker)
+    return _ask(ip, key, port, req, "entries", 120).get("entries", [])
+
+
+def estimate(ip: str, key: bytes, port: int, sources: list[dict], bitlocker: dict | None = None) -> dict:
+    return _ask(ip, key, port, _with_keys({"cmd": "estimate", "sources": sources}, bitlocker), "estimate", 900)

@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Callable
 
-from okula_recovery import agentclient, config, distribute, jobs, nas
+from okula_recovery import agentclient, bitlocker_keys, config, distribute, jobs, nas
 
 COUNTDOWN = 30
 REARM_HOURS = 72                 # 3 Tage
@@ -523,15 +523,23 @@ class Engine:
         self.on_change(dev.id)
 
 
-def backup_blocker(profiles: list[dict]) -> str:
-    """B-025: Meldung, wenn eine Partition der Zieldisk nicht lesbar ist (Backup „Benutzerdaten“ unmöglich)."""
+def backup_blocker(profiles: list[dict], keys: dict | None = None) -> str:
+    """B-025: Meldung, wenn eine Partition der Zieldisk nicht lesbar ist (Backup „Benutzerdaten“ unmöglich).
+    keys: I-012 – BitLocker-Partitionen, für die ein gespeicherter Schlüssel mitgeschickt wurde."""
+    keys = keys or {}
     for p in profiles:
         if not p.get("error"):
             continue
         name = p.get("name") or p.get("part") or "Partition"
-        if (p.get("fstype") or "").lower() == "bitlocker":
-            return (f"Backup nicht möglich: {name} ist mit BitLocker verschlüsselt – nichts gelöscht. "
-                    "BitLocker in Windows ausschalten oder Backup „ganze Disk“ wählen.")
+        if (p.get("fstype") or "").lower() == "bitlocker" or p.get("bitlocker"):
+            if p.get("part") not in keys:
+                return (f"Backup nicht möglich: {name} ist mit BitLocker verschlüsselt – nichts gelöscht. "
+                        "BitLocker in Windows ausschalten, BitLocker-Schlüssel im Gerätefenster hinterlegen oder "
+                        "Backup „ganze Disk“ wählen.")
+            if "passt nicht" in str(p["error"]):
+                return (f"Backup nicht möglich: Der hinterlegte Wiederherstellungsschlüssel passt nicht zu {name} "
+                        "– nichts gelöscht. BitLocker-Schlüssel im Gerätefenster prüfen bzw. neu hinterlegen.")
+            return f"Backup nicht möglich: {name} (BitLocker) lässt sich nicht öffnen ({p['error']}) – nichts gelöscht."
         return (f"Backup nicht möglich: {name} lässt sich nicht lesen ({p['error']}) – nichts gelöscht. "
                 "Windows ganz herunterfahren (Schnellstart aus, kein Ruhezustand) oder Backup „ganze Disk“ wählen.")
     return ""
@@ -599,7 +607,20 @@ def automation_work(ip: str, key: bytes, port: int, dev, s: Settings, nas_root: 
                 begin(0, "Benutzerdaten sichern")
                 sources, users = [], []
                 profiles = [p for p in backups.get_profiles(ip, key, port) if p.get("disk") == target]
-                unreadable = backup_blocker(profiles)
+                # I-012: BitLocker – nur mit im Gerätefenster gespeichertem Schlüssel (nur lesend), sonst Abbruch
+                locked = [p["part"] for p in profiles if p.get("bitlocker") and p.get("error") and p.get("part")]
+                bl_keys: dict[str, str] = {}
+                if locked:
+                    try:
+                        bl_keys = bitlocker_keys.for_partitions(bitlocker_keys.stored(dev.id), locked)
+                    except (bitlocker_keys.BitLockerKeyError, OSError) as e:
+                        jm.log(job, f"  BitLocker-Schlüssel nicht lesbar: {e}")
+                    if bl_keys:
+                        jm.log(job, "  BitLocker wird mit dem hinterlegten Schlüssel nur lesend geöffnet: "
+                                    + ", ".join(Path(p).name for p in sorted(bl_keys)))
+                        profiles = [p for p in backups.get_profiles(ip, key, port, bitlocker=bl_keys)
+                                    if p.get("disk") == target]
+                unreadable = backup_blocker(profiles, bl_keys)
                 if unreadable:      # B-025: nicht lesbare Partition → nicht ohne Backup löschen
                     raise AutomationError(unreadable)
                 for p in profiles:
@@ -613,7 +634,7 @@ def automation_work(ip: str, key: bytes, port: int, dev, s: Settings, nas_root: 
                         ip, key, port, target, sources, nas_root, {"id": dev.id, "name": dev.name}, "profiles",
                         "files", description,
                         lambda ev: step(0, ev.get("fraction", 0)) if ev.get("phase") == "data" else None,
-                        job.cancel, note="Automatisierung – vor dem Zurückspielen")
+                        job.cancel, note="Automatisierung – vor dem Zurückspielen", bitlocker=bl_keys or None)
                     jm.log(job, f"  Backup: {path}")
                 else:
                     jm.log(job, "  Keine Benutzerprofile auf der Zieldisk – nichts zu sichern")

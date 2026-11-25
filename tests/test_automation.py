@@ -346,15 +346,29 @@ class BackupBlockerTest(unittest.TestCase):
         (self.nas / "images/Master").mkdir(parents=True)
         self.restored, self.backed_up = [], []
         self.profiles = []
+        self.unlocked = None            # I-012: Profile, wenn der Schlüssel mitgeschickt wurde
+        self.asked_keys, self.backup_keys = [], []
+        self.stored_keys = {}
         disk = {"path": "/dev/nvme0n1", "serial": "S1", "model": "SSD", "size": 512e9, "partitions": []}
+
+        def profiles(ip, key, port, bitlocker=None):
+            self.asked_keys.append(bitlocker)
+            return self.unlocked if bitlocker and self.unlocked is not None else self.profiles
+
+        def run_backup(*a, **k):
+            self.backed_up.append(a[4])
+            self.backup_keys.append(k.get("bitlocker"))
+            return "b"
+
         self.patches = [
             mock.patch.object(agentclient, "get_info", lambda ip, key, port: {"disks": [disk]}),
             mock.patch.object(agentclient, "image_source", lambda image, source=None: {"source": {}}),
             mock.patch.object(agentclient, "restore_image",
                               lambda *a, **k: self.restored.append(a[3]) or (_ for _ in ()).throw(
                                   RuntimeError("Attrappe: hier wäre gelöscht worden"))),
-            mock.patch("okula_recovery.backups.get_profiles", lambda ip, key, port: self.profiles),
-            mock.patch("okula_recovery.backups.run_backup", lambda *a, **k: self.backed_up.append(a[4]) or "b")]
+            mock.patch("okula_recovery.backups.get_profiles", profiles),
+            mock.patch("okula_recovery.backups.run_backup", run_backup),
+            mock.patch("okula_recovery.bitlocker_keys.stored", lambda dev_id: dict(self.stored_keys))]
         for p in self.patches:
             p.start()
 
@@ -386,8 +400,47 @@ class BackupBlockerTest(unittest.TestCase):
         self.assertEqual(self.backed_up, [])
         self.assertEqual(error["step"], "Schritt 1/5 Backup")
         self.assertEqual(error["message"], "Backup nicht möglich: nvme0n1p3 ist mit BitLocker verschlüsselt – "
-                                           "nichts gelöscht. BitLocker in Windows ausschalten oder Backup „ganze "
-                                           "Disk“ wählen.")
+                                           "nichts gelöscht. BitLocker in Windows ausschalten, BitLocker-Schlüssel "
+                                           "im Gerätefenster hinterlegen oder Backup „ganze Disk“ wählen.")
+
+    # ---------- I-012: gespeicherter BitLocker-Schlüssel ----------
+
+    KEY = "111111-222222-333333-444444-555555-666666-111111-222222"   # offensichtlicher Testwert
+
+    def locked(self):
+        return [self.part("nvme0n1p3", fstype="BitLocker", bitlocker=True, error="BitLocker – nicht lesbar")]
+
+    def test_bitlocker_without_stored_key_aborts(self):
+        self.profiles = self.locked()
+        error, _log = self.run_work()
+        self.assertEqual((self.restored, self.backed_up), ([], []))
+        self.assertIn("BitLocker-Schlüssel im Gerätefenster hinterlegen", error["message"])
+        self.assertEqual(self.asked_keys, [None])                 # ohne Schlüssel nicht nochmals gefragt
+
+    def test_bitlocker_with_stored_key_backs_up(self):
+        self.profiles = self.locked()
+        self.stored_keys = {"/dev/nvme0n1p3": self.KEY}
+        self.unlocked = [self.part("nvme0n1p3", fstype="BitLocker", bitlocker=True, unlocked=True, kind="windows",
+                                   users=[{"name": "Test", "path": "Users/Test"}])]
+        _error, log = self.run_work()
+        self.assertEqual(self.asked_keys, [None, {"/dev/nvme0n1p3": self.KEY}])
+        self.assertEqual(self.backup_keys, [{"/dev/nvme0n1p3": self.KEY}])
+        self.assertTrue(self.backed_up and self.backed_up[0])
+        self.assertEqual(self.restored, ["/dev/nvme0n1"])       # erst nach dem Backup zurückgespielt
+        self.assertIn("nur lesend geöffnet: nvme0n1p3", log)
+        self.assertNotIn(self.KEY, log)
+        self.assertNotIn(self.KEY.replace("-", ""), log)
+
+    def test_bitlocker_wrong_stored_key_aborts(self):
+        self.profiles = self.locked()
+        self.stored_keys = {"/dev/nvme0n1p3": self.KEY}
+        self.unlocked = [self.part("nvme0n1p3", fstype="BitLocker", bitlocker=True,
+                                   error="Wiederherstellungsschlüssel passt nicht zu nvme0n1p3")]
+        error, log = self.run_work()
+        self.assertEqual((self.restored, self.backed_up), ([], []))
+        self.assertIn("hinterlegte Wiederherstellungsschlüssel passt nicht zu nvme0n1p3 – nichts gelöscht",
+                      error["message"])
+        self.assertNotIn(self.KEY, log + error["message"])
 
     def test_unreadable_aborts(self):
         self.profiles = [self.part("nvme0n1p3", error="Windows ist im Ruhezustand"),

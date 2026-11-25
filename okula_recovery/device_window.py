@@ -12,13 +12,13 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
-from okula_recovery import (archive, bootkeys, demostore, devices, imagecheck, inventory, jobs, nas,  # noqa: E402
-                            pxelog, vm, warranty, win11)
+from okula_recovery import (archive, bitlocker_keys, bootkeys, demostore, devices, imagecheck,  # noqa: E402
+                            inventory, jobs, nas, pxelog, vm, warranty, win11)
 from okula_recovery.bios_tab import BiosTab  # noqa: E402
 from okula_recovery.hw_tab import HwTab  # noqa: E402
 from okula_recovery.automation_tab import AutomationTab  # noqa: E402
 from okula_recovery.snapshot_tab import SnapshotTab  # noqa: E402
-from okula_recovery.uikit import (ask_text, confirm_error, numbered_section, power_buttons,  # noqa: E402
+from okula_recovery.uikit import (ask_text, confirm, confirm_error, numbered_section, power_buttons,  # noqa: E402
                                   remember_columns, run_async, scrolled)
 
 if TYPE_CHECKING:
@@ -519,7 +519,120 @@ class DeviceWindow(Gtk.Window):
             self.info_grid.attach(val, 1, i, 1, 1)
         self._key_row(len(rows))
         self._warranty_row(len(rows) + 1)
+        self._bitlocker_row(len(rows) + 2)
         self.info_grid.show_all()
+
+    # ---------- BitLocker-Schlüssel (I-012) ----------
+
+    def _bitlocker_row(self, row: int) -> None:
+        """„BitLocker-Schlüssel hinterlegt: ja/nein“ – nur bei BitLocker laut Inventar oder hinterlegtem Schlüssel.
+        Der Schlüssel selbst wird nie angezeigt; der Stand kommt vom Root-Helfer (im Hintergrund)."""
+        state = getattr(self, "_bl_state", None)          # None = noch nicht gefragt, bool, str = Fehler
+        if state is None and not getattr(self, "_bl_busy", False) and bitlocker_keys.available():
+            self._bl_query()
+        parts = bitlocker_keys.inventory_partitions(self.dev.inventory)
+        if not parts and state is not True:
+            return
+        label = Gtk.Label(label="BitLocker-Schlüssel hinterlegt", xalign=0, yalign=0.5)
+        label.get_style_context().add_class("status-idle")
+        self.info_grid.attach(label, 0, row, 1, 1)
+        box = Gtk.Box(spacing=6)
+        if not bitlocker_keys.available():
+            text = "nein – Root-Helfer fehlt (install.sh erneut ausführen)"
+        elif isinstance(state, str):
+            text = f"unbekannt ({state})"
+        else:
+            text = {True: "ja", False: "nein", None: "wird gelesen …"}[state]
+        box.pack_start(Gtk.Label(label=text, xalign=0, selectable=True), False, False, 0)
+        add = Gtk.Button(label="Schlüssel hinterlegen …")
+        add.set_tooltip_text("Wiederherstellungsschlüssel (48 Ziffern) für eine BitLocker-Partition speichern – nur "
+                             "root-lesbar auf dem Server, nie in Export, Inventar oder Verlauf. Damit sichern "
+                             "Backup und Automatisierung Benutzerdaten (nur lesend).")
+        add.set_sensitive(bitlocker_keys.available())
+        add.connect("clicked", lambda _b: self._bl_add(parts))
+        box.pack_start(add, False, False, 0)
+        remove = Gtk.Button(label="Entfernen")
+        remove.set_tooltip_text("Alle hinterlegten BitLocker-Schlüssel dieses Geräts löschen")
+        remove.set_sensitive(state is True)
+        remove.connect("clicked", lambda _b: self._bl_remove())
+        box.pack_start(remove, False, False, 0)
+        self.info_grid.attach(box, 1, row, 1, 1)
+
+    def _bl_query(self) -> None:
+        self._bl_busy = True
+
+        def done(result) -> None:
+            self._bl_busy = False
+            self._bl_state = str(result) if isinstance(result, Exception) else bool(result)
+            self._fill_overview()
+
+        run_async(lambda: bitlocker_keys.has(self.dev.id), done)
+
+    def _bl_add(self, parts: list[str]) -> None:
+        dlg = Gtk.Dialog(title="BitLocker-Schlüssel hinterlegen", transient_for=self, modal=True)
+        dlg.add_buttons("Abbrechen", Gtk.ResponseType.CANCEL, "Speichern", Gtk.ResponseType.OK)
+        dlg.set_default_response(Gtk.ResponseType.OK)
+        grid = Gtk.Grid(column_spacing=8, row_spacing=8, margin=12)
+        grid.attach(Gtk.Label(label="Partition", xalign=0), 0, 0, 1, 1)
+        combo = Gtk.ComboBoxText.new_with_entry()
+        for p in parts:
+            combo.append(p, p)
+        if parts:
+            combo.set_active(0)
+        combo.set_tooltip_text("BitLocker-Partition laut Inventar, z. B. /dev/nvme0n1p3")
+        grid.attach(combo, 1, 0, 1, 1)
+        grid.attach(Gtk.Label(label="Wiederherstellungsschlüssel", xalign=0), 0, 1, 1, 1)
+        entry = Gtk.Entry(visibility=False, activates_default=True, width_chars=58, max_length=70,
+                          placeholder_text="48 Ziffern (8 Blöcke à 6), Einfügen möglich")
+        grid.attach(entry, 1, 1, 1, 1)
+        show = Gtk.CheckButton(label="Anzeigen")
+        show.connect("toggled", lambda b: entry.set_visibility(b.get_active()))
+        grid.attach(show, 1, 2, 1, 1)
+        hint = self._hint("Nur root-lesbar auf dem Server gespeichert. Ob der Schlüssel passt, zeigt sich beim "
+                          "nächsten Backup (die Partition wird nur lesend geöffnet).")
+        grid.attach(hint, 0, 3, 2, 1)
+        dlg.get_content_area().add(grid)
+        dlg.show_all()
+        while True:
+            if dlg.run() != Gtk.ResponseType.OK:
+                dlg.destroy()
+                return
+            part = (combo.get_active_id() or combo.get_child().get_text()).strip()
+            try:
+                key = bitlocker_keys.normalize(entry.get_text())
+                bitlocker_keys._part(part)
+            except bitlocker_keys.BitLockerKeyError as e:
+                confirm_error(dlg, str(e))
+                continue
+            break
+        dlg.destroy()
+
+        def done(result) -> None:
+            if isinstance(result, Exception):
+                confirm_error(self, f"BitLocker-Schlüssel nicht gespeichert: {result}")
+                return
+            self.main.store.add_history(self.dev, "notiz", f"BitLocker-Schlüssel für {Path(part).name} hinterlegt")
+            self._bl_state = True
+            self.refresh()
+
+        run_async(lambda: bitlocker_keys.save(self.dev.id, part, key), done)
+
+    def _bl_remove(self) -> None:
+        if not confirm(self, "BitLocker-Schlüssel entfernen?",
+                       f"Alle hinterlegten BitLocker-Schlüssel von „{self.dev.name}“ werden gelöscht. Die "
+                       "Automatisierung kann danach keine Benutzerdaten von BitLocker-Partitionen mehr sichern.",
+                       ok_label="Entfernen"):
+            return
+
+        def done(result) -> None:
+            if isinstance(result, Exception):
+                confirm_error(self, f"BitLocker-Schlüssel nicht entfernt: {result}")
+                return
+            self.main.store.add_history(self.dev, "notiz", "BitLocker-Schlüssel entfernt")
+            self._bl_state = False
+            self.refresh()
+
+        run_async(lambda: bitlocker_keys.delete(self.dev.id), done)
 
     def _build_netboot(self) -> Gtk.Widget:
         """Netzwerkstart (PXE) für dieses Gerät ein/aus; Zahnrad öffnet die PXE-Einstellungen.

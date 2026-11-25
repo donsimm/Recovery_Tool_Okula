@@ -68,12 +68,15 @@ chown -R root:root "$APP_DIR"
 chmod -R go-w "$APP_DIR"
 find "$APP_DIR" -name __pycache__ -prune -exec rm -rf {} +
 
-echo "==> Root-Helfer (Agent-Stick, NAS einhängen, Garantie-Abfrage)"
+echo "==> Root-Helfer (Agent-Stick, NAS einhängen, Garantie-Abfrage, BitLocker-Schlüssel)"
 install -m 0755 "$APP_DIR/packaging/okula-make-stick" /usr/local/sbin/okula-make-stick
 install -m 0755 "$APP_DIR/packaging/okula-nas-mount" /usr/local/sbin/okula-nas-mount
 install -m 0755 "$APP_DIR/packaging/okula-warranty" /usr/local/sbin/okula-warranty
+install -m 0755 "$APP_DIR/packaging/okula-bitlocker" /usr/local/sbin/okula-bitlocker
+# BitLocker-Wiederherstellungsschlüssel (I-012): nur root
+install -d -m 0700 -o root -g root /etc/okula-recovery/bitlocker
 SUDOERS=/etc/sudoers.d/okula-recovery
-echo "$TARGET_USER ALL=(root) NOPASSWD: /usr/local/sbin/okula-make-stick, /usr/local/sbin/okula-nas-mount, /usr/local/sbin/okula-warranty" > "$SUDOERS.tmp"
+echo "$TARGET_USER ALL=(root) NOPASSWD: /usr/local/sbin/okula-make-stick, /usr/local/sbin/okula-nas-mount, /usr/local/sbin/okula-warranty, /usr/local/sbin/okula-bitlocker" > "$SUDOERS.tmp"
 chmod 0440 "$SUDOERS.tmp"
 visudo -cf "$SUDOERS.tmp" >/dev/null
 mv "$SUDOERS.tmp" "$SUDOERS"

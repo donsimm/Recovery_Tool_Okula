@@ -825,7 +825,8 @@ def _transfer_progress(jm: JobManager, job: Job, what: str):
 
 def backup_work(ip: str, key: bytes, port: int, disk: str, sources: list[dict], root: str, device: dict,
                 mode: str, storage: str, description: list[str],
-                after: Callable[[Job, str | None, Exception | None], None], note: str = ""):
+                after: Callable[[Job, str | None, Exception | None], None], note: str = "",
+                bitlocker: dict | None = None):
     from okula_recovery import backups
 
     def work(job: Job, jm: JobManager) -> str:
@@ -833,9 +834,12 @@ def backup_work(ip: str, key: bytes, port: int, disk: str, sources: list[dict], 
             jm.log(job, "  Notiz: " + note)
         for line in description:
             jm.log(job, "  · " + line)
+        if bitlocker:       # I-012: nur die Partitionen, nie den Schlüssel
+            jm.log(job, "  · BitLocker nur lesend entsperrt: " + ", ".join(Path(p).name for p in sorted(bitlocker)))
         try:
             path = backups.run_backup(ip, key, port, disk, sources, root, device, mode, storage, description,
-                                      _transfer_progress(jm, job, "Gesichert"), job.cancel, note)
+                                      _transfer_progress(jm, job, "Gesichert"), job.cancel, note,
+                                      bitlocker=bitlocker)
         except Exception as e:
             after(job, None, e)
             raise

@@ -2,13 +2,18 @@
 
 Alle Schlüssel sind offensichtliche Testwerte (jeder Block durch 11 teilbar, aber kein echter Schlüssel)."""
 
+import io
+import json
+import os
+import stat
 import subprocess
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest import mock
 
-from okula_recovery import agent, deploy, filebackup, imaging, inventory
+from okula_recovery import agent, bitlocker_keys, deploy, filebackup, imaging, inventory
 
 KEY = "111111-222222-333333-444444-555555-666666-111111-222222"
 KEY_PLAIN = KEY.replace("-", "")
@@ -184,6 +189,134 @@ class AgentBitlockerTest(unittest.TestCase):
         self.assertIn("fehlgeschlagen", text)
         self.assertNotIn(KEY, text)
         self.assertNotIn(KEY_PLAIN, text)
+
+
+class KeyStoreTest(unittest.TestCase):
+    """Schlüssel-Speicher (Tool): Format, Rechte, atomar, Löschen, Root-Helfer, nichts in Exporten."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self.tmp.name) / "etc" / "bitlocker"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_normalize_and_block_check(self):
+        self.assertEqual(bitlocker_keys.normalize(KEY_PLAIN), KEY)
+        self.assertEqual(bitlocker_keys.normalize(KEY.replace("-", " ")), KEY)
+        with self.assertRaisesRegex(bitlocker_keys.BitLockerKeyError, "48 Ziffern"):
+            bitlocker_keys.normalize("1234")
+        with self.assertRaisesRegex(bitlocker_keys.BitLockerKeyError, "Block 2"):
+            bitlocker_keys.normalize(KEY.replace("222222", "222223", 1))      # nicht durch 11 teilbar
+        with self.assertRaisesRegex(bitlocker_keys.BitLockerKeyError, "Block 1"):
+            bitlocker_keys.normalize("720896" + KEY_PLAIN[6:])                # 11 · 65536 – zu gross
+        self.assertTrue(bitlocker_keys.valid("720885" + KEY_PLAIN[6:]))       # 11 · 65535 – grösster Block
+
+    def test_write_read_rights_atomic_delete(self):
+        msg = bitlocker_keys.write_key("dev-1", DEV, KEY_PLAIN, self.base)
+        self.assertNotIn(KEY, msg)
+        path = self.base / "dev-1.json"
+        self.assertEqual(stat.S_IMODE(self.base.stat().st_mode), 0o700)
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+        self.assertEqual(bitlocker_keys.read_keys("dev-1", self.base), {DEV: KEY})
+        bitlocker_keys.write_key("dev-1", "/dev/sdb2", KEY, self.base)
+        self.assertEqual(set(bitlocker_keys.read_keys("dev-1", self.base)), {DEV, "/dev/sdb2"})
+        self.assertEqual(sorted(p.name for p in self.base.iterdir()), ["dev-1.json"])   # keine .tmp-Reste
+        with mock.patch.object(bitlocker_keys.os, "replace", side_effect=OSError("Platte voll")):
+            with self.assertRaises(OSError):
+                bitlocker_keys.write_key("dev-1", DEV, KEY.replace("111111", "000000", 1), self.base)
+        self.assertEqual(bitlocker_keys.read_keys("dev-1", self.base)[DEV], KEY)          # alte Datei unverändert
+        self.assertEqual(sorted(p.name for p in self.base.iterdir()), ["dev-1.json"])
+        self.assertEqual(bitlocker_keys.read_keys("anderes", self.base), {})
+        bitlocker_keys.delete_keys("dev-1", self.base)
+        self.assertFalse(path.exists())
+        self.assertEqual(bitlocker_keys.read_keys("dev-1", self.base), {})
+
+    def test_wrong_rights_are_refused(self):
+        bitlocker_keys.write_key("dev-1", DEV, KEY, self.base)
+        os.chmod(self.base / "dev-1.json", 0o644)
+        with self.assertRaisesRegex(bitlocker_keys.BitLockerKeyError, "Rechte"):
+            bitlocker_keys.read_keys("dev-1", self.base)
+        os.chmod(self.base / "dev-1.json", 0o600)
+        os.chmod(self.base, 0o755)
+        with self.assertRaisesRegex(bitlocker_keys.BitLockerKeyError, "Rechte"):
+            bitlocker_keys.read_keys("dev-1", self.base)
+        bitlocker_keys.write_key("dev-1", DEV, KEY, self.base)           # schreiben setzt die Rechte wieder
+        self.assertEqual(stat.S_IMODE(self.base.stat().st_mode), 0o700)
+
+    def test_invalid_device_or_partition(self):
+        for bad in ("../x", "", ".versteckt", "a/b"):
+            with self.assertRaises(bitlocker_keys.BitLockerKeyError):
+                bitlocker_keys.write_key(bad, DEV, KEY, self.base)
+        with self.assertRaises(bitlocker_keys.BitLockerKeyError):
+            bitlocker_keys.write_key("dev-1", "/etc/passwd", KEY, self.base)
+        with self.assertRaises(bitlocker_keys.BitLockerKeyError):
+            bitlocker_keys.write_key("dev-1", DEV, "1234", self.base)
+        self.assertFalse((self.base / "dev-1.json").exists())
+
+    def test_helper_cli_and_tool_side(self):
+        def run(args, stdin=None):
+            out = io.StringIO()
+            with mock.patch("sys.stdin", io.StringIO(stdin or "")), mock.patch("sys.stdout", out):
+                rc = bitlocker_keys.main(args, base=self.base)
+            line = out.getvalue().strip().splitlines()[-1]
+            kind, _, msg = line.partition(" ")
+            return kind == "OK" and rc == 0, msg
+
+        self.assertFalse(bitlocker_keys.has("dev-1", run))
+        calls = []
+
+        def spy(args, stdin=None):
+            calls.append(args)
+            return run(args, stdin)
+
+        bitlocker_keys.save("dev-1", DEV, KEY_PLAIN, spy)
+        self.assertFalse(any(KEY in a or KEY_PLAIN in a for a in calls[-1]))     # Schlüssel nur über stdin
+        self.assertTrue(bitlocker_keys.has("dev-1", run))
+        self.assertEqual(bitlocker_keys.stored("dev-1", run), {DEV: KEY})
+        with self.assertRaises(bitlocker_keys.BitLockerKeyError):
+            bitlocker_keys.save("dev-1", DEV, "kaputt", run)
+        bitlocker_keys.delete("dev-1", run)
+        self.assertFalse(bitlocker_keys.has("dev-1", run))
+
+    def test_for_partitions(self):
+        self.assertEqual(bitlocker_keys.for_partitions({DEV: KEY}, [DEV]), {DEV: KEY})
+        self.assertEqual(bitlocker_keys.for_partitions({DEV: KEY}, ["/dev/sdb3"]), {"/dev/sdb3": KEY})
+        two = {DEV: KEY, "/dev/sda4": KEY}
+        self.assertEqual(bitlocker_keys.for_partitions(two, ["/dev/sdb3"]), {})
+        self.assertEqual(bitlocker_keys.for_partitions({}, [DEV]), {})
+
+    def test_inventory_partitions(self):
+        inv = {"disks": [{"partitions": [{"path": "/dev/sda1", "name": "sda1", "fstype": "vfat"},
+                                         {"path": "/dev/sda2", "name": "sda2", "fstype": "BitLocker"},
+                                         {"path": "/dev/sda3", "name": "sda3", "fstype": ""}]}],
+               "systems": [{"name": "verschlüsselt (BitLocker)", "partition": "sda3"}]}
+        self.assertEqual(bitlocker_keys.inventory_partitions(inv), ["/dev/sda2", "/dev/sda3"])
+        self.assertEqual(bitlocker_keys.inventory_partitions({}), [])
+
+    def test_key_not_in_exports(self):
+        from okula_recovery import devices, inventory_export, transfer
+        root = Path(self.tmp.name)
+        env = {"XDG_CONFIG_HOME": str(root / "config"), "XDG_DATA_HOME": str(root / "data")}
+        with mock.patch.dict(os.environ, env), mock.patch.object(bitlocker_keys, "KEY_DIR", self.base):
+            bitlocker_keys.write_key("d1", DEV, KEY)
+            base = devices.default_base()
+            base.mkdir(parents=True, exist_ok=True)
+            (base / "d1.json").write_text(json.dumps({"id": "d1", "name": "PC", "inventory": {
+                "disks": [{"name": "sda", "partitions": [{"path": DEV, "name": "sda3", "fstype": "BitLocker"}]}]}}))
+            out = root / "export.okula.zip"
+            transfer.export_all(out)
+            with zipfile.ZipFile(out) as z:
+                blob = b"".join(z.read(n) for n in z.namelist())
+            store = devices.DeviceStore(base)
+            rows = inventory_export.build(list(store.devices.values()), {}, {}, with_key=True)
+            self.assertEqual(len(rows), 1)
+            self.assertTrue(bitlocker_keys.read_keys("d1"))           # Schlüssel ist wirklich gespeichert
+            csv = inventory_export.write_csv(root / "inv.csv", rows, with_key=True).read_bytes()
+            saved = b"".join(p.read_bytes() for p in base.rglob("*.json"))
+        for data in (blob, csv, saved):
+            self.assertNotIn(KEY.encode(), data)
+            self.assertNotIn(KEY_PLAIN.encode(), data)
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk, Pango  # noqa: E402
 
-from okula_recovery import agentclient, backups, nas  # noqa: E402
+from okula_recovery import agentclient, backups, bitlocker_keys, nas  # noqa: E402
 from okula_recovery.uikit import scrolled  # noqa: E402
 
 PLACEHOLDER = "…"
@@ -45,7 +45,7 @@ def _set_children(store: Gtk.TreeStore, it, col: int, value: bool) -> None:
 
 
 class BackupDialog(Gtk.Dialog):
-    """start_job(disk, quellen, art, ablage, beschreibung, notiz)."""
+    """start_job(disk, quellen, art, ablage, beschreibung, notiz, bitlocker=schlüssel oder None)."""
 
     def __init__(self, parent: Gtk.Window, agent, device, nas_root: str,
                  start_job: Callable[[str, list[dict], str, str, list[str], str], None]):
@@ -65,6 +65,9 @@ class BackupDialog(Gtk.Dialog):
         head.set_markup(f"Gerät: <b>{GLib.markup_escape_text(device.name)}</b>  ({agent.ip})  · Ziel: NAS: /"
                         f"{backups.BACKUP_DIR}/{GLib.markup_escape_text(agentclient.safe_name(device.name))}/…")
         box.pack_start(head, False, False, 0)
+        self.bl_keys: dict[str, str] = {}          # I-012: Schlüssel {partition: schlüssel}, nur für den Agent
+        self.bl_box = self._build_bitlocker()
+        box.pack_start(self.bl_box, False, False, 0)
 
         self.tabs = Gtk.Notebook()
         self.tabs.append_page(self._build_profiles(), Gtk.Label(label="Benutzerdaten"))
@@ -104,7 +107,91 @@ class BackupDialog(Gtk.Dialog):
         box.pack_start(self.status, False, False, 0)
         self.get_content_area().add(box)
         self.show_all()
-        _bg(lambda: backups.get_profiles(agent.ip, self.key, agent.control_port), self._on_profiles)
+        self.bl_box.hide()
+        _bg(self._load_profiles, self._on_profiles)
+
+    # ---------- BitLocker (I-012) ----------
+
+    def _build_bitlocker(self) -> Gtk.Widget:
+        frame = Gtk.Frame(label="BitLocker")
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=8)
+        self.bl_text = Gtk.Label(xalign=0, wrap=True)
+        box.pack_start(self.bl_text, False, False, 0)
+        row = Gtk.Box(spacing=8)
+        row.pack_start(Gtk.Label(label="Partition"), False, False, 0)
+        self.bl_part = Gtk.ComboBoxText()
+        row.pack_start(self.bl_part, False, False, 0)
+        row.pack_start(Gtk.Label(label="Wiederherstellungsschlüssel"), False, False, 0)
+        self.bl_entry = Gtk.Entry(visibility=False, hexpand=True, max_length=70,
+                                  placeholder_text="48 Ziffern (8 Blöcke à 6), Einfügen möglich")
+        self.bl_entry.connect("activate", lambda _e: self._unlock())
+        row.pack_start(self.bl_entry, True, True, 0)
+        show = Gtk.CheckButton(label="Anzeigen")
+        show.connect("toggled", lambda b: self.bl_entry.set_visibility(b.get_active()))
+        row.pack_start(show, False, False, 0)
+        box.pack_start(row, False, False, 0)
+        row = Gtk.Box(spacing=8)
+        self.bl_save = Gtk.CheckButton(label="Für dieses Gerät speichern")
+        self.bl_save.set_tooltip_text("Nur für root lesbar auf dem Server abgelegt (nie in Export, Inventar oder "
+                                      "Verlauf); die Automatisierung kann dann Benutzerdaten sichern")
+        row.pack_start(self.bl_save, False, False, 0)
+        self.bl_button = Gtk.Button(label="Entsperren")
+        self.bl_button.set_tooltip_text("Partition mit dem Schlüssel nur lesend öffnen und Benutzer neu einlesen")
+        self.bl_button.connect("clicked", lambda _b: self._unlock())
+        row.pack_end(self.bl_button, False, False, 0)
+        box.pack_start(row, False, False, 0)
+        hint = Gtk.Label(xalign=0, wrap=True)
+        hint.set_markup("<small>Der Wiederherstellungsschlüssel steht im Microsoft-Konto des Kunden "
+                        "(aka.ms/myrecoverykey), im Ausdruck oder bei der Firma (Entra ID/Active Directory). "
+                        "Die Partition wird nur lesend geöffnet – BitLocker bleibt am Gerät unverändert.</small>")
+        hint.get_style_context().add_class("status-idle")
+        box.pack_start(hint, False, False, 0)
+        frame.add(box)
+        return frame
+
+    def _load_profiles(self, extra: dict | None = None) -> tuple[list[dict], dict, str]:
+        """Profile vom Agent; gespeicherte bzw. eingegebene BitLocker-Schlüssel für gesperrte Partitionen
+        mitschicken. Gibt (Profile, verwendete Schlüssel, Hinweis) zurück."""
+        agent = self.agent
+        keys = dict(self.bl_keys)
+        keys.update(extra or {})
+        result = backups.get_profiles(agent.ip, self.key, agent.control_port, bitlocker=keys or None)
+        locked = [p["part"] for p in result if p.get("bitlocker") and p.get("error") and p["part"] not in keys]
+        note = ""
+        if locked:
+            try:
+                saved = bitlocker_keys.for_partitions(bitlocker_keys.stored(self.device.id), locked)
+            except (bitlocker_keys.BitLockerKeyError, OSError) as e:
+                saved, note = {}, f"Gespeicherte BitLocker-Schlüssel nicht lesbar: {e}"
+            if saved:
+                keys.update(saved)
+                result = backups.get_profiles(agent.ip, self.key, agent.control_port, bitlocker=keys)
+        used = {p["part"]: keys[p["part"]] for p in result if p["part"] in keys and p.get("unlocked")}
+        return result, used, note
+
+    def _unlock(self) -> None:
+        part = self.bl_part.get_active_id()
+        if not part:
+            return
+        try:
+            key = bitlocker_keys.normalize(self.bl_entry.get_text())
+        except bitlocker_keys.BitLockerKeyError as e:
+            self.status.set_text(str(e))
+            return
+        save = self.bl_save.get_active()
+        self.bl_button.set_sensitive(False)
+        self.status.set_text(f"{Path(part).name} wird nur lesend entsperrt …")
+
+        def work():
+            profiles, used, note = self._load_profiles({part: key})
+            if save and part in used:          # nur einen passenden Schlüssel speichern
+                try:
+                    note = "; ".join(n for n in (note, bitlocker_keys.save(self.device.id, part, key)) if n)
+                except (bitlocker_keys.BitLockerKeyError, OSError) as e:
+                    note = "; ".join(n for n in (note, f"Schlüssel nicht gespeichert: {e}") if n)
+            return profiles, used, note
+
+        _bg(work, self._on_profiles)
 
     # ---------- Aufbau ----------
 
@@ -172,19 +259,25 @@ class BackupDialog(Gtk.Dialog):
     # ---------- Daten ----------
 
     def _on_profiles(self, result) -> bool:
+        self.bl_button.set_sensitive(True)
         if isinstance(result, Exception):
             self.status.set_text(f"Agent nicht erreichbar: {result}")
             return False
+        result, self.bl_keys, note = result
         self.partitions = result
-        self.status.set_text("")
+        self.status.set_text(note)
+        for store in (self.p_store, self.part_store, self.f_store):
+            store.clear()
+        self._show_bitlocker(result)
         for p in result:
-            label = f"{p['name']}  {p['fstype']}  {nas.format_size(p['size'])}" + \
+            fstype = f"{p['fstype']} (entsperrt, nur lesend)" if p.get("unlocked") else p["fstype"]
+            label = f"{p['name']}  {fstype}  {nas.format_size(p['size'])}" + \
                     (f"  – {p['os']}" if p.get("os") else (f"  „{p['label']}“" if p.get("label") else ""))
             if p.get("users"):
                 it = self.p_store.append(None, [True, label, p["part"], "", p["kind"], "part"])
                 for u in p["users"]:
                     self.p_store.append(it, [True, u["name"], p["part"], u["path"], p["kind"], "user"])
-            self.part_store.append([False, p["name"], p["fstype"], nas.format_size(p["size"]),
+            self.part_store.append([False, p["name"], fstype, nas.format_size(p["size"]),
                                     p.get("error") or p.get("os") or p.get("label") or "", p["part"]])
             if not p.get("error"):
                 it = self.f_store.append(None, [False, f"{p['name']} ({p.get('os') or p['fstype']})", p["part"], "",
@@ -193,8 +286,28 @@ class BackupDialog(Gtk.Dialog):
         self.p_view.expand_all()
         if not any(p.get("users") for p in result):
             self.tabs.set_current_page(1)
+        else:
+            self.tabs.set_current_page(0)
         self._update()
         return False
+
+    def _show_bitlocker(self, result: list[dict]) -> None:
+        """Feld für den Wiederherstellungsschlüssel, solange eine BitLocker-Partition gesperrt ist."""
+        locked = [p for p in result if p.get("bitlocker") and p.get("error")]
+        self.bl_part.remove_all()
+        for p in locked:
+            self.bl_part.append(p["part"], p["name"])
+        if not locked:
+            self.bl_box.hide()
+            return
+        self.bl_part.set_active(0)
+        self.bl_entry.set_text("")
+        lines = [f"{p['name']}: {p['error']}" for p in locked]
+        self.bl_text.set_markup(
+            "<b>" + GLib.markup_escape_text("\n".join(lines)) + "</b>\n" + GLib.markup_escape_text(
+                "Mit dem Wiederherstellungsschlüssel lässt sich die Partition nur lesend öffnen, um Benutzerdaten zu "
+                "sichern."))
+        self.bl_box.show()
 
     def _on_expand(self, view, it, path) -> None:
         child = self.f_store.iter_children(it)
@@ -221,7 +334,9 @@ class BackupDialog(Gtk.Dialog):
             view.expand_row(ref.get_path(), False)
             return False
 
-        _bg(lambda: backups.browse(self.agent.ip, self.key, self.agent.control_port, part, rel), done)
+        keys = self._keys_for([part])
+        _bg(lambda: backups.browse(self.agent.ip, self.key, self.agent.control_port, part, rel, bitlocker=keys),
+            done)
 
     def _toggle_profile(self, _cell, path) -> None:
         it = self.p_store.get_iter(path)
@@ -279,6 +394,10 @@ class BackupDialog(Gtk.Dialog):
         storage = "files" if self.as_files.get_active() else "tar"
         return sources, backups.describe_selection(mode, names, storage)
 
+    def _keys_for(self, parts) -> dict[str, str] | None:
+        """BitLocker-Schlüssel nur für die betroffenen Partitionen (I-012)."""
+        return {p: self.bl_keys[p] for p in set(parts) if p in self.bl_keys} or None
+
     def _disk(self, sources: list[dict]) -> str:
         parts = {p["part"]: p["disk"] for p in self.partitions}
         return parts.get(sources[0]["part"], "") if sources else ""
@@ -294,7 +413,9 @@ class BackupDialog(Gtk.Dialog):
         sources, _desc = self.selection()
         self.btn_estimate.set_sensitive(False)
         self.estimate_label.set_text("Dateien auf dem Gerät werden gezählt …")
-        _bg(lambda: backups.estimate(self.agent.ip, self.key, self.agent.control_port, sources), self._on_estimate)
+        keys = self._keys_for(s["part"] for s in sources)
+        _bg(lambda: backups.estimate(self.agent.ip, self.key, self.agent.control_port, sources, bitlocker=keys),
+            self._on_estimate)
 
     def _on_estimate(self, result) -> bool:
         self.btn_estimate.set_sensitive(True)
@@ -322,7 +443,7 @@ class BackupDialog(Gtk.Dialog):
         sources, desc = self.selection()
         try:
             self.start_job(self._disk(sources), sources, self.mode(), "files" if self.as_files.get_active() else "tar",
-                           desc, self.note.get_text().strip())
+                           desc, self.note.get_text().strip(), bitlocker=self._keys_for(s["part"] for s in sources))
         except Exception as e:
             self.status.set_text(f"Nicht gestartet: {e}")
             return

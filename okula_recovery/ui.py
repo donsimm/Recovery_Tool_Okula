@@ -18,7 +18,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 
 from okula_recovery import (__version__, agentclient, archive, automation, backups, bandwidth,  # noqa: E402
-                            clonezilla, config, demostore, devices, discovery, distribute, imagecheck, jobs, nas,
+                            bitlocker_keys, clonezilla, config, demostore, devices, discovery, distribute, imagecheck, jobs, nas,
                             nasfiles, oslib, projekt, pxe, vm, warranty, wintweaks, wire, wol)
 from okula_recovery.automation_tab import SendFoldersDialog, SettingsDialog, WindowsTweakDialog  # noqa: E402
 from okula_recovery.inventory_dialog import InventoryExportDialog  # noqa: E402
@@ -2483,6 +2483,15 @@ class MainWindow(Gtk.ApplicationWindow):
             if win:
                 win.destroy()
             self._device_op(lambda: self.store.delete(dev), f"„{dev.name}“ gelöscht")
+            self.forget_bitlocker(dev)
+
+    def forget_bitlocker(self, dev: devices.Device) -> None:
+        """I-012: Gerät gelöscht → hinterlegte BitLocker-Schlüssel mit löschen (Root-Helfer, im Hintergrund)."""
+        def done(result) -> None:
+            if isinstance(result, Exception):
+                self.status(f"BitLocker-Schlüssel von „{dev.name}“ nicht entfernt: {result}")
+        if bitlocker_keys.available():         # ohne Root-Helfer kann auch nichts gespeichert sein
+            run_async(lambda: bitlocker_keys.delete(dev.id), done)
 
     def on_merge_device(self, dev: devices.Device) -> None:
         """Doppelten Eintrag in ein anderes Gerät übernehmen (Name und Ordner des gewählten Geräts bleiben)."""
@@ -3044,6 +3053,7 @@ class MainWindow(Gtk.ApplicationWindow):
             if viewer is not None and viewer.poll() is None:
                 viewer.terminate()
             self.store.delete(dev)
+            self.forget_bitlocker(dev)
             self.sync_netboot()
             self.refresh_devices()
             self.status(f"VM „{name}“ gelöscht – Images und Backups auf dem NAS bleiben")
@@ -4052,14 +4062,15 @@ class MainWindow(Gtk.ApplicationWindow):
             return
 
         def start(disk: str, sources: list[dict], mode: str, storage: str, description: list[str],
-                  note: str = "") -> None:
+                  note: str = "", bitlocker: dict | None = None) -> None:
             what = f"Backup ({description[0].split(':')[0]})"
 
             def after(job, path, error) -> None:
                 GLib.idle_add(self._after_job, dev.id, job, what, path, error, False)
 
             work = jobs.backup_work(agent.ip, self.key, agent.control_port, disk, sources, root,
-                                    {"id": dev.id, "name": dev.name}, mode, storage, description, after, note)
+                                    {"id": dev.id, "name": dev.name}, mode, storage, description, after, note,
+                                    bitlocker=bitlocker)
             self.jobs.start(dev.id, "backup", disk, what, work)
             self.open_device(dev).show_jobs()
 

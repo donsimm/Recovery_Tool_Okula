@@ -1,0 +1,5 @@
+#!/bin/sh
+# Root-Helfer des Recovery-Tools für BitLocker-Wiederherstellungsschlüssel (I-012): Schlüssel liegen nur
+# root-lesbar in /etc/okula-recovery/bitlocker/ (per sudo aufgerufen, Schlüssel nur über stdin).
+cd /opt/okula-recovery || exit 1
+exec /usr/bin/python3 -m okula_recovery.bitlocker_keys "$@"
