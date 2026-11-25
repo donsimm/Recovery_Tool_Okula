@@ -185,6 +185,29 @@ class ScriptTextTest(unittest.TestCase):
     def test_no_reinstall_text(self):
         body = steps(wintweaks.build_script({"no_reinstall"}))["Wiederinstallation von Werbe-Apps sperren"]
         self.assertIn("Werbe-Platzhalter im Startmenü (WhatsApp, LinkedIn, Adobe Express …) bleiben evtl.", body)
+        # B-028 (R-win 4): Einschränkung als Hinweis (B-022-Mechanismus), nicht als „ok“
+        self.assertIn('else { "Hinweis: stille Installation aus: $users; Richtlinie wirkt bei $edition nicht', body)
+
+    def test_limits_reported_as_hint(self):
+        """B-028 (R-win 4): Zeilen mit Einschränkung beginnen mit „Hinweis: “ → Invoke-OkulaStep zählt Hinweis."""
+        script = wintweaks.build_script({"lockscreen_off", "no_reinstall"})
+        self.assertIn("if ($note -like 'Hinweis: *') {", script)
+        lock = steps(script)["Sperrbildschirm aus"]
+        self.assertIn("'Hinweis: Richtlinie gesetzt; Windows Home ({0}) – laut Microsoft nicht unterstützt, wirkt "
+                      "evtl. nicht' -f $edition", lock)
+        for line in (lock + steps(script)["Wiederinstallation von Werbe-Apps sperren"]).splitlines():
+            if "wirkt evtl. nicht" in line or "wirkt bei $edition nicht" in line:
+                self.assertIn("Hinweis: ", line)
+
+    def test_unload_failure_reported(self):
+        """B-028 (R-win 3): scheitert „reg unload“ in allen Versuchen, wird das als Fehler gemeldet."""
+        script = wintweaks.build_script({"no_reinstall"})
+        fn = script[script.index("function Invoke-OkulaAllUsers"):script.index("function Disable-OkulaServices")]
+        loop = fn[fn.index("$unloaded = $false"):]
+        self.assertIn("$unloaded = $true; break", loop)
+        self.assertIn("if (-not $unloaded) {", loop)
+        self.assertIn("Profil nicht entladen (reg unload HKU\\OkulaAnpassen nach 10 Versuchen)", loop)
+        self.assertLess(fn.index("if (-not $unloaded)"), fn.index("if ($errors) { throw"))
 
     def test_tooltips(self):
         start = wintweaks.BY_KEY["start_clean"].tooltip

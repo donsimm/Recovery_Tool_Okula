@@ -75,7 +75,11 @@ rem I-020: Software nach ProgramData kopieren
 if not exist "%S%:\\okula\\software" goto ohnesoftware
 echo Okula: Software wird nach %W%:\\ProgramData\\Okula\\Software kopiert >> "%LOG%"
 xcopy "%S%:\\okula\\software" "%W%:\\ProgramData\\Okula\\Software\\" /e /i /h /k /y /q >> "%LOG%" 2>&1
-echo Okula: Software kopiert - Rueckgabe %ERRORLEVEL% >> "%LOG%"
+set RC=%ERRORLEVEL%
+echo Okula: Software kopiert - Rueckgabe %RC% >> "%LOG%"
+rem B-028: Kopierfehler bricht ab - sonst loescht SetupComplete die Setup-Partition samt Installern
+if not "%RC%"=="0" echo Okula: FEHLER - Software nicht vollstaendig kopiert >> "%LOG%"
+if not "%RC%"=="0" goto fehler
 :ohnesoftware
 """
 
@@ -84,14 +88,18 @@ STARTUP_COPY = """\
 rem I-020/Ae-046: Startskripte der lokalen Gruppenrichtlinie einrichten (Software, Windows anpassen)
 if not exist "%S%:\\okula\\gp" goto ohnestartskript
 set OKGP=%W%:\\Windows\\System32\\GroupPolicy
+set OKF=0
 if exist "%OKGP%\\gpt.ini" copy /y "%OKGP%\\gpt.ini" "%OKGP%\\gpt.ini.okula-nachher" >> "%LOG%" 2>&1
 if exist "%OKGP%\\Machine\\Scripts\\scripts.ini" copy /y "%OKGP%\\Machine\\Scripts\\scripts.ini" \
 "%OKGP%\\Machine\\Scripts\\scripts.ini.okula-nachher" >> "%LOG%" 2>&1
 if exist "%OKGP%\\gpt.ini" (echo Okula: lokale Gruppenrichtlinie im Image vorhanden - Startskripte laufen ueber \
-SetupComplete >> "%LOG%") else (xcopy "%S%:\\okula\\gp" "%OKGP%\\" /e /i /h /k /y /q >> "%LOG%" 2>&1)
+SetupComplete >> "%LOG%") else (xcopy "%S%:\\okula\\gp" "%OKGP%\\" /e /i /h /k /y /q >> "%LOG%" 2>&1 || set OKF=1)
 xcopy "%S%:\\okula\\gp\\Machine\\Scripts\\Startup" "%OKGP%\\Machine\\Scripts\\Startup\\" /e /i /h /k /y /q \
->> "%LOG%" 2>&1
-echo Okula: Startskripte eingerichtet - Rueckgabe %ERRORLEVEL% >> "%LOG%"
+>> "%LOG%" 2>&1 || set OKF=1
+echo Okula: Startskripte eingerichtet - Fehler %OKF% >> "%LOG%"
+rem B-028: ohne Startskript wuerde weder Software installiert noch Windows angepasst - abbrechen
+if not "%OKF%"=="0" echo Okula: FEHLER - Startskripte nicht vollstaendig kopiert >> "%LOG%"
+if not "%OKF%"=="0" goto fehler
 :ohnestartskript
 """
 
@@ -254,8 +262,12 @@ echo Okula: Firmware-Startreihenfolge nachher - bcdedit /enum firmware: >> "%LOG
 bcdedit /enum firmware >> "%LOG%" 2>&1
 mkdir %W%:\\Windows\\Panther >nul 2>&1
 copy /y "%S%:\\okula\\unattend.xml" %W%:\\Windows\\Panther\\unattend.xml >> "%LOG%" 2>&1
+if errorlevel 1 echo Okula: FEHLER - unattend.xml nicht kopiert >> "%LOG%"
+if errorlevel 1 goto fehler
 mkdir %W%:\\Windows\\Setup\\Scripts >nul 2>&1
 copy /y "%S%:\\okula\\SetupComplete.cmd" %W%:\\Windows\\Setup\\Scripts\\SetupComplete.cmd >> "%LOG%" 2>&1
+if errorlevel 1 echo Okula: FEHLER - SetupComplete.cmd nicht kopiert >> "%LOG%"
+if errorlevel 1 goto fehler
 {software_copy}echo Okula: fertig >> "%LOG%"
 wpeutil reboot
 exit /b 0

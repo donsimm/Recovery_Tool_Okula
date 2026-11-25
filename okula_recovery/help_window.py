@@ -868,7 +868,8 @@ installiert, Windows lädt sie erst beim Klick oder später im Hintergrund. Daru
     deaktivieren“ setzt der Agent schon beim Senden; sie wirkt laut Microsoft nur bei Windows Enterprise und
     Education – dort bleiben ab der ersten Anmeldung auch die Werbe-Platzhalter im Startmenü weg. Bei Pro und Home
     wirken nur die Werte für die stille App-Installation (alle Benutzer) und der Nachlauf; die Platzhalter bleiben
-    evtl. (siehe oben). Log des Auftrags und Protokoll nennen die Edition.
+    evtl. (siehe oben). Log des Auftrags und Protokoll nennen die Edition; bei Pro und Home steht die Zeile im
+    Protokoll darum als „Hinweis“ statt „ok“ – ebenso <i>Sperrbildschirm aus</i> bei Windows Home.
 
 <b>Passwort:</b> Das Passwort der automatischen Anmeldung liegt danach – wie bei Windows üblich – im
 <b>Klartext in der Registrierung</b> (Winlogon). Bis zum nächsten Start steht es im Startskript auf der Disk;
@@ -876,7 +877,8 @@ das Skript löscht sich beim Start als Erstes. Im Protokoll, im Log des Auftrags
 
 <b>Protokoll am Gerät:</b> <tt>C:\\Windows\\Temp\\okula-windows-anpassen.log</tt> – je Einstellung „ok“,
 „Hinweis“ (gelaufen, Wirkung aber nicht sicher) oder „FEHLER“ mit Grund; die letzte Zeile zählt alle drei. Ein
-Fehler hält die übrigen Einstellungen nicht auf. Bei der Direktinstallation beginnt die Datei mit Zeilen der
+Fehler hält die übrigen Einstellungen nicht auf. Lässt sich ein Benutzerprofil nach dem Ändern nicht mehr
+entladen, steht das als FEHLER bei der betreffenden Einstellung. Bei der Direktinstallation beginnt die Datei mit Zeilen der
 Setup-Umgebung; beim ersten Start gleicht das Skript deren Datum an („2026-11-25 08:28:45“) und speichert die
 Datei als UTF-8 mit BOM – so zeigen auch Windows PowerShell und ältere Editoren die Umlaute richtig. Beim Entfernen von Apps stehen die
 entfernten Pakete immer in der Zeile, auch wenn es daneben einen Fehler gibt („…, … entfernt; Fehler: …“).
@@ -1062,7 +1064,9 @@ wie es ist.
 Ein Fehler bei einem Programm hält die übrigen nicht auf.
 
 <b>Protokoll am Gerät:</b> <tt>C:\\Windows\\Temp\\okula-software.log</tt> – je Programm Start, Ende,
-Rückgabewert und „ok“ oder „FEHLER“. Im Tool nennt das Log des Auftrags die gewählten Programme, der Verlauf des
+Rückgabewert und „ok“ oder „FEHLER“. Fehlen die Dateien eines Programms, steht „FEHLER … Dateien fehlen“; nur
+wenn das Programm weiter oben im Protokoll schon „ok“ hat (zweiter Aufruf), steht „schon installiert“.
+Im Tool nennt das Log des Auftrags die gewählten Programme, der Verlauf des
 Geräts z. B. „Software: VLC media player 3.0.24, … (wird beim ersten Start installiert)“. Ob die Installation am
 Gerät geklappt hat, zeigt nur das Protokoll am Gerät.
 
@@ -1070,7 +1074,9 @@ Gerät geklappt hat, zeigt nur das Protokoll am Gerät.
 •  Ein Installer, der trotz Parametern auf eine Eingabe wartet, wird nach 60 Minuten beendet (Eintrag im
     Protokoll) – Parameter prüfen.
 •  Erneut zurückspielen bzw. senden vor dem ersten Start ersetzt die noch nicht installierte Auswahl.
-•  Direktinstallation: Dateien über 4 GB gehen nicht (Setup-Partition FAT32).
+•  Direktinstallation: Dateien über 4 GB gehen nicht (Setup-Partition FAT32). Scheitert in der Setup-Umgebung
+    das Kopieren der Installer oder der Startskripte (bzw. von Antwortdatei und SetupComplete), bricht die
+    Installation mit Fehlerprotokoll ab, statt ohne Software neu zu starten.
 •  Meldung „Ruhezustand bzw. Schnellstart“: Windows starten und mit Shift + „Herunterfahren“ ganz
     herunterfahren, dann erneut senden.
 •  Neuer Agent nötig: Agent-Stick bzw. Netzwerkstart nach dem Update neu erstellen (sonst „Agent zu alt“)."""),

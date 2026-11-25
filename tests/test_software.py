@@ -447,6 +447,21 @@ class ScriptTest(unittest.TestCase):
         self.assertIn("if ($script:OkulaReboot)", main)
         self.assertLess(main.index("shutdown.exe"), main.index("Unregister-ScheduledTask"))
 
+    def test_missing_files_count_as_error(self):
+        """B-028 (R-win 2): fehlende Installer = FEHLER, „schon installiert“ nur mit ok-Eintrag im Protokoll."""
+        body = self.script[self.script.index("function Install-OkulaProgram"):
+                           self.script.index("function Install-Okula {")]
+        missing = body[body.index("if (-not (Test-Path -LiteralPath $item)) {"):body.index("$t0 = Get-Date")]
+        self.assertIn("if (Test-OkulaDone $P.Name) {", missing)
+        self.assertIn("schon installiert (ok weiter oben im Protokoll) – übersprungen", missing)
+        self.assertIn("$script:OkulaFailed++", missing)
+        self.assertIn("FEHLER  {0}: Dateien fehlen ({1}) – nicht installiert", missing)
+        self.assertLess(missing.index("Test-OkulaDone"), missing.index("$script:OkulaFailed++"))
+        self.assertNotIn("schon erledigt?", self.script)
+        done = self.script[self.script.index("function Test-OkulaDone"):self.script.index("function Install-OkulaProgram")]
+        self.assertIn("$needle = '  ok      {0}:' -f $Name", done)          # genau die ok-Zeile dieses Programms
+        self.assertIn("Select-String -LiteralPath $OkulaLog -SimpleMatch -Pattern $needle", done)
+
     def test_start_mode_task_and_ten_minutes(self):
         s = self.script
         start = s[s.index("function Start-Okula"):]

@@ -41,7 +41,6 @@ steht im jeweiligen Protokoll-Eintrag.
 
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
-| B-028 | 🟡 | offen | Okuli (Review) | **Fehler werden als ok/Erfolg gemeldet (Sammelpunkt).** Automatisierung: `customize`-Ergebnisse `error`/`not_generalized`/leer nur geloggt, Lauf „erfolgreich“ (`automation.py:633`, am Code bestätigt; auch `jobs.py:462` restore_work), `r['part']` evtl. KeyError; `_execute` ohne `except` → Lauf bleibt „running“ (R-client 5); Esc-Countdown bei Verbindungsabbruch (R-client 9); Abbruch überdeckt Fehler (R-client 10). Windows-Skripte: `copy` unattend/SetupComplete und `xcopy` ohne errorlevel-Prüfung (R-win 1), fehlende Installer „übersprungen“ statt FEHLER (R-win 2), Hinweise ohne „Hinweis: “-Präfix (R-win 4), `reg unload` verschluckt (R-win 3). [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) | 25.11. |
 | B-023 | ⚪ | offen | Okuli | **Protokoll „Windows anpassen“ uneinheitlich, Startmenü meldet Hinweis trotz Paket.** VM-Test 25.11. (VM-Win11-clean, Direktinstallation, Vorlage Clean geändert, Pro Build 26200): Startmenü zeigt nur die Okula-Kacheln, `StartPins.ppkg` vom Tool installiert – trotzdem steht in der Zeile „Startmenü: Werbe-Kacheln entfernen“ und in „Wiederinstallation von Werbe-Apps sperren“ weiter der lange Pro-Hinweis (WhatsApp, LinkedIn, Adobe Express … von Hand lösen). Erwartet laut B-022: knappes „ok“, wenn das Paket greift. Zudem schreibt die erste Zeile (vor dem ersten Start, `winsetup.py`) „Startmenue“ und „ - “ statt Umlaut und „–“ und verweist auf eine „Zeile Startmenue beim ersten Start“, die es nicht gibt | 25.11. |
 | B-024 | ⚪ | offen | Okuli | **OneDrive entfernen meldet ok trotz Fehlercode.** Protokoll 25.11.: „OneDrive entfernen (OneDriveSetup /uninstall: -2147219813, Autostart entfernt: 2 Profile)“ mit Status ok. Rückgabewert prüfen (bekannter harmloser Code oder echter Fehler?) und entsprechend Hinweis statt ok melden | 25.11. |
 | B-013 | 🟡 | offen | Okuli | **Windows-Direktinstallation mit OEM-Schlüssel: Setup-Partition bleibt evtl. stehen.** Laut Microsoft Learn („Add a Custom Script to Windows Setup“) läuft `%WINDIR%\Setup\Scripts\SetupComplete.cmd` nicht, wenn Windows mit einem OEM-Schlüssel installiert wird (ausser Enterprise). Die Direktinstallation setzt den Schlüssel (hinterlegt oder aus dem BIOS, MSDM) in specialize als `ProductKey`; ist es ein OEM-Schlüssel, würde das Aufräumen (Setup-Partition „OKULASETUP“ löschen, C: vergrössern) ausbleiben. Hinweis des Agenten bei I-038 (12.11.), am realen System ungeprüft. Prüfen an einem Gerät mit Schlüssel im BIOS; falls bestätigt: Aufräumen zusätzlich anders auslösen (z. B. wie bei I-038 als RunSynchronous bzw. FirstLogonCommand) | 12.11. |
@@ -288,6 +287,22 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 25.11.2026
+- **B-028 – Fehler werden als ok/Erfolg gemeldet (Sammelpunkt)** (Von: Okuli (Review), 25.11.; Prompt
+  [B-028](prompts/B-028-fehler-als-ok.md); [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) R-client 4, 5, 10, R-win 1–4).
+  **Tool:** Anpassen-Ergebnis `error`/`not_generalized` bzw. kein Windows, obwohl das Image eine NTFS-Partition hat
+  (`jobs.customize_problems`, `jobs.image_has_windows`), ist in der Automatisierung ein Fehler in Schritt 3 (kein
+  „erfolgreich“, kein Abschluss/Neustart, Automatisierung bleibt an); *Image zurückspielen* mit *Danach anpassen*
+  meldet „Warnung beim Anpassen: …“ statt „und angepasst“; `r.get('part', '?')` statt `KeyError`. Ausnahme in
+  `Engine._execute` → Phase Fehler mit Verlauf, Lauf bleibt nie auf „läuft“ (`Engine._internal_error`). „Abgebrochen“
+  nur, wenn die Ausnahme selbst der Abbruch ist (`jobs.is_cancel_error`) – sonst bleibt die Ursache in Log, Verlauf
+  und Banner. **Windows-Skripte:** `install.cmd` bricht bei Kopierfehlern von `unattend.xml`, `SetupComplete.cmd`,
+  Software (`xcopy`) und Startskripten ab (`goto fehler`, Protokoll, kein „fertig“/Neustart); fehlende Installer im
+  Software-Skript = FEHLER, „schon installiert“ nur mit ok-Eintrag im Protokoll (`Test-OkulaDone`); `reg unload`
+  nach 10 Versuchen erfolglos → FEHLER des Bausteins; Sperrbildschirm bei Home und „Wiederinstallation sperren“ bei
+  Pro/Home als „Hinweis“ statt „ok“. Hilfe (F1) „Automatisierung“, „Windows anpassen“, „Software installieren“,
+  „Probleme lösen“ und AUTOMATISIERUNG.md ergänzt. Kein neuer Agent-Stick nötig. R-client 9 (Esc-Countdown) ist mit B-027 erledigt. **Nicht** umgesetzt (ausserhalb des
+  Prompts): Anzeige „abgebrochen“ in `ui.py`
+  (Verlauf von Hand gestarteter Aufträge prüft weiter nur `job.cancel`). Prüfung [TESTS.md](TESTS.md) „B-028“.
 - **B-027 – Image galt als fertig, obwohl eine Datei offen war oder fehlte** (Von: Okuli (Review), 25.11.; Prompt
   [B-027](prompts/B-027-image-vollstaendig.md); [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) R-client 1, 7, 8, 9).
   Nur `agentclient.py`: Bei `end` ohne `begin`, mit offener Datei oder mit fehlender Datei aus dem Plan (ausser

@@ -274,7 +274,7 @@ $users = Invoke-OkulaAllUsers {{
 $edition = [string](Get-ItemProperty -LiteralPath 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion' `
     -ErrorAction SilentlyContinue).EditionID
 if ($edition -match 'Enterprise|Education') {{ "Richtlinie und stille Installation aus: $users" }}
-else {{ "stille Installation aus: $users; Richtlinie wirkt bei $edition nicht (nur Enterprise/Education) – " +
+else {{ "Hinweis: stille Installation aus: $users; Richtlinie wirkt bei $edition nicht (nur Enterprise/Education) – " +
        "Werbe-Platzhalter im Startmenü (WhatsApp, LinkedIn, Adobe Express …) bleiben evtl., von Hand lösen" }}""",
            tooltip="Die Richtlinie „Microsoft-Benutzererfahrungen deaktivieren“ (wird schon beim Senden vor dem "
                    "Windows-Start gesetzt) wirkt laut Microsoft nur bei Windows Enterprise und Education – dort "
@@ -365,7 +365,7 @@ Set-OkulaReg '{POL}\\Windows\\Personalization' 'NoLockScreen' 1
 $edition = [string](Get-ItemProperty -LiteralPath 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion' `
     -ErrorAction SilentlyContinue).EditionID
 if ($edition -like 'Core*') {{
-    'Richtlinie gesetzt; Hinweis: Windows Home ({{0}}) – laut Microsoft nicht unterstützt, wirkt evtl. nicht' -f $edition
+    'Hinweis: Richtlinie gesetzt; Windows Home ({{0}}) – laut Microsoft nicht unterstützt, wirkt evtl. nicht' -f $edition
 }} else {{
     'Richtlinie „Sperrbildschirm nicht anzeigen“ gesetzt ({{0}})' -f $edition
 }}""",
@@ -1068,9 +1068,14 @@ function Invoke-OkulaAllUsers([scriptblock]$Action) {
             if ($mounted) {
                 [gc]::Collect()
                 [gc]::WaitForPendingFinalizers()
+                $unloaded = $false
                 for ($i = 0; $i -lt 10; $i++) {
-                    try { Invoke-OkulaNative 'reg.exe' @('unload', 'HKU\OkulaAnpassen') | Out-Null; break }
+                    try { Invoke-OkulaNative 'reg.exe' @('unload', 'HKU\OkulaAnpassen') | Out-Null; $unloaded = $true; break }
                     catch { Start-Sleep -Milliseconds 500 }
+                }
+                # B-028: nicht still verschlucken – der Hive bliebe geladen, das nächste „reg load“ scheiterte
+                if (-not $unloaded) {
+                    $errors += '{0}: Profil nicht entladen (reg unload HKU\OkulaAnpassen nach 10 Versuchen)' -f $h.Name
                 }
             }
         }

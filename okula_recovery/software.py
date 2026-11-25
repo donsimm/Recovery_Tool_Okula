@@ -1245,11 +1245,25 @@ function Write-OkulaLog([string]$Text) {
 
 __RESTORE__
 
+function Test-OkulaDone([string]$Name) {
+    # B-028: steht für das Programm schon ein ok-Eintrag im Protokoll (früherer Aufruf derselben Installation)?
+    if (-not (Test-Path -LiteralPath $OkulaLog)) { return $false }
+    $needle = '  ok      {0}:' -f $Name
+    return [bool](Select-String -LiteralPath $OkulaLog -SimpleMatch -Pattern $needle -Encoding UTF8 -Quiet `
+        -ErrorAction SilentlyContinue)
+}
+
 function Install-OkulaProgram($P) {
     $ErrorActionPreference = 'Stop'
     $item = Join-Path $OkulaDir $P.Item
     if (-not (Test-Path -LiteralPath $item)) {
-        Write-OkulaLog ('--      {0}: Dateien fehlen (schon erledigt?) – übersprungen' -f $P.Name)
+        # B-028: „schon erledigt“ nur mit ok-Eintrag im Protokoll (zweiter Aufruf), sonst fehlen die Installer
+        if (Test-OkulaDone $P.Name) {
+            Write-OkulaLog ('--      {0}: schon installiert (ok weiter oben im Protokoll) – übersprungen' -f $P.Name)
+            return
+        }
+        $script:OkulaFailed++
+        Write-OkulaLog ('FEHLER  {0}: Dateien fehlen ({1}) – nicht installiert' -f $P.Name, $item)
         return
     }
     $t0 = Get-Date

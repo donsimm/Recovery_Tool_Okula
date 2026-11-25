@@ -98,14 +98,37 @@ class ScriptTest(unittest.TestCase):
         enum = [i for i, l in enumerate(lines) if l == 'bcdedit /enum firmware >> "%LOG%" 2>&1']
         self.assertEqual(len(enum), 2)
         self.assertTrue(boot < enum[0] < order < enum[1] < lines.index("wpeutil reboot"))
-        # bcdedit-Fehler: nur protokollieren, kein Abbruch
-        after = lines[order + 1:lines.index("wpeutil reboot")]
+        # bcdedit-Fehler: nur protokollieren, kein Abbruch (B-028: Kopierfehler danach brechen dagegen ab)
+        after = lines[order + 1:enum[1] + 1]
         self.assertFalse([l for l in after if "goto" in l or "exit" in l], after)
         self.assertEqual(after[0], "set RC=%ERRORLEVEL%")
         self.assertIn('echo Okula: Windows Boot Manager an erste Stelle - Rueckgabe %RC% >> "%LOG%"', after)
         self.assertTrue(any(l.startswith('if not "%RC%"=="0" echo ') and l.endswith('>> "%LOG%"') for l in after))
         # Setup-Partition wird nicht aus der Firmware-Liste entfernt (B-015, Anforderung 3 bewusst weggelassen)
         self.assertNotIn("/remove", cmd)
+
+    def test_install_cmd_copy_errors_abort(self):
+        """B-028 (R-win 1): Kopierfehler bei unattend.xml, SetupComplete.cmd, Software und Startskripten → Fehler,
+        kein „fertig“ und kein Neustart."""
+        cmd = winsetup.install_cmd("ab12cd34", 1, "sources/install.wim", False, "de-DE", software=True, tweak={})
+        main = cmd.split("\r\n:fehler\r\n")[0]
+        lines = main.split("\r\n")
+        for name in ("unattend.xml", "SetupComplete.cmd"):
+            i = next(n for n, l in enumerate(lines) if l.startswith("copy /y ") and f"okula\\{name}" in l)
+            self.assertEqual(lines[i + 1], f'if errorlevel 1 echo Okula: FEHLER - {name} nicht kopiert >> "%LOG%"')
+            self.assertEqual(lines[i + 2], "if errorlevel 1 goto fehler")
+        soft = next(n for n, l in enumerate(lines) if l.startswith('xcopy "%S%:\\okula\\software"'))
+        self.assertEqual(lines[soft + 1], "set RC=%ERRORLEVEL%")
+        self.assertIn('if not "%RC%"=="0" goto fehler', lines[soft + 2:soft + 6])
+        self.assertIn("set OKF=0", lines)
+        gp = [l for l in lines if 'xcopy "%S%:\\okula\\gp' in l]
+        self.assertEqual(len(gp), 2)
+        self.assertTrue(all("|| set OKF=1" in l or "|| set OKF=1" in lines[lines.index(l) + 1] for l in gp))
+        self.assertIn('if not "%OKF%"=="0" goto fehler', lines)
+        for check in ('if not "%RC%"=="0" goto fehler', 'if not "%OKF%"=="0" goto fehler'):
+            self.assertLess(main.index(check), main.index("echo Okula: fertig"))
+        self.assertLess(main.index("echo Okula: fertig"), main.index("wpeutil reboot"))
+        self.assertTrue(cmd.isascii())
 
     def test_layout(self):
         t = wininstall.layout(256 * 1000**3, 7 * 1024**3, 40 * 1000**3)

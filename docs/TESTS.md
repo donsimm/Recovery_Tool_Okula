@@ -86,6 +86,8 @@ ohne Fehler). Noch nicht geprüft daraus: Zurückspielen mit *Danach anpassen*, 
 |---|---|---|
 | B-025 Automatisierung bricht bei BitLocker ab | VM oder Gerät mit BitLocker | „B-025“ |
 | B-026 Image während des Zurückspielens gesperrt | Demo-Gerät | „B-026“ |
+| B-027 Image nur vollständig fertig, Esc im Countdown | Demo-Gerät, VM mit Agent | „B-027“ |
+| B-028 Fehler statt Erfolg (Anpassen, fehlender Installer) | VM | „B-028“ |
 | Ä-045 Neustart-Knöpfe | VM und echtes Gerät mit Agent-Stick | „Ä-045“ |
 | Automatisierung ganzer Ablauf | echtes Gerät | 5 |
 | B-013 Setup-Partition bei OEM-Schlüssel | Gerät mit Schlüssel im BIOS | 18 |
@@ -849,7 +851,7 @@ Tests nicht ausführen).
 - [ ] Mit altem Agent-Stick: Rückfrage nennt „Agent zu alt …“
 
 ### Ä-046 Neue Maschine in einem Durchgang
-(Nummer setzt Okuli beim Zusammenführen.) Nach `git pull && sudo ./install.sh` das Tool neu starten (**kein** neuer
+Nach `git pull && sudo ./install.sh` das Tool neu starten (**kein** neuer
 Agent-Stick – Direktinstallation über die Setup-Partition, Zurückspielen und Automatisierung nutzen den Agent-Befehl
 `tweak` von B-021). VM-Win11 (Windows 11 Pro 24H2/25H2-ISO), Option *Gastagent* an (Abschnitt 27), Snapshot vorher.
 **Direktinstallation in einem Durchgang**
@@ -887,7 +889,7 @@ Agent-Stick – Direktinstallation über die Setup-Partition, Zurückspielen und
       anpassen (…) – wird beim ersten Windows-Start umgesetzt“, am Gerät wie oben
 
 ### B-022 Startmenü auf neu installiertem Windows, Protokoll der Direktinstallation
-(Nummer setzt Okuli beim Zusammenführen.) Nach `git pull && sudo ./install.sh` das Tool neu starten (**kein** neuer
+Nach `git pull && sudo ./install.sh` das Tool neu starten (**kein** neuer
 Agent-Stick – nur Skript und Tool). VM-Win11-clean, Windows 11 Pro 25H2, Snapshot vorher. Hintergrund und Wege:
 [TECHNIK.md](TECHNIK.md) „Startmenü auf neu installiertem Windows (B-022)“.
 **Ohne Bereitstellungspaket (Stand nach dem Zusammenführen)**
@@ -923,7 +925,7 @@ Agent-Stick – nur Skript und Tool). VM-Win11-clean, Windows 11 Pro 25H2, Snaps
       zeigt „Okula StartPins“; danach eigene Kachel anheften, ab-/anmelden → bleibt sie (`applyOnce` über die CSP)?
 
 ### B-025 Automatisierung bricht bei BitLocker ohne Backup ab
-(Nummer setzt Okuli beim Zusammenführen.) Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer
+Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer
 Agent-Stick – nur das Tool). VM mit BitLocker auf der Windows-Partition (Snapshot vorher) oder ein Gerät mit BitLocker.
 - [ ] Automatisierung mit *Backup* „Benutzerdaten“ einschalten, Gerät mit dem Agent starten → Lauf bricht in
       Schritt 1/5 ab: Banner am Gerät und Verlauf „Automatisierung fehlgeschlagen – Schritt 1/5 Backup: Backup nicht
@@ -933,7 +935,7 @@ Agent-Stick – nur das Tool). VM mit BitLocker auf der Windows-Partition (Snaps
       – nichts gelöscht. Windows ganz herunterfahren …“ – nur wenn der Agent die Partition tatsächlich nicht einhängt
 - [ ] Gegenprobe: dieselbe Disk mit *Backup* „ganze Disk“ → Lauf geht weiter (Disk-Image, dann Zurückspielen)
 ### B-026 Image während des Zurückspielens gesperrt
-(Nummer setzt Okuli beim Zusammenführen.) Demo-Gerät einschalten, *Image zurückspielen* mit einem Demo-Image starten
+Demo-Gerät einschalten, *Image zurückspielen* mit einem Demo-Image starten
 (läuft lange genug); bei einer echten VM ebenso mit einem Image im Archiv-Ordner.
 - [ ] Während der Auftrag läuft: Rechtsklick auf das Image → *Löschen …* → Meldung „„…“ wird gerade von
       „Zurückspielen …“ verwendet – erst nach Ende löschen/verschieben.“, keine Rückfrage, nichts gelöscht
@@ -945,8 +947,9 @@ Agent-Stick – nur das Tool). VM mit BitLocker auf der Windows-Partition (Snaps
 - [ ] *Auf Gerät installieren …* mit einer ISO: während der Übertragung ISO löschen/verschieben → Meldung
 - [ ] Optional: alte Demo-Images auf dem NAS, eines davon wird gerade zurückgespielt → *Alte Demo-Images vom NAS
       löschen …* nennt es nicht, Statuszeile „1 Demo-Image übersprungen …“
+
 ### B-027 Image nur vollständig fertig, Ordnername, Esc im Countdown
-(Nummer setzt Okuli beim Zusammenführen.) Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer
+Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer
 Agent-Stick – nur das Tool).
 - [ ] Demo-Gerät einschalten, *Disk-Image erstellen* → „fertig“, Ordner `images/DEMO-PC/<JJJJ-MM-TT_HHMM>_<disk>`
       ohne `.partial`, *Image zurückspielen* aufs Demo-Gerät klappt (Prüfung ok)
@@ -957,3 +960,25 @@ Agent-Stick – nur das Tool).
       nichts gelöscht
 - [ ] Optional: im Countdown das Netzwerkkabel ziehen bzw. VM-Netz trennen → Verlauf „Automatisierung abgebrochen:
       Verbindung zum Gerät während des Countdowns abgebrochen – nicht gestartet“, nichts gelöscht
+
+### B-028 Fehler werden nicht mehr als ok/Erfolg gemeldet
+Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer
+Agent-Stick – die Windows-Skripte erzeugt das Tool beim Senden).
+- [ ] Automatisierung mit einem **nicht generalisierten** Master (Windows ohne Sysprep, z. B. Disk-Image eines
+      eingerichteten Geräts als Master markiert) an einer VM (Snapshot vorher) → Lauf endet mit Fehler in Schritt 3/5:
+      Verlauf „Automatisierung fehlgeschlagen – Schritt 3/5 Anpassen: Nicht angepasst – …: Windows ist nicht mit
+      Sysprep vorbereitet …“, Banner am Gerät, **kein** Neustart, Häkchen *Auto* bleibt an, Liste rot
+- [ ] Dasselbe Image von Hand mit *Image zurückspielen* → *Danach anpassen* → Log/Ergebnis „… zurückgespielt,
+      Warnung beim Anpassen: …“ statt „und angepasst“
+- [ ] Gegenprobe: Automatisierung mit dem richtigen Master (Sysprep) → „Automatisierung erfolgreich“ wie bisher
+- [ ] Automatisierung läuft, Agent-Verbindung trennen (VM-Netz aus) und danach im Tool *Abbrechen* → Verlauf nennt
+      die Ursache (z. B. Verbindungsfehler), nicht „im Tool abgebrochen“; echtes *Abbrechen* während des
+      Zurückspielens → weiter „im Tool abgebrochen“
+- [ ] Software installieren mit **fehlendem Installer** (z. B. an einer VM vor dem ersten Start den Ordner
+      `C:\ProgramData\Okula\Software\<Programm>` löschen) → Protokoll `C:\Windows\Temp\okula-software.log`:
+      „FEHLER  <Programm>: Dateien fehlen (…) – nicht installiert“, Endzeile „… 1 mit Fehler“
+- [ ] Windows anpassen „Clean“ mit *Wiederinstallation von Werbe-Apps sperren* an Windows Pro → Protokoll
+      `okula-windows-anpassen.log`: Zeile „Hinweis Wiederinstallation von Werbe-Apps sperren (…)“ statt „ok“;
+      Endzeile zählt sie als Hinweis
+- [ ] Optional Direktinstallation mit Software: läuft wie bisher bis „Okula: fertig“ (Kopien ohne Fehler,
+      `install.log` ohne „FEHLER“)
