@@ -1449,6 +1449,74 @@ anlegt. Fehler in diesem Teil sind nur ein Hinweis („Registrierung … nicht g
 Zeile bleibt ok; ohne `scripts.ini` haben die Einträge keine Wirkung. Die Zahl entfernter Einträge steht als Hinweis
 in der Zeile „Startskript und Gruppenrichtlinie aufräumen“ (beide Startskripte).
 
+### Beim Aufsetzen mitgeben (Ä-046)
+
+Häkchen **Windows anpassen** mit *Vorlage* und *Einstellungen …* (`automation_tab.TweakChooser`; *Einstellungen …*
+öffnet `WindowsTweakDialog(choose=True)` mit Knopf *Übernehmen* – gleiche Optionen und Tooltips, kein Nachbau) in
+*OS installieren …*, *Image zurückspielen* → *Danach anpassen* und im Reiter *Automatisierung* (Feld
+`Settings.tweak`, auch in Vorlagen). Auswahl als `{"template", "keys"}` (`wintweaks.choice`/`clean_choice`:
+unbekannte Optionen fallen weg). **Ohne automatische Anmeldung** (`EMBED_EXCLUDED`): sie braucht ein Passwort, das
+beim Aufsetzen mitgegeben bzw. in Einstellungen und Vorlagen gespeichert würde (Entscheid „Passwörter werden nicht
+gespeichert“) – dafür bleibt *Windows anpassen …* am Gerät; „Player“ ohne Anmeldung gilt als unverändert
+(`choice_label`). Ohne Häkchen ändert sich nichts am Ablauf (Tests `PlanTest.test_without_choice_unchanged`).
+
+**Zurückspielen und Automatisierung:** Nach dem Zurückspielen (und nach der Software) `jobs.send_tweak_choice` →
+derselbe Weg wie *Windows anpassen …*: Agent-Befehl `tweak` legt das Startskript ab (zweites Startskript nur als
+Eintrag in `scripts.ini`, Software steht davor) und schreibt den Teil vor der ersten Anmeldung offline
+(`deploy.tweak_offline`, B-020/B-021). Fehler → „Zurückgespielt, aber Windows anpassen nicht übertragen: …“ (wie
+bei der Software). Bei einem generalisierten Master greift das Skript nach der Ersteinrichtung.
+
+**Direktinstallation – Weg und Belege.** Beim Senden gibt es noch kein Windows und keinen Hive; Windows wartet bei der
+Anmeldung nicht auf Startskripte (B-020). Darum zwei Teile:
+1. **Richtlinien vor dem ersten Start** (Startmenü-Richtlinie + `StartPins.json` ab Build 26100, Widgets,
+   `NoLockScreen`, `DisableWindowsConsumerFeatures` – dieselben Werte wie `deploy.tweak_offline`): `install.cmd`
+   lädt gleich nach `dism /Apply-Image` den Hive `W:\Windows\System32\config\SOFTWARE` (`reg load HKLM\OKULASW`),
+   liest `CurrentBuild`, setzt die Werte mit `reg add` und entlädt ihn (`winsetup.tweak_offline_cmd`). Vorbild:
+   Microsoft Learn, „Windows S mode deployment lab“ (Abschnitt „Add the manufacturing registry key“: `reg load` des
+   Hives eines aufgespielten Images, `reg add`, `reg unload`); `reg load`/`reg add`/`reg unload` aus der
+   Befehlsreferenz „reg load“ (Rückgabe 0/1). Windows ist dann noch nie gestartet – **kein Benutzerprofil, keine
+   `start2.bin`**, Umbenennen entfällt; die Marke `start-offline.ok` mit `source=setup` sagt dem Skript, dass nichts
+   zurückzusetzen ist (Protokoll „schon bei der Installation vor dem ersten Start gesetzt …“). Dieser Teil hängt nicht
+   an `SetupComplete.cmd` und wirkt darum **auch mit OEM-Schlüssel**. Fehler brechen die Installation nicht ab (nur
+   `install.log` und Zeile „Hinweis …“ im Protokoll `okula-windows-anpassen.log`), das Skript setzt die Werte
+   ohnehin nochmals. Gewählt statt `RunSynchronous` in specialize: einfacher (kein XML mit Bedingungen für den Build),
+   früher (vor jedem Start) und gleich wie beim Agent.
+2. **Übrige Einstellungen:** Das Skript liegt als Startskript (`okula/gp`, `software.startup_files`, Reihenfolge in
+   `scripts.ini`: Software, dann Windows anpassen) und wird zuletzt aus `SetupComplete.cmd` aufgerufen
+   (`winsetup.tweak_start`). Microsoft Learn, „Add a Custom Script to Windows Setup“ (abgerufen 24.11.2026): „After
+   Windows is installed but before the logon screen appears, Windows Setup searches for the SetupComplete.cmd file …
+   runs the script“, „runs with local system permissions“, „disabled when using OEM product keys, except on
+   Enterprise editions“. **Widerspruch auf derselben Seite:** in der Übersicht steht „starts immediately after the
+   user sees the desktop“ – die Reihenfolge der Schritte sagt „before the logon screen“. Darum hängt das, was vor der
+   ersten Anmeldung wirken muss, nicht an SetupComplete (Teil 1); am Gerät prüfen ([TESTS.md](TESTS.md), Abschnitt
+   „Ä-046 Neue Maschine in einem Durchgang“: Zeitstempel Protokoll vs. Anmeldung 4624). Die Seite warnt: kein
+   Neustart innerhalb von SetupComplete.
+
+**Reihenfolge mit der Software: erst Software, dann Anpassen.** *Dienste* schaltet z. B. die Druckwarteschlange ab
+(Druckertreiber-Installer brauchen sie), *Store-Apps entfernen* soll den fertigen Stand treffen (auch was ein
+Installer evtl. mitbringt); Bausteine, die Software braucht (VCLibs, .NET Native, WindowsAppRuntime, App-Installer),
+schützt `PROTECTED_ALWAYS` ohnehin. In `SetupComplete.cmd` wartet *Windows anpassen*, bis die geplante Aufgabe „Okula
+Software installieren“ weg ist (`schtasks /query`, alle 15 s per `ping` – `timeout` braucht eine Konsole), höchstens
+`SOFTWARE_WAIT_MIN` = 30 min, danach trotzdem (Hinweis im Protokoll). Meldet ein Programm 3010, plant die Software
+nach 60 s einen Neustart – der käme mitten in *Windows anpassen*: `shutdown /a` stellt ihn zurück, als **letzter**
+Befehl von `SetupComplete.cmd` folgt `shutdown /r /t 60` (die Seite verbietet einen Neustart, nach dem SetupComplete
+weiterlaufen müsste – hier ist SetupComplete dann fertig). Restrisiko: Läuft die Software länger als 30 min und
+meldet danach 3010, kann der Neustart ein noch laufendes *Windows anpassen* abbrechen (Skript schon gelöscht, Rest
+fehlt; Nachlauf entfernt die Store-Apps trotzdem). Als Startskript (OEM-Fall, Zurückspielen, Automatisierung) gibt es
+kein Warten – beide Skripte starten beim Start (Reihenfolge `scripts.ini`), Software installiert in der geplanten
+Aufgabe weiter (wie bisher bei *Software installieren* + *Windows anpassen*, Ä-044).
+
+**OEM-Schlüssel (B-013):** SetupComplete läuft dann nicht. Teil 1 wirkt trotzdem; die übrigen Einstellungen setzt das
+Startskript beim ersten Start – evtl. parallel zur ersten Anmeldung (B-020), Store-Apps spätestens im Nachlauf nach
+30 min. Ehrlich gemeldet: Log des Auftrags (`jobs.TWEAK_SETUP_OEM`, sobald ein Windows-Schlüssel gesetzt ist – ob
+er OEM ist, weiss das Tool nicht sicher) und Hilfe. Kein zusätzlicher Weg über `FirstLogonCommands` (läuft als
+Benutzer bei der Anmeldung) oder specialize (vor der Software).
+
+**Master-Image (Audit-Modus, I-038): nicht angeboten** (Häkchen ausgegraut, `winsetup.TWEAK_AUDIT`, `plan` lehnt ab).
+Gründe: Die Einstellungen landeten im Master; nur für einzelne Benutzer entfernte Store-Apps lassen Sysprep
+scheitern; Startskript und Nachlauf-Aufgabe liefen im Audit-Modus bzw. kämen ins Image. Beim Ausrollen über *Image
+zurückspielen* → *Danach anpassen* bzw. Automatisierung mitgeben. Software bleibt beim Master erlaubt (I-020).
+
 ## Software installieren (I-020, Software-Bibliothek Ä-041)
 
 Programme aus der **Software-Bibliothek** des Tools werden auf dem Gerät **still und ohne Klicks** installiert – beim

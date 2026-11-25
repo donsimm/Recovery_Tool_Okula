@@ -822,3 +822,41 @@ Tests nicht ausführen).
 - [ ] Gerät im BIOS-/Legacy-Modus (z. B. CompactPlayer): Rückfrage „Startziel nicht festgelegt“ mit Hinweis „Stick
       abziehen, sobald der Bildschirm dunkel wird“; *Trotzdem neu starten* → neu gestartet
 - [ ] Mit altem Agent-Stick: Rückfrage nennt „Agent zu alt …“
+
+### Ä-046 Neue Maschine in einem Durchgang
+(Nummer setzt Okuli beim Zusammenführen.) Nach `git pull && sudo ./install.sh` das Tool neu starten (**kein** neuer
+Agent-Stick – Direktinstallation über die Setup-Partition, Zurückspielen und Automatisierung nutzen den Agent-Befehl
+`tweak` von B-021). VM-Win11 (Windows 11 Pro 24H2/25H2-ISO), Option *Gastagent* an (Abschnitt 27), Snapshot vorher.
+**Direktinstallation in einem Durchgang**
+- [ ] *OS installieren …*: unter *Windows-Anpassung* Software „virtio-win-Gasttools“ ankreuzen, Häkchen **Windows
+      anpassen**, *Vorlage* „Clean“; Zeile darunter „Vorlage Clean: Apps (…), …“. *Einstellungen …* öffnet den Dialog
+      *Windows anpassen* mit Knopf *Übernehmen*, *Automatische Anmeldung* ausgegraut (Tooltip); alle Häkchen setzen
+      (ausser Anmeldung) → *Übernehmen* → Zeile „Vorlage Clean (geändert): …“
+- [ ] Häkchen *Für Master-Image (Audit-Modus)*: *Windows anpassen* ausgegraut, Grund darunter und im Tooltip; wieder aus
+- [ ] Installieren: Log nennt „Windows anpassen (Vorlage …)“, die Optionen, „Setup-Umgebung vor dem ersten Start“,
+      „Reihenfolge: zuerst die Software …“ und – mit Windows-Schlüssel – den Hinweis zum OEM-Schlüssel; Verlauf
+      „Windows anpassen (…) – wird bei der Einrichtung vor der ersten Anmeldung umgesetzt“
+- [ ] Gerät installiert selbständig, **kein weiterer Durchgang**: bei der **ersten Anmeldung** Startmenü mit den
+      festen Kacheln, **kein Wetter** in der Taskleiste, **kein Sperrbildschirm** beim ersten Start
+- [ ] `C:\Windows\Temp\okula-windows-anpassen.log`: erste Zeile „ok … Vor dem ersten Start gesetzt - Setup-Umgebung,
+      Windows-Build …“, Startmenü-Zeile „schon bei der Installation vor dem ersten Start gesetzt …“, Ende ohne
+      FEHLER; `okula-software.log` ohne FEHLER; Zeitstempel: Anpassen beginnt **nach** dem Ende der Software
+- [ ] `C:\Windows\Panther\UnattendGC\setupact.log`: SetupComplete.cmd gelaufen; erste Anmeldung erst danach
+      (Ereignisanzeige: Anmeldung 4624 nach dem Ende des Protokolls) – belegt „vor der ersten Anmeldung“
+- [ ] Nachlauf: 30 min nach der Anmeldung läuft „Okula Windows anpassen Nachlauf“ (Protokoll „Nachlauf“), danach ist
+      die Aufgabe weg
+- [ ] `scripts.ini`/`gpt.ini` unter `C:\Windows\System32\GroupPolicy` danach weg, Setup-Partition weg, C: gross
+- [ ] Optional: Programm mit Rückgabewert 3010 (Neustart nötig) – Neustart erst nach *Windows anpassen*
+      (Protokollzeile „Neustart in 60 s …“)
+- [ ] Optional (B-013): Gerät mit OEM-Schlüssel im BIOS – Log-Hinweis; Richtlinien (Startmenü, Wetter,
+      Sperrbildschirm) trotzdem ab dem ersten Start; übrige Einstellungen beim ersten Start über das Startskript
+**Zurückspielen mit Danach anpassen**
+- [ ] *Image zurückspielen* (Master-Image) → *Danach anpassen*: Häkchen *Windows anpassen*, Vorlage „Clean“; nur aktiv,
+      wenn *Danach anpassen* an ist → Zurückspielen: Log „Windows anpassen (…)“, „Vor dem Windows-Start gesetzt: …“,
+      bei Software „Ein weiteres Okula-Startskript … steht noch aus“; Verlauf mit der Auswahl
+- [ ] Nach der Ersteinrichtung: bei der ersten Anmeldung Startmenü und kein Wetter; Protokoll ohne FEHLER
+**Automatisierung**
+- [ ] Reiter *Automatisierung*, Schritt *Anpassen*: *Windows anpassen* mit Vorlage „Clean“; *Als Vorlage speichern …*
+      und bei einem anderen Gerät *Anwenden* → Auswahl übernommen; Tool neu starten → Auswahl noch da
+- [ ] Einschalten: Rückfrage nennt „Windows anpassen: Vorlage Clean: …“; Durchlauf → Log und Verlauf „Windows
+      anpassen (…) – wird beim ersten Windows-Start umgesetzt“, am Gerät wie oben

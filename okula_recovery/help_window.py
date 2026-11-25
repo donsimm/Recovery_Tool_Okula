@@ -430,7 +430,12 @@ vergrössert, die Daten darauf sind unverändert. Gehen beide Wege nicht, bleibt
 •  Bei einem Master-Image passt das Tool Windows danach an (Name, Schlüssel, auf Wunsch Einstellungen des
     Administrators): Kapitel <i>Master-Image</i>.
 •  Unter <i>Danach anpassen</i> steht die Liste <i>Software installieren</i>: Die gewählten Programme werden beim
-    ersten Start nach der Ersteinrichtung still installiert (Kapitel <i>Software installieren</i>)."""),
+    ersten Start nach der Ersteinrichtung still installiert (Kapitel <i>Software installieren</i>).
+•  Darunter <i>Windows anpassen</i> mit <i>Vorlage</i> und <i>Einstellungen …</i>: dieselben Einstellungen wie
+    <i>Windows anpassen …</i> am Gerät, ohne automatische Anmeldung. Nach dem Zurückspielen legt der Agent das
+    Startskript ab (nach der Software) und setzt Startmenü, Widgets, Sperrbildschirm und Richtlinie
+    „Microsoft-Benutzererfahrungen deaktivieren“ gleich in das ausgeschaltete Windows – das Gerät ist mit einem
+    Neustart fertig (Kapitel <i>Windows anpassen</i>)."""),
 
     ("Datei-Backup", """<big><b>Nur Dateien sichern (Datei-Backup)</b></big>
 
@@ -685,13 +690,16 @@ Mit der Automatisierung setzt das Tool ein Gerät selbst neu auf, sobald es mit 
     Taskleiste aus dem Audit-Modus für alle Benutzer (Kapitel <i>Master-Image</i>).
     Liste <i>Software installieren</i>: angekreuzte Programme werden beim ersten Start still installiert
     (Kapitel <i>Software installieren</i>).
+    <i>Windows anpassen</i> (Häkchen) mit <i>Vorlage</i> und <i>Einstellungen …</i>: dieselben Einstellungen wie
+    <i>Windows anpassen …</i> am Gerät (ohne automatische Anmeldung), nach der Software beim ersten Start; die
+    Auswahl steht auch in den Vorlagen der Automatisierung (Kapitel <i>Windows anpassen</i>).
 5.  <b>Ordner senden</b> (Option): Software, Test Files, Content-Projekte.
 6.  <b>Abschluss</b>: Neustart, Herunterfahren oder nichts.
     Nur bei VMs: <i>Vorher Snapshot</i> (oben, Standard an) – direkt vor dem Start entsteht ein Snapshot der Disk
     (Kapitel <i>Virtuelle Maschinen</i>). Schlägt er fehl, startet die Automatisierung nicht.
 7.  Schalter <i>Automatisierung</i> einschalten – oder in der Liste das Häkchen <i>Auto</i> setzen.
 8.  Rückfrage prüfen: Rot steht dort, was passiert – Disk, die gelöscht wird, Image, Gerätename danach,
-    Backup, bei VMs Snapshot, Abschluss und ob sie sich nach 3 Tagen wieder einschaltet.
+    Backup, bei VMs Snapshot, Software, Windows anpassen, Abschluss und ob sie sich nach 3 Tagen wieder einschaltet.
     Mit <i>Einschalten</i> bzw. <i>Löschen und neu aufsetzen</i> bestätigen. <i>Abbrechen</i> lässt alles aus.
     Fehlt noch etwas (Image, Zieldisk, NAS), erscheint statt der Rückfrage eine Meldung, was fehlt.
 
@@ -868,6 +876,18 @@ Wetter und Sperrbildschirm greifen evtl. erst nach einem weiteren Neustart. Die 
 sobald das Skript gelaufen ist, sicher ab dem nächsten Start.
 Laufen <i>Windows anpassen</i> und <i>Software installieren</i> beim selben Start gleichzeitig, räumen sie
 nacheinander auf (Sperre); was das andere Skript schon aufgeräumt hat, gilt nicht als Fehler.
+
+<b>Beim Aufsetzen mitgeben:</b> Dieselbe Auswahl gibt es als Häkchen <i>Windows anpassen</i> mit
+<i>Vorlage</i> und <i>Einstellungen …</i> (öffnet diesen Dialog, Knopf <i>Übernehmen</i>) in
+<i>OS installieren …</i> (Kapitel <i>Windows / Linux installieren</i>), in <i>Image zurückspielen</i> unter
+<i>Danach anpassen</i> (Kapitel <i>Image zurückspielen</i>) und im Reiter <i>Automatisierung</i>, auch in deren
+Vorlagen (Kapitel <i>Automatisierung</i>). So ist eine neue Maschine in einem Durchgang fertig, ohne das Gerät
+danach nochmals in den Agent zu starten.
+•  Ohne automatische Anmeldung: Das Passwort wird beim Aufsetzen weder mitgegeben noch gespeichert – dafür
+    danach <i>Windows anpassen …</i> am Gerät.
+•  Reihenfolge immer: zuerst die Software, dann <i>Windows anpassen</i>.
+•  Nicht bei <i>Für Master-Image (Audit-Modus)</i> – beim Ausrollen des Masters mitgeben.
+•  Der Verlauf des Geräts nennt die Auswahl („Windows anpassen (Vorlage Clean: …) – wird … umgesetzt“).
 
 <b>Gut zu wissen:</b>
 •  Das Startskript läuft genau einmal und entfernt sich danach vollständig. Eine vorhandene lokale
@@ -1148,6 +1168,8 @@ Netzwerkstart mit dem aktuellen Tool). Geprüft wird nur lesend: Daten, Windows 
     Software-Bibliothek ankreuzen – sie werden beim ersten Start still installiert, mit
     <i>Für Master-Image (Audit-Modus)</i> im Audit-Modus, damit sie im Master-Image landen
     (Kapitel <i>Software installieren</i>).
+    Darunter <i>Windows anpassen</i> mit <i>Vorlage</i> (z. B. Clean) und <i>Einstellungen …</i>: Die neue
+    Maschine ist so in einem Durchgang fertig – siehe unten „Windows anpassen beim Installieren“.
 5.  Starten. Das Gerät startet danach neu und installiert selbständig.
     Am Gerät wird nichts gefragt. Was nicht ausgewählt ist, wird nicht installiert.
     Nur bei VMs: <i>Vorher Snapshot</i> (Standard an) – direkt vor der Installation entsteht ein Snapshot der
@@ -1174,6 +1196,24 @@ Windows erlaubt nur 15 Zeichen ohne Sonderzeichen. Der Dialog zeigt, wie der Nam
     Windows nicht mehr starten, mit dem Agent-Stick <i>Disk-Image erstellen …</i> und das Image als Master
     markieren (Kapitel <i>Master-Image</i>). Das Log des Auftrags nennt diese Schritte ebenfalls.
 •  Bei einer VM vor Sysprep im Reiter <i>Snapshots</i> einen Snapshot erstellen (<i>Snapshot erstellen …</i>).
+•  <i>Windows anpassen</i> ist dabei ausgegraut: Die Einstellungen landeten sonst im Master (nur teilweise
+    entfernte Store-Apps lassen Sysprep scheitern, Startskript und Nachlauf liefen erst beim Ausrollen). Beim
+    Ausrollen mitgeben: <i>Image zurückspielen</i> → <i>Danach anpassen</i> oder Automatisierung.
+
+<b>Windows anpassen beim Installieren</b> (Häkchen <i>Windows anpassen</i>, Standard aus)
+•  Gleiche Einstellungen wie <i>Windows anpassen …</i> am Gerät (Kapitel <i>Windows anpassen</i>), ohne
+    automatische Anmeldung – das Passwort wird beim Aufsetzen nicht mitgegeben.
+•  Startmenü, Widgets, Sperrbildschirm und „Microsoft-Benutzererfahrungen deaktivieren“ setzt die
+    Setup-Umgebung gleich nach dem Aufspielen in das neue Windows – sie gelten ab dem ersten Start.
+•  Die übrigen Einstellungen setzt Windows am Ende der Einrichtung vor der ersten Anmeldung (als SYSTEM),
+    <b>nach der Software</b>: Das Skript wartet, bis die Software installiert ist (höchstens 30 min), damit
+    abgeschaltete Dienste oder entfernte Apps keine Installation stören. Meldet ein Programm „Neustart nötig“,
+    startet das Gerät erst nach <i>Windows anpassen</i> neu.
+•  Mit einem <b>OEM-Schlüssel</b> (z. B. aus dem BIOS) lässt Windows diesen Schritt laut Microsoft aus (ausser
+    Enterprise). Dann setzt das Startskript die übrigen Einstellungen beim ersten Start, evtl. erst während der
+    ersten Anmeldung; Store-Apps entfernt spätestens der Nachlauf nach 30 min. Das Log des Auftrags nennt das.
+•  Protokoll am Gerät wie bei <i>Windows anpassen …</i>: <tt>C:\\Windows\\Temp\\okula-windows-anpassen.log</tt>
+    (erste Zeile „Vor dem ersten Start gesetzt – Setup-Umgebung …“).
 
 <b>Fehler am Gerät</b> (Windows)
 •  Vor dem Neustart löscht der Agent alte Daten auf den neuen Partitionen (Anfang und Ende) und prüft die
