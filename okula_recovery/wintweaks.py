@@ -400,6 +400,12 @@ if ([Environment]::OSVersion.Version.Build -ge {START_GPO_BUILD}) {{
         Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
         $offCount = $offline['profiles']
         $offStamp = $offline['stamp']
+        if ($offline['source'] -eq 'setup') {{
+            # Ä-046: Direktinstallation – die Setup-Umgebung hat die Richtlinie vor dem ersten Start gesetzt
+            $setup = ('Gruppenrichtlinie ConfigureStartPins gesetzt (Datei {{0}}); schon bei der Installation vor dem ' +
+                      'ersten Start gesetzt (Setup-Umgebung, noch kein Benutzerprofil) – gilt ab der ersten Anmeldung') -f $file
+            return ($setup + $adsNote)
+        }}
         $done = ('Gruppenrichtlinie ConfigureStartPins gesetzt (Datei {{0}}); Startmenü schon beim Senden vor dem ' +
                  'Windows-Start zurückgesetzt (Agent: Richtlinie gesetzt, Startmenü von {{1}} Profil(en) zurückgesetzt, ' +
                  'start2.bin gesichert als start2.bin.okula-{{2}}) – gilt ab der ersten Anmeldung für neue Konten und ' +
@@ -1238,17 +1244,18 @@ def offline_request(selected) -> dict:
 
 
 def build_script(selected, user: str = "", password: str = "", device: str = "", template: str = NO_TEMPLATE,
-                 created: float | None = None) -> str:
+                 created: float | None = None, template_text: str | None = None) -> str:
     """PowerShell-Skript für die gewählten Optionen. Reihenfolge: wie im Dialog, Store-Apps zuletzt, danach der
-    Nachlauf (geplante Aufgabe)."""
+    Nachlauf (geplante Aufgabe). template_text (Ä-046): Vorlage fürs Protokoll statt template_label."""
     selected = set(selected)
     problem = check(selected, user, password)
     if problem:
         raise TweakError(problem)
     stamp = time.strftime("%d.%m.%Y %H:%M", time.localtime(created if created is not None else time.time()))
     safe_device = re.sub(r"[^\w .-]", "", device)[:60] or "–"
+    label = template_text if template_text is not None else template_label(template, selected)
     head = _fill(HEADER.replace("__RESTORE__", RESTORE_START), CREATED=stamp, DEVICE=safe_device,
-                 TEMPLATE=template_label(template, selected), LOG=LOG_PATH, NAME=TWEAK_NAME, AFTER=TWEAK_AFTER)
+                 TEMPLATE=label, LOG=LOG_PATH, NAME=TWEAK_NAME, AFTER=TWEAK_AFTER)
     chosen = [o for o in OPTIONS if o.key in selected]
     removal = set(APP_KEYS) | set(WIN_KEYS)
     order = [o for o in chosen if o.key not in removal and o.key != LATER] + \
@@ -1260,3 +1267,76 @@ def build_script(selected, user: str = "", password: str = "", device: str = "",
             later_body(selected, device, created) if o.key == LATER else o.body
         steps.append(_step(o, body))
     return head + "\n" + "\n".join(steps) + "\n" + FOOTER
+
+
+# ---------- Ä-046: beim Aufsetzen mitgeben (OS installieren, Danach anpassen, Automatisierung) ----------
+#
+# Auswahl als {"template": "Clean", "keys": [...]} – so steht sie auch in den Einstellungen und Vorlagen der
+# Automatisierung. Ohne automatische Anmeldung: Beim Aufsetzen wird kein Passwort mitgegeben oder gespeichert
+# (Entscheid „Passwörter werden nicht gespeichert“); dafür bleibt „Windows anpassen …“ am Gerät.
+
+EMBED_EXCLUDED = frozenset({AUTOLOGON})
+EMBED_DEFAULT = "Clean"
+EMBED_AUTOLOGON_HINT = ("Beim Aufsetzen nicht wählbar – das Passwort würde mitgegeben bzw. gespeichert. Automatische "
+                        "Anmeldung danach über „Windows anpassen …“ am Gerät.")
+
+
+def embed_template_keys(name: str) -> frozenset[str]:
+    """Häkchen einer Vorlage beim Aufsetzen (ohne automatische Anmeldung)."""
+    return template_keys(name) - EMBED_EXCLUDED
+
+
+def choice(template: str, keys) -> dict | None:
+    """Auswahl zum Mitgeben – unbekannte Optionen und die automatische Anmeldung fallen weg; nichts gewählt → None."""
+    wanted = {str(k) for k in keys}
+    ordered = [k for k in KEYS if k in wanted and k not in EMBED_EXCLUDED]
+    if not ordered:
+        return None
+    return {"template": template if template in TEMPLATES else NO_TEMPLATE, "keys": ordered}
+
+
+def clean_choice(data) -> dict | None:
+    """Gespeicherte bzw. übergebene Auswahl prüfen (Einstellungen der Automatisierung, Vorlagen) – sonst None."""
+    if not isinstance(data, dict) or not isinstance(data.get("keys"), (list, tuple, set, frozenset)):
+        return None
+    return choice(str(data.get("template") or ""), data["keys"])
+
+
+def choice_label(data) -> str:
+    """„Clean“, „Clean (geändert)“ bzw. „keine“ – gemessen an der Vorlage ohne automatische Anmeldung."""
+    c = clean_choice(data)
+    if c is None:
+        return ""
+    name = c["template"]
+    if name in TEMPLATES:
+        return name + ("" if frozenset(c["keys"]) == embed_template_keys(name) else " (geändert)")
+    return "keine"
+
+
+def choice_summary(data) -> str:
+    """Kurzform für Dialoge, Log und Verlauf, z. B. „Vorlage Clean: Apps (12), Betrieb (1), …“ (leer = keine Auswahl)."""
+    c = clean_choice(data)
+    if c is None:
+        return ""
+    parts = [f"{group} ({len(opts)})" for group, opts in by_group(c["keys"]).items() if opts]
+    return f"Vorlage {choice_label(c)}: " + ", ".join(parts)
+
+
+def choice_script(data, device: str = "", created: float | None = None) -> str:
+    """Skript zur Auswahl (wie build_script, ohne automatische Anmeldung)."""
+    c = clean_choice(data)
+    if c is None:
+        raise TweakError("Keine Einstellung gewählt.")
+    return build_script(c["keys"], device=device, template=c["template"], created=created,
+                        template_text=choice_label(c))
+
+
+def choice_offline(data) -> dict:
+    """Teil vor der ersten Anmeldung (offline_request) zur Auswahl."""
+    c = clean_choice(data)
+    return offline_request(c["keys"]) if c else {}
+
+
+def choice_history(data, when: str = "wird beim ersten Windows-Start umgesetzt") -> str:
+    """Verlauf: „Windows anpassen (Vorlage Clean: Apps (12), …) – wird beim ersten Windows-Start umgesetzt“."""
+    return f"Windows anpassen ({choice_summary(data)}) – {when}"

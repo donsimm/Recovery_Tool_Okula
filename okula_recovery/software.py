@@ -1479,15 +1479,27 @@ SETUP_SOFTWARE = "okula/software"     # → C:\ProgramData\Okula\Software (insta
 SETUP_GP = "okula/gp"                 # → C:\Windows\System32\GroupPolicy (Startskript)
 
 
-def setup_files(script: str) -> dict[str, str]:
-    """Startskript für ein frisch aufgespieltes Windows (ohne lokale Gruppenrichtlinie) – Texte für die
-    Setup-Partition (Agent schreibt UTF-8; scripts.ini/gpt.ini nur ASCII, .ps1 mit BOM für PowerShell 5.1)."""
+BOM = "﻿"
+
+
+def startup_files(scripts: list[tuple[str, str, str]]) -> dict[str, str]:
+    """Startskripte für ein frisch aufgespieltes Windows (ohne lokale Gruppenrichtlinie) – Texte für die
+    Setup-Partition (Agent schreibt UTF-8; scripts.ini/gpt.ini nur ASCII, .ps1 mit BOM für PowerShell 5.1).
+    scripts: [(Name, Text der .cmd, PowerShell-Skript)] in dieser Reihenfolge in scripts.ini (Ä-046: Software vor
+    Windows anpassen)."""
     from okula_recovery import deploy
-    crlf = script.replace("\r\n", "\n").replace("\n", "\r\n")
     start = f"{SETUP_GP}/Machine/Scripts/Startup"
-    return {
-        f"{SETUP_GP}/gpt.ini": deploy.gpt_edit("", 1, True)[0],
-        f"{SETUP_GP}/Machine/Scripts/scripts.ini": deploy.scripts_ini_add("", deploy.SOFTWARE_NAME + ".cmd"),
-        f"{start}/{deploy.SOFTWARE_NAME}.cmd": deploy.SOFTWARE_CMD_TEXT,
-        f"{start}/{deploy.SOFTWARE_NAME}.ps1": "\ufeff" + crlf,
-    }
+    files = {f"{SETUP_GP}/gpt.ini": deploy.gpt_edit("", 1, True)[0]}
+    ini = ""
+    for name, cmd_text, script in scripts:
+        ini = deploy.scripts_ini_add(ini, name + ".cmd")
+        files[f"{start}/{name}.cmd"] = cmd_text
+        files[f"{start}/{name}.ps1"] = BOM + script.replace("\r\n", "\n").replace("\n", "\r\n")
+    files[f"{SETUP_GP}/Machine/Scripts/scripts.ini"] = ini
+    return files
+
+
+def setup_files(script: str) -> dict[str, str]:
+    """Startskript „Software installieren“ für die Setup-Partition (siehe startup_files)."""
+    from okula_recovery import deploy
+    return startup_files([(deploy.SOFTWARE_NAME, deploy.SOFTWARE_CMD_TEXT, script)])

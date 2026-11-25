@@ -13,6 +13,8 @@ Ablauf:
    und vergrössert C: auf die ganze Disk.
    Für ein Master-Image (I-038, audit_mode): Windows startet im Audit-Modus; im Durchgang auditUser laufen das
    Aufräumen (SetupComplete.cmd) und das Löschen von Panther\\unattend.xml.
+Ä-046 „Windows anpassen“: install.cmd setzt nach dism die Richtlinien vor der ersten Anmeldung offline (reg load), das
+Skript läuft als Startskript bzw. zuletzt aus SetupComplete.cmd (nach der Software) – nicht beim Master (Audit-Modus).
 """
 
 from __future__ import annotations
@@ -49,6 +51,7 @@ class Plan:
     nas_files: list[tuple[str, int, Path]] = field(default_factory=list)  # I-020: (Pfad Setup-Partition, Grösse,
     #                                                                       Quelle auf dem NAS) – Software
     software: list = field(default_factory=list)                         # software.Entry – gewählte Programme
+    tweak: dict | None = None                                           # Ä-046: Auswahl „Windows anpassen“
 
     @property
     def target_marker(self) -> str:
@@ -68,33 +71,141 @@ def _crlf(text: str) -> str:
 
 
 SOFTWARE_COPY = """\
-rem I-020: Software nach ProgramData kopieren, Startskript der lokalen Gruppenrichtlinie einrichten
+rem I-020: Software nach ProgramData kopieren
 if not exist "%S%:\\okula\\software" goto ohnesoftware
 echo Okula: Software wird nach %W%:\\ProgramData\\Okula\\Software kopiert >> "%LOG%"
 xcopy "%S%:\\okula\\software" "%W%:\\ProgramData\\Okula\\Software\\" /e /i /h /k /y /q >> "%LOG%" 2>&1
 echo Okula: Software kopiert - Rueckgabe %ERRORLEVEL% >> "%LOG%"
+:ohnesoftware
+"""
+
+# I-020, Ae-046: Startskripte (Software installieren, Windows anpassen) der lokalen Gruppenrichtlinie einrichten
+STARTUP_COPY = """\
+rem I-020/Ae-046: Startskripte der lokalen Gruppenrichtlinie einrichten (Software, Windows anpassen)
+if not exist "%S%:\\okula\\gp" goto ohnestartskript
 set OKGP=%W%:\\Windows\\System32\\GroupPolicy
 if exist "%OKGP%\\gpt.ini" copy /y "%OKGP%\\gpt.ini" "%OKGP%\\gpt.ini.okula-nachher" >> "%LOG%" 2>&1
 if exist "%OKGP%\\Machine\\Scripts\\scripts.ini" copy /y "%OKGP%\\Machine\\Scripts\\scripts.ini" \
 "%OKGP%\\Machine\\Scripts\\scripts.ini.okula-nachher" >> "%LOG%" 2>&1
-if exist "%OKGP%\\gpt.ini" (echo Okula: lokale Gruppenrichtlinie im Image vorhanden - Software startet ueber \
+if exist "%OKGP%\\gpt.ini" (echo Okula: lokale Gruppenrichtlinie im Image vorhanden - Startskripte laufen ueber \
 SetupComplete >> "%LOG%") else (xcopy "%S%:\\okula\\gp" "%OKGP%\\" /e /i /h /k /y /q >> "%LOG%" 2>&1)
 xcopy "%S%:\\okula\\gp\\Machine\\Scripts\\Startup" "%OKGP%\\Machine\\Scripts\\Startup\\" /e /i /h /k /y /q \
 >> "%LOG%" 2>&1
-echo Okula: Startskript Software eingerichtet - Rueckgabe %ERRORLEVEL% >> "%LOG%"
-:ohnesoftware
+echo Okula: Startskripte eingerichtet - Rueckgabe %ERRORLEVEL% >> "%LOG%"
+:ohnestartskript
 """
+
+# ---------- Ae-046: Windows anpassen bei der Direktinstallation ----------
+#
+# Windows wartet bei der Anmeldung nicht auf Startskripte (B-020). Was vor der ersten Anmeldung wirken muss
+# (Startmenü-Richtlinie + StartPins.json, Widgets, Sperrbildschirm, Microsoft-Benutzererfahrungen – dieselben Werte wie
+# deploy.tweak_offline), setzt install.cmd darum gleich nach dism offline im Hive SOFTWARE des neuen Windows
+# (reg load/add/unload, wie im Microsoft-Learn-Lab „Windows S mode deployment“ an einem aufgespielten Image). Windows
+# ist dann noch nie gestartet: kein Benutzerprofil, also auch keine start2.bin, die umbenannt werden müsste – die Marke
+# start-offline.ok (source=setup) sagt dem Skript, dass nichts zurückzusetzen ist. Gilt auch mit OEM-Schlüssel (B-013).
+# Die übrigen Einstellungen setzt das Skript am Ende der Einrichtung aus SetupComplete.cmd (als SYSTEM, vor dem
+# Anmeldebildschirm laut Microsoft Learn „Add a Custom Script to Windows Setup“), nach der Software: Store-Apps
+# entfernen und Dienste abschalten sollen keine laufende Installation stören (z. B. Druckwarteschlange für
+# Druckertreiber). Mit OEM-Schlüssel läuft SetupComplete.cmd nicht – dann das Startskript (Reihenfolge wie in
+# scripts.ini: Software, danach Windows anpassen).
+
+TWEAK_SETUP = "okula/tweak"                       # auf der Setup-Partition: StartPins.json
+TWEAK_HIVE = "HKLM\\OKULASW"                      # Hive SOFTWARE des neuen Windows, nur während install.cmd
+SOFTWARE_WAIT_MIN = 30                            # SetupComplete: so lange wartet Windows anpassen auf die Software
+SOFTWARE_WAIT_STEP = 15                           # s zwischen zwei Abfragen der geplanten Aufgabe
+
+
+def _reg_add(key: str, name: str, kind: str, data: str, flag: str = "TWF") -> str:
+    return (f'reg add "{TWEAK_HIVE}\\{key}" /v {name} /t {kind} /d {data} /f >> "%LOG%" 2>&1\n'
+            f"if errorlevel 1 set {flag}=1\n")
+
+
+def tweak_offline_cmd(offline: dict) -> str:
+    """Block für install.cmd (nur ASCII): Richtlinien aus wintweaks.offline_request offline setzen – Fehler nur im
+    Protokoll (install.log und C:\\Windows\\Temp\\okula-windows-anpassen.log), die Installation läuft weiter; das Skript
+    setzt dieselben Werte beim ersten Start nochmals."""
+    from okula_recovery import deploy
+    if not offline:
+        return ""
+    done = [what for key, what in (("widgets", "Widgets aus"), ("lock_screen_off", "kein Sperrbildschirm"),
+                                   ("consumer_off", "Microsoft-Benutzererfahrungen aus")) if offline.get(key)]
+    start_text = (", " if done else "") + "Startmenue-Richtlinie mit festen Kacheln"
+    lines = [
+        "rem Ae-046: Windows anpassen - Richtlinien vor dem ersten Start offline setzen (wie der Agent, B-020/B-021)",
+        'set "TWLOG=%W%:\\Windows\\Temp\\okula-windows-anpassen.log"',
+        'mkdir "%W%:\\Windows\\Temp" >nul 2>&1',
+        "set TWF=0",
+        "set TWB=0",
+        'set "TWSM="' if done else 'set "TWSM=keine Richtlinie"',
+        'echo Okula: Windows anpassen - Richtlinien vor dem ersten Start >> "%LOG%"',
+        f'reg load {TWEAK_HIVE} "%W%:\\Windows\\System32\\config\\SOFTWARE" >> "%LOG%" 2>&1',
+        "if errorlevel 1 goto twfehler",
+        f'for /f "tokens=1,3" %%a in (\'reg query "{TWEAK_HIVE}\\Microsoft\\Windows NT\\CurrentVersion" '
+        f'/v CurrentBuild 2^>nul\') do if /i "%%a"=="CurrentBuild" set TWB=%%b',
+        'echo Okula: Windows-Build %TWB% >> "%LOG%"',
+    ]
+    text = "\n".join(lines) + "\n"
+    if offline.get("start_pins"):
+        okula = "%W%:\\ProgramData\\Okula"
+        marker = f'"{okula}\\{deploy.START_MARKER}"'
+        text += (f"if %TWB% LSS {deploy.START_GPO_BUILD} goto twaltstart\n"
+                 "set TWS=0\n"
+                 f'mkdir "{okula}" >nul 2>&1\n'
+                 f'copy /y "%S%:\\{TWEAK_SETUP.replace("/", chr(92))}\\{deploy.START_PINS_FILE}" '
+                 f'"{okula}\\{deploy.START_PINS_FILE}" >> "%LOG%" 2>&1\n'
+                 "if errorlevel 1 set TWS=1\n"
+                 + _reg_add(deploy.EXPLORER_KEY, "ConfigureStartPins", "REG_DWORD", "1", "TWS")
+                 + _reg_add(deploy.EXPLORER_KEY, "ConfigureStartPinsJSON", "REG_EXPAND_SZ",
+                            '"' + deploy.START_PINS_PATH.replace("%", "%%") + '"', "TWS")
+                 + 'if not "%TWS%"=="0" set TWF=1\n'
+                 'if not "%TWS%"=="0" goto twnachstart\n'
+                 f"> {marker} echo stamp=setup\n"
+                 f">> {marker} echo profiles=0\n"
+                 f">> {marker} echo source=setup\n"
+                 f'set "TWSM={start_text}"\n'
+                 "goto twnachstart\n"
+                 ":twaltstart\n"
+                 '>>"%TWLOG%" echo %DATE% %TIME%  Startmenue: Windows-Build %TWB% vor 24H2 - setzt nur das Skript '
+                 "beim ersten Start\n"
+                 ":twnachstart\n")
+    if offline.get("widgets"):
+        text += _reg_add(deploy.DSH_KEY, "AllowNewsAndInterests", "REG_DWORD", "0")
+    if offline.get("lock_screen_off"):
+        text += _reg_add(deploy.LOCK_KEY, "NoLockScreen", "REG_DWORD", "1")
+    if offline.get("consumer_off"):
+        text += _reg_add(deploy.CLOUD_KEY, "DisableWindowsConsumerFeatures", "REG_DWORD", "1")
+    text += "\n".join((
+        f'reg unload {TWEAK_HIVE} >> "%LOG%" 2>&1',
+        "if errorlevel 1 set TWF=1",
+        'if not "%TWF%"=="0" goto twfehler',
+        f'>>"%TWLOG%" echo %DATE% %TIME%  ok      Vor dem ersten Start gesetzt - Setup-Umgebung, Windows-Build %TWB%: '
+        f"{', '.join(done)}%TWSM%",
+        'echo Okula: Windows anpassen - Richtlinien gesetzt >> "%LOG%"',
+        "goto twende",
+        ":twfehler",
+        f"reg unload {TWEAK_HIVE} >nul 2>&1",
+        '>>"%TWLOG%" echo %DATE% %TIME%  Hinweis Richtlinien vor dem ersten Start nicht vollstaendig gesetzt - das '
+        "Skript setzt sie beim ersten Start; Startmenue, Wetter bzw. Sperrbildschirm evtl. erst nach einem weiteren "
+        "Neustart",
+        'echo Okula: Windows anpassen - Richtlinien nicht vollstaendig gesetzt, Installation laeuft weiter >> "%LOG%"',
+        ":twende",
+        ""))
+    return text
 
 
 def install_cmd(install_id: str, index: int, wim_path: str, split: bool, language: str,
-                software: bool = False) -> str:
+                software: bool = False, tweak: dict | None = None) -> str:
     """Läuft in der Windows-Setup-Umgebung (cmd, nur ASCII). %1 = Laufwerk der Setup-Partition.
 
     Windows-Partition: Markierung okula-<id>.target, sonst genau ein Laufwerk mit Bezeichnung OKULAWIN (B-014) –
     nie ein Laufwerk auf Verdacht. Im Fehlerfall Laufwerksliste ins Protokoll und Hinweis oben im Editor (Ä-039).
-    software (I-020): Installer und Startskript von der Setup-Partition ins neue Windows kopieren."""
+    software (I-020): Installer und Startskript von der Setup-Partition ins neue Windows kopieren.
+    tweak (Ä-046): None = kein „Windows anpassen“; sonst der Teil vor der ersten Anmeldung (wintweaks.offline_request,
+    evtl. leer) – Richtlinien offline setzen, Startskript mitkopieren."""
     win_path = wim_path.replace("/", "\\")
-    software_copy = SOFTWARE_COPY if software else ""
+    software_copy = (SOFTWARE_COPY if software else "") + \
+        (tweak_offline_cmd(tweak) if tweak else "") + \
+        (STARTUP_COPY if software or tweak is not None else "")
     if split:
         image = '/ImageFile:"%S%:\\sources\\install.swm" /SWMFile:"%S%:\\sources\\install*.swm"'
     else:
@@ -203,10 +314,48 @@ if exist "%OKULA_SW%" cmd /c "%OKULA_SW%"
 """
 
 
-def setupcomplete_cmd(install_id: str, software: bool = False) -> str:
+def tweak_start(software: bool) -> str:
+    """SetupComplete.cmd (Ae-046): Startskript „Windows anpassen“ aufrufen – mit Software erst, wenn deren geplante
+    Aufgabe fertig ist (höchstens SOFTWARE_WAIT_MIN). Warten mit ping (timeout braucht eine Konsole)."""
+    from okula_recovery import deploy, software as sw
+    rounds = SOFTWARE_WAIT_MIN * 60 // SOFTWARE_WAIT_STEP
+    text = ("rem Ae-046: Windows anpassen - nach der Software, vor der ersten Anmeldung (laeuft nur einmal)\n"
+            f'set "OKULA_TW=%WINDIR%\\System32\\GroupPolicy\\Machine\\Scripts\\Startup\\{deploy.TWEAK_CMD}"\n'
+            'if not exist "%OKULA_TW%" goto ohneanpassen\n')
+    if software:
+        text += ("set N=0\n"
+                 ":wartesoftware\n"
+                 f'schtasks /query /tn "{sw.TASK_NAME}" >nul 2>&1\n'
+                 "if errorlevel 1 goto anpassen\n"
+                 f"if %N% GEQ {rounds} goto anpassen\n"
+                 f'if %N%==0 >>"%WINDIR%\\Temp\\{deploy.TWEAK_NAME}.log" echo %DATE% %TIME%  Software wird noch '
+                 f"installiert - Windows anpassen folgt danach, hoechstens {SOFTWARE_WAIT_MIN} min Wartezeit\n"
+                 "set /a N+=1\n"
+                 f"ping -n {SOFTWARE_WAIT_STEP + 1} 127.0.0.1 >nul\n"
+                 "goto wartesoftware\n"
+                 ":anpassen\n"
+                 f'if %N% GEQ {rounds} >>"%WINDIR%\\Temp\\{deploy.TWEAK_NAME}.log" echo %DATE% %TIME%  Hinweis '
+                 f"Software nach {SOFTWARE_WAIT_MIN} min noch nicht fertig - Windows anpassen laeuft trotzdem\n"
+                 "rem Neustart der Software (Rueckgabewert 3010, in 60 s) zurueckstellen - er kaeme mitten in Windows\n"
+                 "rem anpassen; ganz am Schluss wieder ausloesen (letzter Befehl, SetupComplete ist dann fertig)\n"
+                 'set "OKULA_NEUSTART="\n'
+                 "shutdown /a >nul 2>&1\n"
+                 'if not errorlevel 1 set "OKULA_NEUSTART=1"\n')
+    text += 'cmd /c "%OKULA_TW%"\n'
+    if software:
+        text += ("if not defined OKULA_NEUSTART goto ohneanpassen\n"
+                 f'>>"%WINDIR%\\Temp\\{deploy.TWEAK_NAME}.log" echo %DATE% %TIME%  Neustart in '
+                 f"{sw.REBOOT_DELAY} s - Software meldete Neustart noetig\n"
+                 f"shutdown /r /t {sw.REBOOT_DELAY} /c \"Okula Recovery Tool: Software installiert, Windows angepasst "
+                 "- Neustart\" /d p:4:2 >nul 2>&1\n")
+    return text + ":ohneanpassen\n"
+
+
+def setupcomplete_cmd(install_id: str, software: bool = False, tweak: bool = False) -> str:
     """Läuft am Ende der Einrichtung im installierten Windows (als SYSTEM): Setup-Partition weg, C: vergrössern.
     software (I-020): danach das Startskript „Software installieren“ (SetupComplete läuft vor der ersten Anmeldung;
-    mit OEM-Schlüssel nicht – dann übernimmt das Startskript der Gruppenrichtlinie, B-013)."""
+    mit OEM-Schlüssel nicht – dann übernimmt das Startskript der Gruppenrichtlinie, B-013).
+    tweak (Ä-046): zuletzt das Startskript „Windows anpassen“ (nach der Software)."""
     return _crlf(f"""@echo off
 rem Okula Recovery Tool - Aufraeumen nach der Direktinstallation ({install_id})
 set S=
@@ -221,7 +370,7 @@ if "%S%"=="" goto ende
 diskpart /s "%TEMP%\\okula-dp.txt" > "%WINDIR%\\Temp\\okula-aufraeumen.log" 2>&1
 del "%TEMP%\\okula-dp.txt"
 :ende
-""" + (SOFTWARE_START if software else ""))
+""" + (SOFTWARE_START if software else "") + (tweak_start(software) if tweak else ""))
 
 
 # I-038: Ob SetupComplete.cmd auch beim Start in den Audit-Modus läuft, sagt Microsoft nicht eindeutig („After Windows
@@ -246,15 +395,26 @@ def launch_command() -> str:
             f"call %i:\\okula\\install.cmd %i")
 
 
+TWEAK_AUDIT = ("Windows anpassen nicht beim Master-Image (Audit-Modus): Die Einstellungen landeten im Master (Store-Apps "
+               "nur teilweise entfernt lassen Sysprep scheitern, Nachlauf und Startskript liefen erst beim Ausrollen). "
+               "Beim Ausrollen über Image zurückspielen → Danach anpassen bzw. die Automatisierung mitgeben.")
+
+
 def plan(iso_path: str | Path, index: int, opts: winunattend.WinOptions, software_plan=None,
-         device: str = "") -> Plan:
+         device: str = "", tweak: dict | None = None) -> Plan:
     """Was auf die Setup-Partition kommt – Dateien aus der ISO plus Skripte und Antwortdateien.
-    software_plan (I-020, software.Plan): gewählte Programme vom NAS unter okula/software, Startskript unter okula/gp."""
-    from okula_recovery import software
+    software_plan (I-020, software.Plan): gewählte Programme vom NAS unter okula/software, Startskript unter okula/gp.
+    tweak (Ä-046): Auswahl „Windows anpassen“ (wintweaks.choice) – Startskript unter okula/gp (nach der Software),
+    Richtlinien vor dem ersten Start in install.cmd, Aufruf in SetupComplete.cmd."""
+    from okula_recovery import deploy, software, wintweaks
     install_id = secrets.token_hex(4)
     nas_files: list[tuple[str, int, Path]] = []
     chosen = list(software_plan.entries) if software_plan is not None else []
+    choice = wintweaks.clean_choice(tweak)
+    if choice and opts.audit_mode:
+        raise WinSetupError(TWEAK_AUDIT)
     soft_extra: dict[str, str] = {}
+    startup: list[tuple[str, str, str]] = []
     if chosen:
         for kind, rel, size, _mtime, src in software_plan.files:
             if kind != "file":
@@ -262,7 +422,15 @@ def plan(iso_path: str | Path, index: int, opts: winunattend.WinOptions, softwar
             if size > FAT32_MAX:
                 raise WinSetupError(f"Software-Datei grösser als 4 GB (Setup-Partition FAT32): {rel}")
             nas_files.append((f"{software.SETUP_SOFTWARE}/{rel}", size, Path(src)))
-        soft_extra = software.setup_files(software.build_script(chosen, device))
+        startup.append((deploy.SOFTWARE_NAME, deploy.SOFTWARE_CMD_TEXT, software.build_script(chosen, device)))
+    offline = None
+    if choice:
+        offline = wintweaks.choice_offline(choice)
+        startup.append((deploy.TWEAK_NAME, deploy.TWEAK_CMD_TEXT, wintweaks.choice_script(choice, device)))
+        if offline.get("start_pins"):
+            soft_extra[f"{TWEAK_SETUP}/{deploy.START_PINS_FILE}"] = offline["start_pins"]
+    if startup:
+        soft_extra.update(software.startup_files(startup))
     with udf.UdfImage.open(str(iso_path)) as img:
         entries = [(p, e) for p, e in img.walk() if not e.is_dir]
     wim = next(((p, e) for p, e in entries if p.lower() in ("sources/install.wim", "sources/install.esd")), None)
@@ -282,15 +450,16 @@ def plan(iso_path: str | Path, index: int, opts: winunattend.WinOptions, softwar
         # Setup sucht auf festen Disks in \sources des Mediums, auf Wechselmedien im Wurzelverzeichnis
         "sources/autounattend.xml": launcher,
         "autounattend.xml": launcher,
-        "okula/install.cmd": install_cmd(install_id, index, wim[0], split, language, software=bool(chosen)),
+        "okula/install.cmd": install_cmd(install_id, index, wim[0], split, language, software=bool(chosen),
+                                         tweak=offline),
         "okula/unattend.xml": system_unattend(opts),
-        "okula/SetupComplete.cmd": setupcomplete_cmd(install_id, software=bool(chosen)),
+        "okula/SetupComplete.cmd": setupcomplete_cmd(install_id, software=bool(chosen), tweak=choice is not None),
         f"okula/{install_id}.setup": install_id,
         **soft_extra,
     }
     size = sum(e.size for _p, e in files) + sum(len(t.encode()) for t in extra.values()) + SETUP_RESERVE \
         + sum(s for _p, s, _src in nas_files)
-    return Plan(install_id, files, wim[0], split, extra, size, nas_files, chosen)
+    return Plan(install_id, files, wim[0], split, extra, size, nas_files, chosen, choice)
 
 
 def describe(plan: Plan) -> list[str]:
@@ -304,4 +473,8 @@ def describe(plan: Plan) -> list[str]:
         lines.append(f"Software ({len(plan.nas_files)} Dateien, {soft / 1000**3:.2f} GB): "
                      + ", ".join(e.label for e in plan.software)
                      + " – wird beim ersten Start installiert")
+    if plan.tweak:
+        from okula_recovery import wintweaks
+        lines.append(f"Windows anpassen ({wintweaks.choice_summary(plan.tweak)}) – vor der ersten Anmeldung"
+                     + (", nach der Software" if plan.software else ""))
     return lines

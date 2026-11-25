@@ -584,11 +584,25 @@ def grow_restore_work(virsh, name: str, grow_gb: int, target: str,
     return work
 
 
+TWEAK_SETUP_LATER = ("Startmenü, Widgets, Sperrbildschirm und Microsoft-Benutzererfahrungen setzt die Setup-Umgebung "
+                     "vor dem ersten Start; die übrigen Einstellungen setzt Windows am Ende der Einrichtung vor der "
+                     "ersten Anmeldung (als SYSTEM). Protokoll am Gerät: C:\\Windows\\Temp\\okula-windows-anpassen.log")
+TWEAK_SETUP_SOFTWARE = ("Reihenfolge: zuerst die Software, danach Windows anpassen (wartet höchstens {min} min auf die "
+                        "Installation)")
+# B-013: Microsoft Learn „Add a Custom Script to Windows Setup“ – SetupComplete.cmd ist mit OEM-Schlüssel abgeschaltet
+TWEAK_SETUP_OEM = ("Hinweis: Ist der Windows-Schlüssel ein OEM-Schlüssel (z. B. aus dem BIOS), startet Windows "
+                   "SetupComplete laut Microsoft nicht (ausser Enterprise) – dann setzt das Startskript die übrigen "
+                   "Einstellungen beim ersten Start, evtl. erst während der ersten Anmeldung (Store-Apps spätestens im "
+                   "Nachlauf nach 30 min). Die Richtlinien vor dem ersten Start wirken trotzdem.")
+
+
 def install_work(ip: str, key: bytes, port: int, iso: str, index: int, opts, disk: str,
-                 after: Callable[[Job, str | None, Exception | None], None], software: dict | None = None):
+                 after: Callable[[Job, str | None, Exception | None], None], software: dict | None = None,
+                 tweak: dict | None = None):
     """Windows-Direktinstallation: Übertragen (1/2), Teilen der install.wim (2/2, falls nötig).
-    software: {"nas_root", "names", "device"} – Programme kommen mit auf die Setup-Partition (I-020)."""
-    from okula_recovery import winsetup, winunattend
+    software: {"nas_root", "names", "device"} – Programme kommen mit auf die Setup-Partition (I-020).
+    tweak: {"template", "keys", "device"} – Windows anpassen beim Aufsetzen (Ä-046, wintweaks.choice)."""
+    from okula_recovery import winsetup, wintweaks, winunattend
 
     def work(job: Job, jm: JobManager) -> str:
         state = {"files": 0}
@@ -597,7 +611,8 @@ def install_work(ip: str, key: bytes, port: int, iso: str, index: int, opts, dis
             if software and software.get("names"):
                 soft = software_plan(software["nas_root"], list(software["names"]), lambda line: jm.log(job, line))
             jm.log(job, "Windows-Medium auf dem NAS wird gelesen")
-            plan = winsetup.plan(iso, index, opts, soft, (software or {}).get("device", ""))
+            device = (software or {}).get("device", "") or (tweak or {}).get("device", "")
+            plan = winsetup.plan(iso, index, opts, soft, device, tweak)
         except Exception as e:
             after(job, None, e)
             raise
@@ -638,6 +653,15 @@ def install_work(ip: str, key: bytes, port: int, iso: str, index: int, opts, dis
             jm.log(job, "Software: " + ", ".join(e.label for e in plan.software) + " – " + (
                 "wird beim ersten Start im Audit-Modus installiert und landet so im Master-Image"
                 if getattr(opts, "audit_mode", False) else SOFTWARE_LATER))
+        if plan.tweak:                          # Ä-046
+            jm.log(job, f"Windows anpassen ({wintweaks.choice_summary(plan.tweak)}):")
+            for line in wintweaks.describe_lines(plan.tweak["keys"]):
+                jm.log(job, line)
+            jm.log(job, TWEAK_SETUP_LATER)
+            if plan.software:
+                jm.log(job, TWEAK_SETUP_SOFTWARE.format(min=winsetup.SOFTWARE_WAIT_MIN))
+            if getattr(opts, "product_key", ""):
+                jm.log(job, TWEAK_SETUP_OEM)
         if getattr(opts, "audit_mode", False):  # I-038: was am Gerät als Nächstes zu tun ist
             jm.log(job, winunattend.AUDIT_NEXT_STEPS)
         after(job, boot, None)

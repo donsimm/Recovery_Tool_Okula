@@ -425,21 +425,30 @@ class SendFoldersDialog(Gtk.Dialog):
 
 
 class WindowsTweakDialog(Gtk.Dialog):
-    """Windows anpassen (I-039): Vorlage, Häkchen je Gruppe, automatische Anmeldung – Senden legt ein Startskript ab."""
+    """Windows anpassen (I-039): Vorlage, Häkchen je Gruppe, automatische Anmeldung – Senden legt ein Startskript ab.
+    choose (Ä-046): nur auswählen („Übernehmen“) für OS installieren, Danach anpassen und Automatisierung – ohne
+    automatische Anmeldung (kein Passwort beim Aufsetzen)."""
 
-    def __init__(self, parent: Gtk.Window, device_name: str):
+    def __init__(self, parent: Gtk.Window, device_name: str, choose: bool = False, selected=None,
+                 template: str = wintweaks.NO_TEMPLATE):
         super().__init__(title="Windows anpassen", transient_for=parent, modal=True)
+        self.choose = choose
         self.set_default_size(700, 760)
         self.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
-        self.btn = self.add_button("Senden", Gtk.ResponseType.OK)
+        self.btn = self.add_button("Übernehmen" if choose else "Senden", Gtk.ResponseType.OK)
         self.btn.get_style_context().add_class("suggested-action")
         self.template = wintweaks.NO_TEMPLATE
         self._applying = False
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=14)
         head = Gtk.Label(xalign=0, wrap=True)
-        head.set_markup(f"Einstellungen für <b>{GLib.markup_escape_text(device_name)}</b> – Windows setzt sie beim "
-                        "nächsten Start selbst um (als SYSTEM); Startmenü, Widgets und Sperrbildschirm setzt der "
-                        "Agent schon beim Senden.")
+        if choose:
+            head.set_markup(f"Auswahl für <b>{GLib.markup_escape_text(device_name)}</b> – wird beim Aufsetzen "
+                            "mitgegeben und vor der ersten Anmeldung umgesetzt (als SYSTEM). Automatische Anmeldung "
+                            "nur über „Windows anpassen …“ am Gerät.")
+        else:
+            head.set_markup(f"Einstellungen für <b>{GLib.markup_escape_text(device_name)}</b> – Windows setzt sie beim "
+                            "nächsten Start selbst um (als SYSTEM); Startmenü, Widgets und Sperrbildschirm setzt der "
+                            "Agent schon beim Senden.")
         box.pack_start(head, False, False, 0)
         row = Gtk.Box(spacing=8)
         row.pack_start(Gtk.Label(label="Vorlage", xalign=0), False, False, 0)
@@ -479,13 +488,31 @@ class WindowsTweakDialog(Gtk.Dialog):
         self.why = Gtk.Label(xalign=0, wrap=True)
         self.why.get_style_context().add_class("status-fail")
         box.pack_start(self.why, False, False, 0)
-        box.pack_start(_hint_wrapped(f"Wird beim nächsten Windows-Start umgesetzt. Protokoll: {wintweaks.LOG_PATH}",
-                                     80), False, False, 0)
-        box.pack_start(_hint_wrapped("Das Gerät muss mit dem Agent laufen; Windows vollständig heruntergefahren "
-                                     "(kein Schnellstart/Ruhezustand). Erneut senden ersetzt Einstellungen, die "
-                                     "noch nicht umgesetzt sind.", 80), False, False, 0)
+        if choose:
+            box.pack_start(_hint_wrapped("Wird mit dem Auftrag gesendet (OS installieren, Image zurückspielen, "
+                                         f"Automatisierung). Protokoll am Gerät: {wintweaks.LOG_PATH}", 80),
+                           False, False, 0)
+        else:
+            box.pack_start(_hint_wrapped(f"Wird beim nächsten Windows-Start umgesetzt. Protokoll: {wintweaks.LOG_PATH}",
+                                         80), False, False, 0)
+            box.pack_start(_hint_wrapped("Das Gerät muss mit dem Agent laufen; Windows vollständig heruntergefahren "
+                                         "(kein Schnellstart/Ruhezustand). Erneut senden ersetzt Einstellungen, die "
+                                         "noch nicht umgesetzt sind.", 80), False, False, 0)
         self.get_content_area().add(box)
         self.show_all()
+        if choose:                         # Ä-046: ohne automatische Anmeldung
+            logon = self.checks[wintweaks.AUTOLOGON]
+            logon.set_active(False)
+            logon.set_sensitive(False)
+            logon.set_tooltip_text(wintweaks.EMBED_AUTOLOGON_HINT)
+            if template in wintweaks.TEMPLATES:
+                self.combo.set_active_id(template)          # setzt die Häkchen der Vorlage …
+            self.template = template if template in wintweaks.TEMPLATES else wintweaks.NO_TEMPLATE
+            if selected is not None:                        # … danach die gespeicherte Auswahl
+                self._applying = True
+                for key, c in self.checks.items():
+                    c.set_active(key in set(selected) and key not in wintweaks.EMBED_EXCLUDED)
+                self._applying = False
         self._update()
 
     def _check(self, o: "wintweaks.Option") -> Gtk.CheckButton:
@@ -510,7 +537,7 @@ class WindowsTweakDialog(Gtk.Dialog):
 
     def _apply_template(self, name: str | None) -> None:
         self.template = name or wintweaks.NO_TEMPLATE
-        keys = wintweaks.template_keys(self.template)
+        keys = wintweaks.embed_template_keys(self.template) if self.choose else wintweaks.template_keys(self.template)
         self._applying = True
         for key, c in self.checks.items():
             c.set_active(key in keys)
@@ -527,7 +554,9 @@ class WindowsTweakDialog(Gtk.Dialog):
         if self._applying:
             return
         sel = self.selected()
-        self.state.set_text(f"Vorlage: {wintweaks.template_label(self.template, sel)}")
+        label = wintweaks.choice_label(wintweaks.choice(self.template, sel)) or "keine" if self.choose else \
+            wintweaks.template_label(self.template, sel)
+        self.state.set_text(f"Vorlage: {label}")
         on = wintweaks.AUTOLOGON in sel
         self.user.set_sensitive(on)
         self.password.set_sensitive(on)
@@ -535,6 +564,127 @@ class WindowsTweakDialog(Gtk.Dialog):
         self.btn.set_sensitive(problem is None)
         self.why.set_text(problem if problem and sel else "")
         self.why.set_visible(bool(problem and sel))
+
+
+class TweakChooser(Gtk.Box):
+    """Ä-046: „Windows anpassen“ beim Aufsetzen mitgeben (OS installieren, Danach anpassen, Automatisierung) –
+    Häkchen, Vorlage und „Einstellungen …“ (Dialog „Windows anpassen“ im Auswahlmodus, gleiche Optionen und Tooltips).
+    selection() = wintweaks.choice ({"template", "keys"}) oder None."""
+
+    TOOLTIP = ("Einstellungen wie „Windows anpassen …“ (Vorlage, danach einzeln änderbar unter „Einstellungen …“) "
+               "– werden vor der ersten Anmeldung umgesetzt (als SYSTEM, nach der Software). Startmenü, Widgets, "
+               "Sperrbildschirm und Microsoft-Benutzererfahrungen gelten schon ab dem ersten Start. Ohne automatische "
+               "Anmeldung (kein Passwort beim Aufsetzen).")
+
+    def __init__(self, on_change=None, device_name: str = ""):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        self.on_change = on_change
+        self.device_name = device_name
+        self.keys: list[str] = []
+        self._loading = False
+        row = Gtk.Box(spacing=8)
+        self.check = Gtk.CheckButton(label="Windows anpassen")
+        self.check.set_tooltip_text(self.TOOLTIP)
+        self.check.connect("toggled", lambda _c: self._toggled())
+        row.pack_start(self.check, False, False, 0)
+        row.pack_start(Gtk.Label(label="Vorlage", xalign=0), False, False, 0)
+        self.combo = Gtk.ComboBoxText()
+        for name in wintweaks.TEMPLATES:
+            self.combo.append(name, name)
+        self.combo.append(wintweaks.NO_TEMPLATE, "eigene Auswahl")
+        self.combo.set_active_id(wintweaks.EMBED_DEFAULT)
+        self.combo.set_tooltip_text("Setzt die Häkchen der Vorlage; einzeln ändern unter „Einstellungen …“")
+        self.combo.connect("changed", lambda _c: self._template_changed())
+        row.pack_start(self.combo, False, False, 0)
+        self.button = Gtk.Button(label="Einstellungen …")
+        self.button.set_tooltip_text("Häkchen einzeln wählen (gleicher Dialog wie „Windows anpassen …“)")
+        self.button.connect("clicked", lambda _b: self._edit())
+        row.pack_start(self.button, False, False, 0)
+        self.pack_start(row, False, False, 0)
+        self.summary = _hint("")
+        self.summary.set_margin_start(24)
+        self.summary.set_no_show_all(True)          # leer = ausgeblendet (auch nach show_all des Fensters)
+        self.pack_start(self.summary, False, False, 0)
+        self.blocked = ""
+        self._refresh()
+
+    # ---------- Zustand ----------
+
+    def load(self, data) -> None:
+        """Gespeicherte Auswahl anzeigen (None/leer = aus)."""
+        c = wintweaks.clean_choice(data)
+        self._loading = True
+        try:
+            self.check.set_active(c is not None)
+            self.keys = list(c["keys"]) if c else []
+            self.combo.set_active_id(c["template"] if c else wintweaks.EMBED_DEFAULT)
+        finally:
+            self._loading = False
+        self._refresh()
+
+    def selection(self) -> dict | None:
+        if not self.check.get_active() or self.blocked:
+            return None
+        return wintweaks.choice(self.combo.get_active_id() or wintweaks.NO_TEMPLATE, self.keys)
+
+    def set_blocked(self, why: str) -> None:
+        """Nicht wählbar (z. B. Master-Image im Audit-Modus) – Grund als Tooltip und Hinweis."""
+        self.blocked = why or ""
+        self._refresh()
+
+    # ---------- Ändern ----------
+
+    def _template_changed(self) -> None:
+        if self._loading:
+            return
+        name = self.combo.get_active_id() or wintweaks.NO_TEMPLATE
+        if name in wintweaks.TEMPLATES:
+            self.keys = sorted(wintweaks.embed_template_keys(name), key=wintweaks.KEYS.index)
+        self._changed()
+
+    def _toggled(self) -> None:
+        if self._loading:
+            return
+        if self.check.get_active() and not self.keys:
+            self._template_changed()
+            return
+        self._changed()
+
+    def _edit(self) -> None:
+        dlg = WindowsTweakDialog(self.get_toplevel(), self.device_name or "das Gerät", choose=True,
+                                 selected=self.keys, template=self.combo.get_active_id() or wintweaks.NO_TEMPLATE)
+        ok = dlg.run() == Gtk.ResponseType.OK
+        c = wintweaks.choice(dlg.template, dlg.selected())
+        dlg.destroy()
+        if not ok or c is None:
+            return
+        self._loading = True
+        try:
+            self.keys = list(c["keys"])
+            self.combo.set_active_id(c["template"])
+            self.check.set_active(True)
+        finally:
+            self._loading = False
+        self._changed()
+
+    def _changed(self) -> None:
+        self._refresh()
+        if self.on_change is not None:
+            self.on_change()
+
+    def _refresh(self) -> None:
+        on = self.check.get_active() and not self.blocked
+        self.check.set_sensitive(not self.blocked)
+        self.check.set_tooltip_text(self.blocked or self.TOOLTIP)
+        self.combo.set_sensitive(on)
+        self.button.set_sensitive(on)
+        if self.blocked:
+            self.summary.set_text(self.blocked)
+        elif on:
+            self.summary.set_text(wintweaks.choice_summary(self.selection()) or "Keine Einstellung gewählt.")
+        else:
+            self.summary.set_text("")
+        self.summary.set_visible(bool(self.summary.get_text()))
 
 
 class SettingsDialog(Gtk.Dialog):

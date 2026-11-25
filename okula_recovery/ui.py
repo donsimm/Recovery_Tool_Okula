@@ -3885,7 +3885,7 @@ class MainWindow(Gtk.ApplicationWindow):
         soft_root = self.root_for(dev)        # Demo-Gerät: Beispiel-Installer im Demo-Speicher
 
         def start(iso: oslib.IsoInfo, disk: dict, index: int | None, opts, snapshot: bool = False,
-                  software: list[str] | None = None) -> None:
+                  software: list[str] | None = None, tweak: dict | None = None) -> None:
             if getattr(opts, "audit_mode", False) and not self.warn_guest_agent_master(parent, dev):     # I-041
                 raise ValueError("abgebrochen (VM mit Gastagent)")       # Dialog bleibt offen, Text im Status
             if snapshot and dev.is_vm:           # Häkchen „Vorher Snapshot“; Fehler → Dialog meldet, kein Auftrag
@@ -3901,6 +3901,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
             soft = {"nas_root": soft_root, "names": list(software), "device": dev.name} \
                 if software and soft_root and kind == "install" else None
+            tw = {**tweak, "device": dev.name} if tweak and kind == "install" else None      # Ä-046
 
             def after(job, boot, error) -> None:
                 if error is None and getattr(opts, "unsupported_hardware", False):
@@ -3908,10 +3909,13 @@ class MainWindow(Gtk.ApplicationWindow):
                 GLib.idle_add(self._after_job, dev.id, job, what, boot, error, False)
                 if error is None and soft:
                     GLib.idle_add(self._software_history, dev.id, soft)
+                if error is None and tw:
+                    GLib.idle_add(self._tweak_history, dev.id, tw, "wird bei der Einrichtung vor der ersten "
+                                                                   "Anmeldung umgesetzt")
 
             if kind == "install":
                 work = jobs.install_work(agent.ip, self.key, agent.control_port, str(iso.path), index, opts,
-                                         disk["path"], after, soft)
+                                         disk["path"], after, soft, tw)
             else:
                 work = jobs.linux_install_work(agent.ip, self.key, agent.control_port, str(iso.path), iso.meta,
                                                disk["path"], int(disk["size"]), opts, after)
@@ -3932,6 +3936,16 @@ class MainWindow(Gtk.ApplicationWindow):
             text = software.history_text(chosen) if chosen else \
                 f"Software: {', '.join(soft['names'])} (wird beim ersten Start installiert)"
             self.store.add_history(dev, "software", text, ok=True)
+            win = self.device_windows.get(dev_id)
+            if win:
+                win.refresh()
+        return False
+
+    def _tweak_history(self, dev_id: str, tweak: dict, when: str) -> bool:
+        """Ä-046: Verlauf „Windows anpassen (Vorlage Clean: …) – wird … umgesetzt“."""
+        dev = self.store.devices.get(dev_id)
+        if dev is not None and wintweaks.clean_choice(tweak):
+            self.store.add_history(dev, "tweak", wintweaks.choice_history(tweak, when), ok=True)
             win = self.device_windows.get(dev_id)
             if win:
                 win.refresh()

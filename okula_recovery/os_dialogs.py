@@ -13,7 +13,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk, Pango  # noqa: E402
 
-from okula_recovery import isostick, nas, oslib, stick, win11, winunattend  # noqa: E402
+from okula_recovery import isostick, nas, oslib, stick, win11, winsetup, winunattend  # noqa: E402
 from okula_recovery.stick_dialog import iso_stick_command, run_helper, show_stick_result  # noqa: E402
 from okula_recovery.uikit import confirm, confirm_error, scrolled  # noqa: E402
 
@@ -518,9 +518,10 @@ class InstallDialog(Gtk.Dialog):
 
     def __init__(self, parent: Gtk.Window, agent, isos: list[oslib.IsoInfo], device, start_job,
                  preselect: str | None = None, nas_root: str | None = None):
-        """start_job(iso, disk_info, edition_index|None, optionen, snapshot=…, software=[…]) – Optionen: WinOptions
-        oder LinuxOptions; snapshot: nur VMs, Häkchen „Vorher Snapshot“; software (I-020): gewählte Programme aus
-        der Software-Bibliothek (Ä-041, nur Windows)."""
+        """start_job(iso, disk_info, edition_index|None, optionen, snapshot=…, software=[…], tweak={…}) – Optionen:
+        WinOptions oder LinuxOptions; snapshot: nur VMs, Häkchen „Vorher Snapshot“; software (I-020): gewählte
+        Programme aus der Software-Bibliothek (Ä-041, nur Windows); tweak (Ä-046): Auswahl „Windows anpassen“
+        (wintweaks.choice, nur Windows, nicht im Audit-Modus)."""
         from okula_recovery.software_ui import SoftwareChooser
         from okula_recovery import linuxsetup
         self.linuxsetup = linuxsetup
@@ -613,6 +614,10 @@ class InstallDialog(Gtk.Dialog):
         self.software = SoftwareChooser(height=110)
         wbox.attach(self.software, 0, len(rows), 3, 1)
         self.software.load(nas_root)
+        # Ä-046: Windows anpassen beim Aufsetzen – nicht beim Master-Image (Audit-Modus)
+        from okula_recovery.automation_tab import TweakChooser
+        self.tweak = TweakChooser(on_change=self._update, device_name=device.name)
+        wbox.attach(self.tweak, 0, len(rows) + 1, 3, 1)
         self.win.add(wbox)
         grid.attach(self.win, 0, r, 2, 1)
         r += 1
@@ -834,6 +839,9 @@ class InstallDialog(Gtk.Dialog):
             w.set_sensitive(self.w_account.get_active() and not audit)
         for w in (self.name, self.name_hint):
             w.set_sensitive(not audit)
+        blocked = winsetup.TWEAK_AUDIT if audit else ""
+        if self.tweak.blocked != blocked:                       # Ä-046
+            self.tweak.set_blocked(blocked)
         disk = self.disks.get(self.disk_combo.get_active_id() or "")
         self.part_store.clear()
         ok = bool(iso and disk and (self.edition.get_active_id() or not windows))
@@ -942,6 +950,9 @@ class InstallDialog(Gtk.Dialog):
         try:
             extra = {"software": self.software.selected()} if iso.family == "windows" and self.software.selected() \
                 else {}
+            tweak = self.tweak.selection() if iso.family == "windows" and not self.w_audit.get_active() else None
+            if tweak:                                                   # Ä-046
+                extra["tweak"] = tweak
             self.start_job(iso, disk, index, self.options(),
                            snapshot=self.snapshot.get_visible() and self.snapshot.get_active(), **extra)
         except Exception as e:
