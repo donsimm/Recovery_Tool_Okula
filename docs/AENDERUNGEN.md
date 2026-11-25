@@ -16,7 +16,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 2 | 0 | 0 |
-| 🔧 Änderungen | 7 | 0 | 0 |
+| 🔧 Änderungen | 6 | 0 | 0 |
 | 💡 Ideen | 22 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
