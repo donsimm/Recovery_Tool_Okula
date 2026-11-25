@@ -1,6 +1,6 @@
 # I-012 – BitLocker entsperren (lesend, für das Backup der Benutzerdaten)
 
-Status: Entwurf · erstellt 25.11.2026 von der Projektleitung · Entscheide Dominik 25.11. · Freigabe: –
+Status: freigegeben · erstellt 25.11.2026 von der Projektleitung · Entscheide Dominik 25.11. · Freigabe: Dominik 25.11.
 
 ## Rolle und Einstieg
 
