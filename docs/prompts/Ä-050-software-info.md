@@ -1,6 +1,6 @@
 # Ä-050 – Software-Bibliothek: Info-Feld (Spalte und Reiter)
 
-Status: freigegeben · erstellt 26.11.2026 von der Projektleitung · Wunsch Dominik 26.11. · Freigabe: Dominik 26.11.
+Status: abgenommen (Okuli 26.11., Commit e00dbe9) · erstellt 26.11.2026 von der Projektleitung · Wunsch Dominik 26.11. · Freigabe: Dominik 26.11.
 
 ## Rolle und Einstieg
 
