@@ -1,6 +1,6 @@
 # I-042 – Microsoft 365 Apps einzeln installieren (Office, Click-to-Run)
 
-Status: freigegeben · erstellt 26.11.2026 von der Projektleitung · Entscheide Dominik 25./26.11. · Freigabe: Dominik 26.11.
+Status: abgenommen (Okuli 26.11., Commits 939ede5, 79d3ad0, c79192a) · erstellt 26.11.2026 von der Projektleitung · Entscheide Dominik 25./26.11. · Freigabe: Dominik 26.11.
 
 ## Rolle und Einstieg
 
