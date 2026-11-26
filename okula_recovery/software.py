@@ -146,8 +146,39 @@ KINDS: dict[str, tuple[str, str, tuple[int, ...], str]] = {
                  "selbst still läuft; " + SFX_HINT),
     "7zsfx": ("7-Zip-SFX (selbstentpackend)", "", DEFAULT_EXIT_CODES, SFX_HINT),
     "winrar": ("WinRAR-SFX (selbstentpackend)", "", DEFAULT_EXIT_CODES, SFX_HINT),
+    # I-042: Office Deployment Tool (setup.exe, Microsoft Learn „Overview of the Office Deployment Tool“, abgerufen
+    # 26.11.2026) – die Konfiguration (OFFICE_XML) erzeugt das Tool je Auftrag (office_config_xml), 0 = ok
+    "office": ("Office (Microsoft 365 Apps)", '/configure "{ordner}\\okula-office.xml"', (0,), ""),
     "": ("unbekannt", "", DEFAULT_EXIT_CODES, UNKNOWN_HINT),
 }
+
+# ---------- Office (Microsoft 365 Apps, Click-to-Run) – I-042 ----------
+# Quelle A: mit „setup.exe /download“ geladener Ordner (setup.exe, download.xml, Office\Data\<Version>\…) →
+# Installation ohne Internet (SourcePath = Ordner am Gerät). Quelle B: nur setup.exe → das Gerät lädt Office beim
+# Installieren aus dem Internet (kein SourcePath). Aktiviert wird nie im Tool (Anmeldung des Mieters).
+OFFICE = "office"
+OFFICE_KEY = "office"                                 # Vergleichsschlüssel: neue Version löst alte ab
+OFFICE_PROGRAM = "Microsoft 365 Apps"
+OFFICE_PUBLISHER = "Microsoft"
+OFFICE_XML = "okula-office.xml"                       # erzeugte Konfiguration neben setup.exe (am Gerät)
+OFFICE_LOCAL, OFFICE_ONLINE = "local", "internet"     # Quelle A / B
+OFFICE_TIMEOUT = 90                                   # min – mehrere GB (Quelle B: Download), Rest PROGRAM_TIMEOUT
+OFFICE_LANGUAGE = "de-de"
+OFFICE_CHANNEL = "Current"                            # „Deploy Microsoft 365 Apps from the cloud“: Standard
+OFFICE_PRODUCTS = (("O365BusinessRetail", "Apps for business"), ("O365ProPlusRetail", "Apps for enterprise"))
+# (ExcludeApp-ID, Anzeige, vorausgewählt) – „Configuration options for the Office Deployment Tool“: OneDrive = Groove
+OFFICE_APPS = (("Word", "Word", True), ("Excel", "Excel", True), ("PowerPoint", "PowerPoint", True),
+               ("Outlook", "Outlook (klassisch)", True), ("OneNote", "OneNote", True), ("Groove", "OneDrive", True),
+               ("Access", "Access", False), ("Publisher", "Publisher", False))
+# immer ausgeschlossen: Skype for Business, neues Outlook, Teams (eigener Bibliothekseintrag, falls gewünscht)
+OFFICE_ALWAYS_EXCLUDED = ("Lync", "OutlookForWindows", "Teams")
+OFFICE_ACTIVATION = "Aktivierung: Mieter meldet sich mit seinem Microsoft-365-Konto an"
+OFFICE_OFFLINE = "Office lädt aus dem Internet – Gerät war offline"
+OFFICE_VERSION_RE = re.compile(r"\d+\.\d+\.\d+\.\d+")
+# Kennungen des ODT-setup.exe in der Versionsinfo (neben „Microsoft“ als Hersteller): Click-to-Run allein gilt, die
+# übrigen nur zusammen mit „Office“. Nicht aus einer Quelle, am echten ODT zu prüfen (docs/TESTS.md „I-042“).
+OFFICE_C2R_MARKS = ("click-to-run", "clicktorun")
+OFFICE_TOOL_MARKS = ("deployment tool", "bootstrapper")
 # Typen mit sicherem Namen und Version aus der Datei selbst (gehen dem Datei-/Ordnernamen vor)
 AUTHORITATIVE = ("msi", "msp", "msu", "msix", "qtifw")
 SQUIRREL_NOTE = "Squirrel installiert nur für den angemeldeten Benutzer – von Hand installieren"
@@ -419,6 +450,87 @@ def detect(path: str | Path) -> dict:
         return _result("")
 
 
+def _version_strings(path: Path) -> dict[str, str]:
+    """Versionsinfo einer Windows-Programmdatei (leer, wenn keine oder nicht lesbar)."""
+    try:
+        with installerinfo.Blob(path) as blob:
+            pe = installerinfo.pe_info(blob)
+            if pe is None:
+                return {}
+            res = installerinfo.resources(blob, pe, 16, limit=1)
+            vi = installerinfo.parse_version_resource(res[0]) if res else {}
+            if not any(k in vi for k in VERSION_KEYS):
+                vi.update(version_info(blob.read(0, HEAD_BYTES)))
+            return vi
+    except (OSError, ValueError, struct.error):
+        return {}
+
+
+def _subdir_ci(folder: Path, name: str) -> Path | None:
+    """Unterordner ohne Rücksicht auf Gross-/Kleinschreibung (keine Links)."""
+    try:
+        with os.scandir(folder) as it:
+            for e in it:
+                if e.name.lower() == name.lower() and e.is_dir(follow_symlinks=False):
+                    return Path(e.path)
+    except OSError:
+        pass
+    return None
+
+
+def office_data_versions(folder: Path) -> list[str]:
+    """Versionen unter Office\\Data\\<Version>\\ neben setup.exe (Quelle A), aufsteigend; leer = Quelle B."""
+    office = _subdir_ci(folder, "Office")
+    data = _subdir_ci(office, "Data") if office else None
+    if data is None:
+        return []
+    try:
+        found = [e.name for e in os.scandir(data)
+                 if e.is_dir(follow_symlinks=False) and OFFICE_VERSION_RE.fullmatch(e.name)]
+    except OSError:
+        return []
+    return sorted(found, key=_version_tuple)
+
+
+def _odt_xml_beside(folder: Path) -> bool:
+    """Liegt neben setup.exe eine ODT-Konfiguration (z. B. download.xml: <Configuration> mit <Add>)?"""
+    try:
+        files = [e for e in os.scandir(folder) if e.name.lower().endswith(".xml") and e.is_file(follow_symlinks=False)]
+    except OSError:
+        return False
+    for e in files[:20]:
+        try:
+            with open(e.path, "rb") as f:
+                text = f.read(64 * 1024).decode("utf-8", errors="replace").lower()
+        except OSError:
+            continue
+        if "<configuration" in text and "<add" in text and "<product" in text:
+            return True
+    return False
+
+
+def office_detect(installer: Path) -> dict | None:
+    """I-042: Ist installer das setup.exe des Office Deployment Tool? {versions, source} bzw. None.
+
+    Nur sicher erkannt: Datei „setup.exe“, Hersteller Microsoft in der Versionsinfo und entweder „Click-to-Run“ in
+    der Versionsinfo oder „Office“ zusammen mit Office\\Data\\<Version>, einer ODT-Konfiguration daneben bzw.
+    „Deployment Tool“/„Bootstrapper“. Andere setup.exe (auch Office-MSI-Pakete) bleiben bei der üblichen Erkennung."""
+    if installer.name.lower() != "setup.exe" or not installer.is_file():
+        return None
+    vi = _version_strings(installer)
+    if "microsoft" not in vi.get("CompanyName", "").lower():
+        return None
+    text = " ".join(vi.get(k, "") for k in ("ProductName", "FileDescription", "InternalName", "OriginalFilename",
+                                            "Comments")).lower()
+    versions = office_data_versions(installer.parent)
+    c2r = any(m in text.replace(" ", "") for m in (m.replace(" ", "") for m in OFFICE_C2R_MARKS))
+    office = "office" in text and (bool(versions) or any(m in text for m in OFFICE_TOOL_MARKS)
+                                   or _odt_xml_beside(installer.parent))
+    if not (c2r or office):
+        return None
+    return {"versions": versions, "source": OFFICE_LOCAL if versions else OFFICE_ONLINE}
+
+
 # ---------- Programmname und Version aus dem Namen ----------
 
 VERSION_RE = re.compile(r"\d+(?:[._]\d+)+")
@@ -615,7 +727,28 @@ class Entry:
 
     @property
     def kind_label(self) -> str:
-        return KINDS.get(self.kind, KINDS[""])[0] if self.mode != COPY else "Ordner"
+        if self.mode == COPY:
+            return "Ordner"
+        return "Office" if self.kind == OFFICE else KINDS.get(self.kind, KINDS[""])[0]
+
+    @property
+    def is_office(self) -> bool:
+        """Office (Microsoft 365 Apps, I-042) zum Installieren – Optionen je Auftrag (OfficeOptions)."""
+        return self.kind == OFFICE and self.mode == INSTALL
+
+    @property
+    def office_local(self) -> bool:
+        """Quelle A (Office\\Data im Eintrag, Installation ohne Internet) – sonst lädt das Gerät aus dem Internet."""
+        return self.meta.get("office_source") == OFFICE_LOCAL
+
+    @property
+    def office_note(self) -> str:
+        """„Quelle: lokal, Version …, … GB“ bzw. „lädt beim Installieren aus dem Internet“ (Angaben unter der Liste)."""
+        if not self.is_office:
+            return ""
+        if self.office_local:
+            return f"Quelle: lokal, Version {self.version or '?'}, {_size(self.size)} – installiert ohne Internet"
+        return "Quelle: lädt beim Installieren aus dem Internet (kein Ordner Office\\Data im Eintrag)"
 
     @property
     def args(self) -> str:
@@ -669,7 +802,7 @@ class Entry:
     @property
     def note(self) -> str:
         """Hinweis für die Liste (neue Version, Squirrel, Installer wählen, was bei „Parameter fehlt“ zu tun ist)."""
-        notes = []
+        notes = [self.office_note] if self.office_note else []
         if self.adopted_from:
             notes.append(f"Parameter von „{self.adopted_from}“ übernommen (neue Version)")
         if self.mode == INSTALL and self.installer not in self.candidates:
@@ -740,6 +873,12 @@ def _apply_detection(meta: dict, installer: Path) -> None:
     """Erkennung übernehmen: Typ, Parameter, Rückgabewerte, Art, Hinweise, Hersteller; Name aus der Datei geht dem
     Datei-/Ordnernamen vor. Version: aus dem Namen, ausser die Datei ist massgebend (MSI, Qt IFW, App-Paket, MSU)
     bzw. der Name hat nur eine Zahl ohne Punkt (z. B. Build „701“ statt 3.3.1)."""
+    office = office_detect(installer)
+    if office is not None:
+        _apply_office(meta, office, installer)
+        return
+    meta.pop("office_source", None)
+    meta.pop("office_versions", None)
     found = detect(installer)
     meta.update(kind=found["kind"], detected=found["kind"], args=found["args"], detected_args=found["args"],
                 exit_codes=list(found["exit_codes"]), mode=found["mode"], note=found["note"], hint=found["hint"],
@@ -750,6 +889,18 @@ def _apply_detection(meta: dict, installer: Path) -> None:
     version, current = found["version"][:60], str(meta.get("program_version") or "")
     if version and (not current or found["authoritative"] or ("." not in current and "." in version)):
         meta["program_version"] = version
+    _stamp(meta, installer)
+
+
+def _apply_office(meta: dict, office: dict, installer: Path) -> None:
+    """I-042: Office-Eintrag – Programm „Microsoft 365 Apps“, Version aus Office\\Data\\<Version> (Quelle A, sonst
+    leer), Parameter fest (/configure mit der je Auftrag erzeugten Konfiguration) → sofort „bereit“."""
+    label, args, codes, _hint = KINDS[OFFICE]
+    versions = list(office["versions"])
+    meta.update(kind=OFFICE, detected=OFFICE, args=args, detected_args=args, exit_codes=list(codes), mode=INSTALL,
+                note="", hint="", publisher=OFFICE_PUBLISHER, program=OFFICE_PROGRAM,
+                program_version=versions[-1] if versions else "", key=OFFICE_KEY,
+                office_source=office["source"], office_versions=versions)
     _stamp(meta, installer)
 
 
@@ -782,6 +933,8 @@ def _adopt(meta: dict, name: str, others: dict[str, dict], candidates: list[str]
             continue
         same = (key and other.get("key") == key) or (prog and name_key(str(other.get("program") or "")) == prog)
         useful = other.get("mode") in (COPY, MANUAL) or str(other.get("args") or "").strip()
+        if OFFICE in (meta.get("kind"), other.get("kind")):
+            useful = False            # I-042: Office hat feste Parameter – nichts übernehmen (Info schon)
         order = (_version_tuple(str(other.get("program_version") or "")), other_name, other)
         if same and useful:
             matches.append(order)
@@ -912,6 +1065,8 @@ def redetect(nas_root: str | Path, name: str, overwrite_edited: bool = False) ->
     for k in KEEP_ON_REDETECT:
         if k in entry.meta:
             meta[k] = entry.meta[k]
+    if meta.get("kind") == OFFICE:
+        meta["key"] = OFFICE_KEY      # I-042: neue Office-Version löst diese ab (resolve über den Schlüssel)
     if meta.get("mode") == INSTALL and not str(meta.get("args") or "").strip():
         _adopt(meta, entry.name, {e.name: e.meta for e in entries}, entry.candidates)
     meta["redetected"] = time.strftime("%Y-%m-%d %H:%M:%S")

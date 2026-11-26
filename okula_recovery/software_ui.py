@@ -376,7 +376,7 @@ class SoftwareLibraryWindow(Gtk.Window):
             self.store.append([e.name, e.program, e.version, e.kind_label, e.args if install else "–",
                                ", ".join(str(c) for c in e.exit_codes) if install else "–", e.status,
                                nas.format_size(e.size), e.size, GLib.markup_escape_text("\n".join(tip)),
-                               install, e.publisher,
+                               install and not e.is_office, e.publisher,      # I-042: Office-Parameter fest
                                software.first_line(e.info), "\n" not in e.info, e.search_text])
         counts = {s: sum(1 for e in result if e.status == s) for s in (software.READY, software.MISSING)}
         summary = (f"{len(result)} Einträge · {counts[software.READY]} bereit · "
@@ -755,13 +755,17 @@ class SoftwareEditDialog(Gtk.Dialog):
     def _update(self) -> None:
         install = self.mode.get_active_id() == software.INSTALL
         for w in (self.args, self.codes, self.installer):
-            w.set_sensitive(install)
+            w.set_sensitive(install and not self._office())
+
+    def _office(self) -> bool:
+        """I-042: Office – Parameter und Konfiguration erzeugt das Tool je Auftrag (nicht von Hand)."""
+        return self.entry.kind == software.OFFICE and self.mode.get_active_id() == software.INSTALL
 
     def values(self) -> dict:
         out = {"program": self.program.get_text(), "version": self.version.get_text(),
                "publisher": self.publisher.get_text(), "mode": self.mode.get_active_id() or software.INSTALL,
                "info": self.info_text()}
-        if out["mode"] == software.INSTALL:
+        if out["mode"] == software.INSTALL and not self._office():
             out.update(args=self.args.get_text(), exit_codes=self.codes.get_text())
             if self.entry.is_dir:
                 out["installer"] = self.installer.get_active_id() or ""
@@ -776,7 +780,8 @@ def detail_markup(entry: software.Entry) -> str:
     """Zeile unter der Liste: „Typ: Qt Installer Framework · Hersteller: … · Installer: …“, darunter bei
     „Parameter fehlt“ der Hinweis, was zu tun ist (Ä-043)."""
     esc = GLib.markup_escape_text
-    parts = [f"<b>Typ:</b> {esc(entry.kind_label)}"]
+    kind = software.KINDS[software.OFFICE][0] if entry.is_office else entry.kind_label
+    parts = [f"<b>Typ:</b> {esc(kind)}"]
     if entry.publisher:
         parts.append(f"<b>Hersteller:</b> {esc(entry.publisher)}")
     if entry.installer:
