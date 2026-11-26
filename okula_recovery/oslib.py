@@ -28,7 +28,7 @@ from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Callable
 
-from okula_recovery import nas, nasfiles, udf
+from okula_recovery import folder_colors, nas, nasfiles, udf
 
 OS_DIR = "OS"
 CATEGORIES = {"windows": "Windows", "linux": "Linux", "other": "Sonstige"}
@@ -482,6 +482,21 @@ def delete_folder(root: str | Path, rel: str) -> None:
     for e in entries:  # verwaiste Beschreibungen
         e.unlink()
     path.rmdir()
+
+
+def folder_color(root: str | Path, rel: str) -> str | None:
+    """Farbe des OS-Ordners (I-043) oder None; Farbdatei wie alle Punktdateien unsichtbar."""
+    try:
+        return folder_colors.get_color(_dir(root, rel)) if rel else None
+    except (OsLibError, nasfiles.FileError):
+        return None
+
+
+def set_folder_color(root: str | Path, rel: str, key: str | None) -> None:
+    path = _dir(root, rel)
+    if not rel or not path.is_dir():
+        raise OsLibError("Ordner nicht gefunden")
+    folder_colors.set_color(path, key)
 
 
 def _free_name(dest: Path, name: str) -> Path:

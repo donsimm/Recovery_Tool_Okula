@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Callable
 
-from okula_recovery import nas, textnorm
+from okula_recovery import folder_colors, nas, textnorm
 
 # Zeichen, die SMB/Windows in Namen nicht erlaubt
 FORBIDDEN_CHARS = set('/\\:*?"<>|\0')
@@ -96,6 +96,8 @@ def list_dir(root: str | Path, rel: str = "") -> list[Entry]:
     for e in os.scandir(path):
         if e.name.startswith(".") and e.name.endswith(".okula.json"):
             continue  # Beschreibung einer ISO (Betriebssysteme) – gehört zur ISO, nicht in die Liste
+        if folder_colors.is_color_file(e.name):
+            continue  # Farbe des Ordners (folder_colors, I-043) – kein Inhalt
         try:
             st = e.stat(follow_symlinks=False)
             is_dir = e.is_dir(follow_symlinks=False)

@@ -14,7 +14,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from okula_recovery import distribute, nas, nasfiles, oslib
+from okula_recovery import distribute, folder_colors, nas, nasfiles, oslib
 
 ARCHIVE_DIR = "Archiv"
 UNSORTED_DIR = "images"  # Ziel für „zurück zu Nicht einsortiert“, hier legt das Tool auch neue Images ab
@@ -98,7 +98,7 @@ def scan(root: str | Path) -> Tree:
             return folder
         for e in entries:
             if e.name.startswith("."):
-                continue
+                continue      # versteckt, u. a. die Farbe des Ordners (folder_colors)
             p = Path(e.path)
             info = nas.image_at(p, root)
             if info:
@@ -145,9 +145,24 @@ def delete_folder(root: str | Path, rel: str) -> None:
     path = _folder_path(root, rel)
     if not rel or not path.is_dir():
         raise ArchiveError("Ordner nicht gefunden")
-    if any(path.iterdir()):
+    if not folder_colors.only_color_file(path):
         raise ArchiveError(f"„{path.name}“ ist nicht leer – zuerst Images und Unterordner verschieben")
-    path.rmdir()
+    folder_colors.remove_empty(path)
+
+
+def folder_color(root: str | Path, rel: str) -> str | None:
+    """Farbe des Archiv-Ordners (I-043) oder None."""
+    try:
+        return folder_colors.get_color(_folder_path(root, rel)) if rel else None
+    except (ArchiveError, nasfiles.FileError):
+        return None
+
+
+def set_folder_color(root: str | Path, rel: str, key: str | None) -> None:
+    path = _folder_path(root, rel)
+    if not rel or not path.is_dir():
+        raise ArchiveError("Ordner nicht gefunden")
+    folder_colors.set_color(path, key)
 
 
 def _height(path: Path) -> int:

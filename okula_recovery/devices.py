@@ -18,7 +18,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 
-from okula_recovery import nasfiles, textnorm
+from okula_recovery import folder_colors, nasfiles, textnorm
 
 MAX_DEPTH = 3
 MAX_HISTORY = 500
@@ -191,6 +191,8 @@ class DeviceStore:
 
             def walk(path: Path, rel: str) -> None:
                 for e in sorted(os.scandir(path), key=lambda e: e.name.lower()):
+                    if e.name.startswith("."):
+                        continue      # z. B. Farbe des Ordners (folder_colors) – kein Gerät, kein Ordner
                     p = Path(e.path)
                     if e.is_dir(follow_symlinks=False) and len(PurePosixPath(rel).parts) < MAX_DEPTH:
                         sub = str(PurePosixPath(rel) / e.name) if rel else e.name
@@ -526,9 +528,9 @@ class DeviceStore:
         path = self._folder(rel)
         if not rel or not path.is_dir():
             raise DeviceError("Ordner nicht gefunden")
-        if any(path.iterdir()):
+        if not folder_colors.only_color_file(path):
             raise DeviceError(f"„{path.name}“ ist nicht leer – zuerst Geräte und Unterordner verschieben")
-        path.rmdir()
+        folder_colors.remove_empty(path)
         self.load()
 
     def move_device(self, dev: Device, folder: str) -> None:
@@ -565,6 +567,19 @@ class DeviceStore:
             shutil.move(str(src), str(target))
             self.load()
         return str(PurePosixPath(dest) / src.name) if dest else src.name
+
+    def folder_color(self, rel: str) -> str | None:
+        """Farbe des Ordners (I-043) oder None."""
+        try:
+            return folder_colors.get_color(self._folder(rel)) if rel else None
+        except (DeviceError, nasfiles.FileError):
+            return None
+
+    def set_folder_color(self, rel: str, key: str | None) -> None:
+        path = self._folder(rel)
+        if not rel or not path.is_dir():
+            raise DeviceError("Ordner nicht gefunden")
+        folder_colors.set_color(path, key)
 
     def in_folder(self, rel: str) -> list[Device]:
         return sorted((d for d in self.devices.values() if d.folder == rel), key=lambda d: d.name.lower())

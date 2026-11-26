@@ -110,7 +110,8 @@ def _device_files(base: Path) -> list[tuple[str, Path]]:
         dirs[:] = [d for d in dirs if not (Path(root) / d).is_symlink()]
         for name in files:
             p = Path(root) / name
-            if name.endswith(".json") and not p.is_symlink():
+            # Punktdateien (z. B. Farbe des Ordners, folder_colors) sind keine Geräte
+            if name.endswith(".json") and not name.startswith(".") and not p.is_symlink():
                 out.append(((rel_root / name).as_posix(), p))
     return sorted(out)
 
