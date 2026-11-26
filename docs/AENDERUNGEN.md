@@ -15,7 +15,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
-| 🐞 Bugs | 5 | 0 | 0 |
+| 🐞 Bugs | 6 | 0 | 0 |
 | 🔧 Änderungen | 10 | 0 | 0 |
 | 💡 Ideen | 22 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
@@ -28,7 +28,7 @@ Frühere Stände: Protokoll unten und `git log`.
 **Als Nächstes** (Reihenfolge Dominik 25.11.):
 1. ~~B-027, B-028~~ erledigt 25.11. (am realen System ungeprüft, [TESTS.md](TESTS.md) „B-027“, „B-028“). Klein dazu: Startdialog bei kaputter Schlüsseldatei (`ui.py:135`) und Verlauf „abgebrochen“ von Hand gestarteter Aufträge (`ui.py:4202`) → bei Ä-048.
 2. ~~I-012~~ BitLocker entsperren erledigt 25.11. (am realen System ungeprüft, [TESTS.md](TESTS.md) „I-012“; neuer Agent-Stick und Netzwerkstart nötig). Offen dazu: Ausführungsrecht `packaging/okula-bitlocker` im Repo (install.sh setzt 0755), Schlüssel beim Zusammenführen zweier Geräte übernehmen.
-3. ~~I-042~~ Office und ~~Ä-050~~ Info-Feld erledigt 26.11. (am Gerät ungeprüft, TESTS.md „I-042“, „Ä-050“). ~~Ä-051~~ Ordner senden: Software wie Content erledigt 26.11. Jetzt **Ä-052 + B-029** USB-Vorgänge im Hintergrund, Abbrechen zuverlässig.
+3. ~~I-042~~ Office und ~~Ä-050~~ Info-Feld erledigt 26.11. (am Gerät ungeprüft, TESTS.md „I-042“, „Ä-050“). ~~Ä-051~~ Ordner senden: Software wie Content erledigt 26.11. Jetzt **Ä-052 + B-029** USB-Vorgänge im Hintergrund, Abbrechen zuverlässig, parallel **B-030** NAS-Umbenennen (Start 12:51).
 4. **I-043** Ordner einfärben (Geräteliste und Archiv).
 5. Danach: Kleines aus dem VM-Test (**Ä-047**, **B-023**, **B-024**), Datensicherheit (**I-016**, **I-006**, **Ä-003**),
    **I-017** Rescue, **I-011** Multicast; **Ä-048**/**Ä-049** und zweite Review-Runde.
@@ -41,6 +41,7 @@ steht im jeweiligen Protokoll-Eintrag.
 
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
+| B-030 | 🟡 | in Arbeit | Dominik | **Laden in die Software-Bibliothek scheitert beim Umbenennen auf dem NAS.** 26.11. 11:44 Office-Ordner (3,9 GB): Kopie und Erkennung ok, dann `[Errno 13] Keine Berechtigung` bei `.partial` → `office-16.0.20625.20142`; vermutlich noch offene Dateien (CIFS deferred close / NAS-Indexierung). Umbenennen mit Wiederholung an allen `.partial`-Stellen. Prompt [B-030](prompts/B-030-nas-umbenennen.md) | 26.11. |
 | B-029 | 🟡 | in Arbeit | Dominik | **Abbrechen beim USB-Klonen hängt, wenn ein Stick wegfällt.** 26.11. 09:29: *USB klonen* sdb→sdc, 12 s später beide Sticks „capacity … to 0“/„USB disconnect“, danach neue Namen (sda/sdb/sdc); *Abbrechen* hing („Wird abgebrochen …“), weil „CANCEL“ den in I/O hängenden Root-Helfer nicht erreicht. Abbrechen erzwingen, „Datenträger getrennt“, Seriennummer statt Gerätename. Prompt [Ä-052/B-029](prompts/AE-052-usb-im-hintergrund.md) | 26.11. |
 | B-023 | ⚪ | offen | Okuli | **Protokoll „Windows anpassen“ uneinheitlich, Startmenü meldet Hinweis trotz Paket.** VM-Test 25.11. (VM-Win11-clean, Direktinstallation, Vorlage Clean geändert, Pro Build 26200): Startmenü zeigt nur die Okula-Kacheln, `StartPins.ppkg` vom Tool installiert – trotzdem steht in der Zeile „Startmenü: Werbe-Kacheln entfernen“ und in „Wiederinstallation von Werbe-Apps sperren“ weiter der lange Pro-Hinweis (WhatsApp, LinkedIn, Adobe Express … von Hand lösen). Erwartet laut B-022: knappes „ok“, wenn das Paket greift. Zudem schreibt die erste Zeile (vor dem ersten Start, `winsetup.py`) „Startmenue“ und „ - “ statt Umlaut und „–“ und verweist auf eine „Zeile Startmenue beim ersten Start“, die es nicht gibt | 25.11. |
 | B-024 | ⚪ | offen | Okuli | **OneDrive entfernen meldet ok trotz Fehlercode.** Protokoll 25.11.: „OneDrive entfernen (OneDriveSetup /uninstall: -2147219813, Autostart entfernt: 2 Profile)“ mit Status ok. Rückgabewert prüfen (bekannter harmloser Code oder echter Fehler?) und entsprechend Hinweis statt ok melden | 25.11. |
