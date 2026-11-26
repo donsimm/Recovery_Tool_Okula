@@ -1031,3 +1031,31 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stic
       stehen (und fragt nicht nach, wenn nur die Info geändert wurde)
 - [ ] Rechtsklick auf ein Gerät → *Software installieren …*: Tooltip der Zeile enthält „Info: …“, keine neue Spalte
 - [ ] Demo-Gerät: Beispiel *VLC media player* hat eine Info (nur bei neu angelegtem Demo-Speicher)
+
+### I-042 Office (Microsoft 365 Apps) einzeln installieren
+Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stick). Vorher unter Windows Office mit
+dem ODT herunterladen (Hilfe F1 → *Software installieren* → Abschnitt „Office (Microsoft 365 Apps)“).
+- [ ] *Extras → Software-Bibliothek …* → *Ordner laden …* mit dem ODT-Ordner (`setup.exe`, `download.xml`,
+      `Office\Data\<Version>`) → Eintrag „Microsoft 365 Apps“, Typ „Office“, Version wie der Ordner unter
+      `Office\Data`, Hersteller Microsoft, Status **bereit**; unter der Liste „Quelle: lokal, Version …, … GB“.
+      **Wird er nicht als Office erkannt:** Versionsinfo des echten `setup.exe` melden (Eigenschaften → Details:
+      Dateibeschreibung, Produktname, Copyright) – die Kennungen sind nicht belegt
+- [ ] Neuere Office-Version laden → eigener Eintrag, alte bleibt; alte löschen → gespeicherte Auswahl
+      (Automatisierung) nimmt die neue
+- [ ] Rechtsklick auf ein Gerät → *Software installieren …* → Office anhaken: darunter Produkt, Häkchen je App
+      (Word, Excel, PowerPoint, Outlook (klassisch), OneNote, OneDrive an; Access, Publisher aus), Hinweis
+      „Aktivierung: Mieter meldet sich …“; zweiter Office-Eintrag nimmt das Häkchen des ersten weg
+- [ ] Automatisierung bzw. Vorlage mit Office und geänderten Apps speichern, Tool neu starten → Produkt und Apps
+      wieder wie gespeichert
+- [ ] VM (Windows 11): nur **Word + Excel** wählen, senden, Neustart → `C:\Windows\Temp\okula-software.log` „ok …
+      Rückgabewert 0“; im Startmenü nur Word und Excel (kein PowerPoint, OneNote, Outlook, **kein Teams, kein neues
+      Outlook**), `okula-office.xml` war neben `setup.exe` (Log-Zeile), Ordner danach gelöscht
+- [ ] Word starten → Anmeldung mit einem Microsoft-365-Konto möglich, kein Schlüssel abgefragt; Office →
+      Konto: Updates aktiviert, Kanal „Aktueller Kanal“
+- [ ] Danach erneut mit Word + Excel + PowerPoint senden → PowerPoint kommt dazu (neue App-Auswahl gilt)
+- [ ] Quelle B: nur `setup.exe` mit *Ins Tool laden …* → unter der Liste „lädt beim Installieren aus dem Internet“;
+      an VM **mit** Internet installieren → ok; **ohne** Internet (Netzwerk der VM getrennt) → im Protokoll
+      „FEHLER … Office lädt aus dem Internet – Gerät war offline“ (bzw. „Verbindung prüfen“), nicht ok; dabei
+      prüfen, wie schnell `setup.exe` ohne Internet aufgibt (Grenze 90 min)
+- [ ] Windows-Direktinstallation (*OS installieren …*) mit Office (Quelle A): Setup-Partition gross genug (Log
+      nennt Software in GB), Office nach dem ersten Start installiert; keine Datei über 4 GB in `Office\Data`

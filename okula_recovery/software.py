@@ -27,6 +27,11 @@ Erkennung ohne Ausführen (Ä-043; Leser in installerinfo.py, Typen in KINDS, Qu
 - sonst „Parameter fehlt“ mit Hinweis (erkannter Typ bzw. unbekannt, was zu tun ist) – nicht wählbar, bis
   Parameter hinterlegt sind. „Neu erkennen“ (redetect) wendet die Erkennung auf schon geladene Einträge an.
 
+Office (I-042): setup.exe des Office Deployment Tool (office_detect) mit Office\\Data\\<Version> (Quelle A, ohne
+Internet) bzw. allein (Quelle B, Download am Gerät). Produkt und Apps wählt der Auftrag (OfficeOptions, gespeichert
+als „<Eintrag>|<Produkt>:<Apps>“); das Skript schreibt die Konfiguration (office_config_xml) neben setup.exe und ruft
+„setup.exe /configure“. Kein Schlüssel – der Mieter meldet sich mit seinem Microsoft-365-Konto an.
+
 Neue Version: gleicher Programmname (aus dem Datei-/Ordnernamen ohne Version und Architektur, z. B.
 vlc-3.0.24-win64.exe ↔ vlc-3.0.23-win64.exe) → Parameter, Art, Rückgabewerte und Info der vorigen Version in der
 Bibliothek werden übernommen (Hinweis in der Liste). Die alte Version bleibt, bis sie gelöscht wird.
@@ -1552,6 +1557,15 @@ function Test-OkulaDone([string]$Name) {
         -ErrorAction SilentlyContinue)
 }
 
+function Get-OkulaOnlineHint($P) {
+    # I-042: Office ohne lokale Dateien (Quelle B) lädt beim Installieren aus dem Internet
+    if ($P.Kind -ne 'office' -or -not $P.Online) { return '' }
+    $net = $true
+    try { $net = [System.Net.NetworkInformation.NetworkInterface]::GetIsNetworkAvailable() } catch { }
+    if (-not $net) { return ' – __OFFICEOFFLINE__' }
+    return ' – Office lädt aus dem Internet – Verbindung prüfen (Gerät offline?)'
+}
+
 function Install-OkulaProgram($P) {
     $ErrorActionPreference = 'Stop'
     $item = Join-Path $OkulaDir $P.Item
@@ -1599,19 +1613,28 @@ function Install-OkulaProgram($P) {
         } elseif ($P.Kind -eq 'msu') {
             $exe = Join-Path $env:SystemRoot 'System32\wusa.exe'
             $arguments = ('"{0}" {1}' -f $file, $arguments).Trim()
+        } elseif ($P.Kind -eq 'office') {
+            # I-042: Office Deployment Tool – Konfiguration des Auftrags neben setup.exe, dann setup.exe /configure
+            $xmlFile = Join-Path $folder '__OFFICEXML__'
+            $xmlText = $P.Xml.Replace('{ordner}', [Security.SecurityElement]::Escape($folder))
+            [IO.File]::WriteAllText($xmlFile, $xmlText, (New-Object System.Text.UTF8Encoding($false)))
+            Write-OkulaLog ('        {0}: {1} – {2}' -f $P.Name, $P.Office, $xmlFile)
+            $exe = $file
         } else {
             $exe = $file
         }
         Write-OkulaLog ('Start   {0}: {1} {2}' -f $P.Name, $exe, $arguments)
+        $limit = $OkulaTimeout
+        if ($P.Timeout) { $limit = [int]$P.Timeout }
         $code = $null
         for ($try = 1; $try -le 10; $try++) {
             $start = @{ FilePath = $exe; WorkingDirectory = $folder; PassThru = $true; WindowStyle = 'Hidden' }
             if ($arguments) { $start.ArgumentList = $arguments }
             $proc = Start-Process @start
             $null = $proc.Handle
-            if (-not $proc.WaitForExit($OkulaTimeout * 60000)) {
+            if (-not $proc.WaitForExit($limit * 60000)) {
                 try { $proc.Kill() } catch { }
-                throw ('nach {0} min abgebrochen – wartet vermutlich auf eine Eingabe (Parameter prüfen)' -f $OkulaTimeout)
+                throw ('nach {0} min abgebrochen – wartet vermutlich auf eine Eingabe (Parameter prüfen)' -f $limit)
             }
             $proc.WaitForExit()
             $code = $proc.ExitCode
@@ -1630,11 +1653,11 @@ function Install-OkulaProgram($P) {
             Write-OkulaLog ('ok      {0}: Rückgabewert {1}{2} ({3} s)' -f $P.Name, $code, $note, $took)
         } else {
             $script:OkulaFailed++
-            Write-OkulaLog ('FEHLER  {0}: Rückgabewert {1} ({2} s)' -f $P.Name, $code, $took)
+            Write-OkulaLog ('FEHLER  {0}: Rückgabewert {1} ({2} s){3}' -f $P.Name, $code, $took, (Get-OkulaOnlineHint $P))
         }
     } catch {
         $script:OkulaFailed++
-        Write-OkulaLog ('FEHLER  {0}: {1}' -f $P.Name, $_.Exception.Message)
+        Write-OkulaLog ('FEHLER  {0}: {1}{2}' -f $P.Name, $_.Exception.Message, (Get-OkulaOnlineHint $P))
     } finally {
         Remove-Item -LiteralPath $item -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -1741,6 +1764,8 @@ def script_kind(e: Entry) -> str:
     msix (Add-AppxProvisionedPackage) oder exe (Installer selbst starten)."""
     if e.mode == COPY:
         return "copy"
+    if e.is_office:
+        return "office"              # I-042: setup.exe /configure mit der Konfiguration des Auftrags
     low = e.installer.lower()
     if low.endswith(APPX_EXT):
         return "msix"
@@ -1755,9 +1780,17 @@ def program_line(e: Entry) -> str:
     kind = script_kind(e)
     file = f"{e.name}/{e.installer}" if e.mode != COPY else e.name
     codes = ", ".join(str(c) for c in e.exit_codes)
+    extra = ""
+    if kind == "office":
+        # I-042: Konfiguration am Gerät neben setup.exe ({ordner} = Ordner des Eintrags = SourcePath bei Quelle A)
+        opts = e.office_options
+        xml = office_config_xml(opts, "{ordner}" if e.office_local else None).replace("\n", "")
+        source = "lokal (ohne Internet)" if e.office_local else "lädt aus dem Internet"
+        extra = (f"; Xml = {_ps(xml)}; Office = {_ps(opts.summary + ', ' + source)}; "
+                 f"Online = ${'false' if e.office_local else 'true'}; Timeout = {OFFICE_TIMEOUT}")
     return (f"    [pscustomobject]@{{ Name = {_ps(e.label)}; Item = {_ps(e.name)}; "
             f"File = {_ps(file.replace('/', chr(92)))}; Kind = '{kind}'; Args = {_ps(e.args if kind != 'copy' else '')}; "
-            f"Ok = @({codes}) }}")
+            f"Ok = @({codes}){extra} }}")
 
 
 def build_script(entries: list[Entry], device: str = "", created: float | None = None,
@@ -1771,13 +1804,16 @@ def build_script(entries: list[Entry], device: str = "", created: float | None =
     if bad:
         raise SoftwareError(f"Nicht installierbar ({', '.join(bad)}) – Parameter in Extras → Software-Bibliothek "
                             "hinterlegen")
+    no_apps = [e.name for e in entries if e.is_office and not e.office_options.apps]
+    if no_apps:
+        raise SoftwareError(f"Office ohne gewählte App ({', '.join(no_apps)})")
     stamp = time.strftime("%d.%m.%Y %H:%M", time.localtime(created if created is not None else time.time()))
     safe_device = re.sub(r"[^\w .-]", "", device)[:60] or "–"
     replace = {"__RESTORE__": wintweaks.RESTORE_START, "__AFTER__": deploy.TWEAK_AFTER, "__CREATED__": stamp,
                "__DEVICE__": safe_device, "__COUNT__": str(len(entries)), "__LOG__": deploy.SOFTWARE_LOG,
                "__NAME__": deploy.SOFTWARE_NAME, "__TASK__": TASK_NAME, "__WAIT__": str(START_WAIT),
                "__WAITMIN__": str(START_WAIT // 60), "__SHAREDWAIT__": str(SHARED_WAIT),
-               "__TIMEOUT__": str(PROGRAM_TIMEOUT),
+               "__TIMEOUT__": str(PROGRAM_TIMEOUT), "__OFFICEXML__": OFFICE_XML, "__OFFICEOFFLINE__": OFFICE_OFFLINE,
                "__REBOOT__": str(int(reboot_delay)),
                "__PROGRAMS__": ",\n".join(program_line(e) for e in entries)}
     text = SCRIPT

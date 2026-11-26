@@ -235,6 +235,104 @@ class ChoiceTest(unittest.TestCase):
         self.assertIn("install_software", automation.TEMPLATE_FIELDS)
 
 
+class ScriptTest(unittest.TestCase):
+    """Software-Skript am Gerät: Konfiguration neben setup.exe, setup.exe /configure, Rückgabewert 0 = ok."""
+
+    def entries(self, tmp: str, data: bool = True, opts=None):
+        root = Path(tmp) / "nas"
+        name = software.load(root, odt_folder(Path(tmp) / "q", data=data)).entry.name
+        return root, software.plan(root, [software.choice_text(name, opts)] if opts else [name]).entries
+
+    def test_local_source_configure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _root, entries = self.entries(tmp, opts=software.OfficeOptions(apps=("Word", "Excel")))
+            self.assertEqual(software.script_kind(entries[0]), "office")
+            s = software.build_script(entries, "PC-1", created=0)
+            line = next(x for x in s.splitlines() if "Kind = 'office'" in x)
+            self.assertIn("Args = '/configure \"{ordner}\\okula-office.xml\"'; Ok = @(0)", line)
+            self.assertIn('SourcePath="{ordner}"', line)
+            self.assertIn('<ExcludeApp ID="PowerPoint" />', line)
+            self.assertIn('<ExcludeApp ID="Teams" />', line)
+            self.assertIn("Online = $false; Timeout = 90", line)
+            self.assertIn("Apps for business: Word, Excel, lokal (ohne Internet)", line)
+            self.assertIn("$xmlFile = Join-Path $folder 'okula-office.xml'", s)
+            self.assertIn("$P.Xml.Replace('{ordner}', [Security.SecurityElement]::Escape($folder))", s)
+            self.assertIn("[IO.File]::WriteAllText($xmlFile", s)
+            self.assertIn("$P.Args.Replace('{ordner}', $folder)", s)             # → /configure "<Ordner>\…xml"
+            self.assertIn("$proc.WaitForExit($limit * 60000)", s)
+            self.assertNotIn("__", s.replace("__DEVICE__", ""))                  # alle Platzhalter ersetzt
+            self.assertEqual(s.count("{"), s.count("}"))
+            self.assertEqual(s.count("("), s.count(")"))
+            body = s[s.index("function Install-OkulaProgram"):s.index("function Install-Okula {")]
+            # XML schreiben im try (Fehler → FEHLER), Ordner danach im finally gelöscht
+            self.assertLess(body.index("try {"), body.index("WriteAllText"))
+            self.assertLess(body.index("WriteAllText"), body.index("} finally {"))
+            xml = line[line.index("Xml = '") + 7:line.index("'; Office = ")]
+            parse_xml(xml.replace("''", "'"))                                    # gültiges XML
+
+    def test_online_source_reports_offline(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _root, entries = self.entries(tmp, data=False)
+            s = software.build_script(entries, "PC-1", created=0)
+            line = next(x for x in s.splitlines() if "Kind = 'office'" in x)
+            self.assertNotIn("SourcePath", line)
+            self.assertIn("Online = $true", line)
+            self.assertIn("lädt aus dem Internet", line)
+            self.assertIn("Office lädt aus dem Internet – Gerät war offline", s)
+            # Fehler mit Hinweis statt still ok: Rückgabewert ungleich 0 und Abbruch (catch)
+            self.assertIn("Rückgabewert {1} ({2} s){3}' -f $P.Name, $code, $took, (Get-OkulaOnlineHint $P)", s)
+            self.assertIn("{1}{2}' -f $P.Name, $_.Exception.Message, (Get-OkulaOnlineHint $P)", s)
+
+    def test_no_apps_not_in_script(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, entries = self.entries(tmp)
+            empty = [software.dataclasses.replace(entries[0], office=software.OfficeOptions(apps=()))]
+            with self.assertRaisesRegex(software.SoftwareError, "ohne gewählte App"):
+                software.build_script(empty, "PC-1")
+
+    def test_other_installers_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "q" / "probe-1.0.msi"
+            src.parent.mkdir()
+            from tests.test_installerinfo import msi
+            src.write_bytes(msi({"ProductName": "Probe", "ProductVersion": "1.0"}))
+            root = Path(tmp) / "nas"
+            name = software.load(root, src).entry.name
+            s = software.build_script(software.plan(root, [name]).entries, "PC-1", created=0)
+            line = next(x for x in s.splitlines() if "Kind = 'msi'" in x)
+            self.assertNotIn("Xml", line)
+            self.assertNotIn("Timeout", line)                                    # 60 min wie bisher
+
+    def test_direct_install_counts_office_data(self):
+        from types import SimpleNamespace
+        from unittest import mock
+        from okula_recovery import winsetup, winunattend
+
+        class FakeIso:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_a):
+                return None
+
+            def walk(self):
+                return iter([("sources/install.wim", SimpleNamespace(is_dir=False, size=1000))])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "nas"
+            name = software.load(root, odt_folder(Path(tmp) / "q")).entry.name
+            soft = software.plan(root, [name])
+            with mock.patch.object(winsetup.udf.UdfImage, "open", lambda _p: FakeIso()):
+                with_office = winsetup.plan("x.iso", 1, winunattend.WinOptions(), soft, "PC-1")
+                without = winsetup.plan("x.iso", 1, winunattend.WinOptions(), None, "PC-1")
+            rels = [r for r, _s, _src in with_office.nas_files]
+            self.assertIn(f"okula/software/{name}/Office/Data/16.0.19328.20000/stream.x64.x-none.dat", rels)
+            data = sum(s for _r, s, _src in with_office.nas_files)
+            self.assertGreaterEqual(with_office.setup_size - without.setup_size, data)   # Setup-Partition grösser
+            ps1 = with_office.extra["okula/gp/Machine/Scripts/Startup/okula-software.ps1"]
+            self.assertIn("Kind = 'office'", ps1)
+
+
 def _gtk() -> bool:
     from tests.test_wintweaks import gtk_available
     return gtk_available()

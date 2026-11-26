@@ -996,7 +996,8 @@ Hersteller, Installer und Status des markierten Eintrags, bei „Parameter fehlt
     USB-Datenträger oder dem NAS (auch aus <i>Verteilen\\Software</i>). Er wird in die Bibliothek kopiert.
 •  <i>Ordner laden …</i>: für Installer, die ihre Dateien daneben brauchen (z. B. <tt>YSUSB_V213_Win</tt> mit
     <tt>setup.exe</tt>). Der ganze Ordner wird kopiert und kommt mit aufs Gerät. Liegen mehrere Installer im
-    Ordner, fragt das Tool, welcher es ist.
+    Ordner, fragt das Tool, welcher es ist. So kommt auch Office in die Bibliothek (Abschnitt
+    <i>Office (Microsoft 365 Apps)</i>).
 •  Oder Dateien und Ordner aus dem Dateimanager ins Fenster ziehen.
 •  Ein Balken zeigt das Kopieren; <i>Abbrechen</i> lässt nichts Halbes in der Bibliothek zurück.
 •  Danach erkennt das Tool den Installer-Typ und trägt Parameter, Rückgabewerte, Programmname, Version und
@@ -1041,6 +1042,8 @@ Läuft das Demo-Gerät, zeigt das Fenster die Bibliothek im Demo-Speicher (Kapit
     Framework vor 4.0, Setup Factory, Clickteam Install Creator, Smart Install Maker, Actual Installer,
     CreateInstall, Ghost Installer, selbstentpackende Archive (IExpress, 7-Zip-SFX, WinRAR-SFX)
 •  Squirrel: nur von Hand
+•  Office (Microsoft 365 Apps): <tt>setup.exe</tt> des Office Deployment Tool – Typ „Office“, sofort bereit,
+    Parameter erzeugt das Tool je Auftrag (Abschnitt <i>Office (Microsoft 365 Apps)</i>)
 Name, Version und Hersteller kommen aus der Versionsinfo des Installers, aus der MSI-Datei, aus den Angaben des
 Qt Installer Framework bzw. des App-Pakets, sonst aus dem Dateinamen (ohne „Setup“, „Installer“).
 
@@ -1073,6 +1076,45 @@ Die neu geladene Version übernimmt Parameter, Art, Rückgabewerte und Info der 
 (Automatisierung, Vorlagen) nimmt nach dem Löschen der alten Version die neueste; gibt es das Programm gar nicht
 mehr, steht es in der Liste als „fehlt in der Bibliothek“ und wird beim Auftrag übersprungen (Eintrag im Log).
 
+<b>Office (Microsoft 365 Apps)</b>
+Office lässt sich wie jedes andere Programm still installieren – mit einzeln wählbaren Apps. Aktiviert wird nie im
+Tool: Der Mieter meldet sich in Office mit seinem eigenen Microsoft-365-Konto an (kein Schlüssel, kein Okula-Konto).
+Office einmal unter Windows herunterladen (Quelle A, Standard):
+1.  Auf einem Windows-PC mit Internet das <b>Office Deployment Tool</b> von Microsoft laden (Download Center,
+    ID 49117) und in einen leeren Ordner entpacken, z. B. <tt>C:\\Office</tt>. Gebraucht wird nur
+    <tt>setup.exe</tt>.
+2.  PowerShell öffnen und in den Ordner wechseln: <tt>cd C:\\Office</tt>
+3.  Die Datei <tt>download.xml</tt> mit PowerShell schreiben – <b>nicht</b> mit Word oder WordPad (die speichern
+    kein reines XML); Zeilenumbrüche innerhalb der Anführungszeichen stören nicht:
+    <tt>Set-Content -Path .\\download.xml -Encoding UTF8 -Value '&lt;Configuration&gt;&lt;Add
+    SourcePath="C:\\Office" OfficeClientEdition="64" Channel="Current"&gt;&lt;Product
+    ID="O365BusinessRetail"&gt;&lt;Language ID="de-de" /&gt;&lt;/Product&gt;&lt;Product
+    ID="O365ProPlusRetail"&gt;&lt;Language ID="de-de" /&gt;&lt;/Product&gt;&lt;/Add&gt;&lt;/Configuration&gt;'</tt>
+4.  Herunterladen: <tt>.\\setup.exe /download .\\download.xml</tt> – dauert je nach Leitung; danach liegt der Ordner
+    <tt>Office\\Data\\&lt;Version&gt;</tt> neben <tt>setup.exe</tt>. Ein erneuter Aufruf ergänzt fehlende Dateien.
+5.  Den ganzen Ordner (<tt>setup.exe</tt>, <tt>download.xml</tt>, <tt>Office</tt>) auf einen USB-Datenträger oder
+    das NAS kopieren.
+6.  <i>Extras → Software-Bibliothek …</i> → <i>Ordner laden …</i> → diesen Ordner wählen. Der Eintrag heisst
+    „Microsoft 365 Apps“, Typ „Office“, Version aus <tt>Office\\Data</tt> (z. B. 16.0.19328.20000), Status
+    <b>bereit</b>. Unter der Liste steht „Quelle: lokal, Version …, … GB“ – installiert wird ohne Internet.
+Auswahl im Auftrag: Ist in <i>Software installieren</i> ein Office-Eintrag angehakt, stehen darunter
+•  <b>Produkt</b>: Microsoft 365 Apps for business (Standard) oder for enterprise – passend zum Abo des Mieters.
+•  Häkchen je App: Word, Excel, PowerPoint, Outlook (klassisch), OneNote und OneDrive sind vorausgewählt, Access und
+    Publisher wählbar. <b>Teams</b>, das neue Outlook und Skype for Business werden nie über Office installiert
+    (Teams bei Bedarf als eigener Eintrag der Bibliothek).
+•  Der Hinweis „Aktivierung: Mieter meldet sich mit seinem Microsoft-365-Konto an“.
+Es lässt sich nur ein Office-Eintrag anhaken. Produkt und Apps werden mit der Auswahl gespeichert (Automatisierung,
+Vorlagen); eine ältere Auswahl ohne diese Angaben nimmt die Vorauswahl. Ohne angehakte App wird Office übersprungen.
+Am Gerät schreibt das Skript die Konfiguration <tt>okula-office.xml</tt> neben <tt>setup.exe</tt> (64 Bit, Kanal
+Current, Deutsch, Updates eingeschaltet – Office aktualisiert sich danach selbst) und startet
+<tt>setup.exe /configure</tt>; Rückgabewert 0 = ok. Wegen der Datenmenge (mehrere GB) gilt für Office eine Grenze
+von 90 Minuten. Wird Office an ein Gerät mit Office erneut mit anderen Apps gesendet, gilt danach die neue
+App-Auswahl.
+<b>Quelle B</b> (Rückfall): Nur <tt>setup.exe</tt> geladen (<i>Ins Tool laden …</i> bzw. ein Ordner ohne
+<tt>Office\\Data</tt>) – dann lädt das Gerät Office beim Installieren aus dem Internet. Unter der Liste steht
+„Quelle: lädt beim Installieren aus dem Internet“. Ohne Internet am Gerät steht im Protokoll „FEHLER … Office lädt
+aus dem Internet – Gerät war offline“.
+
 <b>Ablage</b>
 Auf dem NAS im Ordner <i>Software-Bibliothek</i> neben <i>Verteilen</i> – gilt für alle Tool-Rechner gleich.
 Je Programm ein Unterordner (z. B. <tt>vlc-3.0.24</tt>) mit dem Installer bzw. dem geladenen Ordner und einer
@@ -1104,8 +1146,8 @@ Geräts z. B. „Software: VLC media player 3.0.24, … (wird beim ersten Start 
 Gerät geklappt hat, zeigt nur das Protokoll am Gerät.
 
 <b>Gut zu wissen:</b>
-•  Ein Installer, der trotz Parametern auf eine Eingabe wartet, wird nach 60 Minuten beendet (Eintrag im
-    Protokoll) – Parameter prüfen.
+•  Ein Installer, der trotz Parametern auf eine Eingabe wartet, wird nach 60 Minuten beendet (Office: 90 Minuten;
+    Eintrag im Protokoll) – Parameter prüfen.
 •  Erneut zurückspielen bzw. senden vor dem ersten Start ersetzt die noch nicht installierte Auswahl.
 •  Direktinstallation: Dateien über 4 GB gehen nicht (Setup-Partition FAT32). Scheitert in der Setup-Umgebung
     das Kopieren der Installer oder der Startskripte (bzw. von Antwortdatei und SetupComplete), bricht die

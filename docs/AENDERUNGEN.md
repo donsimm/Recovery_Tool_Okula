@@ -85,7 +85,6 @@ steht im jeweiligen Protokoll-Eintrag.
 | I-035 | ⚪ | offen | Okuli | **Hinweis bei VM-Disk grösser als freier Platz:** Ä-037 bietet „VM-Disk auf 1001 GB vergrössern“ an, obwohl der Server nur 889 GB frei hat (Befund 10.11., Probe-VM). Zum Zurückspielen reicht es (qcow2 wächst nur mit den belegten Daten), füllt sich die VM später, läuft der Server voll. Vorschlag: Hinweis „⚠ Disk grösser als der freie Platz auf dem Server (… GB)“ im Prüftext, ohne zu sperren |
 | I-036 | ⚪ | offen | Okuli | **Hardware-Fehler (MCE/WHEA) anzeigen:** Der Agent liest Kernel-Meldungen `mce: [Hardware Error]` (bzw. `rasdaemon`) und meldet sie im Tool (Gerätefenster, Verlauf, Hinweis in der Liste). Anlass B-010 (CPU 3 meldet laufend Fehler). Passt zu I-033 Hardware-Test |
 | I-040 | ⚪ | offen | Okuli/Dominik | **Windows-Aktivierung im Blick:** Der Agent liest den OEM-Key aus der Firmware (ACPI-Tabelle MSDM, unter Windows `(Get-CimInstance SoftwareLicensingService).OA3xOriginalProductKey`) und, wenn Windows läuft, den Aktivierungsstatus; das Tool zeigt beides im Gerätefenster bzw. Inventar. Beim Aufsetzen wird der passende allgemeine Setup-Key (RTM-Key) der Edition gesetzt, damit sich ein Gerät mit digitaler Lizenz oder Firmware-Key online von selbst aktiviert. Nur lizenzkonforme Wege (kein KMS-Emulator o. ä.); bei VMs gilt weiter „OEM-Key nie übernehmen“ (I-001). Anlass: Frage Dominik 19.11. zu GVLK/RTM-Keys |
-| I-042 | 🟡 | offen | Dominik | **Microsoft 365 Apps einzeln installieren:** Neuer Bibliothekstyp „Office (Click-to-Run)“ mit dem Office Deployment Tool. Laden: `setup.exe /download` einmal komplett auf das NAS (Deutsch, 64 Bit, Produkt `O365BusinessRetail` bzw. `O365ProPlusRetail` – mit Learn klären). Auswahl in *Software installieren …* (und *OS installieren* / *Danach anpassen*): Apps einzeln anhaken (Word, Excel, PowerPoint, Outlook, OneNote, Access, Publisher, OneDrive = `Groove`, Teams); das Tool erzeugt je Auftrag eine `config.xml` mit `ExcludeApp` für alles Nicht-Gewählte, Installation still über das Startskript ohne Internet (`SourcePath` lokal). Nachinstallieren einzelner Apps auf einem Gerät mit Office: gleiche Sprachen → neue `ExcludeApp`-Liste ersetzt die alte (Microsoft Learn, ODT-Konfigurationsoptionen). Aktivierung: Anmeldung des Kunden mit dem Microsoft-Konto, kein Schlüssel im Tool. Offen: Updatekanal, neues vs. klassisches Outlook, Publisher-Ende. Von Dominik 24.11. |
 | I-043 | ⚪ | offen | Dominik | **Ordner einfärben:** Ordner in der Geräteliste (Kunden/Gruppen) und im Archiv (Images/ISOs) bekommen per Kontextmenü „Farbe …“ eine von etwa 8 festen Farben (oder keine); Anzeige als Farbpunkt bzw. -balken in der Liste, lesbar im hellen und dunklen Design. Farbe wird mit dem Ordner gespeichert und bleibt beim Verschieben/Umbenennen erhalten. Hilfe-Kapitel mitführen. Cockpit-Idee ID-0003 (11.11.), Umfang „beide“ Dominik 25.11. |
 
 Umgesetzte Ideen: Windows-Master-Image mit Sysprep ([MASTER-IMAGE.md](MASTER-IMAGE.md)), Ordner an Geräte senden
@@ -299,6 +298,25 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 26.11.2026
+- **I-042 – Microsoft 365 Apps einzeln installieren (Office, Click-to-Run)** (Von: Dominik, 24.11.; Entscheide
+  25./26.11.; Prompt [I-042](prompts/I-042-office.md)). **Bibliothek:** neuer Typ „Office (Microsoft 365 Apps)“
+  (`software.office_detect`): `setup.exe` des Office Deployment Tool (Hersteller Microsoft, „Click-to-Run“ bzw.
+  „Office“ mit `Office\Data`, ODT-Konfiguration oder „Deployment Tool“/„Bootstrapper“ in der Versionsinfo – im
+  Zweifel nicht Office). Quelle A mit `Office\Data\<Version>` (Version aus dem Ordnernamen, Installation ohne
+  Internet), Quelle B nur `setup.exe` (Gerät lädt aus dem Internet). Programm „Microsoft 365 Apps“, Hersteller
+  Microsoft, Typ „Office“, sofort „bereit“ (Parameter fest, nicht bearbeitbar), Angaben unter der Liste nennen die
+  Quelle; neue Version löst alte ab (Schlüssel `office`), übernimmt nur die Info. **Auswahl:** in *Software
+  installieren* (Gerät, *OS installieren*, *Danach anpassen*, Automatisierung) bei angehaktem Office Produkt
+  (business/enterprise), Häkchen je App (Word, Excel, PowerPoint, Outlook klassisch, OneNote, OneDrive vorausgewählt;
+  Access, Publisher aus) und Hinweis zur Aktivierung; nur ein Office je Auswahl. Gespeichert als
+  `<Eintrag>|<Produkt>:<Apps>` in der bestehenden Liste, alte Auswahl = Vorauswahl. **Konfiguration**
+  `software.office_config_xml` (64 Bit, Current, de-de, `ExcludeApp` für nicht gewählte Apps und immer `Lync`,
+  `OutlookForWindows`, `Teams`, Updates an, Display None, `FORCEAPPSHUTDOWN`; Quelle B ohne `SourcePath`; kein
+  Schlüssel). **Am Gerät:** das Software-Skript schreibt `okula-office.xml` neben `setup.exe` und ruft
+  `setup.exe /configure`, 0 = ok, Grenze 90 min; Quelle B ohne Internet → FEHLER „Office lädt aus dem Internet –
+  Gerät war offline“. Direktinstallation zählt die Office-Daten schon zur Setup-Partition (geprüft, Test). Hilfe
+  (F1) *Software installieren* (Abschnitt „Office (Microsoft 365 Apps)“ mit Download unter Windows), TECHNIK.md
+  (Belege), Tests `tests/test_office.py`. **Kein neuer Agent-Stick nötig.** Prüfung [TESTS.md](TESTS.md) „I-042“.
 - **Ä-050 – Software-Bibliothek: Info-Feld** (Von: Dominik; Prompt [Ä-050](prompts/Ä-050-software-info.md)).
   `software.py`: Feld `info` in `.okula.json` (`Entry.info`, `update(…, info=…)`, `check_info`: Zeilenumbrüche
   vereinheitlicht, Steuerzeichen entfernt, max. `MAX_INFO` = 2000 Zeichen, sonst „Info zu lang“); getrennt vom

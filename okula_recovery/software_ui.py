@@ -94,8 +94,9 @@ class SoftwareChooser(Gtk.Box):
         for pid, label in software.OFFICE_PRODUCTS:
             self.office_product.append(pid, f"Microsoft 365 {label}")
         self.office_product.set_active_id(self.office.product)
-        self.office_product.set_tooltip_text("Produkt aus dem Abo des Mieters (O365BusinessRetail bzw. "
-                                             "O365ProPlusRetail) – die Office-Dateien sind für beide dieselben")
+        self.office_product.set_tooltip_text("Produkt passend zum Abo des Mieters (O365BusinessRetail bzw. "
+                                             "O365ProPlusRetail) – bei Quelle A muss das Produkt in der download.xml "
+                                             "stehen (Hilfe F1, Kapitel Software installieren)")
         self.office_product.connect("changed", lambda _c: self._office_changed())
         head.pack_start(self.office_product, False, False, 0)
         box.pack_start(head, False, False, 0)

@@ -1902,6 +1902,71 @@ wenn kein anderes `okula-*.cmd` mehr im Startup-Ordner liegt – das zuletzt lau
 **Agent:** unverändert – der Befehl `software` gibt es seit I-020 und sucht schon jetzt „genau ein Windows
 (generalisiert oder installiert)“. **Kein neuer Agent-Stick.**
 
+### Office – Microsoft 365 Apps einzeln installieren (I-042)
+
+Entscheide Dominik 25./26.11. (AENDERUNGEN.md „📌 Entscheidungen“): Produkte `O365BusinessRetail` (Standard) und
+`O365ProPlusRetail` je Auftrag, `de-de`, Kanal `Current`, 64 Bit, Updates an; Apps einzeln; Teams nie über Office;
+Aktivierung nur durch den Mieter (kein Schlüssel, kein `PIDKEY`, keine Aktivierungs-Eigenschaften).
+
+**Erkennung** (`software.office_detect`, beim Laden, *Neu erkennen* und Wechsel des Installers): Datei `setup.exe`,
+`CompanyName` mit „Microsoft“ in der Versionsinfo und entweder „Click-to-Run“ in ProductName/FileDescription/
+InternalName/OriginalFilename/Comments oder „Office“ zusammen mit `Office\Data\<Version>\` daneben, einer
+ODT-Konfiguration daneben (`*.xml` mit `<Configuration>`, `<Add>`, `<Product>`) bzw. „Deployment Tool“/
+„Bootstrapper“. Sonst übliche Erkennung (Office-MSI-Pakete, Visual-Studio-Bootstrapper, fremde setup.exe). Die
+Kennungen der Versionsinfo stammen **nicht aus einer Quelle** – am echten ODT prüfen ([TESTS.md](TESTS.md) „I-042“).
+Typ `office` in `KINDS` („Office (Microsoft 365 Apps)“, in der Liste „Office“), Parameter fest
+`/configure "{ordner}\okula-office.xml"`, Rückgabewert 0 → sofort „bereit“, Parameter in der Bibliothek nicht
+bearbeitbar. Programm „Microsoft 365 Apps“, Hersteller „Microsoft“, Schlüssel `office` (neue Version löst alte ab,
+`resolve`), Version = höchster Ordnername unter `Office\Data` (Quelle A), sonst leer (Quelle B, `office_source`
+`local`/`internet` in `.okula.json`). Neue Version übernimmt nur die Info, keine Parameter (`_adopt`).
+
+**Auswahl** (`SoftwareChooser`, alle vier Stellen): ist ein Office-Eintrag angehakt, Produkt (Combo), Häkchen je App
+(`OFFICE_APPS`), Hinweis `OFFICE_ACTIVATION`; nur ein Office-Eintrag gleichzeitig. Speicherformat der Auswahl
+(Automatisierung, Vorlagen, Gerät) bleibt eine Liste von Texten, Office als `<Eintrag>|<Produkt>:<App,App>`
+(`choice_text`/`split_choice`; „|“ ist in Namen auf dem NAS verboten). Ältere Auswahl ohne Optionen bzw. unlesbare
+Optionen = Vorauswahl. `resolve` hängt `OfficeOptions` an eine Kopie des Eintrags (`Entry.office`); `plan`
+überspringt Office ohne App („Office: keine App gewählt“), Log und Verlauf nennen Produkt und Apps.
+
+**Konfiguration** (`software.office_config_xml`):
+`<Configuration><Add [SourcePath="…"] OfficeClientEdition="64" Channel="Current"><Product ID="…"><Language
+ID="de-de"/>` + `<ExcludeApp ID="…"/>` je nicht gewählte App und immer `Lync`, `OutlookForWindows`, `Teams`
+`</Product></Add><Updates Enabled="TRUE"/><Display Level="None" AcceptEULA="TRUE"/><Property
+Name="FORCEAPPSHUTDOWN" Value="TRUE"/></Configuration>`. App-IDs Word, Excel, PowerPoint, Outlook (klassisch),
+OneNote, `Groove` (OneDrive), Access, Publisher. Quelle B ohne `SourcePath`.
+
+**Am Gerät** (Software-Skript, `script_kind` = `office`): Eintrag wie andere Ordner nach
+`ProgramData\Okula\Software\<Eintrag>`; das Skript schreibt die XML des Auftrags (`SourcePath` = `{ordner}` →
+Ordner des Eintrags, XML-escaped, UTF-8 ohne BOM) als `okula-office.xml` neben `setup.exe` und startet
+`setup.exe /configure "<Ordner>\okula-office.xml"`, Rückgabewert 0 = ok, sonst FEHLER. Zeitlimit für Office
+`OFFICE_TIMEOUT` = 90 min (übrige weiter 60 min). Quelle B (`Online = $true`): bei Rückgabewert ≠ 0 oder Abbruch
+FEHLER mit „Office lädt aus dem Internet – Gerät war offline“ (meldet .NET
+`NetworkInterface.GetIsNetworkAvailable()` kein Netz) bzw. „… Verbindung prüfen (Gerät offline?)“. Danach wird der
+Ordner wie bei allen Programmen gelöscht.
+- **Platz/Fortschritt:** Die Office-Daten (mehrere GB) zählen in `plan.bytes` → Fortschritt der Übertragung wie
+  bisher. Der Agent prüft den freien Platz auf der Windows-Partition nicht vorab (unverändert seit I-020); ist sie
+  voll, scheitert das Schreiben mit Fehler, die Auswahl wird nicht abgelegt (nichts Halbes). Windows braucht zum
+  Installieren zusätzlich Platz für Office selbst.
+- **Direktinstallation:** `winsetup.plan` zählt alle Dateien der Software (auch `Office\Data`) zur Grösse der
+  Setup-Partition – passt ohne Änderung (Test). Einzeldateien über 4 GB (FAT32) brechen wie bisher mit Meldung ab.
+  *Windows anpassen* wartet aus `SetupComplete.cmd` höchstens 30 min auf die Software und läuft danach parallel.
+- **Zeitüberschreitung:** `Kill` beendet nur `setup.exe`, nicht Kindprozesse (offen in Ä-048, R-win 6).
+- **Kein neuer Agent-Stick** (Skript entsteht im Tool).
+
+**Belege** (Microsoft Learn, abgerufen 26.11.2026):
+- „Overview of the Office Deployment Tool“: ODT = `setup.exe` + Konfigurationsdatei; `/download` lädt Produkte und
+  Sprachen nach `SourcePath` (ein Ordner `Office` entsteht), `/configure` installiert; fehlende Dateien werden beim
+  erneuten Download ergänzt. Download Center ID 49117.
+- „Configuration options for the Office Deployment Tool“: `ExcludeApp`-IDs `Access, Excel, Groove, Lync, OneDrive,
+  OneNote, Outlook, OutlookForWindows, PowerPoint, Publisher, Teams, Word`; für OneDrive `Groove` verwenden;
+  `OutlookForWindows` = neues Outlook; OneDrive wird sonst mit Word/Excel/PowerPoint automatisch installiert. Auf
+  einem Gerät mit Office: gleiche Sprachliste → neue `ExcludeApp`-Liste ersetzt die alte. Beispielwerte
+  `OfficeClientEdition="64"`, `Channel`, `Display Level="None" AcceptEULA="TRUE"`, `Updates Enabled`.
+- „Deploy Microsoft 365 Apps from the cloud“: Current Channel als Standard empfohlen.
+- **Nicht belegt** (aus dem Gedächtnis bzw. Annahme, am Gerät prüfen): Kennungen der ODT-Versionsinfo; dass
+  `setup.exe /configure` erst nach der Installation zurückkehrt; Rückgabewert von `setup.exe` ohne Internet; dass
+  Updates ohne `UpdatePath` aus dem Internet statt aus dem (gelöschten) `SourcePath` kommen; dass ODT eine
+  `download.xml` mit BOM (`Set-Content -Encoding UTF8` in PowerShell 5.1) annimmt.
+
 ## Automatisierung
 
 Erfasste Geräte mit eingeschalteter Automatisierung werden **neu aufgesetzt, sobald sie im LAN auftauchen** (Agent-Stick oder Netzwerkstart). Plan und Entscheide: [docs/AUTOMATISIERUNG.md](AUTOMATISIERUNG.md).
