@@ -51,7 +51,6 @@ steht im jeweiligen Protokoll-Eintrag.
 
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
-| Ä-053 | 🟡 | in Arbeit | Dominik | **Ordner senden: „Alle“ bei Software ersetzt den ganzen Ordner** `Desktop\Software` (wie vor Ä-051); einzelne Einträge weiter einzeln. Entscheid Dominik 26.11. Prompt [Ä-053](prompts/AE-053-software-alle-ersetzt.md) | 26.11. |
 | Ä-052 | 🟡 | in Arbeit | Dominik | **USB-Vorgänge im Hintergrund:** *USB klonen*, *USB formatieren*, *Agent-USB-Stick erstellen*, *Boot-Stick* nicht modal (Tool bleibt bedienbar), Fortschritt in der Auftragsliste, belegte Datenträger gesperrt, Rückfrage beim Beenden. Zusammen mit B-029. Prompt [Ä-052/B-029](prompts/AE-052-usb-im-hintergrund.md) | 26.11. |
 | Ä-048 | 🟡 | offen | Okuli (Review) | **Robustheit Agent, Netz und Oberfläche (Sammelpunkt aus dem Review).** Agent: TLS-Handshake ohne Timeout/accept ungeschützt (R-agent 2), Neustart-Timer prüft Disk-Lock nicht erneut (R-agent 3), `wimlib-imagex` läuft nach Verbindungsabbruch weiter (R-agent 1), Kleines R-agent 4–9. Tool: Beacons ungeprüft legen Geräte an, keine Obergrenze (R-client 6); NAS-Zugriffe im GTK-Hauptthread frieren bei hängendem CIFS ein (R-ui 2), `refresh_images` überholt sich (R-ui 4), Kleines R-ui 3, 5–8. Software-Bibliothek: Programme, die ein Auftrag gerade überträgt, lassen sich löschen (Rest aus B-026). Windows: Int32-Rückgabewerte (R-win 5), Kindprozesse bei Timeout (R-win 6). Gleiche Board-UUID → falsches Gerät (R-client 3) zuerst prüfen. [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) | 25.11. |
 | Ä-049 | ⚪ | offen | Okuli (Review) | **`ui.py` (4457 Zeilen) aufteilen** – erster Schritt als Mixins (`ui_const`, `ui_storage`, `ui_devices`, `ui_vm`, `ui_actions`), `win.xxx` bleibt stabil; Vorschlag [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) R-ui. Teil von Ä-005 (dort Version 0.1.0 überholt: steht auf 0.2.0, Tag v0.2.0 gesetzt 25.11.) | 25.11. |
@@ -301,6 +300,17 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 26.11.2026
+- **Ä-053 – Ordner senden: „Alle“ bei Software ersetzt den ganzen Ordner** (Von: Dominik, 26.11.; Entscheid
+  Dominik 26.11.; Prompt [Ä-053](prompts/AE-053-software-alle-ersetzt.md)). `distribute.plan`: „Software“ allein
+  (Häkchen *Alle*, gespeicherte Auswahl leer, alte Einstellung/Vorlage „Software“) bleibt ein Eintrag `Software` –
+  das Gerät ersetzt `Desktop\Software` ganz (sicheres Ersetzen wie bisher: erst übertragen, dann tauschen); einzelne
+  Einträge weiter wie Ä-051. Versteckte Einträge direkt unter `Verteilen/Software` werden auch bei *Alle* nicht
+  gesendet; leerer Ordner auf dem NAS → nichts ersetzt („Software (leer)“). `distribute.software_choice`: alle
+  Einträge einzeln angehakt = *Alle*. `describe` „Software: alle (Ordner ersetzt)“. Oberfläche (`automation_tab.py`,
+  Dialog *Ordner senden* und Reiter Automatisierung): Häkchen *Alle – Ordner Software auf dem Gerät wird ganz
+  ersetzt*, Hinweis, wenn alle einzeln angehakt sind. **Ohne Agent-Änderung** (kein neuer Stick nötig). Hilfe
+  *Ordner senden*, *Automatisierung*; ORDNER-SENDEN.md. Tests `tests/test_distribute_software.py`,
+  `tests/test_deploy.py`. Prüfung [TESTS.md](TESTS.md) „Ä-051“.
 - **B-030 – Umbenennen nach dem Laden scheitert auf dem NAS („Keine Berechtigung“)** (Von: Dominik, 26.11.; Prompt
   [B-030](prompts/B-030-nas-umbenennen.md)). Neu `nas.rename_retry`: Umbenennen des `.partial`-/Arbeitsordners; bei
   `EACCES`/`EPERM`/`EBUSY` bis zu 10 Versuche mit 2 s Pause (~18 s), nie wenn das Ziel schon existiert oder die

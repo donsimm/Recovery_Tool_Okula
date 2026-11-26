@@ -95,8 +95,9 @@ class DistributePlanTest(unittest.TestCase):
             self.assertEqual(distribute.projects(nas), ["Projekt A", "Projekt B"])
             items = distribute.items_for(True, False, ["Projekt B"])
             self.assertEqual(items, ["Software", "Content/Projekt B"])
-            self.assertEqual(distribute.describe(items), "Software: alle, Content: Projekt B")
+            self.assertEqual(distribute.describe(items), "Software: alle (Ordner ersetzt), Content: Projekt B")
             plan = distribute.plan(nas, items)
+            self.assertEqual(plan.items, ["Software", "Content/Projekt B"])      # Ä-053: ganzer Ordner Software
             self.assertEqual((plan.files, plan.bytes), (2, 21))
             paths = [(e[0], e[1]) for e in plan.entries]
             self.assertIn(("dir", "Software/Leer"), paths)

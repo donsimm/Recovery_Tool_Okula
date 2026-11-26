@@ -25,8 +25,10 @@ Verteilen/
 - Die Ordnernamen `Software`, `Test Files` und `Content` sind **fix**.
 - `Software` (seit Ä-051, 26.11.2026) und `Content` sind Auswahl-Ordner: Die Einträge darin werden einzeln
   gewählt. Unter `Software` zählen Unterordner **und** einzelne Dateien direkt im Ordner (Ordner zuerst,
-  alphabetisch; versteckte Einträge und Links nicht). Häkchen *Alle* = jeder Eintrag, auch später hinzugekommene –
-  so gilt auch die alte Einstellung „Software“ (vor Ä-051) in Automatisierung und Vorlagen.
+  alphabetisch; versteckte Einträge und Links nicht). Häkchen *Alle – Ordner Software auf dem Gerät wird ganz
+  ersetzt* = der ganze Ordner, auch später hinzugekommene Einträge (Ä-053, siehe unten) – so gilt auch die alte
+  Einstellung „Software“ (vor Ä-051) in Automatisierung und Vorlagen. Sind alle Einträge einzeln angehakt, gilt das
+  ebenfalls als *Alle* (Hinweis unter dem Häkchen).
 - `Test Files` wird immer ganz gesendet.
 - `Software` ist ein **Werkzeug-Ordner für Geräte unterwegs** (Sammlungen, ZIP-Archive, portable Tools). Für
   *Software installieren* wird er seit Ä-041 weder gelesen noch beschrieben – die Programme dafür liegen in der
@@ -41,17 +43,22 @@ später angelegten).
 |---|---|
 | Software → Ordner „Browser“ | `Software\Browser\…` |
 | Software → Datei `Reader_de_install.exe` | `Software\Reader_de_install.exe` |
-| Software → Alle | `Software\<jeder Eintrag>` |
+| Software → Alle | `Software\` ganz ersetzt (genau der Stand vom NAS) |
 | Test Files | `Test Files\…` |
 | Content → Projekt A | `Content\Projekt A\…` |
 
 **Erneut senden = ersetzen:** Der vorhandene Eintrag auf dem Desktop wird durch den aktuellen Stand vom NAS ersetzt
-(alter Inhalt weg). Bei Software und Content betrifft das nur die gewählten Einträge, andere Inhalte unter
-`Software\` bzw. `Content\` bleiben (auch bei *Alle*: Einträge, die es auf dem NAS nicht mehr gibt, bleiben auf dem
-Desktop). Fehlen gespeicherte Einträge auf dem NAS, nennt das Log sie, der Rest wird gesendet.
+(alter Inhalt weg). Bei einzelnen Einträgen unter Software und bei Content betrifft das nur die gewählten Einträge,
+andere Inhalte unter `Software\` bzw. `Content\` bleiben. **Software → *Alle* (Ä-053, 26.11.2026):** der ganze
+Ordner `Software\` wird ersetzt wie vor Ä-051 – Einträge, die es auf dem NAS nicht mehr gibt, und eigene Inhalte
+verschwinden vom Desktop (sicheres Ersetzen: erst alles übertragen, dann tauschen). Versteckte Einträge direkt unter
+`Verteilen/Software` werden auch bei *Alle* nicht gesendet; ist der Ordner auf dem NAS leer, wird nichts ersetzt
+(Log: „Software (leer)“). Log und Verlauf: „Software: alle (Ordner ersetzt)“ bzw. die Namen der Einträge. Fehlen
+gespeicherte Einträge auf dem NAS, nennt das Log sie, der Rest wird gesendet.
 
 **Agent:** Einzelne Dateien aus `Software` brauchen einen Agent ab Ä-051 (neuer Agent-Stick bzw. Netzwerkstart); ein
-älterer meldet „Agent zu alt …“. Ordner gehen auch mit älteren Agents.
+älterer meldet „Agent zu alt …“. Ordner gehen auch mit älteren Agents – auch *Alle* (ganzer Ordner, Ä-053 ohne
+Agent-Änderung).
 
 Linux (später, falls nötig): öffentlicher Desktop gibt es nicht – Schreibtisch jedes Benutzers
 (`~/Schreibtisch` bzw. `~/Desktop` laut `user-dirs.dirs`), Besitzer = Benutzer.
@@ -61,7 +68,7 @@ Linux (später, falls nötig): öffentlicher Desktop gibt es nicht – Schreibti
 - Rechtsklick auf ein Gerät → **„Ordner senden ▸ Software …“**, **„▸ Test Files“**, **„▸ Content …“**.
 - Gleiche Funktion im **Gerätefenster** (Knopf *Ordner senden …*).
 - „Software …“ und „Content …“ öffnen den Dialog *Ordner senden* mit Listen und Häkchen (eins oder mehrere; bei
-  Software zusätzlich *Alle*). „Test Files“ sendet ohne Dialog.
+  Software zusätzlich *Alle – Ordner Software auf dem Gerät wird ganz ersetzt*). „Test Files“ sendet ohne Dialog.
 - Fortschritt in der Auftragsliste, Eintrag im Verlauf des Geräts.
 - Später möglich: an mehrere Geräte gleichzeitig senden.
 

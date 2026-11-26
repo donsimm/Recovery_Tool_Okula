@@ -45,7 +45,7 @@ class SoftwareEntriesTest(unittest.TestCase):
         self.assertEqual(distribute.items_for(True, False, [], ["browser", "a.exe"]),
                          ["Software/browser", "Software/a.exe"])
         self.assertEqual(distribute.items_for(False, False, ["P"], ["browser"]), ["Content/P"])
-        self.assertEqual(distribute.describe(["Software"]), "Software: alle")
+        self.assertEqual(distribute.describe(["Software"]), "Software: alle (Ordner ersetzt)")
         self.assertEqual(distribute.describe(["Software/a", "Software/b", "Test Files", "Content/P"]),
                          "Software: a, b, Test Files, Content: P")
         many = [f"Software/E{i}" for i in range(7)]
@@ -71,18 +71,39 @@ class SoftwarePlanTest(unittest.TestCase):
             file_entry = next(e for e in p.entries if e[1] == "Software/Reader_de_install.exe")
             self.assertEqual(file_entry[4], sw / "Reader_de_install.exe")
 
-    def test_old_setting_software_means_all_entries(self):
+    def test_old_setting_software_means_whole_folder(self):
         with tempfile.TemporaryDirectory() as tmp:
             nas, _sw = _nas(tmp)
             s = automation.Settings.from_dict({"software": True, "testfiles": False, "projects": []})
             self.assertEqual(s.software_items, [])
             self.assertEqual(s.items, ["Software"])
             p = distribute.plan(nas, s.items)
-            self.assertEqual(p.items, ["Software/browser", "Software/OBS & plugin", "Software/anleitung.pdf",
-                                       "Software/Reader_de_install.exe"])
+            self.assertEqual(p.items, ["Software"])         # Ä-053: ein Eintrag – der ganze Ordner wird ersetzt
             self.assertEqual(p.requested, ["Software"])
-            self.assertEqual(distribute.describe(p.requested), "Software: alle")
-            self.assertNotIn("Software", p.items)          # nie der ganze Ordner – andere Inhalte bleiben
+            self.assertEqual(distribute.describe(p.requested), "Software: alle (Ordner ersetzt)")
+            paths = [(e[0], e[1]) for e in p.entries]
+            self.assertEqual(paths[0], ("dir", "Software"))
+            self.assertIn(("file", "Software/OBS & plugin/sub/obs.exe"), paths)
+            self.assertIn(("file", "Software/Reader_de_install.exe"), paths)
+            self.assertNotIn(("file", "Software/.Reader.okula.json"), paths)
+            self.assertNotIn(("dir", "Software/.versteckt"), paths)
+            self.assertFalse(any("link-" in e[1] or "fifo" in e[1] for e in p.entries))
+
+    def test_all_with_single_entries_is_whole_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            nas, _sw = _nas(tmp)
+            p = distribute.plan(nas, ["Software", "Software/browser", "Test Files"])
+            self.assertEqual(p.items, ["Software", "Test Files"])
+
+    def test_software_choice(self):
+        names = ["browser", "OBS & plugin", "a.exe"]
+        self.assertEqual(distribute.software_choice(names, True, []), (True, []))           # Häkchen „Alle“
+        self.assertEqual(distribute.software_choice(names, False, ["a.exe"]), (True, ["a.exe"]))
+        self.assertEqual(distribute.software_choice(names, False, []), (False, []))
+        # Ä-053: alle einzeln angehakt (auch mit gespeicherten, fehlenden Einträgen) = „Alle“
+        self.assertEqual(distribute.software_choice(names, False, names), (True, []))
+        self.assertEqual(distribute.software_choice(names, False, names + ["Weg"]), (True, []))
+        self.assertEqual(distribute.software_choice([], False, ["Weg"]), (True, ["Weg"]))
 
     def test_missing_entries(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -194,6 +215,18 @@ class DeliverEntriesTest(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in (self.desk / "Software").iterdir()),
                          ["OBS & plugin", "Reader_de_install.exe", "anleitung.pdf", "browser"])
         self.assertTrue((self.desk / "Software/OBS & plugin/sub/obs.exe").is_file())
+
+    def test_all_replaces_whole_folder(self):
+        """Ä-053: „Alle“ – alter Inhalt unter Desktop\\Software weg (auch Eigenes), neuer Stand vom NAS."""
+        nas, _sw = _nas(str(self.d))
+        plan = distribute.plan(nas, distribute.items_for(True, False, [], []))
+        result = self.send(plan)
+        self.assertEqual(result["files"], 4)
+        sw = self.desk / "Software"
+        self.assertFalse((sw / "Eigenes").exists())
+        self.assertFalse((sw / "browser/alt.msi").exists())
+        self.assertEqual((sw / "Reader_de_install.exe").read_bytes(), b"MZ" * 3)
+        self.assertEqual(sorted(p.name for p in self.desk.iterdir()), ["Software"])      # kein Zwischenordner
 
     def test_old_agent_reports_too_old(self):
         nas, _sw = _nas(str(self.d))

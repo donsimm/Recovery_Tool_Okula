@@ -721,9 +721,11 @@ Mit der Automatisierung setzt das Tool ein Gerät selbst neu auf, sobald es mit 
     <i>Windows anpassen</i> (Häkchen) mit <i>Vorlage</i> und <i>Einstellungen …</i>: dieselben Einstellungen wie
     <i>Windows anpassen …</i> am Gerät (ohne automatische Anmeldung), nach der Software beim ersten Start; die
     Auswahl steht auch in den Vorlagen der Automatisierung (Kapitel <i>Windows anpassen</i>).
-5.  <b>Ordner senden</b> (Option): unter <i>Software</i> die Einträge anhaken (<i>Alle</i> = jeder Eintrag, auch
-    später hinzugekommene), <i>Test Files</i> (ganzer Ordner), Content-Projekte (Kapitel <i>Ordner senden</i>).
-    Fehlt ein gewählter Eintrag auf dem NAS, steht ein Hinweis im Log; der Rest wird gesendet.
+5.  <b>Ordner senden</b> (Option): unter <i>Software</i> die Einträge anhaken oder
+    <i>Alle – Ordner Software auf dem Gerät wird ganz ersetzt</i> (ganzer Ordner, auch später hinzugekommene
+    Einträge; der Ordner auf dem Gerät wird ganz ersetzt), <i>Test Files</i> (ganzer Ordner), Content-Projekte
+    (Kapitel <i>Ordner senden</i>). Einzeln angehakte Einträge ersetzen nur sich selbst; sind alle angehakt, gilt
+    das als <i>Alle</i>. Fehlt ein gewählter Eintrag auf dem NAS, steht ein Hinweis im Log; der Rest wird gesendet.
 6.  <b>Abschluss</b>: Neustart, Herunterfahren oder nichts.
     Nur bei VMs: <i>Vorher Snapshot</i> (oben, Standard an) – direkt vor dem Start entsteht ein Snapshot der Disk
     (Kapitel <i>Virtuelle Maschinen</i>). Schlägt er fehl, startet die Automatisierung nicht.
@@ -781,12 +783,23 @@ für Geräte unterwegs – Programme zum stillen Installieren kommen aus der Sof
 1.  Gerät mit dem Agent starten.
 2.  Rechtsklick auf das Gerät → <i>Ordner senden</i> → <i>Software …</i>, <i>Test Files</i> oder <i>Content …</i>
     (im Gerätefenster der Knopf <i>Ordner senden …</i>).
-3.  Bei Software und Content die Einträge anhaken und auf <i>Senden</i> klicken. Das Häkchen <i>Alle</i> hakt
-    jeden Software-Eintrag an. <i>Test Files</i> wird ohne Auswahl gleich gesendet.
+3.  Bei Software und Content die Einträge anhaken und auf <i>Senden</i> klicken. Das Häkchen
+    <i>Alle – Ordner Software auf dem Gerät wird ganz ersetzt</i> sendet den ganzen Ordner <i>Software</i>.
+    <i>Test Files</i> wird ohne Auswahl gleich gesendet.
+
+<b>Software: Alle oder einzelne Einträge</b>
+•  <i>Alle</i>: Der Ordner <i>Software</i> auf dem Desktop wird <b>ganz ersetzt</b> – alter Inhalt weg, danach
+    genau der Stand vom NAS. Was auf dem NAS gelöscht wurde, verschwindet auch auf dem Gerät. Im Log und Verlauf
+    steht „Software: alle (Ordner ersetzt)“.
+•  Einzelne Einträge: Nur diese werden ersetzt, andere Inhalte unter <i>Software</i> auf dem Desktop bleiben.
+    Im Log und Verlauf stehen die Namen der Einträge.
+•  Sind alle Einträge einzeln angehakt, gilt das als <i>Alle</i> (ein Hinweis unter dem Häkchen nennt das).
+•  Dasselbe gilt in der Automatisierung (Kapitel <i>Automatisierung</i>); alte Einstellungen und Vorlagen mit
+    „Software“ gelten als <i>Alle</i>.
 
 <b>Gut zu wissen:</b>
 •  Gibt es einen gewählten Eintrag schon auf dem Desktop, wird er ersetzt. Andere Einträge unter
-    <i>Software</i> bzw. <i>Content</i> bleiben.
+    <i>Content</i> bleiben, unter <i>Software</i> ebenso – ausser bei <i>Alle</i>.
 •  Bricht etwas ab, bleibt der alte Stand.
 •  Einzelne Dateien aus <i>Software</i> brauchen einen aktuellen Agent-Stick bzw. Netzwerkstart; ein älterer
     meldet „Agent zu alt“. Ordner lassen sich auch mit einem älteren senden.

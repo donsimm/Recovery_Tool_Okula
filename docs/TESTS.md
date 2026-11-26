@@ -1069,7 +1069,12 @@ Dateien aus `Verteilen/Software` nötig (Ordner gehen auch mit dem alten Agent).
       `Desktop\Software\Reader_de_install.exe` (Datei, kein Ordner); Verlauf nennt „Software: …“
 - [ ] Nur einen Ordner mit geändertem Inhalt erneut senden → dieser ersetzt, die anderen Einträge unter
       `Desktop\Software` (auch selbst abgelegte) bleiben
-- [ ] Häkchen **Alle** → alle Einträge angehakt und gesperrt; Senden → alles da; Verlauf „Software: alle“
+- [ ] Häkchen **Alle** → alle Einträge angehakt und gesperrt; Senden → alles da; Verlauf „Software: alle (Ordner ersetzt)“
+- [ ] **Ä-053 „Alle“ ersetzt ganz:** vorher unter `Desktop\Software` eine eigene Datei ablegen und auf dem NAS einen
+      Eintrag löschen; Häkchen *Alle – Ordner Software auf dem Gerät wird ganz ersetzt* → Senden → `Desktop\Software`
+      enthält genau den Stand vom NAS (eigene Datei und gelöschter Eintrag weg); Log/Verlauf „Software: alle (Ordner
+      ersetzt)“. Alle Einträge einzeln anhaken (ohne *Alle*) → Hinweis „gilt als ‚Alle‘“, Ergebnis gleich. Automatisierung
+      mit alter Einstellung „Software“ → ebenfalls ganz ersetzt
 - [ ] Gerätefenster → *Ordner senden …* → gleicher Dialog mit Software-Liste; *Test Files* sendet weiterhin den ganzen
       Ordner (auch Rechtsklick → *Test Files* ohne Dialog)
 - [ ] Alter Agent-Stick (vor Ä-051) mit einer einzelnen Datei → Meldung „Agent zu alt für einzelne Dateien aus

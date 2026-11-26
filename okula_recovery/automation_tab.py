@@ -40,24 +40,33 @@ def computer_name_text(name: str) -> str:
     return f"Windows: {win}" + ("" if win == name else " (gekürzt/angepasst)")
 
 
-ALL_LABEL = "Alle"
+ALL_LABEL = "Alle – Ordner Software auf dem Gerät wird ganz ersetzt"
+ALL_HINT = "Alle Einträge angehakt – gilt als „Alle“: Ordner Software auf dem Gerät wird ganz ersetzt."
 SOFTWARE_EMPTY = "keine – Unterordner oder Dateien unter NAS: /Verteilen/Software ablegen (Reiter Dateien)"
 
 
 class SoftwareEntryChooser(Gtk.Box):
     """Ä-051: Einträge unter Verteilen/Software zum Anhaken (Ordner und einzelne Dateien) mit Häkchen „Alle“.
 
-    „Alle“ = jeder Eintrag, auch später hinzugekommene (gespeichert als software=True ohne Liste – so verhält sich
-    auch die alte Einstellung „Software“). Gespeicherte Einträge, die auf dem NAS fehlen, bleiben sichtbar."""
+    „Alle“ = der ganze Ordner, auch später hinzugekommene Einträge (gespeichert als software=True ohne Liste – so
+    verhält sich auch die alte Einstellung „Software“); Ä-053: das Gerät ersetzt dann Desktop\\Software ganz. Sind
+    alle Einträge einzeln angehakt, gilt das ebenfalls als „Alle“. Gespeicherte Einträge, die auf dem NAS fehlen,
+    bleiben sichtbar."""
 
     def __init__(self, on_change, flow: bool = False):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         self.on_change = on_change
         self._updating = False
+        self.names: list[str] = []
         self.all = Gtk.CheckButton(label=ALL_LABEL)
-        self.all.set_tooltip_text("Jeden Eintrag unter Software senden, auch später hinzugekommene")
+        self.all.set_tooltip_text("Ganzen Ordner Software senden, auch später hinzugekommene Einträge; der Ordner "
+                                  "auf dem Gerät wird ganz ersetzt (Einträge, die es auf dem NAS nicht mehr gibt, "
+                                  "verschwinden). Einzelne Einträge ersetzen nur sich selbst.")
         self.all.connect("toggled", lambda _c: self._all_toggled())
         self.pack_start(self.all, False, False, 0)
+        self.hint = _hint(ALL_HINT)
+        self.hint.set_no_show_all(True)
+        self.pack_start(self.hint, False, False, 0)
         if flow:
             self.list = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=4)
         else:
@@ -72,6 +81,7 @@ class SoftwareEntryChooser(Gtk.Box):
             for child in self.list.get_children():
                 self.list.remove(child)
             names = distribute.software_entries(nas_root) if nas_root else []
+            self.names = names
             saved = [i for i in items or [] if i not in names]
             self.checks = {}
             for name in names + saved:
@@ -94,6 +104,11 @@ class SoftwareEntryChooser(Gtk.Box):
             if on:
                 check.set_active(True)
             check.set_sensitive(not on)
+        self._sync_hint()
+
+    def _sync_hint(self) -> None:
+        """Ä-053: alle Einträge einzeln angehakt (ohne „Alle“) – Hinweis, dass das wie „Alle“ wirkt."""
+        self.hint.set_visible(not self.all.get_active() and self.selection() == (True, []))
 
     def _all_toggled(self) -> None:
         if self._updating:
@@ -104,20 +119,21 @@ class SoftwareEntryChooser(Gtk.Box):
             if not self.all.get_active():
                 for check in self.checks.values():
                     check.set_active(False)
+            self._sync_hint()
         finally:
             self._updating = False
         self.on_change()
 
     def _entry_toggled(self) -> None:
         if not self._updating:
+            self._sync_hint()
             self.on_change()
 
     def selection(self) -> tuple[bool, list[str]]:
-        """(software, software_items) wie in den Einstellungen: (True, []) = alle."""
-        if self.all.get_active():
-            return True, []
+        """(software, software_items) wie in den Einstellungen: (True, []) = alle (ganzer Ordner, Ä-053) – auch wenn
+        alle Einträge einzeln angehakt sind."""
         chosen = [n for n, c in self.checks.items() if c.get_active()]
-        return bool(chosen), chosen
+        return distribute.software_choice(self.names, self.all.get_active(), chosen)
 
 
 class AutomationTab(Gtk.Box):
@@ -475,7 +491,8 @@ class SendFoldersDialog(Gtk.Dialog):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=14)
         head = Gtk.Label(xalign=0, wrap=True)
         head.set_markup(f"Auf den Desktop von <b>{GLib.markup_escape_text(device_name)}</b> (für alle Benutzer). "
-                        "Vorhandene Einträge gleichen Namens werden ersetzt, andere bleiben.")
+                        "Vorhandene Einträge gleichen Namens werden ersetzt, andere bleiben – bei Software "
+                        "<i>Alle</i> wird der ganze Ordner Software ersetzt.")
         box.pack_start(head, False, False, 0)
         # Ä-051: Software wie Content – Ordner und Dateien einzeln, „Alle“ hakt alles an
         box.pack_start(Gtk.Label(label=f"{distribute.SOFTWARE} – Einträge wählen:", xalign=0), False, False, 0)
