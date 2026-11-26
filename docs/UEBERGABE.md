@@ -1,4 +1,4 @@
-# Übergabe – 26.11.2026, ca. 14:30
+# Übergabe – 26.11.2026, ca. 15:00
 
 Sitzung „Okuli“ (Projektleitung). Nächste Sitzung: `CLAUDE.md` → `docs/PROJEKTLEITUNG.md` → diese Datei →
 `docs/EINGANG.md` → `~/okuli/UEBERGABE.md` → Dominik den Stand nennen.
@@ -17,27 +17,22 @@ System ungeprüft** – Abschnitte in TESTS.md:
 - Ausserhalb des Tools: `~/Downloads/Office installieren.cmd` (Doppelklick, fordert Admin an, installiert Office
   aus dem Ordner daneben) – von Dominik noch nicht unter Windows getestet.
 
-## B-030 ist NICHT gelöst – nächster Schritt zuerst
+## B-030 – Ursache gefunden, Fix B-031 vorgeschlagen (Freigabe Dominik offen)
 
-Office-Ordner (USB `/media/dominik/FF5B-1D10/Office`, 19 Dateien, 3,7 GB, `stream.x64.x-none.dat` ~3 GB) laden
-scheitert weiter: nach 10 Versuchen „Kopie fertig, aber das NAS lässt den Ordner nicht umbenennen“.
-Befunde von Okuli (Probe-Ordner auf dem NAS, aufgeräumt):
-- Eigenes Kopieren derselben Dateien (fsync, utime) und **sofortiges** Umbenennen → **ok**.
-- Schrittweise wie `software.load`: nach Kopie ok, nach `scan` ok, **nach `_folder_info` (nur os.walk/lstat,
-  einige Sekunden später) EACCES** – kleine Probe-Ordner nie betroffen, im eigenen Prozess keine offene Datei.
-- Schluss: **zeitabhängig, NAS-seitig** – das Synology öffnet neue grosse Dateien kurz nach dem Schreiben
-  (vermutlich Indexierung/Virenscan/Hash) und hält sie länger als 20 s offen. Messung der Sperrdauer lief um 14:30
-  (Ergebnis siehe unten, falls nachgetragen).
-- Lösungsideen für B-031 (Prompt noch nicht geschrieben): (a) **ohne Umbenennen** – direkt in den endgültigen Ordner
-  kopieren mit Marker-Datei `.okula-loading`, `scan` ignoriert Einträge mit Marker, am Ende Marker löschen;
-  (b) Erkennung vorab an der Quelle, Beschreibung während des Kopierens schreiben, sofort nach der letzten Datei
-  umbenennen, Rückfall (a); (c) Wiederholung bis mehrere Minuten mit Anzeige „NAS prüft die Dateien …“.
-  Empfehlung Okuli: (a), gilt auch für Images/Backups/ISOs (dort bisher kein Fehler, aber gleiche Ursache möglich).
-  Auf dem Synology prüfen: Universal Search/Indexierung, Antivirus für den Ordner `NAS-BKP`.
+- Office-Ordner (USB `/media/dominik/FF5B-1D10/Office`, 3,7 GB) laden scheiterte trotz B-030 (10 × 2 s).
+- **Ursache (von Okuli gemessen):** nach dem Durchsuchen des neuen Ordners hält der Linux-CIFS-Client einen
+  Verzeichnis-Zugriff offen, bis `dir_cache_timeout` abläuft (`/sys/module/cifs/parameters/dir_cache_timeout` = 30).
+  So lange verweigert das NAS das Umbenennen (EACCES). Echte Ladefunktion mit langer Wiederholung: **ok nach 35 s**.
+  Das NAS (Synology) ist nicht schuld; erste Vermutung (Indexierung/Virenscan) war falsch.
+- **Office ist geladen:** `Software-Bibliothek/office-16.0.20625.20142` (von Okuli über `software.load` mit
+  längerer Wartezeit erzeugt) – Dominik soll im Tool prüfen, ob als „Office“ mit Version erkannt.
+- **B-031 (Vorschlag, noch nicht freigegeben):** `nas.RENAME_ATTEMPTS`/`RENAME_PAUSE` auf bis zu ~90 s
+  (z. B. 30 × 3 s), Anzeige „Ordner wird fertiggestellt …“, Test anpassen. Klein, opus medium. Alternative
+  (nicht empfohlen): fstab-Option `nohandlecache` (bremst jeden NAS-Zugriff).
 
 ## Als Nächstes
 
-1. **B-030/B-031** wie oben lösen, dann Office laden lassen (Dominik wartet darauf).
+1. **B-031** freigeben lassen und umsetzen (oben). Office ist schon geladen.
 2. **I-044 Raspberry Pi** (Extras → „Raspberry Pi …“, Schritt 1 SD-Karte; Netzwerk = Schritt 2). Dominik 26.11.:
    Modelle 3B bis 5, Images speichern/wiederverwenden, Pi-OS-Abbilder bereitstellen, **beim Schreiben alle
    Anpassungen** (wie Raspberry Pi Imager). Okulis Zusammenfassung zur Bestätigung offen: Format nur belegte
@@ -57,6 +52,6 @@ Befunde von Okuli (Probe-Ordner auf dem NAS, aufgeräumt):
 - Parallele Agenten: Doku-Konflikte per Skript (beide Seiten behalten), danach Tabellenzeilen erledigter Einträge
   von Hand entfernen und Kurzübersicht zählen (`grep -c "^| B-"` je Abschnitt).
 - Fenster-Tests laufen am Server mit `DISPLAY=:0 python3 -m unittest …` (Agenten können das nicht).
-- Fehler „nur beim Tool, nicht bei Probe“: Schritte der Funktion einzeln mit Probe-Ordner nachstellen – so wurde
-  der Zeitfaktor bei B-030 sichtbar.
+- Fehler „nur beim Tool, nicht bei Probe“: die echte Funktion mit gemessener Wiederholung laufen lassen statt raten –
+  so wurde bei B-030 die 30-s-Sperre (CIFS `dir_cache_timeout`) sichtbar. Vermutungen erst nach Messung melden.
 - Geräte sind **Okulas Mietgeräte**, nicht Kundengeräte (Gedächtnis `okula-mietgeraete`).
