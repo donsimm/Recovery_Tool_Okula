@@ -1079,3 +1079,13 @@ Dateien aus `Verteilen/Software` nötig (Ordner gehen auch mit dem alten Agent).
 - [ ] Gewählten Eintrag auf dem NAS umbenennen → Reiter zeigt „… (fehlt auf dem NAS)“; Automatisierung läuft durch,
       Log „Fehlt auf dem NAS (übersprungen): Software/…“, restliche Einträge auf dem Desktop
 - [ ] Demo-Gerät: Software-Liste zeigt „Browser“, „Treiber“, „Demo-Installer.txt“
+
+### B-030 Umbenennen auf dem NAS nach dem Laden
+Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stick).
+- [ ] *Extras → Software-Bibliothek …* → *Ordner laden …* mit dem Office-Ordner (3,9 GB) erneut → Eintrag
+      `office-16.0.20625.20142` entsteht, keine „Keine Berechtigung“-Meldung; dauert es, steht unter dem Balken kurz
+      „Ordner wird fertiggestellt …“
+- [ ] Scheitert es trotzdem: Meldung „Kopie fertig, aber das NAS lässt den Ordner nicht umbenennen …“ (kein
+      `[Errno 13]`), kein `.….partial` in `Software-Bibliothek` zurückgeblieben; dann NAS-Indexierung/Virenscan für
+      den Ordner prüfen und melden
+- [ ] Nebenbei: Disk-Image erstellen, Datei-Backup, *Ordner kopieren* aufs NAS, ISO hochladen laufen wie bisher durch

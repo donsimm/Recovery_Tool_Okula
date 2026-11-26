@@ -23,7 +23,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-from okula_recovery import __version__, agentclient, imaging
+from okula_recovery import __version__, agentclient, imaging, nas
 
 SHRINKABLE = {"ntfs": "ntfs", "extfs": "ext", "ext2": "ext", "ext3": "ext", "ext4": "ext"}
 ALIGN = 1024 * 1024                # Partitionen auf 1 MiB ausrichten
@@ -465,7 +465,8 @@ def create(p: Plan, nas_root: str | Path | None, progress: Progress = lambda ev:
                            "target_size": p.target_size},
                 "completed": datetime.now().isoformat(timespec="seconds")}
         (work / agentclient.IMAGE_META).write_text(json.dumps(meta, indent=2, ensure_ascii=False))
-        work.rename(out)
+        nas.rename_retry(work, out, again="nochmals anpassen",   # B-030: SMB hält Dateien noch kurz offen
+                         on_wait=lambda: progress({"phase": "shrink", "fraction": 1.0, "detail": nas.FINISHING}))
         progress({"phase": "shrink", "fraction": 1.0, "detail": out.name})
         return out
     except BaseException:

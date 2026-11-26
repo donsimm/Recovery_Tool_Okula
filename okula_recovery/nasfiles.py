@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Callable
 
-from okula_recovery import textnorm
+from okula_recovery import nas, textnorm
 
 # Zeichen, die SMB/Windows in Namen nicht erlaubt
 FORBIDDEN_CHARS = set('/\\:*?"<>|\0')
@@ -283,7 +283,8 @@ def copy_in(root: str | Path, rel: str, plan: CopyPlan,
                         if os.path.islink(p) or not os.path.isfile(p):
                             continue
                         copy_file(p, out_dir / name, os.path.join(src.name, os.path.relpath(p, src)))
-            partial.rename(target)
+            nas.rename_retry(partial, target, what="den Ordner" if partial.is_dir() else "die Datei",   # B-030
+                             on_wait=lambda: progress(done, plan.bytes, nas.FINISHING))
         except BaseException:
             if partial.is_dir() and not partial.is_symlink():
                 shutil.rmtree(partial, ignore_errors=True)

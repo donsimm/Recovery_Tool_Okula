@@ -28,7 +28,7 @@ from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Callable
 
-from okula_recovery import nasfiles, udf
+from okula_recovery import nas, nasfiles, udf
 
 OS_DIR = "OS"
 CATEGORIES = {"windows": "Windows", "linux": "Linux", "other": "Sonstige"}
@@ -575,7 +575,7 @@ def add_iso(root: str | Path, source: str | Path, dest_rel: str | None, progress
             fout.flush()
             os.fsync(fout.fileno())
         os.utime(partial, (source.stat().st_atime, source.stat().st_mtime))
-        partial.rename(target)
+        nas.rename_retry(partial, target, what="die ISO", again="nochmals hochladen")   # B-030
     except BaseException:
         partial.unlink(missing_ok=True)
         raise

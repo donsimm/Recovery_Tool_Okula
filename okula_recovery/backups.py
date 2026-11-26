@@ -23,7 +23,7 @@ from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Callable, Iterator
 
-from okula_recovery import agentclient, nasfiles, wire
+from okula_recovery import agentclient, nas, nasfiles, wire
 
 BACKUP_DIR = "Backups"
 MANIFEST = "okula-backup.json"
@@ -314,7 +314,8 @@ def run_backup(ip: str, key: bytes, port: int, disk: str, sources: list[dict], r
                     "note": note.strip(), "files": len(index_lines), "bytes": received, "skipped_count": int(done.get("skipped_count") or 0)
                     + len(defective), "skipped": skipped[:500], "tool_version": agentclient.__version__}
         (work / MANIFEST).write_text(json.dumps(manifest, indent=2, ensure_ascii=False))
-        work.rename(final)
+        nas.rename_retry(work, final, again="Backup wiederholen",   # B-030: SMB hält Dateien noch kurz offen
+                         on_wait=lambda: progress({"phase": "data", "fraction": 1.0, "file": nas.FINISHING}))
         progress({"phase": "done", "files": len(index_lines), "skipped": manifest["skipped_count"]})
         return final
     except wire.ProtocolError as e:

@@ -54,7 +54,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Callable
 
-from okula_recovery import distribute, installerinfo
+from okula_recovery import distribute, installerinfo, nas
 
 LIBRARY_DIR = "Software-Bibliothek"   # auf dem NAS neben „Verteilen“
 LIB_META = ".okula.json"              # Beschreibung im Ordner des Eintrags
@@ -1328,7 +1328,8 @@ def load(nas_root: str | Path, source: str | Path | Source, progress: Callable[[
         name = _entry_name(base, meta, src.path.name)
         if not _write_meta(partial, meta):
             raise SoftwareError("Beschreibung konnte nicht gespeichert werden (Ordner auf dem NAS schreibgeschützt?)")
-        partial.rename(base / name)
+        nas.rename_retry(partial, base / name, again="nochmals laden",   # B-030: SMB hält Dateien noch kurz offen
+                         on_wait=lambda: progress(src.bytes, src.bytes, nas.FINISHING))
     except BaseException:
         shutil.rmtree(partial, ignore_errors=True)
         raise

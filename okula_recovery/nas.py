@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import socket
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 from okula_recovery.config import NasConfig
 
@@ -260,6 +263,51 @@ def _image_kind(name: str) -> str | None:
         if lower.endswith(s):
             return s.lstrip(".").upper()
     return None
+
+
+# ---------- B-030: Umbenennen nach grossem Schreiben ----------
+
+RENAME_ATTEMPTS = 10      # insgesamt ~20 s
+RENAME_PAUSE = 2.0
+RENAME_RETRY_ERRNOS = (errno.EACCES, errno.EPERM, errno.EBUSY)
+FINISHING = "Ordner wird fertiggestellt …"
+
+
+class RenameError(OSError):
+    """Umbenennen endgültig gescheitert; str() liefert eine verständliche Meldung statt „[Errno 13] …“."""
+
+    def __init__(self, err: OSError, message: str):
+        super().__init__(err.errno, message, err.filename, None, err.filename2)
+        self.message = message
+
+    def __str__(self) -> str:
+        return self.message
+
+
+def rename_failed_message(again: str = "nochmals versuchen", what: str = "den Ordner") -> str:
+    return (f"Kopie fertig, aber das NAS lässt {what} nicht umbenennen (Datei noch geöffnet?) – {again}; "
+            "bleibt es, NAS-Indexierung/Virenscan für diesen Ordner prüfen")
+
+
+def rename_retry(src: str | Path, dst: str | Path, attempts: int = RENAME_ATTEMPTS, pause: float = RENAME_PAUSE,
+                 on_wait: Callable[[], None] | None = None, again: str = "nochmals versuchen",
+                 what: str = "den Ordner", sleep: Callable[[float], None] | None = None) -> None:
+    """B-030: .partial-/Arbeitsordner nach grossem Schreiben umbenennen. SMB verweigert das Umbenennen, solange darin
+    eine Datei offen ist (CIFS schliesst verzögert, NAS-Indexierung/Virenscan) – dann warten und erneut versuchen.
+    Nie, wenn das Ziel schon existiert; andere Fehler sofort. on_wait: einmal vor dem ersten erneuten Versuch."""
+    src, dst = Path(src), Path(dst)
+    for attempt in range(1, max(1, attempts) + 1):
+        try:
+            src.rename(dst)
+            return
+        except OSError as e:
+            if e.errno not in RENAME_RETRY_ERRNOS or dst.exists() or dst.is_symlink() or not src.exists():
+                raise
+            if attempt >= attempts:
+                raise RenameError(e, rename_failed_message(again, what)) from e
+            if attempt == 1 and on_wait is not None:
+                on_wait()
+            (sleep or time.sleep)(pause)
 
 
 OKULA_META = "okula-image.json"

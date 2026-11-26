@@ -295,7 +295,9 @@ def image_work(ip: str, key: bytes, port: int, disk: dict, nas_root: str, machin
 
         def progress(ev: dict) -> None:
             phase = ev.get("phase")
-            if phase == "file":
+            if phase == "note":
+                jm.log(job, ev.get("message", ""))
+            elif phase == "file":
                 if state["part"] and state["part"] != ev.get("part"):
                     done_parts.add(state["part"])
                 state["part"] = ev.get("part", "")

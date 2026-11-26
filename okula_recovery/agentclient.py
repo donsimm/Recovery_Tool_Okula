@@ -402,7 +402,9 @@ def create_image(ip: str, key: bytes, disk: str, nas_root: str | Path, machine: 
             fh.write(json.dumps(meta, indent=2, ensure_ascii=False))
             _fsync_file(fh)
         _fsync_dir(work)
-        work.rename(final)
+        from okula_recovery import nas   # erst hier: nas.py liegt nicht auf dem Restore-Stick (RESTORE_MODULES)
+        nas.rename_retry(work, final, again="Image nochmals erstellen",   # B-030: SMB hält Dateien noch kurz offen
+                         on_wait=lambda: progress({"phase": "note", "message": nas.FINISHING}))
         _fsync_dir(final.parent)
         progress({"phase": "done", "path": str(final), "total_bytes": received})
         return final

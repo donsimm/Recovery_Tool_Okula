@@ -41,7 +41,6 @@ steht im jeweiligen Protokoll-Eintrag.
 
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
-| B-030 | 🟡 | in Arbeit | Dominik | **Laden in die Software-Bibliothek scheitert beim Umbenennen auf dem NAS.** 26.11. 11:44 Office-Ordner (3,9 GB): Kopie und Erkennung ok, dann `[Errno 13] Keine Berechtigung` bei `.partial` → `office-16.0.20625.20142`; vermutlich noch offene Dateien (CIFS deferred close / NAS-Indexierung). Umbenennen mit Wiederholung an allen `.partial`-Stellen. Prompt [B-030](prompts/B-030-nas-umbenennen.md) | 26.11. |
 | B-029 | 🟡 | in Arbeit | Dominik | **Abbrechen beim USB-Klonen hängt, wenn ein Stick wegfällt.** 26.11. 09:29: *USB klonen* sdb→sdc, 12 s später beide Sticks „capacity … to 0“/„USB disconnect“, danach neue Namen (sda/sdb/sdc); *Abbrechen* hing („Wird abgebrochen …“), weil „CANCEL“ den in I/O hängenden Root-Helfer nicht erreicht. Abbrechen erzwingen, „Datenträger getrennt“, Seriennummer statt Gerätename. Prompt [Ä-052/B-029](prompts/AE-052-usb-im-hintergrund.md) | 26.11. |
 | B-023 | ⚪ | offen | Okuli | **Protokoll „Windows anpassen“ uneinheitlich, Startmenü meldet Hinweis trotz Paket.** VM-Test 25.11. (VM-Win11-clean, Direktinstallation, Vorlage Clean geändert, Pro Build 26200): Startmenü zeigt nur die Okula-Kacheln, `StartPins.ppkg` vom Tool installiert – trotzdem steht in der Zeile „Startmenü: Werbe-Kacheln entfernen“ und in „Wiederinstallation von Werbe-Apps sperren“ weiter der lange Pro-Hinweis (WhatsApp, LinkedIn, Adobe Express … von Hand lösen). Erwartet laut B-022: knappes „ok“, wenn das Paket greift. Zudem schreibt die erste Zeile (vor dem ersten Start, `winsetup.py`) „Startmenue“ und „ - “ statt Umlaut und „–“ und verweist auf eine „Zeile Startmenue beim ersten Start“, die es nicht gibt | 25.11. |
 | B-024 | ⚪ | offen | Okuli | **OneDrive entfernen meldet ok trotz Fehlercode.** Protokoll 25.11.: „OneDrive entfernen (OneDriveSetup /uninstall: -2147219813, Autostart entfernt: 2 Profile)“ mit Status ok. Rückgabewert prüfen (bekannter harmloser Code oder echter Fehler?) und entsprechend Hinweis statt ok melden | 25.11. |
@@ -302,6 +301,17 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 26.11.2026
+- **B-030 – Umbenennen nach dem Laden scheitert auf dem NAS („Keine Berechtigung“)** (Von: Dominik, 26.11.; Prompt
+  [B-030](prompts/B-030-nas-umbenennen.md)). Neu `nas.rename_retry`: Umbenennen des `.partial`-/Arbeitsordners; bei
+  `EACCES`/`EPERM`/`EBUSY` bis zu 10 Versuche mit 2 s Pause (~18 s), nie wenn das Ziel schon existiert oder die
+  Quelle fehlt, andere Fehler sofort. Scheitert es endgültig: `nas.RenameError` (ein `OSError`, bestehende
+  Fehlerbehandlung und Aufräumen bleiben) mit „Kopie fertig, aber das NAS lässt den Ordner nicht umbenennen (Datei
+  noch geöffnet?) – nochmals laden; bleibt es, NAS-Indexierung/Virenscan für diesen Ordner prüfen“. Während der
+  Wiederholung zeigt Fortschritt bzw. Log „Ordner wird fertiggestellt …“. Verwendet in `software.load`,
+  `agentclient.create_image` (Image fertig; `nas` erst dort importiert, Restore-Stick ohne `nas.py`; Log über neue
+  Phase „note“ in `jobs.image_work`), `backups.run_backup`, `nasfiles.copy_in`, `oslib.add_iso`, `shrink.create`.
+  Kein `os.sync()` (Nutzen nicht belegt). Kein neuer Agent-Stick. Tests `tests/test_rename_retry.py`. Prüfung
+  [TESTS.md](TESTS.md) „B-030“.
 - **Ä-051 – Ordner senden: Software wie Content** (Von: Dominik, 26.11.; Prompt
   [Ä-051](prompts/AE-051-software-ordner-auswahl.md)). `distribute.py`: `software_entries` (Unterordner und Dateien
   direkt unter `Verteilen/Software`, ohne versteckte, Links, Sonderdateien; Ordner zuerst, alphabetisch),
