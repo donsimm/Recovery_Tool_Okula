@@ -279,6 +279,53 @@ class CatalogTest(unittest.TestCase):
         p = software.plan(self.root, ["vlc-3.0.23"])
         self.assertEqual((p.names, p.renamed), (["vlc-3.0.24"], [("vlc-3.0.23", "vlc-3.0.24")]))
 
+    def test_info_saved_and_read(self):
+        """Ä-050: freier Text „Info“ – mehrzeilig, getrennt vom automatischen Hinweis (note)."""
+        name = self.l.load("vlc-3.0.24-win64.exe", NSIS).name
+        entry = software.update(self.root, name, info="  Lizenz im Tresor\r\nnur für Lenovo-Modelle\x07  ")
+        self.assertEqual(entry.info, "Lizenz im Tresor\nnur für Lenovo-Modelle")
+        again = software.find(software.scan(self.root), name)
+        self.assertEqual(again.info, "Lizenz im Tresor\nnur für Lenovo-Modelle")
+        meta = json.loads((self.lib / name / ".okula.json").read_text())
+        self.assertEqual(meta["info"], "Lizenz im Tresor\nnur für Lenovo-Modelle")
+        self.assertFalse(meta["edited"])                     # nur Info → keine Rückfrage bei „Neu erkennen“
+        self.assertNotIn("Tresor", again.note)
+        self.assertEqual(software.first_line(again.info), "Lizenz im Tresor …")
+        self.assertEqual(software.first_line("eine Zeile"), "eine Zeile")
+        # Neu erkennen lässt die Info stehen
+        self.assertEqual(software.redetect(self.root, name).info, "Lizenz im Tresor\nnur für Lenovo-Modelle")
+        self.assertEqual(software.update(self.root, name, info="").info, "")
+        # Parameter von Hand → edited wie bisher
+        self.assertTrue(software.update(self.root, name, args="/S", info="x").meta["edited"])
+
+    def test_info_length_limit(self):
+        name = self.l.load("vlc-3.0.24-win64.exe", NSIS).name
+        ok = "x" * software.MAX_INFO
+        self.assertEqual(software.update(self.root, name, info=ok).info, ok)
+        with self.assertRaisesRegex(software.SoftwareError, "Info zu lang"):
+            software.update(self.root, name, info=ok + "y")
+        self.assertEqual(software.find(software.scan(self.root), name).info, ok)   # nichts überschrieben
+
+    def test_info_adopted_by_new_version(self):
+        old = self.l.load("vlc-3.0.23-win64.exe", UNKNOWN)
+        software.update(self.root, old.name, args="/S", info="vor Office installieren")
+        new = self.l.load("vlc-3.0.24-win64.exe", NSIS)
+        self.assertEqual((new.adopted_from, new.info), ("vlc-3.0.23", "vor Office installieren"))
+        # vorige Version ohne Parameter: Info kommt trotzdem mit, Parameter nicht
+        tool = self.l.load("tool-1.0.exe", PE_OTHER)
+        self.assertEqual(tool.name, "tool-1.0")
+        software.update(self.root, tool.name, info="nur Lenovo")
+        newer = self.l.load("b/tool-1.1.exe", PE_OTHER + b" 1.1")
+        self.assertEqual((newer.info, newer.args, newer.adopted_from), ("nur Lenovo", "", ""))
+        self.assertEqual(self.l.load("7z2301-x64.exe", PE_THIRD).info, "")      # anderes Programm
+
+    def test_info_found_by_search(self):
+        name = self.l.load("vlc-3.0.24-win64.exe", NSIS).name
+        entry = software.update(self.root, name, info="Lizenz im Tresor")
+        self.assertIn("tresor", entry.search_text)
+        self.assertIn("vlc media player", entry.search_text)
+        self.assertNotIn("tresor", software.find(software.scan(self.root), name).note.lower())
+
     def test_saved_selection_resolved_by_key(self):
         self.l.load("vlc-3.0.24-win64.exe", NSIS)
         self.l.put("System Tools/a.exe", UNKNOWN)
@@ -385,6 +432,8 @@ class DemoLibraryTest(unittest.TestCase):
             self.assertEqual(entries, {"vlc-3.0.24": software.READY, "acrordrdc-de-de": software.READY,
                                        "demo-tool": software.MISSING})
             self.assertEqual(sorted(p.name for p in old.iterdir()), ["Demo-Installer.txt"])
+            vlc = software.find(software.scan(root), "vlc-3.0.24")
+            self.assertEqual(vlc.info, demostore.DEMO_INFO["vlc-3.0.24-win64.exe"])     # Ä-050
             demostore.ensure()                                        # zweites Mal: nichts doppelt
             self.assertEqual(len(software.scan(root)), 3)
 
@@ -736,6 +785,29 @@ class ChooserTest(unittest.TestCase):
             win._on_edited(None, path, "/S", "args")
             wait(lambda: software.find(software.scan(lib.root), "unbekannt").args == "/S")
             wait(lambda: any(r[win.C_NAME] == "unbekannt" and r[win.C_STATUS] == software.READY for r in win.store))
+            # Ä-050: Info in der Zeile (einzeilig), Suche, mehrzeilig nicht in der Zeile bearbeitbar
+            self.assertEqual([c.get_title() for c in win.view.get_columns()][:2], ["Programm", "Info"])
+            path = next(str(row.path) for row in win.sorted if row[win.C_NAME] == "unbekannt")
+            win._on_edited(None, path, "Lizenz im Tresor", "info")
+            wait(lambda: any(r[win.C_NAME] == "unbekannt" and r[win.C_INFO] == "Lizenz im Tresor" for r in win.store))
+            win.search.set_text("tresor")
+            win.filter.refilter()
+            self.assertEqual([r[win.C_NAME] for r in win.filter], ["unbekannt"])
+            win.search.set_text("")
+            win.filter.refilter()
+            software.update(lib.root, "unbekannt", info="Zeile 1\nZeile 2")
+            win.reload(select="unbekannt")
+            wait(lambda: any(r[win.C_INFO] == "Zeile 1 …" for r in win.store))
+            row = next(r for r in win.store if r[win.C_NAME] == "unbekannt")
+            self.assertFalse(row[win.C_INFO_EDIT])
+            self.assertIn("Zeile 2", row[win.C_TIP])
+            entry = software.find(software.scan(lib.root), "unbekannt")
+            dlg = software_ui.SoftwareEditDialog(win, entry, software_ui.SoftwareEditDialog.PAGE_INFO)
+            self.assertEqual([dlg.notebook.get_tab_label_text(dlg.notebook.get_nth_page(i)) for i in range(2)],
+                             ["Angaben", "Info"])
+            self.assertEqual(dlg.notebook.get_current_page(), 1)
+            self.assertEqual(dlg.values()["info"], "Zeile 1\nZeile 2")
+            dlg.destroy()
             win._select("unbekannt")
             with mock.patch.object(software_ui, "confirm", lambda *_a, **_k: True):
                 win.on_delete()

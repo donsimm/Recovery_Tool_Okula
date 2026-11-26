@@ -32,6 +32,8 @@ DEMO_INSTALLERS = {
     "AcroRdrDC_de_DE.msi": b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1 Demo-MSI (erfunden)",
     "Demo-Tool-Setup.exe": b"MZ Demo-Installer (erfunden) ohne bekannte Kennung",
 }
+# Beispiel für das Feld „Info“ (Ä-050)
+DEMO_INFO = {"vlc-3.0.24-win64.exe": "Für alle Mietgeräte freigegeben.\nVor Office installieren (Demo-Beispiel)."}
 
 
 def base() -> Path:
@@ -93,7 +95,9 @@ def ensure_software(root: Path) -> None:
             src = Path(tmp) / name
             src.write_bytes(data)
             try:
-                software.load(root, src)
+                entry = software.load(root, src).entry
+                if name in DEMO_INFO:
+                    software.update(root, entry.name, info=DEMO_INFO[name])
             except (software.SoftwareError, OSError):
                 pass                  # z. B. Server-Disk voll – Demo läuft ohne Beispiel-Software weiter
 

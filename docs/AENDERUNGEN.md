@@ -50,7 +50,6 @@ steht im jeweiligen Protokoll-Eintrag.
 
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
-| Ä-050 | 🟡 | offen | Dominik | **Software-Bibliothek: Info-Feld.** Freier Text pro Eintrag (z. B. Lizenz, nur für bestimmte Modelle, Reihenfolge): Spalte „Info“ als 2. Spalte (erste Zeile, Tooltip ganz, Doppelklick bearbeitet), im Dialog „Bearbeiten …“ Reiter „Angaben“ und „Info“ (mehrzeilig). Gespeichert beim Eintrag auf dem NAS, bei neuer Version übernommen. Prompt [Ä-050](prompts/Ä-050-software-info.md) | 26.11. |
 | Ä-048 | 🟡 | offen | Okuli (Review) | **Robustheit Agent, Netz und Oberfläche (Sammelpunkt aus dem Review).** Agent: TLS-Handshake ohne Timeout/accept ungeschützt (R-agent 2), Neustart-Timer prüft Disk-Lock nicht erneut (R-agent 3), `wimlib-imagex` läuft nach Verbindungsabbruch weiter (R-agent 1), Kleines R-agent 4–9. Tool: Beacons ungeprüft legen Geräte an, keine Obergrenze (R-client 6); NAS-Zugriffe im GTK-Hauptthread frieren bei hängendem CIFS ein (R-ui 2), `refresh_images` überholt sich (R-ui 4), Kleines R-ui 3, 5–8. Software-Bibliothek: Programme, die ein Auftrag gerade überträgt, lassen sich löschen (Rest aus B-026). Windows: Int32-Rückgabewerte (R-win 5), Kindprozesse bei Timeout (R-win 6). Gleiche Board-UUID → falsches Gerät (R-client 3) zuerst prüfen. [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) | 25.11. |
 | Ä-049 | ⚪ | offen | Okuli (Review) | **`ui.py` (4457 Zeilen) aufteilen** – erster Schritt als Mixins (`ui_const`, `ui_storage`, `ui_devices`, `ui_vm`, `ui_actions`), `win.xxx` bleibt stabil; Vorschlag [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) R-ui. Teil von Ä-005 (dort Version 0.1.0 überholt: steht auf 0.2.0, Tag v0.2.0 gesetzt 25.11.) | 25.11. |
 | Ä-047 | 🟡 | offen | Dominik/Okuli | **„Sperrbildschirm aus“ in die Vorlage Clean aufnehmen.** Clean = Windows ohne Werbung; der Sperrbildschirm zeigt Windows Spotlight (Werbung, Tipps). Heute fehlt `lockscreen_off` in `TEMPLATES["Clean"]` (`wintweaks.py`), beim VM-Test 25.11. darum nicht gewählt. Tests anpassen (Vorlagen-Inhalt, „Clean (geändert)“-Erkennung) | 25.11. |
@@ -298,6 +297,21 @@ Gerätename = Name im Tool.
 ## ✅ Erledigt – Änderungsprotokoll
 
 Neueste zuoberst.
+
+### 26.11.2026
+- **Ä-050 – Software-Bibliothek: Info-Feld** (Von: Dominik; Prompt [Ä-050](prompts/Ä-050-software-info.md)).
+  `software.py`: Feld `info` in `.okula.json` (`Entry.info`, `update(…, info=…)`, `check_info`: Zeilenumbrüche
+  vereinheitlicht, Steuerzeichen entfernt, max. `MAX_INFO` = 2000 Zeichen, sonst „Info zu lang“); getrennt vom
+  automatischen Hinweis `note`. Nur die Info zu ändern setzt `edited` nicht (keine Rückfrage bei *Neu erkennen*);
+  *Neu erkennen* behält die Info (`KEEP_ON_REDETECT`). Neue Version: `_adopt` übernimmt die Info der vorigen Version –
+  auch wenn diese keine Parameter hat (dann nur die Info, neueste Version mit Info); `ADOPT_FIELDS` unverändert.
+  `Entry.search_text` für das Suchfeld (inkl. Info). `software_ui.py`: Spalte *Info* als 2. Spalte (erste Zeile,
+  „…“ bei weiteren, Tooltip ganz), einzeilige Info direkt in der Zelle bearbeitbar; mehrzeilig öffnet Doppelklick
+  *Bearbeiten …* auf dem Reiter *Info* (statt nur die erste Zeile zu ersetzen). *Bearbeiten …* mit Reitern
+  *Angaben* (unverändert) und *Info* (mehrzeilig, Rollbalken). *Software installieren*: Info im Tooltip der Zeile.
+  Tooltips beider Listen jetzt Markup-escaped (Info/Pfade mit „&“, „<“). Demo-Speicher: Beispiel VLC mit Info
+  (nur bei neu angelegter Demo-Bibliothek). Hilfe *Die Software-Bibliothek*, *Parameter hinterlegen*, *Neue Version*
+  ergänzt; Tests: speichern/lesen, Länge, Übernahme bei neuer Version, Neu erkennen, Suche, Demo, Fenster (GTK).
 
 ### 25.11.2026
 - **I-012 – BitLocker entsperren (nur lesend, für Datei-Backups)** (Von: Claude; Entscheide Dominik 25.11.; Prompt

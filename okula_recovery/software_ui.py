@@ -105,9 +105,10 @@ class SoftwareChooser(Gtk.Box):
         for e in self.entries:
             tip = f"{e.name} · {e.kind_label}" + (f" · {e.publisher}" if e.publisher else "") \
                 + (f" · Parameter: {e.args}" if e.args and e.mode == software.INSTALL else "") \
-                + (f"\n{e.note}" if e.note else "")
+                + (f"\n{e.note}" if e.note else "") + (f"\nInfo: {e.info}" if e.info else "")
+            # Tooltip-Spalte ist Markup – freier Text (Info, Pfade) mit „&“ oder „<“ escapen
             self.store.append([e.name in names and e.selectable, e.program, e.version, nas.format_size(e.size),
-                               e.status, e.name, e.selectable, e.size, tip, True])
+                               e.status, e.name, e.selectable, e.size, GLib.markup_escape_text(tip), True])
         for name in missing:         # gespeicherte Auswahl, die es nicht mehr gibt – nur abwählbar
             self.store.append([True, name, "", "", NOT_FOUND, name, True, 0,
                                "Liegt nicht mehr in der Software-Bibliothek – wird übersprungen", True])
@@ -192,11 +193,14 @@ class SoftwareLibraryWindow(Gtk.Window):
     """Extras → „Software-Bibliothek …“ (Ä-041): oben laden (Datei, Ordner, Ziehen und Ablegen), darunter die Liste
     mit den Angaben – Programm, Version, Hersteller, Parameter und Rückgabewerte direkt in der Zeile bearbeitbar, Art
     und Installer über „Bearbeiten …“, „Neu erkennen“ (Ä-043) über Knopf und Kontextmenü; unter der Liste die
-    Angaben des markierten Eintrags (Typ, Hersteller, Hinweis bei „Parameter fehlt“)."""
+    Angaben des markierten Eintrags (Typ, Hersteller, Hinweis bei „Parameter fehlt“). Spalte „Info“ (Ä-050):
+    erste Zeile des freien Textes, einzeilig direkt bearbeitbar; mehrzeilig öffnet Doppelklick „Bearbeiten …“ auf dem
+    Reiter Info."""
 
     # Name, Programm, Version, Typ, Parameter, Rückgabewerte, Status, Grösse (Text), Grösse (Byte), Tooltip,
-    # Parameter bearbeitbar, Hersteller
-    C_NAME, C_PROG, C_VER, C_TYPE, C_ARGS, C_CODES, C_STATUS, C_SIZE, C_BYTES, C_TIP, C_EDIT, C_PUB = range(12)
+    # Parameter bearbeitbar, Hersteller, Info (erste Zeile), Info in der Zeile bearbeitbar, Suchtext
+    C_NAME, C_PROG, C_VER, C_TYPE, C_ARGS, C_CODES, C_STATUS, C_SIZE, C_BYTES, C_TIP, C_EDIT, C_PUB, C_INFO, \
+        C_INFO_EDIT, C_FIND = range(15)
 
     def __init__(self, parent: Gtk.Window, root: str, where: str = "NAS"):
         super().__init__(title=LIBRARY_TITLE, transient_for=parent)
@@ -258,12 +262,14 @@ class SoftwareLibraryWindow(Gtk.Window):
         self.load_file.get_style_context().add_class("status-idle")
         box.pack_start(self.load_file, False, False, 0)
 
-        self.store = Gtk.ListStore(str, str, str, str, str, str, str, str, GObject.TYPE_INT64, str, bool, str)
+        self.store = Gtk.ListStore(str, str, str, str, str, str, str, str, GObject.TYPE_INT64, str, bool, str, str,
+                                   bool, str)
         self.filter = self.store.filter_new()
         self.filter.set_visible_func(self._visible)
         self.sorted = Gtk.TreeModelSort(model=self.filter)
         self.view = Gtk.TreeView(model=self.sorted, tooltip_column=self.C_TIP)
-        columns = (("Programm", self.C_PROG, True, "program"), ("Version", self.C_VER, False, "version"),
+        columns = (("Programm", self.C_PROG, True, "program"), ("Info", self.C_INFO, True, "info"),
+                   ("Version", self.C_VER, False, "version"),
                    ("Hersteller", self.C_PUB, False, "publisher"),
                    ("Typ", self.C_TYPE, False, None), ("Parameter", self.C_ARGS, True, "args"),
                    ("Rückgabewerte", self.C_CODES, False, "exit_codes"), ("Status", self.C_STATUS, False, None),
@@ -275,6 +281,9 @@ class SoftwareLibraryWindow(Gtk.Window):
                 cell.connect("edited", self._on_edited, field_name)
                 if field_name in ("args", "exit_codes"):
                     column.add_attribute(cell, "editable", self.C_EDIT)
+                elif field_name == "info":
+                    column.add_attribute(cell, "editable", self.C_INFO_EDIT)
+                    self.info_column = column
                 else:
                     cell.set_property("editable", True)
             if expand:
@@ -286,14 +295,16 @@ class SoftwareLibraryWindow(Gtk.Window):
         self.view.get_selection().connect("changed", lambda _s: self._update_buttons())
         self.view.connect("key-press-event", self._on_key)
         self.view.connect("button-press-event", self._on_button)
+        self.view.connect("row-activated", self._on_activated)
         box.pack_start(scrolled(self.view), True, True, 0)
         # Angaben zum markierten Eintrag: Typ, Hersteller, Installer und was bei „Parameter fehlt“ zu tun ist
         self.detail = Gtk.Label(xalign=0, wrap=True, selectable=True)
         box.pack_start(self.detail, False, False, 0)
         tip = Gtk.Label(xalign=0, wrap=True)
-        tip.set_markup("<small>Programm, Version, Hersteller, Parameter und Rückgabewerte: Zeile markieren und in die "
-                       "Zelle klicken. Art (still installieren, nur kopieren, nur von Hand) und Installer im Ordner: "
-                       "<b>Bearbeiten …</b> · Erkennung erneut anwenden: <b>Neu erkennen</b> (auch Rechtsklick)</small>")
+        tip.set_markup("<small>Programm, Info, Version, Hersteller, Parameter und Rückgabewerte: Zeile markieren und "
+                       "in die Zelle klicken. Art (still installieren, nur kopieren, nur von Hand), Installer im Ordner "
+                       "und mehrzeilige Info: <b>Bearbeiten …</b> · Erkennung erneut anwenden: <b>Neu erkennen</b> "
+                       "(auch Rechtsklick)</small>")
         tip.get_style_context().add_class("status-idle")
         box.pack_start(tip, False, False, 0)
 
@@ -334,9 +345,7 @@ class SoftwareLibraryWindow(Gtk.Window):
         text = self.search.get_text().strip().lower()
         if not text:
             return True
-        row = model[it]
-        return text in " ".join(str(row[i]) for i in (self.C_NAME, self.C_PROG, self.C_VER, self.C_PUB, self.C_TYPE,
-                                                      self.C_ARGS, self.C_STATUS)).lower()
+        return text in model[it][self.C_FIND]
 
     def reload(self, select: str = "", message: str = "") -> None:
         """Liste neu lesen; message (z. B. „„VLC“ geladen: bereit“) bleibt danach vor der Zählung stehen."""
@@ -361,10 +370,14 @@ class SoftwareLibraryWindow(Gtk.Window):
                 tip.append(e.note)
             if e.loaded_from:
                 tip.append(f"Geladen aus {e.loaded_from}")
+            if e.info:
+                tip.append(f"Info:\n{e.info}")
             install = e.mode == software.INSTALL
             self.store.append([e.name, e.program, e.version, e.kind_label, e.args if install else "–",
                                ", ".join(str(c) for c in e.exit_codes) if install else "–", e.status,
-                               nas.format_size(e.size), e.size, "\n".join(tip), install, e.publisher])
+                               nas.format_size(e.size), e.size, GLib.markup_escape_text("\n".join(tip)),
+                               install, e.publisher,
+                               software.first_line(e.info), "\n" not in e.info, e.search_text])
         counts = {s: sum(1 for e in result if e.status == s) for s in (software.READY, software.MISSING)}
         summary = (f"{len(result)} Einträge · {counts[software.READY]} bereit · "
                    f"{counts[software.MISSING]} mit fehlenden Parametern" if result else
@@ -431,10 +444,17 @@ class SoftwareLibraryWindow(Gtk.Window):
         if entry is None:
             return
         current = {"program": entry.program, "version": entry.version, "publisher": entry.publisher,
-                   "args": entry.args, "exit_codes": ", ".join(str(c) for c in entry.exit_codes)}[field_name]
+                   "args": entry.args, "exit_codes": ", ".join(str(c) for c in entry.exit_codes),
+                   "info": entry.info}[field_name]
         if text.strip() == current:
             return
         self._save(name, {field_name: text})
+
+    def _on_activated(self, _view, path, column) -> None:
+        """Doppelklick auf eine mehrzeilige Info (Ä-050): „Bearbeiten …“ auf dem Reiter Info – in der Zeile liesse
+        sich nur die erste Zeile bearbeiten."""
+        if column is self.info_column and not self.sorted[path][self.C_INFO_EDIT]:
+            self.on_edit(page=SoftwareEditDialog.PAGE_INFO)
 
     def _save(self, name: str, values: dict) -> None:
         def done(result) -> None:
@@ -443,11 +463,11 @@ class SoftwareLibraryWindow(Gtk.Window):
             self.reload(select=name)
         run_async(lambda: software.update(self.root, name, **values), done)
 
-    def on_edit(self) -> None:
+    def on_edit(self, page: int = 0) -> None:
         entry = self._selected_entry()
         if entry is None:
             return
-        dlg = SoftwareEditDialog(self, entry)
+        dlg = SoftwareEditDialog(self, entry, page)
         while dlg.run() == Gtk.ResponseType.OK:
             try:
                 software.update(self.root, entry.name, **dlg.values())
@@ -648,9 +668,12 @@ class SoftwareLibraryWindow(Gtk.Window):
 
 
 class SoftwareEditDialog(Gtk.Dialog):
-    """Ein Programm: Name, Version, Art, Installer (Ordner), Parameter, Rückgabewerte."""
+    """Ein Programm – Reiter „Angaben“: Name, Version, Art, Installer (Ordner), Parameter, Rückgabewerte; Reiter
+    „Info“ (Ä-050): freier, mehrzeiliger Text der Techniker."""
 
-    def __init__(self, parent: Gtk.Window, entry: software.Entry):
+    PAGE_ANGABEN, PAGE_INFO = 0, 1
+
+    def __init__(self, parent: Gtk.Window, entry: software.Entry, page: int = PAGE_ANGABEN):
         super().__init__(title=f"Software – {entry.name}", transient_for=parent, modal=True)
         self.entry = entry
         self.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
@@ -705,8 +728,28 @@ class SoftwareEditDialog(Gtk.Dialog):
         note = Gtk.Label(label=entry.note, xalign=0, wrap=True, max_width_chars=70)
         note.get_style_context().add_class("status-idle")
         grid.attach(note, 0, r, 2, 1)
-        self.get_content_area().add(grid)
+
+        info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=12)
+        info_head = Gtk.Label(xalign=0, wrap=True, max_width_chars=70,
+                              label="Freier Text für die Techniker, z. B. „Lizenz im Tresor“, „nur für Lenovo-Modelle“, "
+                                    f"„vor Office installieren“ (max. {software.MAX_INFO} Zeichen). Gilt für alle "
+                                    "Tool-Rechner und geht an eine neue Version des Programms über.")
+        info_head.get_style_context().add_class("status-idle")
+        info_box.pack_start(info_head, False, False, 0)
+        self.info = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR, accepts_tab=False)
+        self.info.get_buffer().set_text(entry.info)
+        info_sw = scrolled(self.info)
+        info_sw.set_min_content_height(200)
+        info_box.pack_start(info_sw, True, True, 0)
+
+        self.notebook = Gtk.Notebook()
+        self.notebook.append_page(grid, Gtk.Label(label="Angaben"))
+        self.notebook.append_page(info_box, Gtk.Label(label="Info"))
+        self.get_content_area().pack_start(self.notebook, True, True, 0)
         self.show_all()
+        self.notebook.set_current_page(page)
+        if page == self.PAGE_INFO:
+            self.info.grab_focus()
         self._update()
 
     def _update(self) -> None:
@@ -716,12 +759,17 @@ class SoftwareEditDialog(Gtk.Dialog):
 
     def values(self) -> dict:
         out = {"program": self.program.get_text(), "version": self.version.get_text(),
-               "publisher": self.publisher.get_text(), "mode": self.mode.get_active_id() or software.INSTALL}
+               "publisher": self.publisher.get_text(), "mode": self.mode.get_active_id() or software.INSTALL,
+               "info": self.info_text()}
         if out["mode"] == software.INSTALL:
             out.update(args=self.args.get_text(), exit_codes=self.codes.get_text())
             if self.entry.is_dir:
                 out["installer"] = self.installer.get_active_id() or ""
         return out
+
+    def info_text(self) -> str:
+        buf = self.info.get_buffer()
+        return buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False)
 
 
 def detail_markup(entry: software.Entry) -> str:

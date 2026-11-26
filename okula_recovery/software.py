@@ -15,7 +15,8 @@ Die Beschreibungen „.<Name>.okula.json“, die I-020 dort angelegt hat, räumt
 
 Beschreibung: Programmname, Version, Hersteller, Installer-Typ, Parameter für die stille Installation, erwartete
 Rückgabewerte, Art (installieren, nur kopieren, nur von Hand), Installer (relativ), Grösse und SHA-256 des
-Installers, dazu SHA-256 des ganzen Inhalts (Doppel erkennen) und woher der Eintrag geladen wurde.
+Installers, dazu SHA-256 des ganzen Inhalts (Doppel erkennen) und woher der Eintrag geladen wurde. Dazu ein freier
+Text „info“ der Techniker (Ä-050, max. MAX_INFO Zeichen) – bleibt bei „Neu erkennen“, geht an die neue Version.
 
 Erkennung ohne Ausführen (Ä-043; Leser in installerinfo.py, Typen in KINDS, Quellen in docs/TECHNIK.md):
 - MSI/MSP (Compound File), MSU (Cabinet), MSIX/APPX (ZIP) – an Endung und Kopf
@@ -27,7 +28,7 @@ Erkennung ohne Ausführen (Ä-043; Leser in installerinfo.py, Typen in KINDS, Qu
   Parameter hinterlegt sind. „Neu erkennen“ (redetect) wendet die Erkennung auf schon geladene Einträge an.
 
 Neue Version: gleicher Programmname (aus dem Datei-/Ordnernamen ohne Version und Architektur, z. B.
-vlc-3.0.24-win64.exe ↔ vlc-3.0.23-win64.exe) → Parameter, Art und Rückgabewerte der vorigen Version in der
+vlc-3.0.24-win64.exe ↔ vlc-3.0.23-win64.exe) → Parameter, Art, Rückgabewerte und Info der vorigen Version in der
 Bibliothek werden übernommen (Hinweis in der Liste). Die alte Version bleibt, bis sie gelöscht wird.
 """
 
@@ -60,6 +61,7 @@ APPX_EXT = (".msix", ".msixbundle", ".appx", ".appxbundle")     # App-Pakete (Ä
 INSTALLER_EXT = (".exe", ".msi", ".msp", ".msu") + APPX_EXT
 HEAD_BYTES = 8 * 1024 * 1024          # Kennungen stehen im Programmteil vor den gepackten Daten
 MAX_ARGS = 1000
+MAX_INFO = 2000                       # Zeichen im freien Text „Info“ (Ä-050)
 DEFAULT_EXIT_CODES = (0, 3010)
 MSI_EXIT_CODES = (0, 1641, 3010)      # Windows Installer: 1641/3010 = Neustart eingeleitet bzw. nötig
 REBOOT_CODES = (3010, 1641)           # ERROR_SUCCESS_REBOOT_REQUIRED, ERROR_SUCCESS_REBOOT_INITIATED
@@ -540,6 +542,22 @@ def check_args(args: str) -> str:
     return args
 
 
+def check_info(text: str) -> str:
+    """Freier Text „Info“ (Ä-050): Zeilenumbrüche vereinheitlichen, Steuerzeichen ausser Zeilenumbruch und Tab
+    entfernen, Leerraum am Anfang und Ende weg; Fehler über MAX_INFO Zeichen."""
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = "".join(c for c in text if c in "\n\t" or ord(c) >= 32).strip()
+    if len(text) > MAX_INFO:
+        raise SoftwareError(f"Info zu lang ({len(text)} Zeichen, max. {MAX_INFO})")
+    return text
+
+
+def first_line(text: str) -> str:
+    """Erste Zeile eines Textes, „ …“ angehängt, wenn weitere folgen (Spalte „Info“)."""
+    lines = text.strip().split("\n")
+    return lines[0].rstrip() + (" …" if len(lines) > 1 else "")
+
+
 @dataclass
 class Entry:
     """Ein Programm in der Software-Bibliothek (Ordner Software-Bibliothek/<name>)."""
@@ -562,6 +580,17 @@ class Entry:
     def publisher(self) -> str:
         """Hersteller (Ä-043) – aus Versionsinfo, MSI, Qt IFW, App-Paket oder von Hand."""
         return str(self.meta.get("publisher") or "")
+
+    @property
+    def info(self) -> str:
+        """Freier Text der Techniker (Ä-050), z. B. „Lizenz im Tresor“ – nicht zu verwechseln mit note."""
+        return str(self.meta.get("info") or "")
+
+    @property
+    def search_text(self) -> str:
+        """Alles, worin das Suchfeld der Software-Bibliothek sucht (klein geschrieben)."""
+        return " ".join((self.name, self.program, self.version, self.publisher, self.kind_label, self.args,
+                         self.status, self.info)).lower()
 
     @property
     def kind(self) -> str:
@@ -697,7 +726,7 @@ def _fresh_meta(folder: Path, source_name: str, is_dir: bool, candidates: list[s
     meta = {"format": META_FORMAT, "version": META_VERSION, "program": program, "program_version": version,
             "publisher": "", "key": key, "kind": "", "detected": "", "args": "", "detected_args": "",
             "exit_codes": list(DEFAULT_EXIT_CODES), "mode": INSTALL, "installer": "", "note": "", "hint": "",
-            "adopted_from": "", "edited": False, "source": "folder" if is_dir else "file"}
+            "adopted_from": "", "edited": False, "info": "", "source": "folder" if is_dir else "file"}
     pick = installer if installer is not None else (pick_installer(candidates) if is_dir else source_name)
     meta["installer"] = pick if pick in candidates else ""
     if meta["installer"]:
@@ -739,21 +768,28 @@ def _stamp(meta: dict, installer: Path | None) -> None:
     meta.update(size=st.st_size, mtime=int(st.st_mtime), sha256=digest)
 
 
-ADOPT_FIELDS = ("kind", "args", "exit_codes", "mode", "note")
+ADOPT_FIELDS = ("kind", "args", "exit_codes", "mode", "note")   # „info“ eigens in _adopt (auch ohne Parameter)
 
 
 def _adopt(meta: dict, name: str, others: dict[str, dict], candidates: list[str]) -> None:
-    """Neue Version: Parameter der vorigen Beschreibung mit gleichem Programmnamen übernehmen."""
+    """Neue Version: Parameter der vorigen Beschreibung mit gleichem Programmnamen übernehmen. Die Info (Ä-050)
+    kommt auch dann mit, wenn die vorige Version keine Parameter hat (von der neuesten mit Info)."""
     key = meta.get("key") or ""
     prog = name_key(str(meta.get("program") or ""))
-    matches = []
+    matches, with_info = [], []
     for other_name, other in others.items():
         if other_name == name:
             continue
         same = (key and other.get("key") == key) or (prog and name_key(str(other.get("program") or "")) == prog)
         useful = other.get("mode") in (COPY, MANUAL) or str(other.get("args") or "").strip()
+        order = (_version_tuple(str(other.get("program_version") or "")), other_name, other)
         if same and useful:
-            matches.append((_version_tuple(str(other.get("program_version") or "")), other_name, other))
+            matches.append(order)
+        if same and str(other.get("info") or "").strip():
+            with_info.append(order)
+    if with_info and not str(meta.get("info") or "").strip():
+        # eigene Info (z. B. bei „Neu erkennen“) bleibt; sonst die der neuesten Version mit Info
+        meta["info"] = max(with_info, key=lambda m: (m[0], m[1]))[2]["info"]
     if not matches:
         return
     _v, source_name, source = max(matches, key=lambda m: (m[0], m[1]))
@@ -802,8 +838,9 @@ def find(entries: list[Entry], name: str) -> Entry | None:
 
 def update(nas_root: str | Path, name: str, *, program: str | None = None, version: str | None = None,
            args: str | None = None, exit_codes: str | list[int] | None = None, mode: str | None = None,
-           installer: str | None = None, publisher: str | None = None) -> Entry:
-    """Beschreibung von Hand ändern (Extras → Software-Bibliothek …) und speichern."""
+           installer: str | None = None, publisher: str | None = None, info: str | None = None) -> Entry:
+    """Beschreibung von Hand ändern (Extras → Software-Bibliothek …) und speichern. Nur die Info (Ä-050) gilt
+    nicht als „von Hand geändert“ – „Neu erkennen“ behält sie ohnehin."""
     entries = scan(nas_root)
     entry = find(entries, name)
     if entry is None:
@@ -839,7 +876,10 @@ def update(nas_root: str | Path, name: str, *, program: str | None = None, versi
         meta["mode"] = mode
         if mode == INSTALL and meta.get("kind") == "squirrel":
             meta["note"] = ""
-    meta["edited"] = True
+    if info is not None:
+        meta["info"] = check_info(info)
+    if any(v is not None for v in (program, version, args, exit_codes, mode, installer, publisher)):
+        meta["edited"] = True
     if not _write_meta(entry.path, meta):
         raise SoftwareError("Beschreibung konnte nicht gespeichert werden (Ordner auf dem NAS schreibgeschützt?)")
     entry.meta = meta
@@ -850,7 +890,7 @@ class EditedError(SoftwareError):
     """„Neu erkennen“ würde von Hand geänderte Angaben überschreiben – erst nach Rückfrage (overwrite_edited)."""
 
 
-KEEP_ON_REDETECT = ("key", "source", "content_sha256", "loaded_from", "loaded")
+KEEP_ON_REDETECT = ("key", "source", "content_sha256", "loaded_from", "loaded", "info")
 
 
 def redetect(nas_root: str | Path, name: str, overwrite_edited: bool = False) -> Entry:

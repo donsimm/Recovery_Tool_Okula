@@ -983,9 +983,14 @@ Kein Windows auf der Disk (oder BitLocker): Es wird nichts gesendet. Steht noch 
 aus, bleibt es: Beim nächsten Start laufen beide, das zuletzt laufende Startskript räumt auf.
 
 <b>Die Software-Bibliothek</b> (<i>Extras → Software-Bibliothek …</i>)
-Oben wird geladen, darunter steht direkt die Liste mit Programm, Version, Hersteller, Typ, Parameter,
-Rückgabewerte, Status und Grösse (Suchfeld oben rechts). Unter der Liste stehen Typ, Hersteller, Installer und
-Status des markierten Eintrags, bei „Parameter fehlt“ zusätzlich <b>Was tun</b>.
+Oben wird geladen, darunter steht direkt die Liste mit Programm, Info, Version, Hersteller, Typ, Parameter,
+Rückgabewerte, Status und Grösse (Suchfeld oben rechts – sucht auch im Text der Info). Unter der Liste stehen Typ,
+Hersteller, Installer und Status des markierten Eintrags, bei „Parameter fehlt“ zusätzlich <b>Was tun</b>.
+•  <b>Info</b>: freier Text für die Techniker, z. B. „Lizenz im Tresor“, „nur für Lenovo-Modelle“ oder „vor Office
+    installieren“ (höchstens 2000 Zeichen). Die Spalte zeigt die erste Zeile („…“ = es folgen weitere), der ganze
+    Text steht im Tooltip der Zeile (Maus über der Zeile). Die Info liegt beim Eintrag auf dem NAS und gilt damit
+    für alle Tool-Rechner; <i>Neu erkennen</i> lässt sie stehen, eine neue Version des Programms übernimmt sie.
+    In <i>Software installieren</i> steht die Info im Tooltip der Zeile.
 •  <i>Ins Tool laden …</i>: einen Installer wählen (<tt>.exe</tt>, <tt>.msi</tt>, <tt>.msp</tt>, <tt>.msu</tt>,
     <tt>.msix</tt>, <tt>.appx</tt>, <tt>.msixbundle</tt>, <tt>.appxbundle</tt>) – von der Server-Disk, einem
     USB-Datenträger oder dem NAS (auch aus <i>Verteilen\\Software</i>). Er wird in die Bibliothek kopiert.
@@ -1050,18 +1055,20 @@ Qt Installer Framework bzw. des App-Pakets, sonst aus dem Dateinamen (ohne „Se
 
 <b>Parameter hinterlegen</b>
 1.  <i>Extras → Software-Bibliothek …</i> öffnen.
-2.  Zeile markieren und in die Zelle <i>Programm</i>, <i>Version</i>, <i>Hersteller</i>, <i>Parameter</i> oder
-    <i>Rückgabewerte</i> klicken, Wert eintragen, Enter – gespeichert wird sofort. <i>Parameter</i> sind die Angaben für die stille
-    Installation (z. B. <tt>/S</tt>), <i>Rückgabewerte</i> die Werte für „erfolgreich“ (Standard „0, 3010“;
-    3010 = Neustart nötig).
-3.  <i>Art</i> (still installieren, nur kopieren, nur von Hand) und bei Ordnern den <i>Installer</i>: Zeile markieren,
-    <i>Bearbeiten …</i>, <i>Speichern</i>.
+2.  Zeile markieren und in die Zelle <i>Programm</i>, <i>Info</i>, <i>Version</i>, <i>Hersteller</i>,
+    <i>Parameter</i> oder <i>Rückgabewerte</i> klicken, Wert eintragen, Enter – gespeichert wird sofort.
+    <i>Parameter</i> sind die Angaben für die stille Installation (z. B. <tt>/S</tt>), <i>Rückgabewerte</i> die Werte
+    für „erfolgreich“ (Standard „0, 3010“; 3010 = Neustart nötig). Eine mehrzeilige <i>Info</i> lässt sich in der
+    Zeile nicht bearbeiten: Doppelklick auf die Zelle öffnet <i>Bearbeiten …</i> auf dem Reiter <i>Info</i>.
+3.  <i>Bearbeiten …</i> hat zwei Reiter: <i>Angaben</i> mit Programm, Version, Hersteller, <i>Art</i> (still
+    installieren, nur kopieren, nur von Hand), bei Ordnern dem <i>Installer</i>, Parameter und Rückgabewerten;
+    <i>Info</i> mit dem mehrzeiligen Text der Info. Zeile markieren, <i>Bearbeiten …</i>, <i>Speichern</i>.
 Bei MSI ergänzt das Tool <tt>msiexec /i</tt> und den Dateinamen. <tt>{ordner}</tt> steht für den Ordner des
 Installers, z. B. für eine Antwortdatei.
 
 <b>Neue Version</b>
 Gleicher Programmname, andere Version (z. B. <tt>vlc-3.0.24-win64.exe</tt> nach <tt>vlc-3.0.23-win64.exe</tt>):
-Die neu geladene Version übernimmt Parameter, Art und Rückgabewerte der vorigen; der Hinweis steht in der Liste
+Die neu geladene Version übernimmt Parameter, Art, Rückgabewerte und Info der vorigen; der Hinweis steht in der Liste
 (Maus über der Zeile). Die alte Version bleibt in der Bibliothek, bis sie gelöscht wird. Eine gespeicherte Auswahl
 (Automatisierung, Vorlagen) nimmt nach dem Löschen der alten Version die neueste; gibt es das Programm gar nicht
 mehr, steht es in der Liste als „fehlt in der Bibliothek“ und wird beim Auftrag übersprungen (Eintrag im Log).

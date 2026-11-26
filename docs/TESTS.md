@@ -1015,3 +1015,19 @@ Netzwerkstart neu vorbereiten (*Tools → Netzwerkstart (PXE) …*). VM mit BitL
 - [ ] Schreibend bleibt gesperrt: *Backup zurückspielen* bietet die BitLocker-Partition nicht als Ziel an; *Windows
       anpassen*/*Software installieren*/*Ordner senden* → „nichts gesendet“ bzw. „nicht beschreibbar“
 - [ ] Gerät löschen → Schlüsseldatei unter `/etc/okula-recovery/bitlocker/` ist weg
+
+### Ä-050 Software-Bibliothek: Info-Feld
+Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stick).
+- [ ] *Extras → Software-Bibliothek …*: Spalte **Info** direkt nach *Programm*; Zeile markieren, in die Zelle *Info*
+      klicken, „Lizenz im Tresor & Schlüssel“ eintragen, Enter → gespeichert, Tooltip der Zeile zeigt den Text
+      (auch mit „&“ korrekt)
+- [ ] *Bearbeiten …* → Reiter *Angaben* (wie bisher) und *Info*; im Reiter *Info* mehrere Zeilen eintragen,
+      *Speichern* → Spalte zeigt die erste Zeile mit „…“, Tooltip den ganzen Text
+- [ ] Doppelklick auf eine mehrzeilige Info → *Bearbeiten …* öffnet direkt auf dem Reiter *Info*
+- [ ] Suchfeld findet ein Wort, das nur in der Info steht
+- [ ] Über 2000 Zeichen im Reiter *Info* → Meldung „Info zu lang …“, nichts gespeichert
+- [ ] Zweiter Tool-Rechner (bzw. Tool neu starten): Info ist da (liegt beim Eintrag auf dem NAS)
+- [ ] Neue Version eines Programms mit Info laden → neue Version hat dieselbe Info; *Neu erkennen* lässt die Info
+      stehen (und fragt nicht nach, wenn nur die Info geändert wurde)
+- [ ] Rechtsklick auf ein Gerät → *Software installieren …*: Tooltip der Zeile enthält „Info: …“, keine neue Spalte
+- [ ] Demo-Gerät: Beispiel *VLC media player* hat eine Info (nur bei neu angelegtem Demo-Speicher)
