@@ -29,10 +29,12 @@ URI_TARGET = "text/uri-list"
 class SoftwareChooser(Gtk.Box):
     """Liste „Software installieren“ mit Häkchen, Suchfeld und Spalten Programm, Version, Grösse, Status.
 
-    Nur Einträge mit Status „bereit“ oder „nur kopieren“ lassen sich ankreuzen; die Gesamtgrösse steht darunter."""
+    Nur Einträge mit Status „bereit“ oder „nur kopieren“ lassen sich ankreuzen; die Gesamtgrösse steht darunter.
+    Ist ein Office-Eintrag angehakt (I-042), erscheinen darunter Produkt und Apps; selected() liefert sie mit
+    („<Eintrag>|<Produkt>:<Apps>“, software.choice_text). Es lässt sich nur ein Office-Eintrag anhaken."""
 
-    # Häkchen, Programm, Version, Grösse (Text), Status, Name, wählbar, Grösse (Byte), Tooltip, sichtbar
-    C_ON, C_PROG, C_VER, C_SIZE, C_STATUS, C_NAME, C_OK, C_BYTES, C_TIP, C_SHOW = range(10)
+    # Häkchen, Programm, Version, Grösse (Text), Status, Name, wählbar, Grösse (Byte), Tooltip, sichtbar, Office
+    C_ON, C_PROG, C_VER, C_SIZE, C_STATUS, C_NAME, C_OK, C_BYTES, C_TIP, C_SHOW, C_OFFICE = range(11)
 
     def __init__(self, on_change: Callable[[], None] | None = None, height: int = 140, when: str = "ersten"):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=4)
@@ -49,7 +51,7 @@ class SoftwareChooser(Gtk.Box):
         self.search.connect("search-changed", lambda _e: self.filter.refilter())
         head.pack_end(self.search, False, False, 0)
         self.pack_start(head, False, False, 0)
-        self.store = Gtk.ListStore(bool, str, str, str, str, str, bool, GObject.TYPE_INT64, str, bool)
+        self.store = Gtk.ListStore(bool, str, str, str, str, str, bool, GObject.TYPE_INT64, str, bool, bool)
         self.filter = self.store.filter_new()
         self.filter.set_visible_func(self._visible)
         self.view = Gtk.TreeView(model=self.filter, tooltip_column=self.C_TIP)
@@ -67,12 +69,78 @@ class SoftwareChooser(Gtk.Box):
         sw = scrolled(self.view)
         sw.set_min_content_height(height)
         self.pack_start(sw, True, True, 0)
+        self.office = software.OfficeOptions()
+        self._office_busy = False
+        self.office_box = self._office_options()
+        self.pack_start(self.office_box, False, False, 0)
         self.total = Gtk.Label(xalign=0, wrap=True)
         self.pack_start(self.total, False, False, 0)
         self.hint = Gtk.Label(label=FOLDER_HINT, xalign=0, wrap=True)
         self.hint.get_style_context().add_class("status-idle")
         self.pack_start(self.hint, False, False, 0)
         self._update_total()
+
+    # ---------- Office (I-042) ----------
+
+    def _office_options(self) -> Gtk.Box:
+        """Optionen unter der Liste, nur sichtbar, solange ein Office-Eintrag angehakt ist: Produkt, Häkchen je App,
+        Hinweis zur Aktivierung."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, margin_start=4, no_show_all=True)
+        head = Gtk.Box(spacing=8)
+        title = Gtk.Label(xalign=0)
+        title.set_markup("<b>Office</b>  Produkt")
+        head.pack_start(title, False, False, 0)
+        self.office_product = Gtk.ComboBoxText()
+        for pid, label in software.OFFICE_PRODUCTS:
+            self.office_product.append(pid, f"Microsoft 365 {label}")
+        self.office_product.set_active_id(self.office.product)
+        self.office_product.set_tooltip_text("Produkt aus dem Abo des Mieters (O365BusinessRetail bzw. "
+                                             "O365ProPlusRetail) – die Office-Dateien sind für beide dieselben")
+        self.office_product.connect("changed", lambda _c: self._office_changed())
+        head.pack_start(self.office_product, False, False, 0)
+        box.pack_start(head, False, False, 0)
+        flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=8, column_spacing=6,
+                           row_spacing=0, homogeneous=False)
+        self.office_apps: dict[str, Gtk.CheckButton] = {}
+        for app_id, label, _on in software.OFFICE_APPS:
+            check = Gtk.CheckButton(label=label)
+            check.set_active(app_id in self.office.apps)
+            check.connect("toggled", lambda _c: self._office_changed())
+            self.office_apps[app_id] = check
+            flow.add(check)
+        box.pack_start(flow, False, False, 0)
+        note = Gtk.Label(xalign=0, wrap=True,
+                         label=software.OFFICE_ACTIVATION + " (kein Schlüssel im Tool). Teams, das neue Outlook und "
+                               "Skype for Business werden nie über Office installiert.")
+        note.get_style_context().add_class("status-idle")
+        box.pack_start(note, False, False, 0)
+        for child in (head, title, self.office_product, flow, note, *self.office_apps.values()):
+            child.show()
+        for child in flow.get_children():
+            child.show()
+        return box
+
+    def set_office(self, office: software.OfficeOptions) -> None:
+        """Optionen in die Häkchen übernehmen (gespeicherte Auswahl)."""
+        self._office_busy = True
+        try:
+            self.office = office
+            self.office_product.set_active_id(office.product)
+            for app_id, check in self.office_apps.items():
+                check.set_active(app_id in office.apps)
+        finally:
+            self._office_busy = False
+
+    def _office_changed(self) -> None:
+        if self._office_busy:
+            return
+        self.office = software.OfficeOptions(self.office_product.get_active_id() or software.OFFICE_PRODUCTS[0][0],
+                                             tuple(a for a, c in self.office_apps.items() if c.get_active()))
+        self._update_total()
+        self.on_change()
+
+    def _office_chosen(self) -> bool:
+        return any(row[self.C_ON] and row[self.C_OFFICE] for row in self.store)
 
     def _visible(self, model, it, _data) -> bool:
         text = self.search.get_text().strip().lower()
@@ -101,17 +169,23 @@ class SoftwareChooser(Gtk.Box):
         self.loaded = True
         chosen, missing, _renamed = software.resolve(self.entries, keep)
         names = {e.name for e in chosen}
+        office = next((e.office for e in chosen if e.is_office and e.office is not None), None)
+        self.set_office(office or software.OfficeOptions())      # ältere Auswahl ohne Optionen = Vorauswahl
         self.store.clear()
+        office_on = False
         for e in self.entries:
             tip = f"{e.name} · {e.kind_label}" + (f" · {e.publisher}" if e.publisher else "") \
-                + (f" · Parameter: {e.args}" if e.args and e.mode == software.INSTALL else "") \
+                + (f" · Parameter: {e.args}" if e.args and e.mode == software.INSTALL and not e.is_office else "") \
                 + (f"\n{e.note}" if e.note else "") + (f"\nInfo: {e.info}" if e.info else "")
+            on = e.name in names and e.selectable and not (e.is_office and office_on)   # nur ein Office
+            office_on = office_on or (on and e.is_office)
             # Tooltip-Spalte ist Markup – freier Text (Info, Pfade) mit „&“ oder „<“ escapen
-            self.store.append([e.name in names and e.selectable, e.program, e.version, nas.format_size(e.size),
-                               e.status, e.name, e.selectable, e.size, GLib.markup_escape_text(tip), True])
+            self.store.append([on, e.program, e.version, nas.format_size(e.size),
+                               e.status, e.name, e.selectable, e.size, GLib.markup_escape_text(tip), True,
+                               e.is_office])
         for name in missing:         # gespeicherte Auswahl, die es nicht mehr gibt – nur abwählbar
             self.store.append([True, name, "", "", NOT_FOUND, name, True, 0,
-                               "Liegt nicht mehr in der Software-Bibliothek – wird übersprungen", True])
+                               "Liegt nicht mehr in der Software-Bibliothek – wird übersprungen", True, False])
         if not self.entries and not missing:
             self.total.set_text("Keine Programme in der Software-Bibliothek – Extras → Software-Bibliothek …")
         self._update_total()
@@ -124,17 +198,25 @@ class SoftwareChooser(Gtk.Box):
             self.store.remove(it)
         elif row[self.C_OK]:
             row[self.C_ON] = not row[self.C_ON]
+            if row[self.C_ON] and row[self.C_OFFICE]:     # I-042: nur ein Office-Eintrag
+                for other in self.store:
+                    if other[self.C_OFFICE] and other[self.C_NAME] != row[self.C_NAME]:
+                        other[self.C_ON] = False
         self._update_total()
         self.on_change()
 
     def selected(self) -> list[str]:
-        return [row[self.C_NAME] for row in self.store if row[self.C_ON]]
+        """Gewählte Einträge für die gespeicherte Auswahl – Office mit Produkt und Apps (software.choice_text)."""
+        return [software.choice_text(row[self.C_NAME], self.office if row[self.C_OFFICE] else None)
+                for row in self.store if row[self.C_ON]]
 
     def selected_entries(self) -> list[software.Entry]:
-        names = set(self.selected())
-        return [e for e in self.entries if e.name in names]
+        """Gewählte Einträge (Office mit den Optionen dieser Auswahl)."""
+        return software.resolve(self.entries, [n for n in self.selected()
+                                               if software.split_choice(n)[0] in {e.name for e in self.entries}])[0]
 
     def _update_total(self) -> None:
+        self.office_box.set_visible(self._office_chosen())
         chosen = [row for row in self.store if row[self.C_ON]]
         if not self.store.get_iter_first() and self.total.get_text():
             return
@@ -142,9 +224,11 @@ class SoftwareChooser(Gtk.Box):
             self.total.set_text("Keine Software gewählt")
             return
         size = sum(row[self.C_BYTES] for row in chosen)
-        self.total.set_text(f"Gewählt: {len(chosen)} Programm(e), zusammen {nas.format_size(size)} – werden beim "
-                            f"{self.when} Windows-Start still installiert (Protokoll "
-                            "C:\\Windows\\Temp\\okula-software.log)")
+        text = (f"Gewählt: {len(chosen)} Programm(e), zusammen {nas.format_size(size)} – werden beim "
+                f"{self.when} Windows-Start still installiert (Protokoll C:\\Windows\\Temp\\okula-software.log)")
+        if self._office_chosen() and not self.office.apps:
+            text += " · Office: keine App gewählt – wird übersprungen"
+        self.total.set_text(text)
 
 
 class SoftwareInstallDialog(Gtk.Dialog):
@@ -182,8 +266,8 @@ class SoftwareInstallDialog(Gtk.Dialog):
         self.btn.set_sensitive(self.chooser.loaded and bool(self.selected()))
 
     def selected(self) -> list[str]:
-        """Gewählte Einträge der Bibliothek (Name), Reihenfolge wie in der Liste."""
-        return [e.name for e in self.chooser.selected_entries()]
+        """Gewählte Einträge der Bibliothek (Name, bei Office mit den Optionen), Reihenfolge wie in der Liste."""
+        return [e.choice for e in self.chooser.selected_entries()]
 
     def summary(self) -> str:
         return software.summary(self.chooser.selected_entries())

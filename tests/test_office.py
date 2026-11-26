@@ -143,5 +143,141 @@ class DetectTest(unittest.TestCase):
             self.assertEqual(e.version, "16.0.19500.20000")
 
 
+def parse_xml(text: str):
+    import xml.etree.ElementTree as ET
+    return ET.fromstring(text)
+
+
+class ConfigXmlTest(unittest.TestCase):
+    def test_default_business_local(self):
+        root = parse_xml(software.office_config_xml(software.OfficeOptions(), r"C:\ProgramData\Okula\Software\o"))
+        add = root.find("Add")
+        self.assertEqual(add.attrib, {"SourcePath": r"C:\ProgramData\Okula\Software\o", "OfficeClientEdition": "64",
+                                      "Channel": "Current"})
+        product = add.find("Product")
+        self.assertEqual(product.get("ID"), "O365BusinessRetail")
+        self.assertEqual([lang.get("ID") for lang in product.findall("Language")], ["de-de"])
+        self.assertEqual([x.get("ID") for x in product.findall("ExcludeApp")],
+                         ["Access", "Publisher", "Lync", "OutlookForWindows", "Teams"])
+        self.assertEqual(root.find("Updates").attrib, {"Enabled": "TRUE"})
+        self.assertEqual(root.find("Display").attrib, {"Level": "None", "AcceptEULA": "TRUE"})
+        self.assertEqual(root.find("Property").attrib, {"Name": "FORCEAPPSHUTDOWN", "Value": "TRUE"})
+
+    def test_enterprise_word_excel_online(self):
+        opts = software.OfficeOptions("O365ProPlusRetail", ("Excel", "Word"))
+        text = software.office_config_xml(opts, None)
+        root = parse_xml(text)
+        self.assertNotIn("SourcePath", root.find("Add").attrib)             # Quelle B: lädt aus dem Internet
+        self.assertEqual(root.find("Add/Product").get("ID"), "O365ProPlusRetail")
+        self.assertEqual([x.get("ID") for x in root.findall("Add/Product/ExcludeApp")],
+                         ["PowerPoint", "Outlook", "OneNote", "Groove", "Access", "Publisher", "Lync",
+                          "OutlookForWindows", "Teams"])
+        for word in ("PIDKEY", "Activation", "AUTOACTIVATE", "Key"):    # keine Schlüssel, keine Aktivierung
+            self.assertNotIn(word, text)
+
+    def test_always_excluded_even_if_asked(self):
+        opts = software.OfficeOptions(apps=("Word", "Teams", "Lync", "OutlookForWindows", "OneDrive", "Unsinn"))
+        self.assertEqual(opts.apps, ("Word",))                              # nur bekannte App-IDs
+        ids = [x.get("ID") for x in parse_xml(software.office_config_xml(opts, None)).findall("Add/Product/ExcludeApp")]
+        for always in ("Lync", "OutlookForWindows", "Teams", "Groove"):
+            self.assertIn(always, ids)
+        self.assertEqual(len(ids), len(set(ids)))
+
+    def test_source_path_escaped_and_no_apps(self):
+        root = parse_xml(software.office_config_xml(software.OfficeOptions(), 'C:\\A & B\\"x"'))
+        self.assertEqual(root.find("Add").get("SourcePath"), 'C:\\A & B\\"x"')
+        with self.assertRaisesRegex(software.SoftwareError, "keine App"):
+            software.office_config_xml(software.OfficeOptions(apps=()), None)
+
+    def test_unknown_product_falls_back(self):
+        self.assertEqual(software.OfficeOptions("HomeBusiness2024Retail").product, "O365BusinessRetail")
+
+
+class ChoiceTest(unittest.TestCase):
+    """Optionen in der gespeicherten Auswahl (Vorlagen, Automatisierung, Gerät)."""
+
+    def test_roundtrip(self):
+        opts = software.OfficeOptions("O365ProPlusRetail", ("Word", "Excel", "Access"))
+        text = software.choice_text("office-16.0.19328.20000", opts)
+        self.assertEqual(text, "office-16.0.19328.20000|O365ProPlusRetail:Word,Excel,Access")
+        self.assertEqual(software.split_choice(text), ("office-16.0.19328.20000", opts))
+        self.assertEqual(software.split_choice("vlc-3.0.24"), ("vlc-3.0.24", None))       # alte Auswahl
+        self.assertEqual(software.split_choice("office-1|Unsinn"), ("office-1", None))   # unlesbar → Vorauswahl
+        self.assertEqual(software.split_choice("office-1|O365BusinessRetail:"),
+                         ("office-1", software.OfficeOptions(apps=())))
+
+    def test_resolve_plan_and_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "nas"
+            name = software.load(root, odt_folder(Path(tmp) / "q")).entry.name
+            entries = software.scan(root)
+            # alte Auswahl ohne Optionen = Vorauswahl
+            [e], _m, _r = software.resolve(entries, [name])
+            self.assertEqual(e.office_options, software.OfficeOptions())
+            self.assertIsNone(software.find(entries, name).office)        # Bibliothek bleibt unverändert
+            opts = software.OfficeOptions("O365ProPlusRetail", ("Word", "Excel"))
+            p = software.plan(root, [software.choice_text(name, opts)])
+            self.assertEqual(p.entries[0].office, opts)
+            self.assertEqual(p.entries[0].choice, software.choice_text(name, opts))
+            self.assertIn("Apps for enterprise: Word, Excel · lokal (ohne Internet)", p.lines()[0])
+            self.assertIn("(Apps for enterprise: Word, Excel)", software.summary(p.entries))
+            self.assertGreater(p.bytes, 4000)                             # Office\Data kommt mit aufs Gerät
+            self.assertTrue(any(f[1].endswith("stream.x64.x-none.dat") for f in p.files))
+            none = software.plan(root, [software.choice_text(name, software.OfficeOptions(apps=()))])
+            self.assertEqual((none.entries, none.blocked), ([], [(name, "Office: keine App gewählt")]))
+
+    def test_saved_in_automation_settings_and_template(self):
+        from okula_recovery import automation
+        text = software.choice_text("office-16.0.19328.20000", software.OfficeOptions(apps=("Word",)))
+        s = automation.Settings.from_dict({"install_software": ["vlc-3.0.24", text]})
+        again = automation.Settings.from_dict(s.to_dict())
+        self.assertEqual(again.install_software, ["vlc-3.0.24", text])
+        self.assertIn("install_software", automation.TEMPLATE_FIELDS)
+
+
+def _gtk() -> bool:
+    from tests.test_wintweaks import gtk_available
+    return gtk_available()
+
+
+@unittest.skipUnless(_gtk(), "braucht GTK mit Bildschirm")
+class ChooserTest(unittest.TestCase):
+    def test_options_shown_saved_and_loaded(self):
+        import time
+        from gi.repository import GLib
+        from okula_recovery import software_ui
+
+        def wait(cond):
+            for _ in range(1000):
+                if cond():
+                    return
+                GLib.MainContext.default().iteration(False)
+                time.sleep(0.01)
+            self.fail("Zeitüberschreitung")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "nas"
+            name = software.load(root, odt_folder(Path(tmp) / "q")).entry.name
+            chooser = software_ui.SoftwareChooser()
+            chooser.load(str(root), [name])                         # ohne Optionen gespeichert
+            wait(lambda: chooser.loaded)
+            self.assertTrue(chooser.office_box.get_visible())
+            self.assertEqual(chooser.selected(), [software.choice_text(name, software.OfficeOptions())])
+            chooser.office_product.set_active_id("O365ProPlusRetail")
+            chooser.office_apps["Outlook"].set_active(False)
+            chooser.office_apps["Access"].set_active(True)
+            saved = chooser.selected()
+            self.assertEqual(software.split_choice(saved[0])[1].apps,
+                             ("Word", "Excel", "PowerPoint", "OneNote", "Groove", "Access"))
+            other = software_ui.SoftwareChooser()
+            other.load(str(root), saved)
+            wait(lambda: other.loaded)
+            self.assertEqual(other.selected(), saved)
+            self.assertFalse(other.office_apps["Outlook"].get_active())
+            other.load(str(root), [])
+            wait(lambda: other.loaded)
+            self.assertFalse(other.office_box.get_visible())        # nur sichtbar, wenn Office angehakt
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -34,6 +34,7 @@ Bibliothek werden übernommen (Hinweis in der Liste). Die alte Version bleibt, b
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import os
@@ -670,6 +671,84 @@ def first_line(text: str) -> str:
     return lines[0].rstrip() + (" …" if len(lines) > 1 else "")
 
 
+OFFICE_APP_IDS = tuple(a for a, _label, _on in OFFICE_APPS)
+OFFICE_DEFAULT_APPS = tuple(a for a, _label, on in OFFICE_APPS if on)
+CHOICE_SEP = "|"           # „<Eintrag>|<Produkt>:<App,App>“ – „|“ ist in Namen auf dem NAS nicht erlaubt
+
+
+@dataclass(frozen=True)
+class OfficeOptions:
+    """I-042: Optionen je Auftrag – Produkt und gewählte Apps (ExcludeApp-IDs, OFFICE_APPS)."""
+    product: str = OFFICE_PRODUCTS[0][0]
+    apps: tuple[str, ...] = OFFICE_DEFAULT_APPS
+
+    def __post_init__(self):
+        if self.product not in dict(OFFICE_PRODUCTS):
+            object.__setattr__(self, "product", OFFICE_PRODUCTS[0][0])
+        chosen = set(self.apps)
+        object.__setattr__(self, "apps", tuple(a for a in OFFICE_APP_IDS if a in chosen))
+
+    @property
+    def excluded(self) -> tuple[str, ...]:
+        """Nicht gewählte Apps und immer Skype for Business, neues Outlook, Teams."""
+        return tuple(a for a in OFFICE_APP_IDS if a not in self.apps) + OFFICE_ALWAYS_EXCLUDED
+
+    @property
+    def product_label(self) -> str:
+        return dict(OFFICE_PRODUCTS)[self.product]
+
+    @property
+    def summary(self) -> str:
+        """„Apps for business: Word, Excel, …“ – für Log, Liste und Verlauf."""
+        names = dict((a, label) for a, label, _on in OFFICE_APPS)
+        return f"{self.product_label}: " + (", ".join(names[a] for a in self.apps) or "keine App")
+
+    def text(self) -> str:
+        return f"{self.product}:{','.join(self.apps)}"
+
+    @classmethod
+    def parse(cls, text: str) -> "OfficeOptions | None":
+        """„O365BusinessRetail:Word,Excel“ → Optionen; unlesbar → None (dann gilt die Vorauswahl)."""
+        product, sep, apps = text.partition(":")
+        if not sep or product not in dict(OFFICE_PRODUCTS):
+            return None
+        return cls(product, tuple(a for a in apps.split(",") if a))
+
+
+def split_choice(text: str) -> tuple[str, OfficeOptions | None]:
+    """Gespeicherte Auswahl (Vorlagen, Automatisierung, Gerät) → (Eintrag, Office-Optionen bzw. None). Ältere
+    Auswahlen haben nur den Namen – bei Office gilt dann die Vorauswahl."""
+    name, sep, rest = str(text).partition(CHOICE_SEP)
+    return name, (OfficeOptions.parse(rest) if sep else None)
+
+
+def choice_text(name: str, office: OfficeOptions | None = None) -> str:
+    """Eintrag (+ Office-Optionen) → Text in der gespeicherten Auswahl (Gegenstück zu split_choice)."""
+    return f"{name}{CHOICE_SEP}{office.text()}" if office is not None else name
+
+
+def office_config_xml(office: OfficeOptions, source_path: str | None) -> str:
+    """configuration.xml für „setup.exe /configure“ (Microsoft Learn „Configuration options for the Office
+    Deployment Tool“, abgerufen 26.11.2026). source_path: Ordner mit Office\\Data am Gerät (Quelle A), None =
+    Quelle B (Download aus dem Internet). Kein Schlüssel, keine Aktivierung – der Mieter meldet sich an."""
+    from xml.sax.saxutils import quoteattr
+    if not office.apps:
+        raise SoftwareError("Office: keine App gewählt")
+    source = f" SourcePath={quoteattr(source_path)}" if source_path else ""
+    lines = ["<Configuration>",
+             f'  <Add{source} OfficeClientEdition="64" Channel="{OFFICE_CHANNEL}">',
+             f'    <Product ID="{office.product}">',
+             f'      <Language ID="{OFFICE_LANGUAGE}" />']
+    lines += [f'      <ExcludeApp ID="{a}" />' for a in office.excluded]
+    lines += ["    </Product>",
+              "  </Add>",
+              '  <Updates Enabled="TRUE" />',
+              '  <Display Level="None" AcceptEULA="TRUE" />',
+              '  <Property Name="FORCEAPPSHUTDOWN" Value="TRUE" />',
+              "</Configuration>"]
+    return "\n".join(lines) + "\n"
+
+
 @dataclass
 class Entry:
     """Ein Programm in der Software-Bibliothek (Ordner Software-Bibliothek/<name>)."""
@@ -679,6 +758,7 @@ class Entry:
     size: int                        # Bytes (alle Dateien ohne Beschreibung)
     meta: dict = field(default_factory=dict)
     candidates: list[str] = field(default_factory=list)   # mögliche Installer (relativ zum Eintrag)
+    office: OfficeOptions | None = field(default=None, compare=False)   # I-042: Optionen des Auftrags (resolve)
 
     @property
     def program(self) -> str:
@@ -735,6 +815,16 @@ class Entry:
     def is_office(self) -> bool:
         """Office (Microsoft 365 Apps, I-042) zum Installieren – Optionen je Auftrag (OfficeOptions)."""
         return self.kind == OFFICE and self.mode == INSTALL
+
+    @property
+    def office_options(self) -> OfficeOptions | None:
+        """Optionen des Auftrags; ohne gespeicherte Optionen die Vorauswahl (nur bei Office)."""
+        return (self.office or OfficeOptions()) if self.is_office else None
+
+    @property
+    def choice(self) -> str:
+        """Text für die gespeicherte Auswahl (bei Office mit Produkt und Apps)."""
+        return choice_text(self.name, self.office_options)
 
     @property
     def office_local(self) -> bool:
@@ -1317,11 +1407,17 @@ class Plan:
     def lines(self) -> list[str]:
         """Für das Log des Auftrags."""
         out = [f"{e.label} – {'nur kopieren (Desktop)' if e.mode == COPY else e.kind_label}"
-               f" ({_size(e.size)})" for e in self.entries]
+               f" ({_size(e.size)})" + (f" – {office_line(e)}" if e.is_office else "") for e in self.entries]
         out += [f"{old} → {new} (neue Version)" for old, new in self.renamed]
         out += [f"{n}: fehlt in der Software-Bibliothek – übersprungen" for n in self.missing]
         out += [f"{n}: {s} – übersprungen" for n, s in self.blocked]
         return out
+
+
+def office_line(e: Entry) -> str:
+    """„Apps for business: Word, Excel, … · lokal (ohne Internet)“ – Log des Auftrags (I-042)."""
+    source = "lokal (ohne Internet)" if e.office_local else "lädt beim Installieren aus dem Internet"
+    return f"{e.office_options.summary} · {source}"
 
 
 def _size(n: int) -> str:
@@ -1331,10 +1427,12 @@ def _size(n: int) -> str:
 
 def resolve(entries: list[Entry], names: list[str]) -> tuple[list[Entry], list[str], list[tuple[str, str]]]:
     """Gespeicherte Auswahl (z. B. Automatisierung) → Einträge. Fehlt ein Name, gilt die neueste Version mit
-    gleichem Programmnamen (die alte Datei wurde durch eine neue ersetzt)."""
+    gleichem Programmnamen (die alte Datei wurde durch eine neue ersetzt). Office (I-042): die Optionen aus der
+    Auswahl („<Eintrag>|<Produkt>:<Apps>“) hängen am zurückgegebenen Eintrag (Kopie), ohne Optionen Vorauswahl."""
     chosen, missing, renamed = [], [], []
     by_name = {e.name: e for e in entries}
-    for name in names:
+    for choice in names:
+        name, office = split_choice(choice)
         entry = by_name.get(name)
         if entry is None:
             key = split_name(name)[2]
@@ -1344,7 +1442,9 @@ def resolve(entries: list[Entry], names: list[str]) -> tuple[list[Entry], list[s
                 renamed.append((name, entry.name))
         if entry is None:
             missing.append(name)
-        elif entry not in chosen:
+        elif entry.name not in [c.name for c in chosen]:
+            if entry.is_office:
+                entry = dataclasses.replace(entry, office=office or OfficeOptions())
             chosen.append(entry)
     return chosen, missing, renamed
 
@@ -1357,6 +1457,9 @@ def plan(nas_root: str | Path, names: list[str], entries: list[Entry] | None = N
     for e in chosen:
         if not e.selectable:
             p.blocked.append((e.name, e.status))
+            continue
+        if e.is_office and not e.office_options.apps:
+            p.blocked.append((e.name, "Office: keine App gewählt"))
             continue
         p.entries.append(e)
         p.files.append(("dir", e.name, 0, 0, None))       # Ordner des Eintrags (ohne Beschreibung)
@@ -1378,7 +1481,8 @@ def total_size(entries: list[Entry]) -> int:
 
 def summary(entries: list[Entry]) -> str:
     """„VLC media player 3.0.24, Adobe Acrobat Reader“ – Verlauf, Auftragsliste."""
-    return ", ".join(e.label for e in entries) or "nichts"
+    return ", ".join(e.label + (f" ({e.office_options.summary})" if getattr(e, "is_office", False) else "")
+                     for e in entries) or "nichts"
 
 
 def history_text(entries: list[Entry]) -> str:
