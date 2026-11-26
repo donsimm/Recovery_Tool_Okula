@@ -16,7 +16,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 6 | 0 | 0 |
-| 🔧 Änderungen | 10 | 0 | 0 |
+| 🔧 Änderungen | 11 | 0 | 0 |
 | 💡 Ideen | 22 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
@@ -28,7 +28,7 @@ Frühere Stände: Protokoll unten und `git log`.
 **Als Nächstes** (Reihenfolge Dominik 25.11.):
 1. ~~B-027, B-028~~ erledigt 25.11. (am realen System ungeprüft, [TESTS.md](TESTS.md) „B-027“, „B-028“). Klein dazu: Startdialog bei kaputter Schlüsseldatei (`ui.py:135`) und Verlauf „abgebrochen“ von Hand gestarteter Aufträge (`ui.py:4202`) → bei Ä-048.
 2. ~~I-012~~ BitLocker entsperren erledigt 25.11. (am realen System ungeprüft, [TESTS.md](TESTS.md) „I-012“; neuer Agent-Stick und Netzwerkstart nötig). Offen dazu: Ausführungsrecht `packaging/okula-bitlocker` im Repo (install.sh setzt 0755), Schlüssel beim Zusammenführen zweier Geräte übernehmen.
-3. ~~I-042~~ Office und ~~Ä-050~~ Info-Feld erledigt 26.11. (am Gerät ungeprüft, TESTS.md „I-042“, „Ä-050“). ~~Ä-051~~ Ordner senden: Software wie Content erledigt 26.11. Jetzt **Ä-052 + B-029** USB-Vorgänge im Hintergrund, Abbrechen zuverlässig, parallel **B-030** NAS-Umbenennen (Start 12:51).
+3. ~~I-042~~ Office und ~~Ä-050~~ Info-Feld erledigt 26.11. (am Gerät ungeprüft, TESTS.md „I-042“, „Ä-050“). ~~Ä-051~~ Ordner senden: Software wie Content erledigt 26.11. Jetzt **Ä-052 + B-029** USB-Vorgänge im Hintergrund, Abbrechen zuverlässig, parallel **B-030** NAS-Umbenennen und **Ä-053** „Alle“ ersetzt ganz (Start 12:51).
 4. **I-043** Ordner einfärben (Geräteliste und Archiv).
 5. Danach: Kleines aus dem VM-Test (**Ä-047**, **B-023**, **B-024**), Datensicherheit (**I-016**, **I-006**, **Ä-003**),
    **I-017** Rescue, **I-011** Multicast; **Ä-048**/**Ä-049** und zweite Review-Runde.
@@ -52,6 +52,7 @@ steht im jeweiligen Protokoll-Eintrag.
 
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
+| Ä-053 | 🟡 | in Arbeit | Dominik | **Ordner senden: „Alle“ bei Software ersetzt den ganzen Ordner** `Desktop\Software` (wie vor Ä-051); einzelne Einträge weiter einzeln. Entscheid Dominik 26.11. Prompt [Ä-053](prompts/AE-053-software-alle-ersetzt.md) | 26.11. |
 | Ä-052 | 🟡 | in Arbeit | Dominik | **USB-Vorgänge im Hintergrund:** *USB klonen*, *USB formatieren*, *Agent-USB-Stick erstellen*, *Boot-Stick* nicht modal (Tool bleibt bedienbar), Fortschritt in der Auftragsliste, belegte Datenträger gesperrt, Rückfrage beim Beenden. Zusammen mit B-029. Prompt [Ä-052/B-029](prompts/AE-052-usb-im-hintergrund.md) | 26.11. |
 | Ä-048 | 🟡 | offen | Okuli (Review) | **Robustheit Agent, Netz und Oberfläche (Sammelpunkt aus dem Review).** Agent: TLS-Handshake ohne Timeout/accept ungeschützt (R-agent 2), Neustart-Timer prüft Disk-Lock nicht erneut (R-agent 3), `wimlib-imagex` läuft nach Verbindungsabbruch weiter (R-agent 1), Kleines R-agent 4–9. Tool: Beacons ungeprüft legen Geräte an, keine Obergrenze (R-client 6); NAS-Zugriffe im GTK-Hauptthread frieren bei hängendem CIFS ein (R-ui 2), `refresh_images` überholt sich (R-ui 4), Kleines R-ui 3, 5–8. Software-Bibliothek: Programme, die ein Auftrag gerade überträgt, lassen sich löschen (Rest aus B-026). Windows: Int32-Rückgabewerte (R-win 5), Kindprozesse bei Timeout (R-win 6). Gleiche Board-UUID → falsches Gerät (R-client 3) zuerst prüfen. [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) | 25.11. |
 | Ä-049 | ⚪ | offen | Okuli (Review) | **`ui.py` (4457 Zeilen) aufteilen** – erster Schritt als Mixins (`ui_const`, `ui_storage`, `ui_devices`, `ui_vm`, `ui_actions`), `win.xxx` bleibt stabil; Vorschlag [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) R-ui. Teil von Ä-005 (dort Version 0.1.0 überholt: steht auf 0.2.0, Tag v0.2.0 gesetzt 25.11.) | 25.11. |
