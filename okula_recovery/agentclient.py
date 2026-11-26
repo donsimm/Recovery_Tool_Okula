@@ -770,9 +770,19 @@ def tweak(ip: str, key: bytes, disk: str, script: str, port: int = wire.PORT, of
 
 def deliver(ip: str, key: bytes, disk: str, items: list[str], files, total: int, progress: Progress,
             cancel: threading.Event, port: int = wire.PORT) -> dict:
-    """Ordner auf den öffentlichen Desktop: files liefert (Typ "file"/"dir", Pfad, Grösse, mtime, Quelle)."""
-    return _send_files(ip, key, port, {"cmd": "deliver", "disk": disk, "items": items, "bytes": total}, files,
-                       total, progress, cancel)
+    """Ordner auf den öffentlichen Desktop: files liefert (Typ "file"/"dir", Pfad, Grösse, mtime, Quelle).
+    Ä-051: ein Eintrag kann eine einzelne Datei sein – ein älterer Agent legt dafür einen Ordner an und scheitert."""
+    try:
+        return _send_files(ip, key, port, {"cmd": "deliver", "disk": disk, "items": items, "bytes": total}, files,
+                           total, progress, cancel)
+    except AgentError as e:
+        if "Is a directory" in str(e) or "Errno 21" in str(e):
+            raise AgentError(DELIVER_TOO_OLD) from None
+        raise
+
+
+DELIVER_TOO_OLD = ("Agent zu alt für einzelne Dateien aus Software – Agent-Stick bzw. Netzwerkstart mit dem "
+                   "aktuellen Tool neu erstellen (Ordner lassen sich weiterhin senden)")
 
 
 def software(ip: str, key: bytes, disk: str, items: list[str], files, total: int, script: str,

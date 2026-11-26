@@ -50,7 +50,6 @@ steht im jeweiligen Protokoll-Eintrag.
 
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
-| Ä-051 | 🟡 | in Arbeit | Dominik | **Ordner senden: Software wie Content.** `Verteilen/Software`: jeder Unterordner und jede Datei im Hauptordner einzeln anhakbar („Software …“), Ziel `Desktop\Software\<Eintrag>`, erneut senden ersetzt nur Gewähltes; Auswahl in Automatisierung/OS gespeichert, alte Einstellung = alles; Test Files bleibt ganz. Prompt [Ä-051](prompts/AE-051-software-ordner-auswahl.md) | 26.11. |
 | Ä-048 | 🟡 | offen | Okuli (Review) | **Robustheit Agent, Netz und Oberfläche (Sammelpunkt aus dem Review).** Agent: TLS-Handshake ohne Timeout/accept ungeschützt (R-agent 2), Neustart-Timer prüft Disk-Lock nicht erneut (R-agent 3), `wimlib-imagex` läuft nach Verbindungsabbruch weiter (R-agent 1), Kleines R-agent 4–9. Tool: Beacons ungeprüft legen Geräte an, keine Obergrenze (R-client 6); NAS-Zugriffe im GTK-Hauptthread frieren bei hängendem CIFS ein (R-ui 2), `refresh_images` überholt sich (R-ui 4), Kleines R-ui 3, 5–8. Software-Bibliothek: Programme, die ein Auftrag gerade überträgt, lassen sich löschen (Rest aus B-026). Windows: Int32-Rückgabewerte (R-win 5), Kindprozesse bei Timeout (R-win 6). Gleiche Board-UUID → falsches Gerät (R-client 3) zuerst prüfen. [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) | 25.11. |
 | Ä-049 | ⚪ | offen | Okuli (Review) | **`ui.py` (4457 Zeilen) aufteilen** – erster Schritt als Mixins (`ui_const`, `ui_storage`, `ui_devices`, `ui_vm`, `ui_actions`), `win.xxx` bleibt stabil; Vorschlag [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) R-ui. Teil von Ä-005 (dort Version 0.1.0 überholt: steht auf 0.2.0, Tag v0.2.0 gesetzt 25.11.) | 25.11. |
 | Ä-047 | 🟡 | offen | Dominik/Okuli | **„Sperrbildschirm aus“ in die Vorlage Clean aufnehmen.** Clean = Windows ohne Werbung; der Sperrbildschirm zeigt Windows Spotlight (Werbung, Tipps). Heute fehlt `lockscreen_off` in `TEMPLATES["Clean"]` (`wintweaks.py`), beim VM-Test 25.11. darum nicht gewählt. Tests anpassen (Vorlagen-Inhalt, „Clean (geändert)“-Erkennung) | 25.11. |
@@ -299,6 +298,23 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 26.11.2026
+- **Ä-051 – Ordner senden: Software wie Content** (Von: Dominik, 26.11.; Prompt
+  [Ä-051](prompts/AE-051-software-ordner-auswahl.md)). `distribute.py`: `software_entries` (Unterordner und Dateien
+  direkt unter `Verteilen/Software`, ohne versteckte, Links, Sonderdateien; Ordner zuerst, alphabetisch),
+  `items_for(…, software_items)` → `Software/<Eintrag>`; `Software` allein (= „alle“, auch alte Einstellung ohne
+  Liste) löst `plan` in die aktuellen Einträge auf – das Gerät ersetzt nur diese, andere Inhalte unter
+  `Desktop\Software` bleiben (früher: ganzer Ordner ersetzt). Einzelne Datei → Eintrag „file“; `Plan.requested`
+  für Verlauf/Log, `describe` „Software: alle“ bzw. Namen (ab 5 gekürzt „… und N weitere“, auch Content);
+  `plan(strict=False)` für die Automatisierung: Fehlendes nur als Hinweis im Log, Rest läuft (fehlt alles, wird
+  Schritt 4 übersprungen statt Fehler). Automatisierung: Feld `software_items` (leer = alle), in Vorlagen; alte
+  Vorlage mit „Software“ = alle. Oberfläche: Rechtsklick *Ordner senden → Software …* öffnet den Dialog *Ordner
+  senden* mit Liste und Häkchen *Alle* (auch Gerätefenster); Reiter Automatisierung Abschnitt 4 ebenso; *Test
+  Files* unverändert ganz. **Agent:** `deploy.deliver` legt Einträge nicht mehr vorab als Ordner an (einzelne
+  Datei möglich) – **neuer Agent-Stick bzw. Netzwerkstart nur für einzelne Dateien aus Software nötig**; ein
+  älterer Agent scheitert dort mit „Agent zu alt …“ (`agentclient.DELIVER_TOO_OLD`), Ordner gehen weiterhin.
+  Demo-Speicher: Software mit „Browser“, „Treiber“ und „Demo-Installer.txt“. Hilfe *Ordner senden*,
+  *Automatisierung*, *Demo-Gerät*; ORDNER-SENDEN.md. Tests `tests/test_distribute_software.py`. Prüfung
+  [TESTS.md](TESTS.md) „Ä-051“.
 - **I-042 – Microsoft 365 Apps einzeln installieren (Office, Click-to-Run)** (Von: Dominik, 24.11.; Entscheide
   25./26.11.; Prompt [I-042](prompts/I-042-office.md)). **Bibliothek:** neuer Typ „Office (Microsoft 365 Apps)“
   (`software.office_detect`): `setup.exe` des Office Deployment Tool (Hersteller Microsoft, „Click-to-Run“ bzw.

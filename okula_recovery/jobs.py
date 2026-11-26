@@ -887,7 +887,7 @@ def download_work(backup: str, target: str, prefixes: list[str] | None,
 
 def deliver_work(ip: str, key: bytes, port: int, disk: str, nas_root: str, items: list[str],
                  after: Callable[[Job, str | None, Exception | None], None]):
-    """Ordner (Software, Test Files, Content-Projekte) vom NAS auf den öffentlichen Desktop des Geräts."""
+    """Ordner (Software-Einträge, Test Files, Content-Projekte) vom NAS auf den öffentlichen Desktop des Geräts."""
     from okula_recovery import distribute
 
     def work(job: Job, jm: JobManager) -> str:
@@ -897,14 +897,15 @@ def deliver_work(ip: str, key: bytes, port: int, disk: str, nas_root: str, items
                 jm.log(job, f"Fehlt auf dem NAS (übersprungen): {', '.join(plan.missing)}")
             if plan.skipped:
                 jm.log(job, f"{len(plan.skipped)} Links/Sonderdateien übersprungen")
-            jm.log(job, f"{plan.files} Dateien, {nas.format_size(plan.bytes)} → Öffentlicher Desktop "
-                        "(alle Benutzer); vorhandene Ordner gleichen Namens werden ersetzt")
+            jm.log(job, f"{distribute.describe(plan.requested)}: {plan.files} Dateien, "
+                        f"{nas.format_size(plan.bytes)} → Öffentlicher Desktop (alle Benutzer); vorhandene Einträge "
+                        "gleichen Namens werden ersetzt")
             result = agentclient.deliver(ip, key, disk, plan.items, plan.entries, plan.bytes,
                                          _transfer_progress(jm, job, "Auf den Desktop gelegt"), job.cancel, port)
         except Exception as e:
             after(job, None, e)
             raise
-        after(job, distribute.describe(plan.items), None)
+        after(job, distribute.describe(plan.requested), None)
         return f"{result.get('files', 0)} Dateien auf den Desktop gelegt"
 
     return work

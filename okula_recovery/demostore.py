@@ -51,7 +51,10 @@ def ensure(root: Path | None = None) -> Path:
         d.mkdir(parents=True, exist_ok=True)
     dist = distribute.ensure(root)
     samples = {
+        # Ä-051: Software-Einträge zur Auswahl – zwei Ordner und eine einzelne Datei
         dist / "Software" / "Demo-Installer.txt": "Beispiel – hier liegen Installationsprogramme.\n",
+        dist / "Software" / "Browser" / "Liesmich.txt": "Beispiel-Ordner Browser (Demo).\n",
+        dist / "Software" / "Treiber" / "Liesmich.txt": "Beispiel-Ordner Treiber (Demo).\n",
         dist / "Test Files" / "Testseite.txt": "Beispiel-Testdatei für die Vorführung.\n",
     }
     for project in PROJECTS:

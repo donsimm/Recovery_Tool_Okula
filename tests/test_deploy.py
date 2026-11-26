@@ -95,7 +95,7 @@ class DistributePlanTest(unittest.TestCase):
             self.assertEqual(distribute.projects(nas), ["Projekt A", "Projekt B"])
             items = distribute.items_for(True, False, ["Projekt B"])
             self.assertEqual(items, ["Software", "Content/Projekt B"])
-            self.assertEqual(distribute.describe(items), "Software, Content: Projekt B")
+            self.assertEqual(distribute.describe(items), "Software: alle, Content: Projekt B")
             plan = distribute.plan(nas, items)
             self.assertEqual((plan.files, plan.bytes), (2, 21))
             paths = [(e[0], e[1]) for e in plan.entries]
@@ -226,7 +226,8 @@ class DeployE2ETest(unittest.TestCase):
         self.assertEqual(result["files"], 2)
         desk = "Users/Public/Desktop"
         self.assertEqual(self.read("p2", desk), ["Content", "Software", "desktop.ini"])  # kein Zwischenordner
-        self.assertEqual(self.read("p2", f"{desk}/Software"), ["Leer", "Tool"])          # alt.txt ersetzt
+        # Ä-051: „Software“ (alle) ersetzt nur die Einträge vom NAS, alt.txt bleibt
+        self.assertEqual(self.read("p2", f"{desk}/Software"), ["Leer", "Tool", "alt.txt"])
         self.assertEqual(self.read("p2", f"{desk}/Software/Tool/setup.exe"), b"MZ" * 50000)
         self.assertEqual(self.read("p2", f"{desk}/Content"), ["Projekt A", "Projekt B"])  # A bleibt
         self.assertEqual(self.read("p2", f"{desk}/Content/Projekt B/plan.pdf"), b"%PDF")

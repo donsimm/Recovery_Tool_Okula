@@ -124,7 +124,7 @@ Geht ohne echte Geräte mit VMs (Plan 06.11.): **Referenz = VM-Win11** neu **von
 
 ### 4. Ordner senden
 - [ ] NAS: `Verteilen/Software`, `Verteilen/Test Files`, `Verteilen/Content` sind da; Inhalte über Reiter Dateien hineinziehen
-- [ ] Rechtsklick → Ordner senden → **Software** → Windows starten: Ordner auf dem Desktop (auch bei einem zweiten Benutzer)
+- [ ] Rechtsklick → Ordner senden → **Software …** (Einträge anhaken, Ä-051) → Windows starten: Einträge unter `Desktop\Software` (auch bei einem zweiten Benutzer)
 - [ ] **Content …** → zwei Projekte → Desktop: `Content\Projekt …`
 - [ ] Erneut senden mit geändertem Inhalt → alter Ordnerinhalt ersetzt, andere Projekte bleiben
 - [ ] Windows mit Schnellstart heruntergefahren → klare Meldung „Ruhezustand bzw. Schnellstart“
@@ -1059,3 +1059,23 @@ dem ODT herunterladen (Hilfe F1 → *Software installieren* → Abschnitt „Off
       prüfen, wie schnell `setup.exe` ohne Internet aufgibt (Grenze 90 min)
 - [ ] Windows-Direktinstallation (*OS installieren …*) mit Office (Quelle A): Setup-Partition gross genug (Log
       nennt Software in GB), Office nach dem ersten Start installiert; keine Datei über 4 GB in `Office\Data`
+
+### Ä-051 Ordner senden: Software wie Content
+Nach `git pull && sudo ./install.sh` das Tool neu starten. **Neuer Agent-Stick bzw. Netzwerkstart** nur für einzelne
+Dateien aus `Verteilen/Software` nötig (Ordner gehen auch mit dem alten Agent).
+- [ ] Rechtsklick → *Ordner senden* → **Software …** → Dialog zeigt alle Unterordner (zuerst) und Dateien direkt in
+      `Verteilen/Software` (z. B. „Browser“, „OBS & plugin“, `Reader_de_install.exe`), keine versteckten Dateien
+- [ ] Zwei Ordner und `Reader_de_install.exe` anhaken, *Senden* → Windows: `Desktop\Software\<Ordner>` und
+      `Desktop\Software\Reader_de_install.exe` (Datei, kein Ordner); Verlauf nennt „Software: …“
+- [ ] Nur einen Ordner mit geändertem Inhalt erneut senden → dieser ersetzt, die anderen Einträge unter
+      `Desktop\Software` (auch selbst abgelegte) bleiben
+- [ ] Häkchen **Alle** → alle Einträge angehakt und gesperrt; Senden → alles da; Verlauf „Software: alle“
+- [ ] Gerätefenster → *Ordner senden …* → gleicher Dialog mit Software-Liste; *Test Files* sendet weiterhin den ganzen
+      Ordner (auch Rechtsklick → *Test Files* ohne Dialog)
+- [ ] Alter Agent-Stick (vor Ä-051) mit einer einzelnen Datei → Meldung „Agent zu alt für einzelne Dateien aus
+      Software …“, Desktop unverändert; nur Ordner → geht
+- [ ] Automatisierung: Gerät mit alter Einstellung „Software“ → Abschnitt 4 zeigt *Alle* angehakt; Einträge einzeln
+      wählen, Tool neu starten → Auswahl wieder da; als Vorlage speichern und bei anderem Gerät anwenden → gleiche Auswahl
+- [ ] Gewählten Eintrag auf dem NAS umbenennen → Reiter zeigt „… (fehlt auf dem NAS)“; Automatisierung läuft durch,
+      Log „Fehlt auf dem NAS (übersprungen): Software/…“, restliche Einträge auf dem Desktop
+- [ ] Demo-Gerät: Software-Liste zeigt „Browser“, „Treiber“, „Demo-Installer.txt“

@@ -3,8 +3,9 @@
 - customize: Windows-Master-Image (mit Sysprep generalisiert) bekommt eine Antwortdatei
   Windows/Panther/unattend.xml (Computername, Key, Region …, vom Tool erstellt); Linux bekommt den Hostnamen.
   Ä-040: auf Wunsch die Taskleiste des Administrators als LayoutModification.xml ins Standardprofil (winprofile).
-- deliver: Ordner (Software, Test Files, Content/Projekt …) auf den öffentlichen Desktop
-  (Users/Public/Desktop); vorhandene Ordner gleichen Namens werden ersetzt – erst wenn alles da ist.
+- deliver: Ordner (Software/Eintrag, Test Files, Content/Projekt …) auf den öffentlichen Desktop
+  (Users/Public/Desktop); vorhandene Einträge gleichen Namens werden ersetzt – erst wenn alles da ist.
+  Ä-051: ein Eintrag unter Software kann auch eine einzelne Datei sein.
 - tweak: „Windows anpassen“ (I-039) – ein vom Tool erzeugtes PowerShell-Skript als einmaliges Startskript der
   lokalen Gruppenrichtlinie ablegen (System32/GroupPolicy); vorhandene Richtlinien bleiben, das Skript stellt den
   vorherigen Stand beim Start selbst wieder her. B-020: was vor der ersten Anmeldung wirken muss (Startmenü- und
@@ -287,10 +288,13 @@ def deliver(sock, req: dict, log: Callable[[str], None] = print, report: Report 
         stage.mkdir()
         try:
             for item in items:
-                (stage / item).mkdir(parents=True, exist_ok=True)
+                (stage / item).parent.mkdir(parents=True, exist_ok=True)
             files, received = _receive_into(sock, stage, items, total, report)
-            # Alles angekommen: pro Ordner alten Stand weg, neuen an seinen Platz
+            # Alles angekommen: pro Eintrag alten Stand weg, neuen an seinen Platz. Ä-051: ein Eintrag kann auch
+            # eine einzelne Datei sein (Software/<Datei>); ohne Inhalt bleibt es ein leerer Ordner.
             for item in items:
+                if not (stage / item).exists():
+                    (stage / item).mkdir(parents=True)
                 final = desktop / item
                 if final.is_symlink():
                     raise ImagingError(f"{item} auf dem Desktop ist ein Link – nicht ersetzt")

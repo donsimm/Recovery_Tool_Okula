@@ -2319,7 +2319,7 @@ class MainWindow(Gtk.ApplicationWindow):
             add("Inventar neu einlesen", lambda: self.refresh_inventory(dev), ready)
             send = Gtk.MenuItem(label="Ordner senden", sensitive=ready)
             sub = Gtk.Menu()
-            for label, preset in (("Software", "software"), ("Test Files", "testfiles"), ("Content …", "content")):
+            for label, preset in (("Software …", "software"), ("Test Files", "testfiles"), ("Content …", "content")):
                 item = Gtk.MenuItem(label=label)
                 item.connect("activate", lambda _i, p=preset: self.on_send_folders(dev, p))
                 sub.append(item)
@@ -3429,7 +3429,7 @@ class MainWindow(Gtk.ApplicationWindow):
         return devices.windows_disk(dev)
 
     def on_send_folders(self, dev: devices.Device, preset: str = "") -> None:
-        """Ordner senden: Software/Test Files direkt, Content (oder ohne Vorgabe) über die Auswahl."""
+        """Ordner senden: Test Files direkt, Software und Content (oder ohne Vorgabe) über die Auswahl (Ä-051)."""
         parent = self._parent_for(dev)
         agent = self._ready_agent(dev, parent)
         root = self.root_for(dev)
@@ -3444,8 +3444,8 @@ class MainWindow(Gtk.ApplicationWindow):
                                   "verschlüsselt) – Inventar neu einlesen.")
             return
         distribute.ensure(root)
-        if preset in ("software", "testfiles"):
-            items = distribute.items_for(preset == "software", preset == "testfiles", [])
+        if preset == "testfiles":
+            items = distribute.items_for(False, True, [])
         else:
             dlg = SendFoldersDialog(parent, root, dev.name)
             ok = dlg.run() == Gtk.ResponseType.OK

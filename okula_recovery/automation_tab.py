@@ -40,6 +40,86 @@ def computer_name_text(name: str) -> str:
     return f"Windows: {win}" + ("" if win == name else " (gekürzt/angepasst)")
 
 
+ALL_LABEL = "Alle"
+SOFTWARE_EMPTY = "keine – Unterordner oder Dateien unter NAS: /Verteilen/Software ablegen (Reiter Dateien)"
+
+
+class SoftwareEntryChooser(Gtk.Box):
+    """Ä-051: Einträge unter Verteilen/Software zum Anhaken (Ordner und einzelne Dateien) mit Häkchen „Alle“.
+
+    „Alle“ = jeder Eintrag, auch später hinzugekommene (gespeichert als software=True ohne Liste – so verhält sich
+    auch die alte Einstellung „Software“). Gespeicherte Einträge, die auf dem NAS fehlen, bleiben sichtbar."""
+
+    def __init__(self, on_change, flow: bool = False):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        self.on_change = on_change
+        self._updating = False
+        self.all = Gtk.CheckButton(label=ALL_LABEL)
+        self.all.set_tooltip_text("Jeden Eintrag unter Software senden, auch später hinzugekommene")
+        self.all.connect("toggled", lambda _c: self._all_toggled())
+        self.pack_start(self.all, False, False, 0)
+        if flow:
+            self.list = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=4)
+        else:
+            self.list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        self.list.set_margin_start(16)
+        self.pack_start(self.list, False, False, 0)
+        self.checks: dict[str, Gtk.CheckButton] = {}
+
+    def load(self, nas_root, software: bool = False, items: list[str] | None = None) -> None:
+        self._updating = True
+        try:
+            for child in self.list.get_children():
+                self.list.remove(child)
+            names = distribute.software_entries(nas_root) if nas_root else []
+            saved = [i for i in items or [] if i not in names]
+            self.checks = {}
+            for name in names + saved:
+                check = Gtk.CheckButton(label=name if name in names else f"{name} (fehlt auf dem NAS)",
+                                        active=name in (items or []))
+                check.connect("toggled", lambda _c: self._entry_toggled())
+                self.checks[name] = check
+                self.list.add(check)
+            if not self.checks:
+                self.list.add(_hint(SOFTWARE_EMPTY))
+            self.all.set_active(software and not items)
+            self._sync()
+            self.list.show_all()
+        finally:
+            self._updating = False
+
+    def _sync(self) -> None:
+        on = self.all.get_active()
+        for check in self.checks.values():
+            if on:
+                check.set_active(True)
+            check.set_sensitive(not on)
+
+    def _all_toggled(self) -> None:
+        if self._updating:
+            return
+        self._updating = True
+        try:
+            self._sync()
+            if not self.all.get_active():
+                for check in self.checks.values():
+                    check.set_active(False)
+        finally:
+            self._updating = False
+        self.on_change()
+
+    def _entry_toggled(self) -> None:
+        if not self._updating:
+            self.on_change()
+
+    def selection(self) -> tuple[bool, list[str]]:
+        """(software, software_items) wie in den Einstellungen: (True, []) = alle."""
+        if self.all.get_active():
+            return True, []
+        chosen = [n for n, c in self.checks.items() if c.get_active()]
+        return bool(chosen), chosen
+
+
 class AutomationTab(Gtk.Box):
     def __init__(self, main: "MainWindow", dev: devices.Device):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin=8)
@@ -155,14 +235,14 @@ class AutomationTab(Gtk.Box):
         self.tweak = TweakChooser(on_change=self._changed, device_name=dev.name)
         s3.pack_start(self.tweak, False, False, 0)
 
-        s4 = section("4", "Ordner senden", "Option – auf den Desktop für alle Benutzer, ersetzt vorhandene Ordner")
-        r = Gtk.Box(spacing=12)
-        self.software = Gtk.CheckButton(label=distribute.FIXED[0])
-        self.testfiles = Gtk.CheckButton(label=distribute.FIXED[1])
-        for b in (self.software, self.testfiles):
-            b.connect("toggled", lambda _c: self._changed())
-            r.pack_start(b, False, False, 0)
-        s4.pack_start(r, False, False, 0)
+        s4 = section("4", "Ordner senden", "Option – auf den Desktop für alle Benutzer, ersetzt vorhandene Einträge "
+                                           "gleichen Namens")
+        s4.pack_start(Gtk.Label(label=f"{distribute.SOFTWARE}:", xalign=0), False, False, 0)
+        self.software = SoftwareEntryChooser(on_change=self._changed, flow=True)     # Ä-051
+        s4.pack_start(self.software, False, False, 0)
+        self.testfiles = Gtk.CheckButton(label=distribute.TESTFILES)
+        self.testfiles.connect("toggled", lambda _c: self._changed())
+        s4.pack_start(self.testfiles, False, False, 0)
         s4.pack_start(Gtk.Label(label="Content-Projekte:", xalign=0), False, False, 0)
         self.projects_box = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=4)
         s4.pack_start(self.projects_box, False, False, 0)
@@ -231,7 +311,7 @@ class AutomationTab(Gtk.Box):
             self.copy_profile.set_active(s.copy_profile)
             self.install_software.load(self.main.root_for(self.dev), s.install_software)
             self.tweak.load(s.tweak)
-            self.software.set_active(s.software)
+            self.software.load(self.main.root_for(self.dev), s.software, s.software_items)
             self.testfiles.set_active(s.testfiles)
             for child in self.projects_box.get_children():
                 self.projects_box.remove(child)
@@ -322,7 +402,8 @@ class AutomationTab(Gtk.Box):
         if self.install_software.loaded:          # sonst gespeicherte Auswahl behalten (Ordner wird noch gelesen)
             s.install_software = self.install_software.selected()
         s.tweak = self.tweak.selection()
-        s.software, s.testfiles = self.software.get_active(), self.testfiles.get_active()
+        s.software, s.software_items = self.software.selection()
+        s.testfiles = self.testfiles.get_active()
         s.projects = [n for n, c in self.project_checks.items() if c.get_active()]
         s.finish = self.finish.get_active_id() or "reboot"
         return s
@@ -382,7 +463,7 @@ class AutomationTab(Gtk.Box):
 
 
 class SendFoldersDialog(Gtk.Dialog):
-    """Ordner senden: Software, Test Files und Content-Projekte auf den öffentlichen Desktop des Geräts."""
+    """Ordner senden: Software-Einträge, Test Files und Content-Projekte auf den öffentlichen Desktop des Geräts."""
 
     def __init__(self, parent: Gtk.Window, nas_root: str, device_name: str, preset: str = ""):
         super().__init__(title="Ordner senden", transient_for=parent, modal=True)
@@ -390,16 +471,22 @@ class SendFoldersDialog(Gtk.Dialog):
         self.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
         self.btn = self.add_button("Senden", Gtk.ResponseType.OK)
         self.btn.get_style_context().add_class("suggested-action")
+        self.btn.set_sensitive(False)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=14)
         head = Gtk.Label(xalign=0, wrap=True)
         head.set_markup(f"Auf den Desktop von <b>{GLib.markup_escape_text(device_name)}</b> (für alle Benutzer). "
-                        "Vorhandene Ordner gleichen Namens werden ersetzt.")
+                        "Vorhandene Einträge gleichen Namens werden ersetzt, andere bleiben.")
         box.pack_start(head, False, False, 0)
-        self.software = Gtk.CheckButton(label=distribute.FIXED[0], active=preset == "software")
-        self.testfiles = Gtk.CheckButton(label=distribute.FIXED[1], active=preset == "testfiles")
-        for b in (self.software, self.testfiles):
-            b.connect("toggled", lambda _c: self._update())
-            box.pack_start(b, False, False, 0)
+        # Ä-051: Software wie Content – Ordner und Dateien einzeln, „Alle“ hakt alles an
+        box.pack_start(Gtk.Label(label=f"{distribute.SOFTWARE} – Einträge wählen:", xalign=0), False, False, 0)
+        self.software = SoftwareEntryChooser(on_change=self._update)
+        self.software.load(nas_root)
+        sw_scroll = scrolled(self.software)
+        sw_scroll.set_min_content_height(min(220, 28 * (1 + max(1, len(self.software.checks)))))
+        box.pack_start(sw_scroll, True, True, 0)
+        self.testfiles = Gtk.CheckButton(label=distribute.TESTFILES, active=preset == "testfiles")
+        self.testfiles.connect("toggled", lambda _c: self._update())
+        box.pack_start(self.testfiles, False, False, 0)
         box.pack_start(Gtk.Label(label="Content – Projekte wählen:", xalign=0), False, False, 0)
         self.checks = {}
         names = distribute.projects(nas_root)
@@ -422,11 +509,13 @@ class SendFoldersDialog(Gtk.Dialog):
         self._update()
 
     def items(self) -> list[str]:
-        return distribute.items_for(self.software.get_active(), self.testfiles.get_active(),
-                                    [n for n, c in self.checks.items() if c.get_active()])
+        software, entries = self.software.selection()
+        return distribute.items_for(software, self.testfiles.get_active(),
+                                    [n for n, c in self.checks.items() if c.get_active()], entries)
 
     def _update(self) -> None:
-        self.btn.set_sensitive(bool(self.items()))
+        if hasattr(self, "checks"):
+            self.btn.set_sensitive(bool(self.items()))
 
 
 class WindowsTweakDialog(Gtk.Dialog):

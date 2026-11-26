@@ -431,7 +431,8 @@ class DemoLibraryTest(unittest.TestCase):
             entries = {e.name: e.status for e in software.scan(root)}
             self.assertEqual(entries, {"vlc-3.0.24": software.READY, "acrordrdc-de-de": software.READY,
                                        "demo-tool": software.MISSING})
-            self.assertEqual(sorted(p.name for p in old.iterdir()), ["Demo-Installer.txt"])
+            # Ä-051: Beispiel-Einträge für Ordner senden (zwei Ordner, eine Datei) – keine Installer mehr
+            self.assertEqual(sorted(p.name for p in old.iterdir()), ["Browser", "Demo-Installer.txt", "Treiber"])
             vlc = software.find(software.scan(root), "vlc-3.0.24")
             self.assertEqual(vlc.info, demostore.DEMO_INFO["vlc-3.0.24-win64.exe"])     # Ä-050
             demostore.ensure()                                        # zweites Mal: nichts doppelt
@@ -820,7 +821,9 @@ class UiSourceTest(unittest.TestCase):
     def test_no_catalog_in_files_tab(self):
         """Keine zwei Orte: der Knopf „Software …“ im Reiter Dateien ist ersetzt durch Extras → Software-Bibliothek."""
         src = (Path(__file__).resolve().parent.parent / "okula_recovery/ui.py").read_text(encoding="utf-8")
-        self.assertNotIn('"Software …"', src)
+        # Ä-051: „Software …“ gibt es nur noch im Untermenü Ordner senden (Auswahl unter Verteilen/Software)
+        self.assertEqual(src.count('"Software …"'), 1)
+        self.assertIn('(("Software …", "software"), ("Test Files", "testfiles")', src)
         self.assertNotIn("SoftwareCatalogDialog", src)
         self.assertIn('"_Software-Bibliothek …": (self.open_software_library', src)
         self.assertIn("cleanup_software_folder", src)

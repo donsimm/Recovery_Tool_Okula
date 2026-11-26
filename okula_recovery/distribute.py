@@ -1,10 +1,11 @@
 """Ordner an Geräte senden: vordefinierte Ordner auf dem NAS → öffentlicher Desktop des Geräts.
 
 Ablage auf dem NAS (im Reiter Dateien anpassbar):
-    Verteilen/Software/        fix – wird als ganzer Ordner gesendet
-    Verteilen/Test Files/      fix – wird als ganzer Ordner gesendet
+    Verteilen/Software/<Eintrag>   Auswahl (Ä-051) – jeder Unterordner und jede Datei einzeln, auf dem Desktop
+                                   unter Software/<Eintrag>; „Software“ allein = alle Einträge (auch spätere)
+    Verteilen/Test Files/          fix – wird als ganzer Ordner gesendet
     Verteilen/Content/<Projekt>/   Auswahl – nur gewählte Projekte, auf dem Desktop unter Content/<Projekt>
-Auf dem Gerät: C:/Users/Public/Desktop/… (für alle Benutzer); erneut senden ersetzt den Ordner.
+Auf dem Gerät: C:/Users/Public/Desktop/… (für alle Benutzer); erneut senden ersetzt nur die gewählten Einträge.
 """
 
 from __future__ import annotations
@@ -15,8 +16,12 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
 DIST_DIR = "Verteilen"
-FIXED = ("Software", "Test Files")
+SOFTWARE = "Software"
+TESTFILES = "Test Files"
+FIXED = (SOFTWARE, TESTFILES)       # Ordner, die immer da sind (Software seit Ä-051 mit Auswahl der Einträge)
 CONTENT = "Content"
+SELECTABLE = (SOFTWARE, CONTENT)    # Ordner mit Einträgen zur Auswahl: <Ordner>/<Eintrag>
+SHOW = 4                            # describe: so viele Namen je Ordner, danach „und N weitere“
 
 
 class DistributeError(Exception):
@@ -45,70 +50,149 @@ def projects(nas_root: str | Path) -> list[str]:
         return []
 
 
-def items_for(software: bool, testfiles: bool, chosen: list[str]) -> list[str]:
-    """Auswahl → Ordner relativ zu Verteilen (= Pfad auf dem Desktop)."""
-    out = [name for name, on in zip(FIXED, (software, testfiles)) if on]
+def software_entries(nas_root: str | Path) -> list[str]:
+    """Ä-051: Einträge direkt unter Software – Ordner zuerst, dann Dateien, je alphabetisch
+    (ohne versteckte Einträge, Links und Sonderdateien)."""
+    dirs, files = [], []
+    try:
+        with os.scandir(root(nas_root) / SOFTWARE) as it:
+            for e in it:
+                if e.name.startswith(".") or e.is_symlink():
+                    continue
+                if e.is_dir(follow_symlinks=False):
+                    dirs.append(e.name)
+                elif e.is_file(follow_symlinks=False):
+                    files.append(e.name)
+    except OSError:
+        return []
+    return sorted(dirs, key=str.lower) + sorted(files, key=str.lower)
+
+
+def items_for(software: bool, testfiles: bool, chosen: list[str], software_items: list[str] | None = None) -> list[str]:
+    """Auswahl → Einträge relativ zu Verteilen (= Pfad auf dem Desktop).
+
+    software_items leer bzw. None bei software=True: alle Einträge unter Software (auch später hinzugekommene) –
+    so verhält sich auch die alte Einstellung „Software“ ohne Liste."""
+    out = []
+    if software:
+        out += [f"{SOFTWARE}/{e}" for e in software_items] if software_items else [SOFTWARE]
+    if testfiles:
+        out.append(TESTFILES)
     out += [f"{CONTENT}/{p}" for p in chosen]
     return out
 
 
+def _short(names: list[str]) -> str:
+    if len(names) <= SHOW:
+        return ", ".join(names)
+    return f"{', '.join(names[:SHOW - 1])} und {len(names) - SHOW + 1} weitere"
+
+
 def describe(items: list[str]) -> str:
-    fixed = [i for i in items if "/" not in i]
-    proj = [i.split("/", 1)[1] for i in items if "/" in i]
-    parts = fixed + ([f"Content: {', '.join(proj)}"] if proj else [])
+    """Kurztext für Verlauf, Log und Auftragsliste, z. B. „Software: Browser, Nvidia, Test Files, Content: A“."""
+    sub = {name: [i.split("/", 1)[1] for i in items if i.startswith(f"{name}/")] for name in SELECTABLE}
+    parts = []
+    if SOFTWARE in items:
+        parts.append(f"{SOFTWARE}: alle")
+    elif sub[SOFTWARE]:
+        parts.append(f"{SOFTWARE}: {_short(sub[SOFTWARE])}")
+    if TESTFILES in items:
+        parts.append(TESTFILES)
+    if sub[CONTENT]:
+        parts.append(f"{CONTENT}: {_short(sub[CONTENT])}")
     return ", ".join(parts) or "nichts"
 
 
 @dataclass
 class Plan:
-    items: list[str]
+    items: list[str]                                      # was das Gerät ersetzt („Software“ aufgelöst in Einträge)
     entries: list[tuple] = field(default_factory=list)   # (Typ, Pfad auf dem Desktop, Grösse, mtime, Quelle)
     files: int = 0
     bytes: int = 0
     missing: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)      # Links und Sonderdateien
+    requested: list[str] = field(default_factory=list)    # Auswahl ohne Fehlendes (für describe)
 
 
-def plan(nas_root: str | Path, items: list[str]) -> Plan:
-    """Alle Dateien der gewählten Ordner; Links werden nie verfolgt (bleiben auf dem NAS)."""
+def _check(item: str) -> PurePosixPath:
+    rel = PurePosixPath(item)
+    ok = not rel.is_absolute() and ".." not in rel.parts and (
+        (len(rel.parts) == 1 and item in FIXED)
+        or (len(rel.parts) == 2 and rel.parts[0] in SELECTABLE and not rel.parts[1].startswith(".")))
+    if not ok:
+        raise DistributeError(f"Ungültiger Ordner: {item}")
+    return rel
+
+
+def plan(nas_root: str | Path, items: list[str], strict: bool = True) -> Plan:
+    """Alle Dateien der gewählten Einträge; Links werden nie verfolgt (bleiben auf dem NAS).
+
+    „Software“ allein wird in die aktuellen Einträge aufgelöst (Ä-051: das Gerät ersetzt nur diese, andere Inhalte
+    unter Desktop/Software bleiben). Fehlende Einträge landen in missing; fehlt alles, gibt es bei strict einen
+    Fehler, sonst einen leeren Plan (Automatisierung: Hinweis im Log, Rest läuft)."""
     base = root(nas_root)
-    p = Plan(items=list(items))
+    p = Plan(items=[])
+    targets: dict[str, None] = {}
     for item in items:
-        rel = PurePosixPath(item)
-        if rel.is_absolute() or ".." in rel.parts or not rel.parts or len(rel.parts) > 2 \
-                or (len(rel.parts) == 2 and rel.parts[0] != CONTENT) or (len(rel.parts) == 1 and item not in FIXED):
-            raise DistributeError(f"Ungültiger Ordner: {item}")
+        _check(item)
+        if item == SOFTWARE:
+            entries = software_entries(nas_root)
+            if not entries:
+                p.missing.append(f"{SOFTWARE} (leer)")
+                continue
+            for e in entries:
+                targets.setdefault(f"{SOFTWARE}/{e}")
+        else:
+            targets.setdefault(item)
+        p.requested.append(item)
+    for item in targets:
+        rel = _check(item)
         src = base.joinpath(*rel.parts)
-        if src.is_symlink() or not src.is_dir():
+        if src.is_symlink():
             p.missing.append(item)
             continue
-        p.entries.append(("dir", item, 0, 0, None))
-        for dirpath, dirnames, filenames in os.walk(src):
-            here = Path(dirpath)
-            for d in sorted(dirnames):
-                full = here / d
-                if full.is_symlink():
-                    p.skipped.append(str(full.relative_to(base)))
-                    continue
-                p.entries.append(("dir", str(PurePosixPath(item) / full.relative_to(src).as_posix()), 0, 0, None))
-            dirnames[:] = [d for d in sorted(dirnames) if not (here / d).is_symlink()]
-            for f in sorted(filenames):
-                if f.startswith(".") and f.endswith(".okula.json"):
-                    continue      # Beschreibung eines Programms (Software installieren, I-020) – bleibt auf dem NAS
-                full = here / f
-                try:
-                    st = full.lstat()
-                except OSError:
-                    p.skipped.append(str(full.relative_to(base)))
-                    continue
-                if not stat.S_ISREG(st.st_mode):
-                    p.skipped.append(str(full.relative_to(base)))
-                    continue
-                p.entries.append(("file", str(PurePosixPath(item) / full.relative_to(src).as_posix()), st.st_size,
-                                  int(st.st_mtime), full))
-                p.files += 1
-                p.bytes += st.st_size
-    if p.missing and len(p.missing) == len(items):
+        if src.is_dir():
+            _add_dir(p, base, src, item)
+        elif rel.parts[0] == SOFTWARE and len(rel.parts) == 2 and src.is_file():
+            st = src.lstat()      # Ä-051: einzelne Datei direkt unter Software → Desktop/Software/<Datei>
+            p.entries.append(("file", item, st.st_size, int(st.st_mtime), src))
+            p.files += 1
+            p.bytes += st.st_size
+        else:
+            p.missing.append(item)
+            continue
+        p.items.append(item)
+    p.requested = [i for i in p.requested if i in p.items or i == SOFTWARE and any(
+        t.startswith(f"{SOFTWARE}/") for t in p.items)]
+    if strict and not p.items and p.missing:
         raise DistributeError(f"Ordner fehlen auf dem NAS: {', '.join(p.missing)}")
-    p.items = [i for i in items if i not in p.missing]
     return p
+
+
+def _add_dir(p: Plan, base: Path, src: Path, item: str) -> None:
+    p.entries.append(("dir", item, 0, 0, None))
+    for dirpath, dirnames, filenames in os.walk(src):
+        here = Path(dirpath)
+        for d in sorted(dirnames):
+            full = here / d
+            if full.is_symlink():
+                p.skipped.append(str(full.relative_to(base)))
+                continue
+            p.entries.append(("dir", str(PurePosixPath(item) / full.relative_to(src).as_posix()), 0, 0, None))
+        dirnames[:] = [d for d in sorted(dirnames) if not (here / d).is_symlink()]
+        for f in sorted(filenames):
+            if f.startswith(".") and f.endswith(".okula.json"):
+                continue      # Beschreibung eines Programms (Software installieren, I-020) – bleibt auf dem NAS
+            full = here / f
+            try:
+                st = full.lstat()
+            except OSError:
+                p.skipped.append(str(full.relative_to(base)))
+                continue
+            if not stat.S_ISREG(st.st_mode):
+                p.skipped.append(str(full.relative_to(base)))
+                continue
+            p.entries.append(("file", str(PurePosixPath(item) / full.relative_to(src).as_posix()), st.st_size,
+                              int(st.st_mtime), full))
+            p.files += 1
+            p.bytes += st.st_size

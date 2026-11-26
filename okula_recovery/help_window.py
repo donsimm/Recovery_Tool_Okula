@@ -721,7 +721,9 @@ Mit der Automatisierung setzt das Tool ein Gerät selbst neu auf, sobald es mit 
     <i>Windows anpassen</i> (Häkchen) mit <i>Vorlage</i> und <i>Einstellungen …</i>: dieselben Einstellungen wie
     <i>Windows anpassen …</i> am Gerät (ohne automatische Anmeldung), nach der Software beim ersten Start; die
     Auswahl steht auch in den Vorlagen der Automatisierung (Kapitel <i>Windows anpassen</i>).
-5.  <b>Ordner senden</b> (Option): Software, Test Files, Content-Projekte.
+5.  <b>Ordner senden</b> (Option): unter <i>Software</i> die Einträge anhaken (<i>Alle</i> = jeder Eintrag, auch
+    später hinzugekommene), <i>Test Files</i> (ganzer Ordner), Content-Projekte (Kapitel <i>Ordner senden</i>).
+    Fehlt ein gewählter Eintrag auf dem NAS, steht ein Hinweis im Log; der Rest wird gesendet.
 6.  <b>Abschluss</b>: Neustart, Herunterfahren oder nichts.
     Nur bei VMs: <i>Vorher Snapshot</i> (oben, Standard an) – direkt vor dem Start entsteht ein Snapshot der Disk
     (Kapitel <i>Virtuelle Maschinen</i>). Schlägt er fehl, startet die Automatisierung nicht.
@@ -767,7 +769,9 @@ Ausschalten, das Wieder-Einschalten nach 3 Tagen und der Stopp-Knopf ■ fragen 
 Legt Ordner vom NAS auf den Desktop eines Geräts – für alle Benutzer.
 
 <b>Wo die Ordner liegen:</b> auf dem NAS im Ordner <i>Verteilen</i>:
-•  <i>Software</i> und <i>Test Files</i>: werden immer ganz gesendet.
+•  <i>Software</i>: jeder Unterordner und jede einzelne Datei darin ist ein eigener Eintrag zum Anhaken
+    (Ordner zuerst, alphabetisch). Ziel auf dem Desktop: <i>Software\\&lt;Eintrag&gt;</i>.
+•  <i>Test Files</i>: wird immer ganz gesendet.
 •  <i>Content</i>: darin liegen Projekte. Gesendet werden nur die gewählten Projekte.
 Die Inhalte lassen sich rechts im Reiter <i>Dateien</i> ändern. <i>Verteilen\\Software</i> ist ein Werkzeug-Ordner
 für Geräte unterwegs – Programme zum stillen Installieren kommen aus der Software-Bibliothek
@@ -775,12 +779,17 @@ für Geräte unterwegs – Programme zum stillen Installieren kommen aus der Sof
 
 <b>Ablauf:</b>
 1.  Gerät mit dem Agent starten.
-2.  Rechtsklick auf das Gerät → <i>Ordner senden</i> → <i>Software</i>, <i>Test Files</i> oder <i>Content …</i>
-3.  Bei Content die Projekte anhaken und auf <i>Senden</i> klicken.
+2.  Rechtsklick auf das Gerät → <i>Ordner senden</i> → <i>Software …</i>, <i>Test Files</i> oder <i>Content …</i>
+    (im Gerätefenster der Knopf <i>Ordner senden …</i>).
+3.  Bei Software und Content die Einträge anhaken und auf <i>Senden</i> klicken. Das Häkchen <i>Alle</i> hakt
+    jeden Software-Eintrag an. <i>Test Files</i> wird ohne Auswahl gleich gesendet.
 
 <b>Gut zu wissen:</b>
-•  Gibt es den Ordner schon auf dem Desktop, wird er ersetzt.
-•  Bricht etwas ab, bleibt der alte Ordner.
+•  Gibt es einen gewählten Eintrag schon auf dem Desktop, wird er ersetzt. Andere Einträge unter
+    <i>Software</i> bzw. <i>Content</i> bleiben.
+•  Bricht etwas ab, bleibt der alte Stand.
+•  Einzelne Dateien aus <i>Software</i> brauchen einen aktuellen Agent-Stick bzw. Netzwerkstart; ein älterer
+    meldet „Agent zu alt“. Ordner lassen sich auch mit einem älteren senden.
 •  Windows muss ganz heruntergefahren sein (Shift-Taste gedrückt halten + „Herunterfahren“)."""),
 
     ("Windows anpassen", """<big><b>Windows anpassen</b></big>
@@ -1724,7 +1733,8 @@ Die Vorführung braucht <b>kein NAS</b>. Alle Demo-Daten liegen lokal auf dem Se
 •  <i>DEMO-Image-beschaedigt</i>: absichtlich beschädigt. <i>Image prüfen …</i> ergibt ✖ und nennt die Datei.
 •  Rechtsklick auf <i>Demo (lokal, nicht auf dem NAS)</i> → <i>Alle Images im Ordner prüfen …</i>
     zeigt die Zusammenfassung, zum Beispiel „3 Images geprüft: 2 ✔, 1 ✖“.
-•  Für den Ordner <i>Ordner senden</i> gibt es Beispielordner (Software, Test Files, drei Projekte).
+•  Für <i>Ordner senden</i> gibt es Beispiele: unter Software zwei Ordner und eine Datei, Test Files und drei
+    Projekte unter Content.
 •  Für <i>Software installieren</i> liegen drei erfundene Beispiel-Installer in der Software-Bibliothek des
     Demo-Speichers (zwei „bereit“, einer „Parameter fehlt“). <i>Extras → Software-Bibliothek …</i> zeigt bei
     laufendem Demo-Gerät diese Bibliothek – laden, bearbeiten und löschen verändern das NAS nicht. Auswahl und

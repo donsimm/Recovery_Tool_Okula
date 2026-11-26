@@ -58,6 +58,7 @@ class Settings:
     tweak: dict | None = None        #    Windows anpassen (Ä-046): {"template", "keys"} (wintweaks.choice), nach
     #                                    der Software beim ersten Start; ohne automatische Anmeldung
     software: bool = False           # 4: Ordner senden
+    software_items: list[str] = field(default_factory=list)  # Ä-051: Einträge unter Software; leer = alle
     testfiles: bool = False
     projects: list[str] = field(default_factory=list)
     finish: str = "reboot"           # 5: reboot | poweroff | none
@@ -70,6 +71,8 @@ class Settings:
         names = {f.name for f in fields(cls)}
         s = cls(**{k: v for k, v in (data or {}).items() if k in names})
         s.projects = [str(p) for p in s.projects or [] if p]
+        s.software_items = [str(p) for p in s.software_items or [] if p] \
+            if isinstance(s.software_items, list) else []
         s.install_software = [str(p) for p in s.install_software or [] if p] \
             if isinstance(s.install_software, list) else []
         from okula_recovery import wintweaks
@@ -87,13 +90,13 @@ class Settings:
 
     @property
     def items(self) -> list[str]:
-        return distribute.items_for(self.software, self.testfiles, self.projects)
+        return distribute.items_for(self.software, self.testfiles, self.projects, self.software_items)
 
 
 # Was eine Vorlage enthält (ohne gerätebezogene Werte wie Zieldisk und Zustand)
 TEMPLATE_FIELDS = ("rearm", "backup", "backup_mode", "image_mode", "image", "adapt_smaller", "source_disk", "swiss",
-                   "account", "copy_profile", "install_software", "tweak", "software", "testfiles", "projects",
-                   "finish")
+                   "account", "copy_profile", "install_software", "tweak", "software", "software_items", "testfiles",
+                   "projects", "finish")
 
 
 def settings(dev) -> Settings:
@@ -246,6 +249,8 @@ def apply_template(s: Settings, name: str) -> Settings:
     tpl = load_templates().get(name)
     if tpl is None:
         raise AutomationError(f"Vorlage „{name}“ gibt es nicht")
+    if "software" in tpl and "software_items" not in tpl:
+        tpl = {**tpl, "software_items": []}     # Vorlage von vor Ä-051: „Software“ = alle Einträge
     merged = Settings.from_dict({**s.to_dict(), **tpl, "template": name})
     return merged
 
@@ -718,13 +723,17 @@ def automation_work(ip: str, key: bytes, port: int, dev, s: Settings, nas_root: 
             # 4 Ordner senden
             if s.items:
                 begin(3, distribute.describe(s.items))
-                plan = distribute.plan(nas_root, s.items)
+                plan = distribute.plan(nas_root, s.items, strict=False)   # Ä-051: Fehlendes nur als Hinweis
                 if plan.missing:
                     jm.log(job, f"  Fehlt auf dem NAS (übersprungen): {', '.join(plan.missing)}")
-                agentclient.deliver(ip, key, target, plan.items, plan.entries, plan.bytes,
-                                    lambda ev: step(3, ev.get("fraction", 0)) if ev.get("phase") == "data" else None,
-                                    job.cancel, port)
-                jm.log(job, f"  {plan.files} Dateien auf den Desktop gelegt")
+                if plan.items:
+                    agentclient.deliver(ip, key, target, plan.items, plan.entries, plan.bytes,
+                                        lambda ev: step(3, ev.get("fraction", 0)) if ev.get("phase") == "data"
+                                        else None, job.cancel, port)
+                    jm.log(job, f"  {distribute.describe(plan.requested)}: {plan.files} Dateien auf den Desktop "
+                                "gelegt")
+                else:
+                    jm.log(job, "  Nichts zu senden – gewählte Einträge fehlen auf dem NAS")
             else:
                 jm.log(job, "Schritt 4/5 – Ordner senden: aus")
 
