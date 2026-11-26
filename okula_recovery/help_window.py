@@ -162,6 +162,8 @@ Rechts steht dann „● NAS verbunden“ in Grün.
 4.  Auf <i>Stick vorbereiten</i> klicken. Achtung: Der Stick wird gelöscht.
 5.  Warten, bis das Fenster <i>Agent-Stick fertig</i> erscheint („Der Stick kann jetzt abgezogen werden.“),
     dann auf <i>OK</i> klicken und den Stick abziehen. <b>Stick erst abziehen, wenn „Stick fertig“ erscheint.</b>
+    Währenddessen lässt sich im Hauptfenster weiterarbeiten; der Fortschritt steht auch unten in der Liste
+    <i>USB-Vorgänge</i> (Kapitel <i>Sticks erstellen</i>).
 Zum Schluss prüft das Tool die Dateien auf dem Stick (Agent-Teil vorhanden und gültig, Live-System vollständig,
 Kernel und initrd vorhanden). Wurde der Stick zu früh abgezogen oder fehlt etwas, erscheint rot
 <i>Stick nicht fertig</i> mit dem Grund (z. B. „Stick wurde während des Schreibens abgezogen – Stick neu
@@ -1395,8 +1397,23 @@ abgezogen werden.“). Agent- und Restore-Stick werden vorher geprüft, beim Res
 Datenpartition. Ging etwas schief (z. B. Stick zu früh abgezogen), erscheint rot <i>Stick nicht fertig</i> mit
 dem Grund: Stick nicht verwenden – neu erstellen.
 
-<b>Abbrechen, Datenträger getrennt, Seriennummer</b>
+<b>Im Hintergrund: Liste „USB-Vorgänge“</b>
 Gilt für <i>Agent-USB-Stick erstellen</i>, <i>Boot-Stick aus ISO</i>, <i>USB klonen</i> und <i>USB formatieren</i>.
+•  Die Fenster sperren das Hauptfenster nicht und lassen sich verschieben und minimieren; im Hauptfenster lässt
+    sich weiterarbeiten.
+•  Jeder laufende Vorgang steht zusätzlich unten im Hauptfenster in der Liste <i>USB-Vorgänge</i>: Titel (z. B.
+    „USB klonen SanDisk … → SanDisk …“), Fortschritt in %, am Ende Ergebnis oder Fehler. <i>Abbrechen</i> dort wirkt
+    wie im Fenster, <i>Anzeigen</i> holt das Fenster wieder hervor, <i>Ausblenden</i> nimmt eine fertige Zeile weg.
+•  <i>Schliessen</i> (oder das Fenster-Kreuz) während eines Vorgangs blendet das Fenster nur aus – der Vorgang läuft
+    weiter. Ist das Fenster am Ende ausgeblendet, steht das Ergebnis in der Liste; bei Sticks erscheint zusätzlich
+    das Fenster „… fertig“ bzw. „Stick nicht fertig“.
+•  Ein Datenträger, der gerade gelesen oder beschrieben wird, ist in allen diesen Fenstern ausgegraut
+    („wird gerade verwendet“). Mehrere Vorgänge auf verschiedenen Datenträgern laufen gleichzeitig.
+•  <i>Menü → Beenden</i> während eines USB-Vorgangs fragt nach. Wird trotzdem beendet, bricht der Vorgang ab und
+    das Ziel bleibt unvollständig.
+
+<b>Abbrechen, Datenträger getrennt, Seriennummer</b>
+Gilt für dieselben vier Vorgänge.
 •  <i>Abbrechen</i> im Fenster stoppt den Vorgang. Reagiert das Hilfsprogramm nicht innerhalb von 15 Sekunden
     (z. B. weil ein Stick hängt), beendet das Tool es. Das Fenster bleibt nie bei „Wird abgebrochen …“ stehen.
 •  Wird ein Datenträger während des Vorgangs getrennt (abgezogen, Wackelkontakt, Hub), bricht der Vorgang ab:
@@ -1428,6 +1445,9 @@ Das Tool zeigt, ob das Ziel gross genug ist, wie schnell es kopiert und wie lang
 <i>Abbrechen</i> stoppt den Vorgang. Das Ziel ist dann aber unvollständig.
 Wird Quelle oder Ziel während des Klonens getrennt, bricht das Klonen mit „Datenträger getrennt“ ab
 (Kapitel <i>Sticks erstellen</i>, „Abbrechen, Datenträger getrennt, Seriennummer“).
+Das Klonen läuft im Hintergrund: Das Fenster lässt sich schliessen bzw. minimieren, der Fortschritt steht unten im
+Hauptfenster in der Liste <i>USB-Vorgänge</i> (Kapitel <i>Sticks erstellen</i>, „Im Hintergrund“). Quelle und
+Ziel sind währenddessen in allen USB- und Stick-Fenstern gesperrt.
 
 <b>Gut zu wissen:</b>
 •  Nach dem Klonen haben beide Datenträger dieselben Kennungen.
@@ -1443,8 +1463,9 @@ Wird Quelle oder Ziel während des Klonens getrennt, bricht das Klonen mit „Da
 4.  Dateisystem wählen (siehe unten). Das Tool schlägt eines vor.
 5.  Auf Wunsch einen Namen eingeben.
 6.  Auf <i>Formatieren</i> klicken und bestätigen. <b>Alle Daten gehen verloren.</b>
-<i>Abbrechen</i> stoppt das Formatieren; der Datenträger muss danach neu formatiert werden. Zu „Datenträger
-getrennt“ und zur Seriennummer in der Liste: Kapitel <i>Sticks erstellen</i>.
+<i>Abbrechen</i> stoppt das Formatieren; der Datenträger muss danach neu formatiert werden. Das Formatieren läuft
+im Hintergrund und steht unten im Hauptfenster in der Liste <i>USB-Vorgänge</i>. Dazu, zu „Datenträger getrennt“
+und zur Seriennummer in der Liste: Kapitel <i>Sticks erstellen</i>.
 
 <b>Welches Dateisystem wofür?</b>
 •  <b>FAT32</b>: läuft fast überall (Windows, Mac, Linux, TV, Auto). Dateien höchstens 4 GB.

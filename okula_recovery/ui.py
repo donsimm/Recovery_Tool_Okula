@@ -19,7 +19,7 @@ from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 
 from okula_recovery import (__version__, agentclient, archive, automation, backups, bandwidth,  # noqa: E402
                             bitlocker_keys, clonezilla, config, demostore, devices, discovery, distribute, imagecheck, jobs, nas,
-                            nasfiles, oslib, projekt, pxe, vm, warranty, wintweaks, wire, wol)
+                            nasfiles, oslib, projekt, pxe, usbjobs, vm, warranty, wintweaks, wire, wol)
 from okula_recovery.automation_tab import SendFoldersDialog, SettingsDialog, WindowsTweakDialog  # noqa: E402
 from okula_recovery.inventory_dialog import InventoryExportDialog  # noqa: E402
 from okula_recovery.imagecheck_dialog import CheckWindow  # noqa: E402
@@ -32,7 +32,7 @@ from okula_recovery.settings_dialogs import ExportDialog, import_settings  # noq
 from okula_recovery.pxe_dialog import PxeDialog  # noqa: E402
 from okula_recovery.stick_dialog import helper_subcommand, run_helper  # noqa: E402
 from okula_recovery.loadbar import LoadBar  # noqa: E402
-from okula_recovery.usb_dialogs import CloneDialog, FormatDialog  # noqa: E402
+from okula_recovery.usb_dialogs import CloneDialog, FormatDialog, UsbJobsBar  # noqa: E402
 from okula_recovery.vm_dialogs import (BLANK_AGENT, BLANK_ANYWAY, BLANK_ISO, HardwareDialog, IsoDialog,  # noqa: E402
                                        NewVmDialog, TwinDialog, ask_blank_disk)
 from okula_recovery.image_dialog import ImageDialog  # noqa: E402
@@ -193,9 +193,11 @@ class MainWindow(Gtk.ApplicationWindow):
         paned.set_position(760)
 
         self.statusbar = Gtk.Statusbar()
+        self.usb_jobs = UsbJobsBar(self, self.jobs)   # Ä-052: Auftragsliste „USB-Vorgänge“ (nur wenn welche da)
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         root.pack_start(self._build_menubar(), False, False, 0)
         root.pack_start(paned, True, True, 0)
+        root.pack_start(self.usb_jobs, False, False, 0)
         root.pack_start(self.statusbar, False, False, 0)
         self.add(root)
 
@@ -4427,6 +4429,9 @@ class MainWindow(Gtk.ApplicationWindow):
         run_async(lambda: agentclient.power(agent.ip, key, action, agent.control_port), done)
 
     def _on_job_change(self, job: jobs.Job) -> bool:
+        if job.kind == usbjobs.KIND:      # Ä-052: USB-Vorgänge (kein Gerät)
+            self.usb_jobs.refresh(job)
+            return False
         self.update_device_rows()
         win = self.device_windows.get(job.device_id)
         if win:
@@ -4447,12 +4452,18 @@ class MainWindow(Gtk.ApplicationWindow):
             return True
         if not running:
             return False
-        names = "\n".join(f"• {self.store.devices[j.device_id].name if j.device_id in self.store.devices else '?'}"
-                          f": {j.title} ({j.fraction * 100:.0f} %)" for j in running)
+        def owner(j: jobs.Job) -> str:
+            if j.kind == usbjobs.KIND:
+                return "USB"
+            return self.store.devices[j.device_id].name if j.device_id in self.store.devices else "?"
+
+        names = "\n".join(f"• {owner(j)}: {j.title} ({j.fraction * 100:.0f} %)" for j in running)
         what = "1 Auftrag läuft" if len(running) == 1 else f"{len(running)} Aufträge laufen"
+        usb = " Laufende USB-Vorgänge brechen ab, das Ziel bleibt unvollständig." \
+            if any(j.kind == usbjobs.KIND for j in running) else ""
         if confirm(self, f"{what} noch – trotzdem beenden?",
                    f"{names}\n\nLaufende Images und Restores werden abgebrochen. Ein abgebrochenes Restore "
-                   "hinterlässt eine unbrauchbare Zieldisk.", ok_label="Trotzdem beenden"):
+                   "hinterlässt eine unbrauchbare Zieldisk." + usb, ok_label="Trotzdem beenden"):
             for j in running:
                 j.cancel.set()
             for c in copies:

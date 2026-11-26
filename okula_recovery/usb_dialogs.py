@@ -8,23 +8,25 @@ from __future__ import annotations
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk  # noqa: E402
+from gi.repository import Gtk, Pango  # noqa: E402
 
-from okula_recovery import stick, usbtools  # noqa: E402
-from okula_recovery.stick_dialog import helper_subcommand, ident_args, result_status, run_usb_helper  # noqa: E402
+from okula_recovery import jobs, stick, usbjobs, usbtools  # noqa: E402
+from okula_recovery.stick_dialog import (JOB_WINDOWS, UsbJobMixin, helper_subcommand, ident_args,  # noqa: E402
+                                         job_cancel_requested, result_status, show_job_window)
 from okula_recovery.uikit import confirm, scrolled  # noqa: E402
 from okula_recovery.usbtools import DiskInfo, disk_details, gb  # noqa: E402
 
-class _UsbDialog(Gtk.Dialog):
-    """Gemeinsam: Datenträgerliste, Fortschritt, Protokoll, Abbrechen, kein Schliessen während der Arbeit."""
+
+class _UsbDialog(UsbJobMixin, Gtk.Dialog):
+    """Gemeinsam: Datenträgerliste, Fortschritt, Protokoll, Abbrechen. Ä-052: nicht modal, Vorgang als Auftrag;
+    Schliessen während der Arbeit blendet das Fenster nur aus."""
 
     START_LABEL = "Start"
 
     def __init__(self, parent: Gtk.Window, title: str):
-        super().__init__(title=title, transient_for=parent, modal=True)
+        super().__init__(title=title, transient_for=parent, modal=False)
         self.set_default_size(760, 640)
         self.busy = False
-        self.run_handle = None
         self.disks: list[stick.UsbDisk] = []
         self.details: dict[str, DiskInfo] = {}
         self.btn_close = self.add_button("Schliessen", Gtk.ResponseType.CLOSE)
@@ -32,7 +34,7 @@ class _UsbDialog(Gtk.Dialog):
         self.btn_start = self.add_button(self.START_LABEL, Gtk.ResponseType.APPLY)
         self.btn_start.get_style_context().add_class("destructive-action")
         self.connect("response", self._on_response)
-        self.connect("delete-event", lambda *_a: self.busy)
+        self._init_usb()
         self.grid = Gtk.Grid(column_spacing=8, row_spacing=8, margin=12)
         self.row = 0
 
@@ -78,17 +80,20 @@ class _UsbDialog(Gtk.Dialog):
     def _disk_combo(self) -> Gtk.ComboBoxText:
         combo = Gtk.ComboBoxText(hexpand=True)
         combo.connect("changed", lambda _c: self._update())
+        self.mark_in_use(combo, self._disk)
         return combo
 
     def _fill(self, combo: Gtk.ComboBoxText, active: int = 0) -> None:
         old = combo.get_active_id()
         combo.remove_all()
         for d in self.disks:
-            combo.append(d.path, d.label)
+            combo.append(d.path, self.disk_text(d))
         if old and old in {d.path for d in self.disks}:
             combo.set_active_id(old)
         elif self.disks:
-            combo.set_active(min(active, len(self.disks) - 1))
+            free = [i for i, d in enumerate(self.disks) if self.disk_in_use(d) is None]
+            pick = free[min(active, len(free) - 1)] if free else min(active, len(self.disks) - 1)
+            combo.set_active(pick)
 
     def refresh_disks(self) -> None:
         self.disks = stick.list_usb_disks()
@@ -124,26 +129,29 @@ class _UsbDialog(Gtk.Dialog):
         self.busy = busy
         self.btn_cancel.set_visible(busy)
         self.btn_cancel.set_sensitive(True)
-        self.btn_close.set_sensitive(not busy)
+        self.btn_close.set_sensitive(True)      # während der Arbeit: Fenster ausblenden, Vorgang läuft weiter
         self._update()
 
     def _disk(self, path: str | None) -> stick.UsbDisk | None:
         return next((d for d in self.disks if d.path == path), None)
 
-    def run_helper(self, sub: str, args: list[str], intro: str, paths: list[str]) -> None:
+    def run_helper(self, sub: str, args: list[str], intro: str, paths: list[str], title: str) -> None:
         disks = [self._disk(p) for p in paths]
         try:
             cmd = helper_subcommand(sub, args + ident_args(disks))   # B-029: Seriennummern mitgeben
         except FileNotFoundError as e:
             self._log(str(e))
             return
+        if not self.start_usb_job(title, cmd, "", disks, self._progress, self._line, self._done):
+            return
         self._set_busy(True)
         self.bar.set_fraction(0.0)
         self._log(intro)
-        self.run_handle = run_usb_helper(cmd, "", disks, self._progress, self._line, self._done)
 
     def _done(self, ok: bool, error: str) -> bool:
-        self.run_handle = None
+        if self.usb_finished():
+            self.destroy()       # Fenster war ausgeblendet: Ergebnis steht in der Auftragsliste
+            return False
         self._set_busy(False)
         if ok:
             self.bar.set_fraction(1.0)
@@ -159,14 +167,9 @@ class _UsbDialog(Gtk.Dialog):
         if response == Gtk.ResponseType.APPLY:
             self.start()
         elif response == Gtk.ResponseType.CANCEL:
-            if self.busy and self.run_handle and confirm(self, "Wirklich abbrechen?",
-                                                         "Der Ziel-Datenträger bleibt unvollständig und muss danach "
-                                                         "neu beschrieben werden.", ok_label="Abbrechen"):
-                self.btn_cancel.set_sensitive(False)
-                self._log("Wird abgebrochen …")
-                self.run_handle.cancel()
-        elif not self.busy:
-            self.destroy()
+            self.cancel_usb_job("Der Ziel-Datenträger bleibt unvollständig und muss danach neu beschrieben werden.")
+        else:
+            self.close_or_hide()
 
     def start(self) -> None:
         raise NotImplementedError
@@ -226,6 +229,9 @@ class CloneDialog(_UsbDialog):
             return False, "Zum Klonen braucht es zwei USB-Datenträger."
         if s == d:
             return False, "Quelle und Ziel müssen verschiedene Datenträger sein."
+        busy = self.in_use_problem([self._disk(s), self._disk(d)])
+        if busy:
+            return False, busy
         src = self.details.get(s)
         src_size = next((x.size for x in self.disks if x.path == s), 0)
         dst_size = next((x.size for x in self.disks if x.path == d), 0)
@@ -265,8 +271,9 @@ class CloneDialog(_UsbDialog):
             return
         mode = "raw" if self.raw.get_active() else "smart"
         args = ["--source", s, "--target", d, "--mode", mode] + (["--verify"] if self.verify.get_active() else [])
+        src, dst = self._disk(s), self._disk(d)
         self.run_helper("usb-clone", args, f"Klonen {s} → {d} ({'1:1' if mode == 'raw' else 'nur belegte Bereiche'}) …",
-                        [s, d])
+                        [s, d], f"USB klonen {src.name if src else s} ({s}) → {dst.name if dst else d} ({d})")
 
 
 SCHEMES = {"mbr": "MBR – passt überall (Windows, Mac, TV, ältere PCs), bis 2 TB",
@@ -359,6 +366,9 @@ class FormatDialog(_UsbDialog):
         size = self._size()
         if not self.disk.get_active_id():
             return False, "Kein USB-Datenträger gewählt."
+        busy = self.in_use_problem([self._disk(self.disk.get_active_id())])
+        if busy:
+            return False, busy
         if spec is None or not usbtools.available(spec):
             return False, "Dateisystem wählen."
         if spec.key != "none" and self.scheme.get_active_id() == "mbr" and size > usbtools.MBR_LIMIT:
@@ -406,4 +416,97 @@ class FormatDialog(_UsbDialog):
             return
         args = ["--device", dev, "--fs", spec.key, "--scheme", self.scheme.get_active_id(),
                 "--label", self.label.get_text().strip(), "--prep", self.prep.get_active_id()]
-        self.run_helper("usb-format", args, f"{dev} wird als {spec.title} formatiert …", [dev])
+        disk = self._disk(dev)
+        self.run_helper("usb-format", args, f"{dev} wird als {spec.title} formatiert …", [dev],
+                        f"USB formatieren {disk.name if disk else dev} ({dev}) → {spec.title}")
+
+
+def job_status(job: jobs.Job) -> tuple[float, str]:
+    """(Fortschritt, Text) einer Zeile der Auftragsliste „USB-Vorgänge“."""
+    if job.running:
+        text = f"{job.fraction * 100:.0f} %"
+        if job.cancel.is_set():
+            text += "  Wird abgebrochen …"
+        elif job.detail:
+            text += f"  {job.detail}"
+        return job.fraction, text
+    last = job.log[-1][9:] if job.log else ""          # ohne Uhrzeit „HH:MM:SS “
+    if job.state == jobs.DONE:
+        return 1.0, f"Fertig: {job.result}" if job.result else "Fertig"
+    return job.fraction, last or job.state.capitalize()
+
+
+class UsbJobsBar(Gtk.Box):
+    """Ä-052: Auftragsliste „USB-Vorgänge“ im Hauptfenster (über der Statuszeile). Je Vorgang Titel, Fortschritt
+    bzw. Ergebnis, Anzeigen (Fenster wieder zeigen), Abbrechen (wie im Fenster) und Ausblenden (fertige Zeile)."""
+
+    def __init__(self, main: Gtk.Window, jm: jobs.JobManager):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=2, margin_start=6, margin_end=6,
+                         margin_top=2, no_show_all=True)
+        self.main, self.jm = main, jm
+        self.rows: dict[int, dict] = {}
+        self.removed: set[int] = set()
+        head = Gtk.Label(xalign=0)
+        head.set_markup("<b>USB-Vorgänge</b>")
+        head.show()
+        self.pack_start(head, False, False, 0)
+
+    def refresh(self, _changed: jobs.Job | None = None) -> None:
+        for job in self.jm.for_device(usbjobs.USB_DEVICE):
+            if job.id in self.removed:
+                continue
+            row = self.rows.get(job.id) or self._add(job)
+            fraction, text = job_status(job)
+            row["bar"].set_fraction(max(0.0, min(1.0, fraction)))
+            row["bar"].set_text(text)
+            row["bar"].set_tooltip_text(text)
+            ctx = row["bar"].get_style_context()
+            for cls in ("status-ok", "status-fail"):
+                ctx.remove_class(cls)
+            if job.state == jobs.DONE:
+                ctx.add_class("status-ok")
+            elif job.state in (jobs.FAILED, jobs.CANCELLED):
+                ctx.add_class("status-fail")
+            row["cancel"].set_visible(job.running)
+            row["cancel"].set_sensitive(job.running and not job.cancel.is_set())
+            row["remove"].set_visible(not job.running)
+            row["show"].set_sensitive(job.id in JOB_WINDOWS)
+        self.set_visible(bool(self.rows))
+
+    def _add(self, job: jobs.Job) -> dict:
+        box = Gtk.Box(spacing=6)
+        title = Gtk.Label(label=job.title, xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=60)
+        title.set_tooltip_text(job.title)
+        bar = Gtk.ProgressBar(show_text=True, hexpand=True, valign=Gtk.Align.CENTER)
+        show = Gtk.Button(label="Anzeigen")
+        show.set_tooltip_text("Fenster des Vorgangs wieder zeigen")
+        show.connect("clicked", lambda _b: show_job_window(job.id))
+        cancel = Gtk.Button(label="Abbrechen")
+        cancel.connect("clicked", lambda _b: self._cancel(job))
+        remove = Gtk.Button(label="Ausblenden")
+        remove.set_tooltip_text("Zeile aus der Liste nehmen")
+        remove.connect("clicked", lambda _b: self._remove(job.id))
+        box.pack_start(title, False, False, 0)
+        box.pack_start(bar, True, True, 0)
+        for b in (show, cancel, remove):
+            box.pack_start(b, False, False, 0)
+        box.show_all()
+        self.pack_start(box, False, False, 0)
+        row = {"box": box, "bar": bar, "show": show, "cancel": cancel, "remove": remove}
+        self.rows[job.id] = row
+        return row
+
+    def _cancel(self, job: jobs.Job) -> None:
+        if job.running and confirm(self.main, "USB-Vorgang abbrechen?",
+                                   f"{job.title}\n\nDer Ziel-Datenträger bleibt unvollständig und muss danach neu "
+                                   "beschrieben werden.", ok_label="Abbrechen"):
+            usbjobs.cancel(self.jm, job)
+            job_cancel_requested(job.id)
+            self.refresh(job)
+
+    def _remove(self, job_id: int) -> None:
+        row = self.rows.pop(job_id, None)
+        self.removed.add(job_id)
+        if row is not None:
+            row["box"].destroy()
+        self.set_visible(bool(self.rows))

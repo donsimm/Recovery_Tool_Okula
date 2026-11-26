@@ -53,7 +53,7 @@ class Job:
                               "backup": "Backup", "filerestore": "Dateien zurückspielen",
                               "download": "Backup herunterladen", "auto": "Automatisierung",
                               "deliver": "Ordner senden", "hwtest": "Hardware-Test",
-                              "tweak": "Windows anpassen",
+                              "tweak": "Windows anpassen", "usb": "USB-Vorgang",
                               "software": "Software installieren"}.get(self.kind, "Zurückspielen")
 
     @property

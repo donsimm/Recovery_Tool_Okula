@@ -52,6 +52,7 @@ steht im jeweiligen Protokoll-Eintrag.
 
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
+| Ä-053 | 🟡 | in Arbeit | Dominik | **Ordner senden: „Alle“ bei Software ersetzt den ganzen Ordner** `Desktop\Software` (wie vor Ä-051); einzelne Einträge weiter einzeln. Entscheid Dominik 26.11. Prompt [Ä-053](prompts/AE-053-software-alle-ersetzt.md) | 26.11. |
 | Ä-052 | 🟡 | in Arbeit | Dominik | **USB-Vorgänge im Hintergrund:** *USB klonen*, *USB formatieren*, *Agent-USB-Stick erstellen*, *Boot-Stick* nicht modal (Tool bleibt bedienbar), Fortschritt in der Auftragsliste, belegte Datenträger gesperrt, Rückfrage beim Beenden. Zusammen mit B-029. Prompt [Ä-052/B-029](prompts/AE-052-usb-im-hintergrund.md) | 26.11. |
 | Ä-048 | 🟡 | offen | Okuli (Review) | **Robustheit Agent, Netz und Oberfläche (Sammelpunkt aus dem Review).** Agent: TLS-Handshake ohne Timeout/accept ungeschützt (R-agent 2), Neustart-Timer prüft Disk-Lock nicht erneut (R-agent 3), `wimlib-imagex` läuft nach Verbindungsabbruch weiter (R-agent 1), Kleines R-agent 4–9. Tool: Beacons ungeprüft legen Geräte an, keine Obergrenze (R-client 6); NAS-Zugriffe im GTK-Hauptthread frieren bei hängendem CIFS ein (R-ui 2), `refresh_images` überholt sich (R-ui 4), Kleines R-ui 3, 5–8. Software-Bibliothek: Programme, die ein Auftrag gerade überträgt, lassen sich löschen (Rest aus B-026). Windows: Int32-Rückgabewerte (R-win 5), Kindprozesse bei Timeout (R-win 6). Gleiche Board-UUID → falsches Gerät (R-client 3) zuerst prüfen. [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) | 25.11. |
 | Ä-049 | ⚪ | offen | Okuli (Review) | **`ui.py` (4457 Zeilen) aufteilen** – erster Schritt als Mixins (`ui_const`, `ui_storage`, `ui_devices`, `ui_vm`, `ui_actions`), `win.xxx` bleibt stabil; Vorschlag [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) R-ui. Teil von Ä-005 (dort Version 0.1.0 überholt: steht auf 0.2.0, Tag v0.2.0 gesetzt 25.11.) | 25.11. |
@@ -301,6 +302,22 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 26.11.2026
+- **Ä-052 – USB-Vorgänge im Hintergrund** (Von: Dominik, 26.11.; Prompt
+  [Ä-052/B-029](prompts/AE-052-usb-im-hintergrund.md)). *USB klonen*, *USB formatieren*, *Agent-USB-Stick erstellen*
+  (auch Restore-Stick) und *Boot-Stick aus ISO* sind nicht mehr modal (`modal=False`, weiter `transient_for`,
+  Fenstertyp „normal“ → minimierbar), gemeinsame Logik `stick_dialog.UsbJobMixin`. Jeder Vorgang läuft als Auftrag
+  im `JobManager` des Hauptfensters (`usbjobs.start`, Gerät „usb“, Art „usb“, kein Geräte-Verlauf) und steht in der
+  neuen Liste **USB-Vorgänge** unten im Hauptfenster (`usb_dialogs.UsbJobsBar`, nur sichtbar, wenn es Einträge gibt):
+  Titel z. B. „USB klonen SanDisk Ultra (/dev/sdb) → SanDisk Ultra (/dev/sdc)“, Fortschritt in %, Ergebnis bzw.
+  Fehler; *Anzeigen* (Fenster wieder zeigen), *Abbrechen* (gleiche Rückfrage und gleicher Abbruch wie im Fenster),
+  *Ausblenden* (fertige Zeile). **Schliessen während eines Vorgangs blendet das Fenster nur aus** (einfachste sichere
+  Lösung: keine Rückfrage, der Vorgang läuft weiter und bleibt in der Liste; endet er ausgeblendet, wird das Fenster
+  geschlossen, bei Sticks erscheint das Ergebnis-Fenster über dem Hauptfenster). Belegte Datenträger (Pfad oder
+  Seriennummer, `usbjobs.in_use`) sind in allen vier Fenstern ausgegraut mit „– wird gerade verwendet“ und lassen
+  sich nicht starten; mehrere Vorgänge auf verschiedenen Datenträgern laufen parallel. *Menü → Beenden* fragt bei
+  laufenden USB-Vorgängen nach (bestehende Rückfrage, Eintrag „USB: …“). `ui.py` nur Verdrahtung (Liste einbauen,
+  `_on_job_change`, Beenden-Text). Hilfe *Erste Schritte*, *Sticks erstellen*, *USB klonen*, *USB formatieren*.
+  Tests `tests/test_usbjobs.py`. Prüfung [TESTS.md](TESTS.md) „Ä-052 / B-029“.
 - **B-029 – Abbrechen bei USB-Vorgängen zuverlässig, „Datenträger getrennt“, Seriennummer statt Gerätename**
   (Von: Dominik, 26.11.; Prompt [Ä-052/B-029](prompts/AE-052-usb-im-hintergrund.md)). Gilt für *USB klonen*, *USB
   formatieren*, *Agent-USB-Stick erstellen* (auch Restore-Stick) und *Boot-Stick aus ISO*. **Tool**

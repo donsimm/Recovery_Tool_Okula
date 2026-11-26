@@ -11,7 +11,7 @@ from pathlib import Path
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gtk, Pango  # noqa: E402
+from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
 from okula_recovery import agentclient, isofetch, network, stick  # noqa: E402
 from okula_recovery.uikit import confirm, confirm_error, info  # noqa: E402
@@ -144,35 +144,140 @@ def run_helper(cmd: list[str], stdin_text: str, on_progress, on_line, on_done,
     return handle
 
 
-class UsbRun:
-    """Laufender USB-Vorgang (B-029): cancel() schickt „CANCEL“; reagiert der Helfer nicht, beendet ihn das Tool
-    (usbjobs.HelperProcess). on_done kommt in jedem Fall genau einmal."""
-
-    def __init__(self):
-        self.cancel_event = threading.Event()
-
-    def cancel(self) -> None:
-        self.cancel_event.set()
+JOB_WINDOWS: dict[int, Gtk.Window] = {}   # Auftrags-ID → Fenster des USB-Vorgangs (Auftragsliste: „Anzeigen“)
 
 
-def run_usb_helper(cmd: list[str], stdin_text: str, disks, on_progress, on_line, on_done) -> UsbRun:
-    """Root-Helfer für USB klonen/formatieren, Agent-Stick und Boot-Stick im Hintergrund starten. disks: die
-    beteiligten UsbDisk (Überwachung „Datenträger getrennt“). Rückrufe im GTK-Hauptthread wie bei run_helper."""
-    from okula_recovery import usbjobs
-    cwd = str(Path(stick.__file__).resolve().parent.parent)
-    handle = UsbRun()
-    proc = usbjobs.HelperProcess(cmd, stdin_text, cwd=cwd, idents=[d.ident() for d in disks if d is not None])
+class UsbJobMixin:
+    """Ä-052/B-029: gemeinsam für USB klonen, USB formatieren, Agent-USB-Stick und Boot-Stick.
 
-    def work():
+    Fenster nicht modal (Hauptfenster bleibt bedienbar, minimierbar). Der Vorgang läuft als Auftrag im JobManager
+    des Hauptfensters (usbjobs.start) und steht in der Auftragsliste „USB-Vorgänge“. Fenster schliessen während des
+    Vorgangs blendet es nur aus – der Vorgang läuft weiter, die Auftragsliste zeigt ihn wieder an. Belegte
+    Datenträger sind in den Listen ausgegraut („wird gerade verwendet“)."""
+
+    usb_job = None
+
+    def _init_usb(self) -> None:
+        from okula_recovery import usbjobs
+        self.usb_job = None
+        self.set_type_hint(Gdk.WindowTypeHint.NORMAL)        # minimieren möglich (kein Dialog-Fenstertyp)
+        self._usb_listener = self._on_usb_change
+        usbjobs.subscribe(self._usb_listener)
+        self.connect("destroy", lambda *_a: usbjobs.unsubscribe(self._usb_listener))
+        self.connect("delete-event", self._on_usb_delete)
+
+    # ---------- Zustand ----------
+
+    @property
+    def usb_running(self) -> bool:
+        return self.usb_job is not None and self.usb_job.running
+
+    def usb_manager(self):
+        from okula_recovery import usbjobs
+        return usbjobs.manager(self.get_transient_for())
+
+    def disk_in_use(self, disk):
+        """Laufender Auftrag eines anderen Fensters, der diesen Datenträger verwendet (None = frei)."""
+        from okula_recovery import usbjobs
+        return usbjobs.in_use(disk, exclude=self.usb_job) if disk is not None else None
+
+    def disk_text(self, disk, extra: str = "") -> str:
+        from okula_recovery import usbjobs
+        return disk.label + extra + (f"  – {usbjobs.IN_USE}" if self.disk_in_use(disk) else "")
+
+    def mark_in_use(self, combo: Gtk.ComboBox, lookup) -> None:
+        """Belegte Datenträger in der Liste ausgrauen; lookup(Pfad) → UsbDisk."""
+        cells = combo.get_cells()
+        if not cells:
+            return
+        column = combo.get_id_column()
+
+        def data(_layout, cell, model, it, _data=None):
+            cell.set_property("sensitive", self.disk_in_use(lookup(model[it][column])) is None)
+
+        combo.set_cell_data_func(cells[0], data, None)
+
+    def in_use_problem(self, disks) -> str:
+        """„/dev/sdb wird gerade verwendet (USB klonen …)“ oder leer."""
+        for d in disks:
+            job = self.disk_in_use(d)
+            if job is not None:
+                return f"{d.path} wird gerade verwendet ({job.title})."
+        return ""
+
+    # ---------- Ablauf ----------
+
+    def start_usb_job(self, title: str, cmd: list[str], stdin_text: str, disks, on_progress, on_line,
+                      on_done) -> bool:
+        from okula_recovery import usbjobs
+        cwd = str(Path(stick.__file__).resolve().parent.parent)
+        idents = [d.ident() for d in disks if d is not None]
         try:
-            ok, error = proc.run(handle.cancel_event, lambda f, m: GLib.idle_add(on_progress, f, m),
-                                 lambda line: GLib.idle_add(on_line, line))
-        except Exception as e:  # nie ohne Ende: der Dialog darf nicht hängen bleiben
-            ok, error = False, str(e)
-        GLib.idle_add(on_done, ok, error)
+            self.usb_job = usbjobs.start(self.usb_manager(), title, cmd, stdin_text, idents, on_progress, on_line,
+                                         on_done, post=GLib.idle_add, cwd=cwd)
+        except usbjobs.Busy as e:
+            confirm_error(self, str(e), title="Datenträger wird gerade verwendet")
+            return False
+        JOB_WINDOWS[self.usb_job.id] = self
+        return True
 
-    threading.Thread(target=work, daemon=True).start()
-    return handle
+    def cancel_usb_job(self, text: str) -> None:
+        """Abbrechen mit Rückfrage – gleich wie in der Auftragsliste."""
+        from okula_recovery import usbjobs
+        if self.usb_running and confirm(self, "Wirklich abbrechen?", text, ok_label="Abbrechen"):
+            usbjobs.cancel(self.usb_manager(), self.usb_job)
+            self.usb_cancel_requested()
+
+    def usb_cancel_requested(self) -> None:
+        """Abbruch angefordert (Fenster oder Auftragsliste): Knopf sperren, im Protokoll vermerken."""
+        if getattr(self, "btn_cancel", None) is not None:
+            self.btn_cancel.set_sensitive(False)
+        log = getattr(self, "_log", None) or getattr(self, "append_log", None)
+        if log is not None:
+            log("Wird abgebrochen …")
+
+    def usb_finished(self) -> bool:
+        """Am Ende des Vorgangs aufrufen. True = das Fenster war ausgeblendet (Ergebnis steht in der
+        Auftragsliste; das Fenster wird danach geschlossen)."""
+        if self.usb_job is not None:
+            JOB_WINDOWS.pop(self.usb_job.id, None)
+        return not self.get_visible()
+
+    def result_parent(self) -> Gtk.Window:
+        """Fenster für das Ergebnis-Popup: dieses, oder das Hauptfenster, wenn es ausgeblendet ist."""
+        return self if self.get_visible() else (self.get_transient_for() or self)
+
+    def _on_usb_delete(self, *_a) -> bool:
+        if self.usb_running:
+            self.hide()       # Vorgang läuft weiter – Auftragsliste „USB-Vorgänge“ → Anzeigen
+            return True
+        return bool(getattr(self, "busy", False))
+
+    def close_or_hide(self) -> None:
+        if self.usb_running:
+            self.hide()
+        elif not getattr(self, "busy", False):
+            self.destroy()
+
+    def _on_usb_change(self) -> None:
+        """Ein USB-Vorgang hat begonnen oder geendet: belegte Datenträger neu anzeigen."""
+        if not self.usb_running and not getattr(self, "busy", False):
+            self.refresh_disks()
+
+
+def show_job_window(job_id: int) -> bool:
+    """Auftragsliste → Anzeigen: Fenster des Vorgangs wieder zeigen. False = Fenster gibt es nicht mehr."""
+    win = JOB_WINDOWS.get(job_id)
+    if win is None:
+        return False
+    win.present()
+    return True
+
+
+def job_cancel_requested(job_id: int) -> None:
+    win = JOB_WINDOWS.get(job_id)
+    if win is not None:
+        win.usb_cancel_requested()
 
 
 def result_status(ok: bool, error: str) -> str:
@@ -209,31 +314,31 @@ def boot_keys_table() -> Gtk.Widget:
     expander.add(sw)
     return expander
 
-class StickDialog(Gtk.Dialog):
+class StickDialog(UsbJobMixin, Gtk.Dialog):
     """Agent-Stick (image=None) oder Restore-Stick mit genau einem Image."""
 
     def __init__(self, parent: Gtk.Window, image: str | None = None, source_disks: list[str] | None = None):
         title = "Restore-Stick erstellen" if image else "Agent-USB-Stick erstellen"
-        super().__init__(title=title, transient_for=parent, modal=True)
+        super().__init__(title=title, transient_for=parent, modal=False)   # Ä-052: Tool bleibt bedienbar
         self.set_default_size(780, 640)
         self.busy = False
         self.image = image
         self.image_size = stick.tree_size(Path(image)) if image else 0
         self.disk_sizes: dict[str, int] = {}
         self.disks: dict[str, stick.UsbDisk] = {}
-        self.run_handle: UsbRun | None = None
         self.btn_close = self.add_button("Schliessen", Gtk.ResponseType.CLOSE)
         self.btn_cancel = self.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
         self.btn_start = self.add_button("Stick vorbereiten", Gtk.ResponseType.APPLY)
         self.btn_start.get_style_context().add_class("destructive-action")
         self.connect("response", self.on_response)
-        self.connect("delete-event", lambda *_a: self.busy)  # während des Schreibens nicht schliessen
+        self._init_usb()   # Schliessen während des Schreibens: Fenster aus, Vorgang läuft weiter
 
         grid = Gtk.Grid(column_spacing=8, row_spacing=8, margin=12)
 
         grid.attach(Gtk.Label(label="USB-Stick", xalign=0), 0, 0, 1, 1)
         self.disk_combo = Gtk.ComboBoxText(hexpand=True)
         self.disk_combo.connect("changed", lambda _c: self._update_sensitivity())
+        self.mark_in_use(self.disk_combo, self.disks_get)
         grid.attach(self.disk_combo, 1, 0, 1, 1)
         self.btn_refresh = Gtk.Button.new_from_icon_name("view-refresh-symbolic", Gtk.IconSize.BUTTON)
         self.btn_refresh.set_tooltip_text("USB-Sticks neu suchen")
@@ -315,16 +420,20 @@ class StickDialog(Gtk.Dialog):
     def selected_disk(self) -> str | None:
         return self.disk_combo.get_active_id()
 
+    def disks_get(self, path: str | None) -> stick.UsbDisk | None:
+        return self.disks.get(path or "")
+
     def _update_sensitivity(self) -> None:
         disk = self.selected_disk()
         need = self.required_size() if self.image else stick.MIN_SIZE
         big_enough = disk is not None and self.disk_sizes.get(disk, 0) >= need
-        ready = not self.busy and big_enough and bool(self.iso_chooser.get_filename())
+        free = self.disk_in_use(self.disks_get(disk)) is None
+        ready = not self.busy and big_enough and free and bool(self.iso_chooser.get_filename())
         self.btn_start.set_sensitive(ready)
-        for w in (self.btn_download, self.btn_close, self.btn_refresh, self.disk_combo, self.iso_chooser,
-                  self.server_ip):
+        for w in (self.btn_download, self.btn_refresh, self.disk_combo, self.iso_chooser, self.server_ip):
             w.set_sensitive(not self.busy)
-        self.btn_cancel.set_visible(self.run_handle is not None)
+        self.btn_close.set_sensitive(not self.busy or self.usb_running)   # während des Schreibens: ausblenden
+        self.btn_cancel.set_visible(self.usb_running)
 
     def _set_busy(self, busy: bool) -> None:
         self.busy = busy
@@ -342,15 +451,19 @@ class StickDialog(Gtk.Dialog):
         return stick.restore_need(iso_size, self.image_size)[1]
 
     def refresh_disks(self) -> None:
+        old = self.disk_combo.get_active_id()
         self.disk_combo.remove_all()
         disks = stick.list_usb_disks()
         need = self.required_size() if self.image else stick.MIN_SIZE
         self.disk_sizes = {d.path: d.size for d in disks}
         self.disks = {d.path: d for d in disks}
         for d in disks:
-            self.disk_combo.append(d.path, d.label + ("  – zu klein" if d.size < need else ""))
-        if disks:
-            self.disk_combo.set_active(0)
+            self.disk_combo.append(d.path, self.disk_text(d, "  – zu klein" if d.size < need else ""))
+        if old in self.disks:
+            self.disk_combo.set_active_id(old)
+        elif disks:
+            free = [i for i, d in enumerate(disks) if self.disk_in_use(d) is None]
+            self.disk_combo.set_active(free[0] if free else 0)
         else:
             self.append_log("Kein USB-Stick gefunden – Stick einstecken und neu suchen.")
         self._update_sensitivity()
@@ -395,14 +508,9 @@ class StickDialog(Gtk.Dialog):
         if response == Gtk.ResponseType.APPLY:
             self.start_write()
         elif response == Gtk.ResponseType.CANCEL:
-            if self.run_handle is not None and confirm(
-                    self, "Wirklich abbrechen?", "Der Stick bleibt unvollständig und muss danach neu erstellt "
-                    "werden.", ok_label="Abbrechen"):
-                self.btn_cancel.set_sensitive(False)
-                self.append_log("Wird abgebrochen …")
-                self.run_handle.cancel()
-        elif not self.busy:
-            self.destroy()
+            self.cancel_usb_job("Der Stick bleibt unvollständig und muss danach neu erstellt werden.")
+        else:
+            self.close_or_hide()
 
     def start_write(self) -> None:
         device, iso = self.selected_disk(), self.iso_chooser.get_filename()
@@ -424,15 +532,19 @@ class StickDialog(Gtk.Dialog):
             return
 
         key_hex = agentclient.load_or_create_key().hex()
-        self.run_handle = run_usb_helper(cmd, key_hex + "\n", [self.disks.get(device)], self._on_progress,
-                                         self.append_log, self._on_written)
+        disk = self.disks.get(device)
+        what = "Restore-Stick" if self.image else "Agent-Stick"
+        if not self.start_usb_job(f"{what} → {disk.name if disk else device} ({device})", cmd, key_hex + "\n",
+                                  [disk], self._on_progress, self.append_log, self._on_written):
+            return
         self._set_busy(True)
         self.btn_cancel.set_sensitive(True)
         self.unplug_hint.show()
-        self.append_log(f"{'Restore-Stick' if self.image else 'Agent-Stick'} wird auf {device} erstellt …")
+        self.append_log(f"{what} wird auf {device} erstellt …")
 
     def _on_written(self, ok: bool, error: str) -> bool:
-        self.run_handle = None
+        hidden = self.usb_finished()
+        parent = self.result_parent()
         self._set_busy(False)
         self.unplug_hint.hide()
         if ok:
@@ -442,6 +554,9 @@ class StickDialog(Gtk.Dialog):
             self.progress.set_text(result_status(ok, error))
             if error:
                 self.append_log(f"Fehler: {error}")
-        self.refresh_disks()
-        show_stick_result(self, ok, error, "Restore-Stick fertig" if self.image else "Agent-Stick fertig")
+        if not hidden:
+            self.refresh_disks()
+        show_stick_result(parent, ok, error, "Restore-Stick fertig" if self.image else "Agent-Stick fertig")
+        if hidden:
+            self.destroy()       # Ergebnis steht in der Auftragsliste
         return False

@@ -278,11 +278,11 @@ class HelperProcessTest(unittest.TestCase):
         self.assertIn("Code 3", error)
 
 
-class RunUsbHelperTest(unittest.TestCase):
-    """Dialog-Seite: on_done kommt genau einmal, auch wenn der Helfer nicht reagiert."""
+class DoneOnceTest(unittest.TestCase):
+    """Dialog-Seite: _done (on_done) kommt genau einmal, auch wenn der Helfer nicht reagiert."""
 
     def test_done_called_once_after_forced_cancel(self):
-        from okula_recovery import stick_dialog
+        from okula_recovery import jobs, stick_dialog
         done = []
         finished = threading.Event()
 
@@ -290,17 +290,21 @@ class RunUsbHelperTest(unittest.TestCase):
             done.append((ok, error))
             finished.set()
 
-        with mock.patch.object(stick_dialog.GLib, "idle_add", lambda f, *a: f(*a)), \
-                mock.patch.multiple(usbjobs, CANCEL_TIMEOUT=0.2, KILL_TIMEOUT=0.2):
-            handle = stick_dialog.run_usb_helper(script(
+        jm = jobs.JobManager()
+        with mock.patch.multiple(usbjobs, CANCEL_TIMEOUT=0.2, KILL_TIMEOUT=0.2):
+            job = usbjobs.start(jm, "USB klonen Test", script(
                 "import signal, time\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\ntime.sleep(30)"),
                 "", [], lambda *_a: None, lambda *_a: None, on_done)
-            handle.cancel()
+            usbjobs.cancel(jm, job)
             self.assertTrue(finished.wait(10))
-        time.sleep(0.3)
+        for _ in range(100):
+            if not job.running:
+                break
+            time.sleep(0.05)
         self.assertEqual(len(done), 1)
         self.assertFalse(done[0][0])
         self.assertTrue(done[0][1].startswith("Abgebrochen"))
+        self.assertEqual(job.state, jobs.CANCELLED)
         self.assertEqual(stick_dialog.result_status(*done[0]), "Abgebrochen")
         self.assertEqual(stick_dialog.result_status(False, "Datenträger getrennt – abgebrochen (X)"),
                          "Datenträger getrennt – abgebrochen")

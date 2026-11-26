@@ -1099,6 +1099,16 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (Root-Helfer geändert
 - [ ] *USB formatieren*, *Agent-USB-Stick erstellen*, *Boot-Stick aus ISO*: je *Abbrechen* während des Schreibens →
       „Abgebrochen“; Stick während des Schreibens abziehen → „Datenträger getrennt …“
 - [ ] Boot-Stick Windows mit Windows-Anpassung → `autounattend.xml` auf dem Stick wie vorher (Konto, Region)
+- [ ] **Im Hintergrund (Ä-052):** Klonen starten, im Hauptfenster weiterarbeiten (Gerät öffnen, Menüs) – geht; Fenster
+      minimieren und verschieben geht
+- [ ] Unten im Hauptfenster Liste *USB-Vorgänge*: Titel „USB klonen … → …“, Fortschritt in %; am Ende „Fertig: …“
+- [ ] Klon-Fenster mit *Schliessen* bzw. Kreuz schliessen → Vorgang läuft weiter; *Anzeigen* in der Liste holt es zurück
+- [ ] *Abbrechen* in der Liste → Rückfrage, dann „Abgebrochen“ in Liste und Fenster
+- [ ] Während des Klonens *USB formatieren* bzw. *Agent-USB-Stick erstellen* öffnen → Quelle und Ziel ausgegraut
+      „– wird gerade verwendet“, Start nicht möglich; ein dritter Stick lässt sich parallel formatieren
+- [ ] Agent-Stick erstellen, Fenster schliessen, warten → Fenster „Agent-Stick fertig“ erscheint über dem Hauptfenster
+- [ ] Während eines USB-Vorgangs *Menü → Beenden* → Rückfrage mit „USB: …“; *Trotzdem beenden* → Tool zu, Stick danach
+      unvollständig (neu beschreiben)
 ### B-030 Umbenennen auf dem NAS nach dem Laden
 Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stick).
 - [ ] *Extras → Software-Bibliothek …* → *Ordner laden …* mit dem Office-Ordner (3,9 GB) erneut → Eintrag
