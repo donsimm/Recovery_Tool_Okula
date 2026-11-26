@@ -31,6 +31,7 @@ class Folder:
     rel: str                       # relativ zu Archiv, z. B. „Zürich/Buchhaltung“
     folders: list["Folder"] = field(default_factory=list)
     images: list[nas.ImageInfo] = field(default_factory=list)
+    color: str | None = None        # Farbe des Ordners (folder_colors, I-043)
 
     @property
     def depth(self) -> int:
@@ -91,7 +92,7 @@ def scan(root: str | Path) -> Tree:
     archive = root / ARCHIVE_DIR
 
     def read(path: Path, rel: str) -> Folder:
-        folder = Folder(path.name, rel)
+        folder = Folder(path.name, rel, color=folder_colors.get_color(path) if rel else None)
         try:
             entries = sorted(os.scandir(path), key=lambda e: e.name.lower())
         except OSError:

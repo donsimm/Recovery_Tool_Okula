@@ -339,6 +339,7 @@ class OsFolder:
     rel: str
     folders: list["OsFolder"] = field(default_factory=list)
     isos: list[IsoInfo] = field(default_factory=list)
+    color: str | None = None        # Farbe des Ordners (folder_colors, I-043)
 
     def count(self) -> int:
         return len(self.isos) + sum(f.count() for f in self.folders)
@@ -394,7 +395,7 @@ def scan(root: str | Path, inspect_missing: bool = True) -> list[OsFolder]:
         return []
 
     def read(path: Path, rel: str) -> OsFolder:
-        folder = OsFolder(path.name, rel)
+        folder = OsFolder(path.name, rel, color=folder_colors.get_color(path))
         try:
             entries = sorted(os.scandir(path), key=lambda e: e.name.lower())
         except OSError:

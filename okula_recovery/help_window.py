@@ -354,6 +354,9 @@ Die Aufträge für das gewählte Gerät stehen zusätzlich im Menü <i>Tools</i>
 
 <b>Ordner</b>
 •  <i>Neuer Ordner …</i>, <i>Ordner umbenennen …</i>, <i>Ordner löschen (nur leer)</i>.
+•  <i>Farbe …</i>: Ordner einfärben, damit er auf einen Blick auffällt – Rot, Orange, Gelb, Grün, Türkis, Blau,
+    Violett oder Grau; <i>Keine Farbe</i> entfernt sie. Vor dem Namen steht dann ein farbiger Punkt ●.
+    Die Farbe bleibt beim Umbenennen und Verschieben erhalten (auch für <i>Virtuelle Maschinen</i>).
 •  Höchstens 3 Ordnerebenen, zum Beispiel <i>Firma → Standort → Abteilung</i>.
 •  Geräte und Ordner lassen sich mit der Maus verschieben (ziehen und loslassen).
 •  Der Ordner <i>Virtuelle Maschinen</i> ist fest: keine Unterordner, nicht umbenennbar, VMs bleiben darin
@@ -1495,6 +1498,9 @@ Alle Aktionen über Rechtsklick.
 
 <b>Ordner</b>
 •  <i>Neuer Ordner …</i>, <i>Umbenennen …</i>, <i>Löschen (nur leer)</i>. Höchstens 3 Ebenen.
+•  <i>Farbe …</i>: Ordner einfärben (Rot, Orange, Gelb, Grün, Türkis, Blau, Violett, Grau), auch Ordner unter
+    „Betriebssysteme“. Vor dem Namen steht dann ein farbiger Punkt ●; <i>Keine Farbe</i> entfernt ihn.
+    Die Farbe liegt im Ordner auf dem NAS und bleibt beim Umbenennen und Verschieben erhalten.
 •  Images mit der Maus in einen Ordner ziehen. <i>Nach „Nicht einsortiert“</i> nimmt sie zurück.
 
 <b>Disk-Image</b>

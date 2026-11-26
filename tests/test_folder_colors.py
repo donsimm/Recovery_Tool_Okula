@@ -165,7 +165,7 @@ class ArchiveFolderColorTest(unittest.TestCase):
         (self.root / "images").mkdir()
         tree = archive.scan(self.root)
         self.assertEqual(tree.all_images(), [])
-        self.assertEqual([(f.name, f.count(), f.folders) for f in tree.folders], [("A", 0, [])])
+        self.assertEqual([(f.name, f.count(), f.folders, f.color) for f in tree.folders], [("A", 0, [], "orange")])
 
     def test_colored_empty_folder_can_be_deleted(self):
         archive.make_folder(self.root, "", "A")
@@ -188,7 +188,8 @@ class ArchiveFolderColorTest(unittest.TestCase):
         new = oslib.rename_folder(self.root, rel, "Kunden-ISOs")
         self.assertEqual(oslib.folder_color(self.root, new), "gruen")
         windows = next(f for f in oslib.scan(self.root, inspect_missing=False) if f.rel == "Windows")
-        self.assertEqual([(f.name, f.isos) for f in windows.folders], [("Kunden-ISOs", [])])
+        self.assertEqual([(f.name, f.isos, f.color) for f in windows.folders], [("Kunden-ISOs", [], "gruen")])
+        self.assertIsNone(windows.color)
         oslib.delete_folder(self.root, new)
         self.assertFalse((self.root / oslib.OS_DIR / new).exists())
 

@@ -14,6 +14,8 @@ gi.require_version("GdkPixbuf", "2.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GdkPixbuf, GLib, Gtk, Pango  # noqa: E402
 
+from okula_recovery import folder_colors  # noqa: E402
+
 LOGO_COLOR = b"#0b1213"  # Füllfarbe im Original-SVG
 
 
@@ -34,6 +36,39 @@ def svg_pixbuf(path: Path, height: int, color: str | None = None) -> GdkPixbuf.P
 
 def rgba_hex(c: Gdk.RGBA) -> str:
     return "#{:02x}{:02x}{:02x}".format(*(round(v * 255) for v in (c.red, c.green, c.blue)))
+
+
+def dark_theme(widget: Gtk.Widget) -> bool:
+    """Dunkles Design? Erkennbar an heller Schrift."""
+    c = widget.get_style_context().get_color(Gtk.StateFlags.NORMAL)
+    return 0.299 * c.red + 0.587 * c.green + 0.114 * c.blue > 0.5
+
+
+def color_dot_cell(cell: Gtk.CellRendererText, widget: Gtk.Widget, key: str | None) -> None:
+    """Farbpunkt vor dem Ordnernamen (I-043); ohne Farbe unsichtbar – die Zeile bleibt wie bisher."""
+    color = folder_colors.hex_for(key, dark_theme(widget))
+    cell.set_property("visible", bool(color))
+    cell.set_property("markup", f'<span foreground="{color}">●</span>' if color else "")
+
+
+def folder_color_item(widget: Gtk.Widget, current: str | None, apply) -> Gtk.MenuItem:
+    """Menüeintrag „Farbe …“ mit Untermenü: feste Farben und „Keine Farbe“; apply(Schlüssel | None)."""
+    dark = dark_theme(widget)
+    item = Gtk.MenuItem(label="Farbe …")
+    sub = Gtk.Menu()
+    for color in folder_colors.COLORS:
+        entry = Gtk.CheckMenuItem(draw_as_radio=True, active=color.key == current)
+        label = Gtk.Label(xalign=0)
+        label.set_markup(f'<span foreground="{color.dark if dark else color.light}">●</span>  {color.name}')
+        entry.add(label)
+        entry.connect("activate", lambda _i, k=color.key: apply(k))
+        sub.append(entry)
+    sub.append(Gtk.SeparatorMenuItem())
+    none = Gtk.MenuItem(label=folder_colors.NONE_LABEL, sensitive=current is not None)
+    none.connect("activate", lambda _i: apply(None))
+    sub.append(none)
+    item.set_submenu(sub)
+    return item
 
 
 def confirm_error(parent: Gtk.Window, text: str, title: str = "Aktion fehlgeschlagen", red: bool = False) -> None:

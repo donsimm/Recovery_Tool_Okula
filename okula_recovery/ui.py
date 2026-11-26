@@ -41,9 +41,10 @@ from okula_recovery.os_dialogs import (BootStickDialog, InstallDialog, IsoDetail
                                        choose_isos)
 from okula_recovery.restore_dialog import RestoreDialog  # noqa: E402
 from okula_recovery.stick_dialog import StickDialog  # noqa: E402
-from okula_recovery.uikit import (ask_text, confirm, confirm_error, make_tree, open_url, pane_title,  # noqa: E402
-                                  power_buttons, power_tip, remember_columns, rgba_hex, run_async, scrolled,
-                                  svg_pixbuf)
+from okula_recovery.uikit import (ask_text, color_dot_cell, confirm, confirm_error, folder_color_item,  # noqa: E402
+                                  make_tree, open_url, pane_title, power_buttons, power_tip, remember_columns,
+                                  rgba_hex, run_async, scrolled, svg_pixbuf)
+from okula_recovery import folder_colors  # noqa: E402
 from okula_recovery import neustart  # noqa: E402
 
 ASSETS = Path(__file__).resolve().parent / "assets"
@@ -633,6 +634,12 @@ class MainWindow(Gtk.ApplicationWindow):
         icon = Gtk.CellRendererPixbuf()
         col.pack_start(icon, False)
         col.add_attribute(icon, "icon-name", self.C_ICON)
+        self._img_colors: dict[tuple[str, str], str] = {}   # (Bereich, Ordner-rel) → Farbe (I-043)
+        dot = Gtk.CellRendererText()
+        col.pack_start(dot, False)
+        col.set_cell_data_func(dot, lambda _c, cell, model, it, _d=None: color_dot_cell(
+            cell, self.image_view, self._img_colors.get((model[it][self.C_AREA], model[it][self.C_REL]))
+            if model[it][self.C_KIND] in ("folder", "osfolder") else None))
         text = Gtk.CellRendererText(ellipsize=Pango.EllipsizeMode.END)
         col.pack_start(text, True)
         col.add_attribute(text, "text", self.C_NAME)
@@ -792,6 +799,9 @@ class MainWindow(Gtk.ApplicationWindow):
         add("Neuer Ordner …", self.on_new_archive_folder)
         if kind == "folder":
             add("Umbenennen …", self.on_rename_archive_folder)
+            rel = model[it][self.C_REL]
+            menu.append(folder_color_item(self, self._img_colors.get(("archive", rel)),
+                                          lambda key, r=rel: self.set_archive_folder_color("archive", r, key)))
             add("Löschen (nur leer)", self.on_delete_image)
         if kind in ("folder", "unsorted"):
             rel = model[it][self.C_REL] if kind == "folder" else None
@@ -901,7 +911,21 @@ class MainWindow(Gtk.ApplicationWindow):
             add("Neuer Ordner …", lambda: self.on_new_archive_folder(None), len(rel.split("/")) < oslib.MAX_DEPTH)
             if "/" in rel:
                 add("Umbenennen …", lambda: self.on_rename_archive_folder(None))
+            menu.append(folder_color_item(self, self._img_colors.get(("os", rel)),
+                                          lambda key: self.set_archive_folder_color("os", rel, key)))
+            if "/" in rel:
                 add("Löschen (nur leer)", lambda: self.on_delete_image(None))
+
+    def set_archive_folder_color(self, area: str, rel: str, key: str | None) -> None:
+        """Farbe eines Archiv- bzw. OS-Ordners setzen oder entfernen (I-043)."""
+        root = self._nas_root()
+        if root is None:
+            return
+        setter = archive.set_folder_color if area == "archive" else oslib.set_folder_color
+        name = rel.rsplit("/", 1)[-1]
+        self._archive_op(lambda: setter(root, rel, key),
+                         f"Ordner „{name}“: Farbe {folder_colors.BY_KEY[key].name}" if key
+                         else f"Ordner „{name}“: Farbe entfernt")
 
     # ---------- Betriebssysteme (ISOs) ----------
 
@@ -1709,6 +1733,8 @@ class MainWindow(Gtk.ApplicationWindow):
                                    "hierher ziehen"])
 
         def add(parent, folder: oslib.OsFolder) -> None:
+            if folder.color:
+                self._img_colors[("os", folder.rel)] = folder.color
             size = folder.size()
             it = store.append(parent, ["folder-symbolic", f"{folder.name} ({folder.count()})", "Ordner",
                                        nas.format_size(size) if size else "", "", size, "", "osfolder",
@@ -1934,6 +1960,7 @@ class MainWindow(Gtk.ApplicationWindow):
         store = self.image_store
         store.clear()
         self._image_checks = {}
+        self._img_colors = {}
         if self.demo_running():
             images = self._demo_tree.all_images() if self._demo_tree else []
             demo_root = store.append(None, ["applications-games-symbolic", f"{demostore.TITLE} ({len(images)})",
@@ -1968,6 +1995,8 @@ class MainWindow(Gtk.ApplicationWindow):
             store.append(unsorted, self._image_row(img, "", "unsorted"))
 
         def add(parent, folder: archive.Folder) -> None:
+            if folder.color:
+                self._img_colors[("archive", folder.rel)] = folder.color
             total = folder.size()  # inklusive Unterordner
             it = store.append(parent, ["folder-symbolic", f"{folder.name} ({folder.count()})", "Ordner",
                                        nas.format_size(total) if total else "", "", total, "", "folder",
@@ -2030,6 +2059,12 @@ class MainWindow(Gtk.ApplicationWindow):
         icon = Gtk.CellRendererPixbuf()
         col.pack_start(icon, False)
         col.add_attribute(icon, "icon-name", self.D_ICON)
+        self._dev_colors: dict[str, str] = {}   # Ordner-rel → Farbe (I-043)
+        dot = Gtk.CellRendererText()
+        col.pack_start(dot, False)
+        col.set_cell_data_func(dot, lambda _c, cell, model, it, _d=None: color_dot_cell(
+            cell, self.device_view, self._dev_colors.get(model[it][self.D_REL])
+            if model[it][self.D_KIND] in ("folder", "vmfolder") else None))
         text = Gtk.CellRendererText(ellipsize=Pango.EllipsizeMode.END)
         col.pack_start(text, True)
         col.add_attribute(text, "text", self.D_NAME)
@@ -2168,6 +2203,7 @@ class MainWindow(Gtk.ApplicationWindow):
         model, it = view.get_selection().get_selected()
         selected = (model[it][self.D_KIND], model[it][self.D_ID] or model[it][self.D_REL]) if it else None
         store.clear()
+        self._dev_colors = {rel: c for rel in self.store.folders if (c := self.store.folder_color(rel))}
         new = sorted(self.store.in_folder(""), key=lambda d: d.first_seen, reverse=True)  # neueste zuerst
         unsorted = store.append(None, ["folder-download-symbolic", f"Neu / nicht einsortiert ({len(new)})",
                                        "", "", "", "", "", "unsorted", ""] + self.NO_PROGRESS)
@@ -2351,6 +2387,7 @@ class MainWindow(Gtk.ApplicationWindow):
         if kind == "vmfolder":
             add("Neue virtuelle Maschine …", self.vm_new)
             menu.append(Gtk.SeparatorMenuItem())
+            menu.append(self._device_color_item(devices.VM_FOLDER))
             add("Inventar exportieren …", lambda: self.export_inventory(folder=devices.VM_FOLDER))
             menu.show_all()
             menu.popup_at_pointer(event)
@@ -2396,6 +2433,7 @@ class MainWindow(Gtk.ApplicationWindow):
         add("Neuer Ordner …", lambda: self.on_new_device_folder(None))
         if kind == "folder":
             add("Ordner umbenennen …", lambda: self.on_rename_device_entry(None))
+            menu.append(self._device_color_item(model[it][self.D_REL]))
             add("Ordner löschen (nur leer)", lambda: self.on_delete_device_entry(None))
         if kind in ("folder", "unsorted"):
             rel = model[it][self.D_REL] if kind == "folder" else ""
@@ -2419,6 +2457,20 @@ class MainWindow(Gtk.ApplicationWindow):
         self.status(done_msg)
         self.refresh_devices()
         return True
+
+    def _device_color_item(self, rel: str) -> Gtk.MenuItem:
+        """„Farbe …“ für einen Ordner der Geräteliste (I-043)."""
+        def op(key: str | None) -> None:
+            if rel == devices.VM_FOLDER:
+                self.store.ensure_vm_folder()      # Ordner gibt es erst mit der ersten VM
+            self.store.set_folder_color(rel, key)
+
+        def apply(key: str | None) -> None:
+            name = rel.rsplit("/", 1)[-1]
+            self._device_op(lambda: op(key),
+                            f"Ordner „{name}“: Farbe {folder_colors.BY_KEY[key].name}" if key
+                            else f"Ordner „{name}“: Farbe entfernt")
+        return folder_color_item(self, self._dev_colors.get(rel), apply)
 
     def _device_target_folder(self) -> str:
         model, it = self._selected_device_row()
