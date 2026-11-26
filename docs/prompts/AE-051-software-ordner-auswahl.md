@@ -1,6 +1,6 @@
 # Ä-051 – Ordner senden: Software wie Content (Einträge einzeln wählen)
 
-Status: freigegeben · erstellt 26.11.2026 von der Projektleitung · Entscheide Dominik 26.11. (Umfang wie mit Dominik besprochen) · in Arbeit 26.11.
+Status: abgenommen (Okuli 26.11., Commit ee9066e) · erstellt 26.11.2026 von der Projektleitung · Entscheide Dominik 26.11. (Umfang wie mit Dominik besprochen)
 
 ## Rolle und Einstieg
 
