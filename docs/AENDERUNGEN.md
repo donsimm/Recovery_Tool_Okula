@@ -16,7 +16,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 | Kategorie | Offen | In Arbeit | Zurückgestellt |
 |---|---|---|---|
 | 🐞 Bugs | 4 | 0 | 0 |
-| 🔧 Änderungen | 9 | 0 | 0 |
+| 🔧 Änderungen | 10 | 0 | 0 |
 | 💡 Ideen | 23 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
@@ -50,6 +50,7 @@ steht im jeweiligen Protokoll-Eintrag.
 
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
+| Ä-050 | 🟡 | offen | Dominik | **Software-Bibliothek: Info-Feld.** Freier Text pro Eintrag (z. B. Lizenz, nur für bestimmte Modelle, Reihenfolge): Spalte „Info“ als 2. Spalte (erste Zeile, Tooltip ganz, Doppelklick bearbeitet), im Dialog „Bearbeiten …“ Reiter „Angaben“ und „Info“ (mehrzeilig). Gespeichert beim Eintrag auf dem NAS, bei neuer Version übernommen. Prompt [Ä-050](prompts/Ä-050-software-info.md) | 26.11. |
 | Ä-048 | 🟡 | offen | Okuli (Review) | **Robustheit Agent, Netz und Oberfläche (Sammelpunkt aus dem Review).** Agent: TLS-Handshake ohne Timeout/accept ungeschützt (R-agent 2), Neustart-Timer prüft Disk-Lock nicht erneut (R-agent 3), `wimlib-imagex` läuft nach Verbindungsabbruch weiter (R-agent 1), Kleines R-agent 4–9. Tool: Beacons ungeprüft legen Geräte an, keine Obergrenze (R-client 6); NAS-Zugriffe im GTK-Hauptthread frieren bei hängendem CIFS ein (R-ui 2), `refresh_images` überholt sich (R-ui 4), Kleines R-ui 3, 5–8. Software-Bibliothek: Programme, die ein Auftrag gerade überträgt, lassen sich löschen (Rest aus B-026). Windows: Int32-Rückgabewerte (R-win 5), Kindprozesse bei Timeout (R-win 6). Gleiche Board-UUID → falsches Gerät (R-client 3) zuerst prüfen. [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) | 25.11. |
 | Ä-049 | ⚪ | offen | Okuli (Review) | **`ui.py` (4457 Zeilen) aufteilen** – erster Schritt als Mixins (`ui_const`, `ui_storage`, `ui_devices`, `ui_vm`, `ui_actions`), `win.xxx` bleibt stabil; Vorschlag [REVIEW-2026-11-25.md](REVIEW-2026-11-25.md) R-ui. Teil von Ä-005 (dort Version 0.1.0 überholt: steht auf 0.2.0, Tag v0.2.0 gesetzt 25.11.) | 25.11. |
 | Ä-047 | 🟡 | offen | Dominik/Okuli | **„Sperrbildschirm aus“ in die Vorlage Clean aufnehmen.** Clean = Windows ohne Werbung; der Sperrbildschirm zeigt Windows Spotlight (Werbung, Tipps). Heute fehlt `lockscreen_off` in `TEMPLATES["Clean"]` (`wintweaks.py`), beim VM-Test 25.11. darum nicht gewählt. Tests anpassen (Vorlagen-Inhalt, „Clean (geändert)“-Erkennung) | 25.11. |
@@ -94,6 +95,12 @@ Gerätename = Name im Tool.
 
 ## 📌 Entscheidungen
 
+- **Office einzeln installieren (I-042, Dominik 26.11.2026):** Produkte Microsoft 365 Apps for business
+  (`O365BusinessRetail`) und for enterprise (`O365ProPlusRetail`), je Auftrag wählbar (Kauf-Office 2024 vorerst
+  nicht). Sprache Deutsch (weitere später), Updatekanal Current, klassisches Outlook als eigenes Häkchen, Vorauswahl
+  Word/Excel/PowerPoint/Outlook/OneNote/OneDrive, Access/Publisher wählbar aus, Teams nicht (eigener
+  Bibliothekseintrag). Aktivierung durch den Mieter mit seinem Konto, kein Schlüssel im Tool. Geräte sind Okulas
+  Mietgeräte.
 - **BitLocker entsperren (I-012, Dominik 25.11.2026):** nur **lesend** (`dislocker -r`) und nur für Datei-Backups
   (Benutzerdaten, Ordner/Partitionen, Durchsuchen). Bewusst **nicht**: Disk-Image aus belegten Blöcken (Kundendaten lägen
   unverschlüsselt auf dem NAS – erst mit Ä-003), Schreiben auf BitLocker (Software, Anpassen, Restore). Schlüssel:
