@@ -41,6 +41,7 @@ steht im jeweiligen Protokoll-Eintrag.
 
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
+| B-030 | 🟡 | in Arbeit | Dominik | **Laden in die Software-Bibliothek scheitert beim Umbenennen auf dem NAS.** 26.11. 11:44 Office-Ordner (3,9 GB): Kopie und Erkennung ok, dann `[Errno 13] Keine Berechtigung` bei `.partial` → `office-16.0.20625.20142`; vermutlich noch offene Dateien (CIFS deferred close / NAS-Indexierung). Umbenennen mit Wiederholung an allen `.partial`-Stellen. Prompt [B-030](prompts/B-030-nas-umbenennen.md) | 26.11. |
 | B-029 | 🟡 | in Arbeit | Dominik | **Abbrechen beim USB-Klonen hängt, wenn ein Stick wegfällt.** 26.11. 09:29: *USB klonen* sdb→sdc, 12 s später beide Sticks „capacity … to 0“/„USB disconnect“, danach neue Namen (sda/sdb/sdc); *Abbrechen* hing („Wird abgebrochen …“), weil „CANCEL“ den in I/O hängenden Root-Helfer nicht erreicht. Abbrechen erzwingen, „Datenträger getrennt“, Seriennummer statt Gerätename. Prompt [Ä-052/B-029](prompts/AE-052-usb-im-hintergrund.md) | 26.11. |
 | B-023 | ⚪ | offen | Okuli | **Protokoll „Windows anpassen“ uneinheitlich, Startmenü meldet Hinweis trotz Paket.** VM-Test 25.11. (VM-Win11-clean, Direktinstallation, Vorlage Clean geändert, Pro Build 26200): Startmenü zeigt nur die Okula-Kacheln, `StartPins.ppkg` vom Tool installiert – trotzdem steht in der Zeile „Startmenü: Werbe-Kacheln entfernen“ und in „Wiederinstallation von Werbe-Apps sperren“ weiter der lange Pro-Hinweis (WhatsApp, LinkedIn, Adobe Express … von Hand lösen). Erwartet laut B-022: knappes „ok“, wenn das Paket greift. Zudem schreibt die erste Zeile (vor dem ersten Start, `winsetup.py`) „Startmenue“ und „ - “ statt Umlaut und „–“ und verweist auf eine „Zeile Startmenue beim ersten Start“, die es nicht gibt | 25.11. |
 | B-024 | ⚪ | offen | Okuli | **OneDrive entfernen meldet ok trotz Fehlercode.** Protokoll 25.11.: „OneDrive entfernen (OneDriveSetup /uninstall: -2147219813, Autostart entfernt: 2 Profile)“ mit Status ok. Rückgabewert prüfen (bekannter harmloser Code oder echter Fehler?) und entsprechend Hinweis statt ok melden | 25.11. |
@@ -300,6 +301,24 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 26.11.2026
+- **B-029 – Abbrechen bei USB-Vorgängen zuverlässig, „Datenträger getrennt“, Seriennummer statt Gerätename**
+  (Von: Dominik, 26.11.; Prompt [Ä-052/B-029](prompts/AE-052-usb-im-hintergrund.md)). Gilt für *USB klonen*, *USB
+  formatieren*, *Agent-USB-Stick erstellen* (auch Restore-Stick) und *Boot-Stick aus ISO*. **Tool**
+  (`usbjobs.HelperProcess`): Root-Helfer in eigener Sitzung, stdin bleibt offen; *Abbrechen* schickt „CANCEL“ und
+  schliesst stdin; reagiert der Helfer nicht innerhalb von 15 s, SIGTERM an die Prozessgruppe von sudo (sudo leitet
+  weiter), nach 5 s SIGKILL – danach meldet der Dialog immer „Abgebrochen“, auch wenn der Prozess im Kernel hängt.
+  Agent-Stick und Boot-Stick haben jetzt ebenfalls *Abbrechen*. Das Tool prüft alle 3 s, ob die Datenträger noch da
+  sind (`usbguard.current`, /sys + lsblk). **Helfer** (`usbguard.py`): `--ident` (JSON: Seriennummer, Modell, Grösse,
+  vom Tool beim Start); vor dem ersten Schreiben und bei jedem Öffnen bzw. Programmaufruf auf das Gerät
+  (`open_dev`, `_run`, partclone, badblocks) Prüfung der Seriennummer → sonst „… ist nicht mehr derselbe
+  Datenträger … nichts geschrieben“; Wächter-Thread: „CANCEL“ oder stdin zu → SIGTERM an sich selbst (Cancelled),
+  Datenträger zweimal hintereinander weg/Grösse 0 → „Datenträger getrennt – abgebrochen (Modell, SN …) – Ziel ist
+  unvollständig …“; hängt der Helfer danach 10 s, beendet er seine eigenen Unterprozesse (nur Nachfahren, /proc)
+  und sich selbst. E/A-Fehler auf einem getrennten Gerät → dieselbe Meldung. Boot-Stick: autounattend.xml kommt als
+  eine Base64-Zeile (stdin bleibt für „CANCEL“ offen). Auswahllisten zeigen die Seriennummer („SN …4C530001“).
+  **`sudo ./install.sh` nötig** (Root-Helfer geändert, keine neue sudo-Regel); kein neuer Agent-Stick. Hilfe *Sticks
+  erstellen*, *USB klonen*, *USB formatieren*. Tests `tests/test_usbguard.py`. Prüfung [TESTS.md](TESTS.md)
+  „Ä-052 / B-029“.
 - **Ä-053 – Ordner senden: „Alle“ bei Software ersetzt den ganzen Ordner** (Von: Dominik, 26.11.; Entscheid
   Dominik 26.11.; Prompt [Ä-053](prompts/AE-053-software-alle-ersetzt.md)). `distribute.plan`: „Software“ allein
   (Häkchen *Alle*, gespeicherte Auswahl leer, alte Einstellung/Vorlage „Software“) bleibt ein Eintrag `Software` –

@@ -1085,6 +1085,20 @@ Dateien aus `Verteilen/Software` nötig (Ordner gehen auch mit dem alten Agent).
       Log „Fehlt auf dem NAS (übersprungen): Software/…“, restliche Einträge auf dem Desktop
 - [ ] Demo-Gerät: Software-Liste zeigt „Browser“, „Treiber“, „Demo-Installer.txt“
 
+### Ä-052 / B-029 USB-Vorgänge: Abbrechen, Datenträger getrennt, Seriennummer
+Nach `git pull && sudo ./install.sh` das Tool neu starten (Root-Helfer geändert). Kein neuer Agent-Stick nötig.
+- [ ] *Extras → USB klonen …*: Liste zeigt je Datenträger „SN …“; zwei gleiche Sticks sind unterscheidbar
+- [ ] Klonen starten, *Abbrechen* → innert Sekunden „Abgebrochen“, Fenster wieder bedienbar
+- [ ] Klonen starten, **Quelle oder Ziel abziehen** → „Datenträger getrennt – abgebrochen (Modell, SN …)“, Dialog hängt
+      nicht, Tool bedienbar; danach *Abbrechen* drücken ist nicht nötig
+- [ ] Hängt ein Stick (Abbrechen ohne Reaktion) → nach spätestens ca. 20 s „Abgebrochen – das Hilfsprogramm hat nicht
+      reagiert …“
+- [ ] **Zwei gleiche Sticks umstecken:** Dialog öffnen, beide Sticks abziehen und vertauscht wieder einstecken (Namen
+      wechseln), ohne ⟳ *Klonen* → Meldung „… ist nicht mehr derselbe Datenträger … nichts geschrieben“; Inhalt beider
+      Sticks unverändert
+- [ ] *USB formatieren*, *Agent-USB-Stick erstellen*, *Boot-Stick aus ISO*: je *Abbrechen* während des Schreibens →
+      „Abgebrochen“; Stick während des Schreibens abziehen → „Datenträger getrennt …“
+- [ ] Boot-Stick Windows mit Windows-Anpassung → `autounattend.xml` auf dem Stick wie vorher (Konto, Region)
 ### B-030 Umbenennen auf dem NAS nach dem Laden
 Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stick).
 - [ ] *Extras → Software-Bibliothek …* → *Ordner laden …* mit dem Office-Ordner (3,9 GB) erneut → Eintrag

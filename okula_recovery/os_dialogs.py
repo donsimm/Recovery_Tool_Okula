@@ -14,7 +14,8 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk, Pango  # noqa: E402
 
 from okula_recovery import isostick, nas, oslib, stick, win11, winsetup, winunattend  # noqa: E402
-from okula_recovery.stick_dialog import iso_stick_command, run_helper, show_stick_result  # noqa: E402
+from okula_recovery.stick_dialog import (ident_args, iso_stick_command, result_status, run_usb_helper,  # noqa: E402
+                                         show_stick_result)
 from okula_recovery.uikit import confirm, confirm_error, scrolled  # noqa: E402
 
 MODE_LABELS = {
@@ -273,7 +274,10 @@ class BootStickDialog(Gtk.Dialog):
         self.busy = False
         self.modes = oslib.stick_modes(self.meta)
         self.disk_sizes: dict[str, int] = {}
+        self.disks: dict[str, stick.UsbDisk] = {}
+        self.run_handle = None
         self.btn_close = self.add_button("Schliessen", Gtk.ResponseType.CLOSE)
+        self.btn_cancel = self.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
         self.btn_start = self.add_button("Stick erstellen", Gtk.ResponseType.APPLY)
         self.btn_start.get_style_context().add_class("destructive-action")
         self.connect("response", self._on_response)
@@ -376,6 +380,7 @@ class BootStickDialog(Gtk.Dialog):
         grid.attach(sw, 0, r, 3, 1)
         self.get_content_area().add(scrolled(grid))
         self.show_all()
+        self.btn_cancel.hide()
         if self.modes:
             self.mode_combo.set_active(0)
         else:
@@ -397,6 +402,7 @@ class BootStickDialog(Gtk.Dialog):
         self.disk_combo.remove_all()
         disks = stick.list_usb_disks()
         self.disk_sizes = {d.path: d.size for d in disks}
+        self.disks = {d.path: d for d in disks}
         for d in disks:
             self.disk_combo.append(d.path, d.label + ("  – zu klein" if d.size < self.need() else ""))
         if disks:
@@ -421,6 +427,7 @@ class BootStickDialog(Gtk.Dialog):
         self.btn_start.set_sensitive(ok)
         for w in (self.btn_close, self.disk_combo, self.mode_combo, self.check_combo, self.btn_refresh):
             w.set_sensitive(not self.busy)
+        self.btn_cancel.set_visible(self.run_handle is not None)
 
     def _on_bypass(self, check) -> None:
         """Einschalten nur nach Bestätigung der Microsoft-Hinweise."""
@@ -444,6 +451,13 @@ class BootStickDialog(Gtk.Dialog):
     def _on_response(self, _dlg, response: int) -> None:
         if response == Gtk.ResponseType.APPLY:
             self.start()
+        elif response == Gtk.ResponseType.CANCEL:
+            if self.run_handle is not None and confirm(
+                    self, "Wirklich abbrechen?", "Der Stick bleibt unvollständig und muss danach neu erstellt "
+                    "werden.", ok_label="Abbrechen"):
+                self.btn_cancel.set_sensitive(False)
+                self._log("Wird abgebrochen …")
+                self.run_handle.cancel()
         elif not self.busy:
             self.destroy()
 
@@ -468,23 +482,26 @@ class BootStickDialog(Gtk.Dialog):
             args += ["--label", self.label.get_text().strip()]
         if not self.verify.get_active():
             args.append("--no-verify")
+        disk = self.disks.get(device)
+        args += ident_args([disk])                       # B-029: Seriennummer des Sticks
         stdin = ""
         if mode == "windows":
             opts = self.options()
-            stdin = winunattend.build(opts)
+            stdin = isostick.unattend_line(winunattend.build(opts))
             args.append("--unattend-stdin")
         try:
             cmd = iso_stick_command(args)
         except FileNotFoundError as e:
             self._log(str(e))
             return
+        self.run_handle = run_usb_helper(cmd, stdin, [disk], self._progress, self._log, self._done)
         self.busy = True
         self._update()
+        self.btn_cancel.set_sensitive(True)
         self._log(f"Boot-Stick wird auf {device} erstellt ({MODE_LABELS[mode]}) …")
         if mode == "windows":
             for line in winunattend.summary(opts):
                 self._log(f"  · {line}")
-        run_helper(cmd, stdin, self._progress, self._log, self._done)
 
     def _progress(self, frac: float, msg: str) -> bool:
         self.bar.set_fraction(max(0.0, min(1.0, frac)))
@@ -493,11 +510,12 @@ class BootStickDialog(Gtk.Dialog):
 
     def _done(self, ok: bool, error: str) -> bool:
         self.busy = False
+        self.run_handle = None
         if ok:
             self.bar.set_fraction(1.0)
             self.bar.set_text("Stick bereit – kann abgezogen werden")
         else:
-            self.bar.set_text("Fehlgeschlagen")
+            self.bar.set_text(result_status(ok, error))
             if error:
                 self._log(f"Fehler: {error}")
         self.refresh_disks()

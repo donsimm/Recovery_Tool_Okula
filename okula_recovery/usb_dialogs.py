@@ -11,7 +11,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk  # noqa: E402
 
 from okula_recovery import stick, usbtools  # noqa: E402
-from okula_recovery.stick_dialog import helper_subcommand, run_helper  # noqa: E402
+from okula_recovery.stick_dialog import helper_subcommand, ident_args, result_status, run_usb_helper  # noqa: E402
 from okula_recovery.uikit import confirm, scrolled  # noqa: E402
 from okula_recovery.usbtools import DiskInfo, disk_details, gb  # noqa: E402
 
@@ -127,24 +127,29 @@ class _UsbDialog(Gtk.Dialog):
         self.btn_close.set_sensitive(not busy)
         self._update()
 
-    def run_helper(self, sub: str, args: list[str], intro: str) -> None:
+    def _disk(self, path: str | None) -> stick.UsbDisk | None:
+        return next((d for d in self.disks if d.path == path), None)
+
+    def run_helper(self, sub: str, args: list[str], intro: str, paths: list[str]) -> None:
+        disks = [self._disk(p) for p in paths]
         try:
-            cmd = helper_subcommand(sub, args)
+            cmd = helper_subcommand(sub, args + ident_args(disks))   # B-029: Seriennummern mitgeben
         except FileNotFoundError as e:
             self._log(str(e))
             return
         self._set_busy(True)
         self.bar.set_fraction(0.0)
         self._log(intro)
-        self.run_handle = run_helper(cmd, "", self._progress, self._line, self._done, keep_stdin=True)
+        self.run_handle = run_usb_helper(cmd, "", disks, self._progress, self._line, self._done)
 
     def _done(self, ok: bool, error: str) -> bool:
+        self.run_handle = None
         self._set_busy(False)
         if ok:
             self.bar.set_fraction(1.0)
             self.bar.set_text("Fertig – Datenträger kann abgezogen werden")
         else:
-            self.bar.set_text("Abgebrochen" if "Abgebrochen" in error else "Fehlgeschlagen")
+            self.bar.set_text(result_status(ok, error))
             if error and not error.startswith("Abgebrochen"):
                 self._log(f"Fehler: {error}")
         self.refresh_disks()
@@ -260,7 +265,8 @@ class CloneDialog(_UsbDialog):
             return
         mode = "raw" if self.raw.get_active() else "smart"
         args = ["--source", s, "--target", d, "--mode", mode] + (["--verify"] if self.verify.get_active() else [])
-        self.run_helper("usb-clone", args, f"Klonen {s} → {d} ({'1:1' if mode == 'raw' else 'nur belegte Bereiche'}) …")
+        self.run_helper("usb-clone", args, f"Klonen {s} → {d} ({'1:1' if mode == 'raw' else 'nur belegte Bereiche'}) …",
+                        [s, d])
 
 
 SCHEMES = {"mbr": "MBR – passt überall (Windows, Mac, TV, ältere PCs), bis 2 TB",
@@ -400,4 +406,4 @@ class FormatDialog(_UsbDialog):
             return
         args = ["--device", dev, "--fs", spec.key, "--scheme", self.scheme.get_active_id(),
                 "--label", self.label.get_text().strip(), "--prep", self.prep.get_active_id()]
-        self.run_helper("usb-format", args, f"{dev} wird als {spec.title} formatiert …")
+        self.run_helper("usb-format", args, f"{dev} wird als {spec.title} formatiert …", [dev])

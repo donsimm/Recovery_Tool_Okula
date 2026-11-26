@@ -212,11 +212,23 @@ class UsbDisk:
     vendor: str = ""
     transport: str = ""
     mountpoints: list[str] = field(default_factory=list)
+    serial: str = ""
+
+    @property
+    def name(self) -> str:
+        return " ".join(p for p in (self.vendor, self.model) if p) or "USB-Datenträger"
 
     @property
     def label(self) -> str:
-        name = " ".join(p for p in (self.vendor, self.model) if p) or "USB-Datenträger"
-        return f"{self.path} – {name} ({self.size / 1000**3:.1f} GB)"
+        """„/dev/sdb – SanDisk Cruzer Blade (16.0 GB) · SN …4C530001“ (B-029: gleiche Modelle unterscheidbar)."""
+        from okula_recovery.usbguard import short_serial
+        sn = f" · SN {short_serial(self.serial)}" if self.serial else ""
+        return f"{self.path} – {self.name} ({self.size / 1000**3:.1f} GB){sn}"
+
+    def ident(self):
+        """B-029: Identität für den Root-Helfer (Seriennummer, Modell, Grösse)."""
+        from okula_recovery.usbguard import Ident
+        return Ident(self.path, self.serial, self.name, self.size)
 
 
 def _flag(v) -> bool:
@@ -247,13 +259,15 @@ def parse_lsblk_disks(output: str) -> list[UsbDisk]:
             continue
         disks.append(UsbDisk(path=d.get("path") or f"/dev/{d['name']}", size=int(d.get("size") or 0),
                              model=(d.get("model") or "").strip(), vendor=(d.get("vendor") or "").strip(),
-                             transport=d.get("tran") or "", mountpoints=mounts))
+                             transport=d.get("tran") or "", mountpoints=mounts,
+                             serial=(d.get("serial") or "").strip()))
     return disks
 
 
 def list_usb_disks() -> list[UsbDisk]:
     try:
-        out = subprocess.run(["lsblk", "-J", "-b", "-o", "NAME,PATH,SIZE,MODEL,VENDOR,TRAN,RM,HOTPLUG,TYPE,MOUNTPOINTS"],
+        out = subprocess.run(["lsblk", "-J", "-b", "-o",
+                              "NAME,PATH,SIZE,MODEL,VENDOR,SERIAL,TRAN,RM,HOTPLUG,TYPE,MOUNTPOINTS"],
                              capture_output=True, text=True, timeout=10).stdout
     except (OSError, subprocess.TimeoutExpired):
         return []
@@ -454,6 +468,8 @@ def write_boot_config(root: Path, kernel: str, initrd: str, label: str = LABEL,
 
 
 def _run(cmd: list[str], input: str | None = None) -> None:
+    from okula_recovery import usbguard
+    usbguard.check_args(cmd)  # B-029: noch derselbe Datenträger?
     r = subprocess.run(cmd, input=input, capture_output=True, text=True)
     if r.returncode != 0:
         raise StickError(f"{' '.join(cmd)}: {(r.stderr or r.stdout).strip()}")
@@ -531,6 +547,8 @@ def prepare(device: str, iso: str, server_ip: str, emit: Emit, key: bytes | None
         image_size = tree_size(image_path)
         _boot_mib, table = restore_layout(iso_path.stat().st_size, image_size, disk.size)
 
+    from okula_recovery import usbguard
+    usbguard.check_all()  # B-029: vor dem ersten Schreiben noch derselbe Stick?
     for mp in sorted(disk.mountpoints, reverse=True):
         progress(0.02, f"{mp} wird ausgehängt")
         _run(["umount", mp])
@@ -538,8 +556,11 @@ def prepare(device: str, iso: str, server_ip: str, emit: Emit, key: bytes | None
     try:
         _write_stick(device, iso_path, server_ip, key, table, label, title, restore, progress, emit,
                      image_path if restore else None, src if restore else None, source_disk)
+    except (usbguard.DiskGone, usbguard.WrongDisk):
+        raise
     except (StickError, OSError) as e:
-        raise explain_unplugged(device, e) from None
+        gone = usbguard.explain(e)
+        raise (gone if gone is not e else explain_unplugged(device, e)) from None
 
     progress(1.0, "Fertig")
     what = f"Restore-Stick mit „{Path(image).name}“" if restore else "Agent-Stick"
@@ -666,6 +687,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--key-stdin", action="store_true", help="Agent-Schlüssel (hex) von stdin lesen")
     ap.add_argument("--image", help="Restore-Stick: Image-Ordner (Okula oder Clonezilla) unter /mnt")
     ap.add_argument("--source-disk", help="Restore-Stick, Clonezilla mit mehreren Disks: welche")
+    ap.add_argument("--ident", action="append", help="Seriennummer/Modell/Grösse des Sticks (JSON, vom Tool)")
     args = ap.parse_args(argv)
 
     def emit(kind: str, text: str) -> None:
@@ -674,6 +696,8 @@ def main(argv: list[str] | None = None) -> int:
     if os.geteuid() != 0:
         emit("ERROR", "Muss als root laufen (sudo okula-make-stick …)")
         return 1
+    from okula_recovery import usbguard
+    usbguard.install_sigterm()
     try:
         if args.server:
             ipaddress.IPv4Address(args.server)
@@ -682,9 +706,15 @@ def main(argv: list[str] | None = None) -> int:
             key = bytes.fromhex(sys.stdin.readline().strip())
             if len(key) != 32:
                 raise ValueError("Schlüssel muss 32 Bytes lang sein")
+        # B-029: Stick überwachen, Abbrechen über stdin („CANCEL“ oder geschlossen)
+        usbguard.guard(usbguard.idents_for([args.device], args.ident))
+        usbguard.watch(emit)
         prepare(args.device, args.iso, args.server, emit, key, args.image, args.source_disk)
+    except usbguard.Cancelled as e:
+        emit("ERROR", str(e) or usbguard.reason())
+        return 1
     except (StickError, ValueError, OSError) as e:
-        emit("ERROR", str(e))
+        emit("ERROR", str(usbguard.explain(e)))
         return 1
     return 0
 

@@ -14,7 +14,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk, Pango  # noqa: E402
 
 from okula_recovery import agentclient, isofetch, network, stick  # noqa: E402
-from okula_recovery.uikit import confirm_error, info  # noqa: E402
+from okula_recovery.uikit import confirm, confirm_error, info  # noqa: E402
 
 HELPER = "/usr/local/sbin/okula-make-stick"
 UNPLUG_HINT = "Stick erst abziehen, wenn „Stick fertig“ erscheint."
@@ -37,9 +37,18 @@ def show_stick_result(parent: Gtk.Window, ok: bool, error: str, done_title: str)
         confirm_error(parent, text, title=title, red=True)
 
 
+def ident_args(disks) -> list[str]:
+    """B-029: „--ident <JSON>“ je Datenträger (Seriennummer, Modell, Grösse) für den Root-Helfer."""
+    args: list[str] = []
+    for d in disks:
+        if d is not None:
+            args += ["--ident", d.ident().arg()]
+    return args
+
+
 def helper_command(device: str, iso: str, server: str, image: str | None = None,
-                   source_disk: str | None = None) -> list[str]:
-    args = ["--device", device, "--iso", iso, "--key-stdin"]
+                   source_disk: str | None = None, disk=None) -> list[str]:
+    args = ["--device", device, "--iso", iso, "--key-stdin", *ident_args([disk])]
     if server:
         args += ["--server", server]
     if image:
@@ -135,6 +144,48 @@ def run_helper(cmd: list[str], stdin_text: str, on_progress, on_line, on_done,
     return handle
 
 
+class UsbRun:
+    """Laufender USB-Vorgang (B-029): cancel() schickt „CANCEL“; reagiert der Helfer nicht, beendet ihn das Tool
+    (usbjobs.HelperProcess). on_done kommt in jedem Fall genau einmal."""
+
+    def __init__(self):
+        self.cancel_event = threading.Event()
+
+    def cancel(self) -> None:
+        self.cancel_event.set()
+
+
+def run_usb_helper(cmd: list[str], stdin_text: str, disks, on_progress, on_line, on_done) -> UsbRun:
+    """Root-Helfer für USB klonen/formatieren, Agent-Stick und Boot-Stick im Hintergrund starten. disks: die
+    beteiligten UsbDisk (Überwachung „Datenträger getrennt“). Rückrufe im GTK-Hauptthread wie bei run_helper."""
+    from okula_recovery import usbjobs
+    cwd = str(Path(stick.__file__).resolve().parent.parent)
+    handle = UsbRun()
+    proc = usbjobs.HelperProcess(cmd, stdin_text, cwd=cwd, idents=[d.ident() for d in disks if d is not None])
+
+    def work():
+        try:
+            ok, error = proc.run(handle.cancel_event, lambda f, m: GLib.idle_add(on_progress, f, m),
+                                 lambda line: GLib.idle_add(on_line, line))
+        except Exception as e:  # nie ohne Ende: der Dialog darf nicht hängen bleiben
+            ok, error = False, str(e)
+        GLib.idle_add(on_done, ok, error)
+
+    threading.Thread(target=work, daemon=True).start()
+    return handle
+
+
+def result_status(ok: bool, error: str) -> str:
+    """Text im Fortschrittsbalken am Ende: Fertig / Abgebrochen / Datenträger getrennt / Fehlgeschlagen."""
+    if ok:
+        return "Fertig"
+    if error.startswith("Datenträger getrennt"):
+        return "Datenträger getrennt – abgebrochen"
+    if error.startswith("Abgebrochen"):
+        return "Abgebrochen"
+    return "Fehlgeschlagen"
+
+
 
 def boot_keys_table() -> Gtk.Widget:
     """Tabelle „Boot-Menü-Taste je Hersteller“ (zum Starten vom Stick)."""
@@ -169,7 +220,10 @@ class StickDialog(Gtk.Dialog):
         self.image = image
         self.image_size = stick.tree_size(Path(image)) if image else 0
         self.disk_sizes: dict[str, int] = {}
+        self.disks: dict[str, stick.UsbDisk] = {}
+        self.run_handle: UsbRun | None = None
         self.btn_close = self.add_button("Schliessen", Gtk.ResponseType.CLOSE)
+        self.btn_cancel = self.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
         self.btn_start = self.add_button("Stick vorbereiten", Gtk.ResponseType.APPLY)
         self.btn_start.get_style_context().add_class("destructive-action")
         self.connect("response", self.on_response)
@@ -254,6 +308,7 @@ class StickDialog(Gtk.Dialog):
         self.get_content_area().add(grid)
         self.refresh_disks()
         self.show_all()
+        self.btn_cancel.hide()
 
     # ---------- Zustand ----------
 
@@ -269,6 +324,7 @@ class StickDialog(Gtk.Dialog):
         for w in (self.btn_download, self.btn_close, self.btn_refresh, self.disk_combo, self.iso_chooser,
                   self.server_ip):
             w.set_sensitive(not self.busy)
+        self.btn_cancel.set_visible(self.run_handle is not None)
 
     def _set_busy(self, busy: bool) -> None:
         self.busy = busy
@@ -290,6 +346,7 @@ class StickDialog(Gtk.Dialog):
         disks = stick.list_usb_disks()
         need = self.required_size() if self.image else stick.MIN_SIZE
         self.disk_sizes = {d.path: d.size for d in disks}
+        self.disks = {d.path: d for d in disks}
         for d in disks:
             self.disk_combo.append(d.path, d.label + ("  – zu klein" if d.size < need else ""))
         if disks:
@@ -337,6 +394,13 @@ class StickDialog(Gtk.Dialog):
     def on_response(self, _dlg, response: int) -> None:
         if response == Gtk.ResponseType.APPLY:
             self.start_write()
+        elif response == Gtk.ResponseType.CANCEL:
+            if self.run_handle is not None and confirm(
+                    self, "Wirklich abbrechen?", "Der Stick bleibt unvollständig und muss danach neu erstellt "
+                    "werden.", ok_label="Abbrechen"):
+                self.btn_cancel.set_sensitive(False)
+                self.append_log("Wird abgebrochen …")
+                self.run_handle.cancel()
         elif not self.busy:
             self.destroy()
 
@@ -354,25 +418,28 @@ class StickDialog(Gtk.Dialog):
             return
         try:
             cmd = helper_command(device, iso, self.server_ip.get_text().strip(), self.image,
-                                 self.source_disk.get_active_id())
+                                 self.source_disk.get_active_id(), self.disks.get(device))
         except FileNotFoundError as e:
             self.append_log(str(e))
             return
 
         key_hex = agentclient.load_or_create_key().hex()
+        self.run_handle = run_usb_helper(cmd, key_hex + "\n", [self.disks.get(device)], self._on_progress,
+                                         self.append_log, self._on_written)
         self._set_busy(True)
+        self.btn_cancel.set_sensitive(True)
         self.unplug_hint.show()
         self.append_log(f"{'Restore-Stick' if self.image else 'Agent-Stick'} wird auf {device} erstellt …")
-        run_helper(cmd, key_hex + "\n", self._on_progress, self.append_log, self._on_written)
 
     def _on_written(self, ok: bool, error: str) -> bool:
+        self.run_handle = None
         self._set_busy(False)
         self.unplug_hint.hide()
         if ok:
             self.progress.set_fraction(1.0)
             self.progress.set_text("Stick bereit")
         else:
-            self.progress.set_text("Fehlgeschlagen")
+            self.progress.set_text(result_status(ok, error))
             if error:
                 self.append_log(f"Fehler: {error}")
         self.refresh_disks()

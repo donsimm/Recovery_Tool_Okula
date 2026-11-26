@@ -16,11 +16,11 @@ Ausgabe zeilenweise wie beim Agent-Stick: PROGRESS <0..1> <Text> / WARN / DONE /
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import os
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
@@ -29,7 +29,7 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from okula_recovery import oslib, stick, udf
+from okula_recovery import oslib, stick, udf, usbguard
 
 ISO_ROOT = Path("/mnt")                 # nur ISOs vom eingehängten NAS
 FAT32_MAX = 4 * 1024**3 - 1
@@ -128,7 +128,7 @@ def capacity_test(device: str, size: int, progress: Progress) -> None:
         unit = token + off.to_bytes(8, "little") + b"OKULA-CAPTEST\0\0\0"
         return (unit * (BLOCK // len(unit) + 1))[:BLOCK]
 
-    fd = os.open(device, os.O_RDWR)
+    fd = usbguard.open_dev(device, os.O_RDWR)
     try:
         for i, off in enumerate(offsets):
             os.pwrite(fd, pattern(off), off)
@@ -154,6 +154,7 @@ def badblocks_test(device: str, progress: Progress) -> None:
     """Vollständiger Schreib-/Lesetest (zerstört den Inhalt, der Stick wird danach ohnehin neu beschrieben)."""
     if not shutil.which("badblocks"):
         raise StickError("badblocks fehlt (Paket e2fsprogs)")
+    usbguard.check_path(device)
     proc = subprocess.Popen(["badblocks", "-w", "-s", "-b", "4096", "-c", "256", "-t", "random", device],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     bad: list[str] = []
@@ -216,7 +217,7 @@ def write_dd(iso: Path, device: str, dev_size: int, compression: str, verify: bo
     expected = _expected_size(iso, compression)
     if expected and expected > dev_size:
         raise StickError(f"Stick zu klein: Abbild {expected / 1000**3:.1f} GB, Stick {dev_size / 1000**3:.1f} GB")
-    fd = os.open(device, os.O_RDWR)
+    fd = usbguard.open_dev(device, os.O_RDWR)
     h = hashlib.sha256()
     written = 0
     try:
@@ -401,6 +402,7 @@ def prepare(device: str, iso: str, mode: str, emit: Emit, scheme: str = "mbr", l
     if mode != "dd" and need > disk.size:
         raise StickError(f"Stick zu klein: {disk.size / 1000**3:.1f} GB, nötig {need / 1000**3:.1f} GB")
 
+    usbguard.check_all()  # B-029: vor dem ersten Schreiben noch derselbe Stick?
     for mp in sorted(disk.mountpoints, reverse=True):
         progress(0.01, f"{mp} wird ausgehängt")
         _run(["umount", mp])
@@ -461,7 +463,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--label", default="")
     ap.add_argument("--check", default="quick", choices=("none", "quick", "full"))
     ap.add_argument("--no-verify", action="store_true")
-    ap.add_argument("--unattend-stdin", action="store_true", help="autounattend.xml von stdin")
+    ap.add_argument("--unattend-stdin", action="store_true",
+                    help="autounattend.xml von stdin (eine Zeile, Base64 – stdin bleibt danach für „CANCEL“ offen)")
+    ap.add_argument("--ident", action="append", help="Seriennummer/Modell/Grösse des Sticks (JSON, vom Tool)")
     args = ap.parse_args(argv)
 
     def emit(kind: str, text: str) -> None:
@@ -470,15 +474,33 @@ def main(argv: list[str] | None = None) -> int:
     if os.geteuid() != 0:
         emit("ERROR", "Muss als root laufen (sudo okula-make-stick iso-stick …)")
         return 1
-    # Abbruch von aussen (kill): wie ein Fehler behandeln, damit Einhängepunkte aufgeräumt werden
-    signal.signal(signal.SIGTERM, lambda *_a: sys.exit("Abgebrochen"))
+    # Abbruch (CANCEL, stdin zu, kill): wie ein Fehler behandeln, damit Einhängepunkte aufgeräumt werden
+    usbguard.install_sigterm()
     try:
-        unattend = sys.stdin.read() if args.unattend_stdin else None
-        if unattend is not None and not unattend.lstrip().startswith("<?xml"):
-            raise ValueError("autounattend.xml ungültig")
+        unattend = read_unattend(sys.stdin.readline()) if args.unattend_stdin else None
+        usbguard.guard(usbguard.idents_for([args.device], args.ident))  # B-029
+        usbguard.watch(emit)
         prepare(args.device, args.iso, args.mode, emit, args.scheme, args.label, args.check,
                 not args.no_verify, unattend)
+    except usbguard.Cancelled as e:
+        emit("ERROR", str(e) or usbguard.reason())
+        return 1
     except (StickError, oslib.OsLibError, udf.UdfError, ValueError, OSError) as e:
-        emit("ERROR", str(e))
+        emit("ERROR", str(usbguard.explain(e)))
         return 1
     return 0
+
+
+def unattend_line(xml: str) -> str:
+    """autounattend.xml für stdin: eine Zeile Base64 (stdin bleibt danach offen für „CANCEL“)."""
+    return base64.b64encode(xml.encode("utf-8")).decode("ascii") + "\n"
+
+
+def read_unattend(line: str) -> str:
+    try:
+        xml = base64.b64decode(line.strip(), validate=True).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        raise ValueError("autounattend.xml ungültig") from None
+    if not xml.lstrip().startswith("<?xml"):
+        raise ValueError("autounattend.xml ungültig")
+    return xml

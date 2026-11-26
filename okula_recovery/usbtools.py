@@ -13,7 +13,9 @@ Formatieren: FAT32, FAT16, exFAT, NTFS, ext4/3/2, Btrfs, XFS, F2FS, HFS+, UDF od
 ohne Partitionstabelle. Vorher wahlweise Schnelltest (gefälschte Sticks), Nullen schreiben oder badblocks.
 
 Nur Datenträger aus stick.list_usb_disks() (USB/Wechseldatenträger, keine Systemdisk).
-Ausgabe zeilenweise: PROGRESS <0..1> <Text> / WARN / DONE / ERROR. Abbrechen: Zeile „CANCEL“ auf stdin.
+Ausgabe zeilenweise: PROGRESS <0..1> <Text> / WARN / DONE / ERROR. Abbrechen: Zeile „CANCEL“ auf stdin oder stdin
+schliessen. B-029: --ident (Seriennummer) je Datenträger, Prüfung vor jedem Öffnen, Abbruch bei getrenntem
+Datenträger (usbguard.py).
 """
 
 from __future__ import annotations
@@ -23,9 +25,7 @@ import json
 import os
 import re
 import shutil
-import signal
 import subprocess
-import sys
 import tempfile
 import threading
 import time
@@ -33,8 +33,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from okula_recovery import stick
+from okula_recovery import stick, usbguard
 from okula_recovery.stick import StickError
+from okula_recovery.usbguard import Cancelled  # noqa: F401  (früher hier definiert)
+from okula_recovery.usbguard import open_dev
 
 Emit = Callable[[str, str], None]
 Progress = Callable[[float, str], None]
@@ -159,6 +161,7 @@ def partition_table(spec: FsSpec, scheme: str) -> str | None:
 # ---------- gemeinsame Bausteine ----------
 
 def _run(cmd: list[str], input: str | None = None) -> str:
+    usbguard.check_args(cmd)  # B-029: noch derselbe Datenträger?
     r = subprocess.run(cmd, input=input, capture_output=True, text=True)
     if r.returncode != 0:
         raise StickError(f"{Path(cmd[0]).name}: {(r.stderr or r.stdout).strip()[-600:]}")
@@ -202,7 +205,7 @@ def sector_size(device: str) -> int:
 
 
 def device_size(device: str) -> int:
-    fd = os.open(device, os.O_RDONLY)
+    fd = open_dev(device, os.O_RDONLY)
     try:
         return os.lseek(fd, 0, os.SEEK_END)
     finally:
@@ -230,7 +233,12 @@ def rate_text(done: int, total: int, started: float) -> str:
 def copy_range(src: str, dst: str, length: int, progress: Progress, what: str,
                src_off: int = 0, dst_off: int = 0) -> None:
     """length Bytes von src (ab src_off) nach dst (ab dst_off) kopieren, Cache laufend freigeben."""
-    fin, fout = os.open(src, os.O_RDONLY), os.open(dst, os.O_WRONLY)
+    fin = open_dev(src, os.O_RDONLY)
+    try:
+        fout = open_dev(dst, os.O_WRONLY)
+    except BaseException:
+        os.close(fin)
+        raise
     try:
         done, started, last, since_sync = 0, time.monotonic(), 0.0, 0
         while done < length:
@@ -260,7 +268,12 @@ def copy_range(src: str, dst: str, length: int, progress: Progress, what: str,
 
 
 def compare_range(src: str, dst: str, length: int, progress: Progress) -> None:
-    fa, fb = os.open(src, os.O_RDONLY), os.open(dst, os.O_RDONLY)
+    fa = open_dev(src, os.O_RDONLY)
+    try:
+        fb = open_dev(dst, os.O_RDONLY)
+    except BaseException:
+        os.close(fa)
+        raise
     try:
         _drop(fb)
         done, started, last = 0, time.monotonic(), 0.0
@@ -282,7 +295,7 @@ def compare_range(src: str, dst: str, length: int, progress: Progress) -> None:
 
 
 def write_zeros(device: str, size: int, progress: Progress) -> None:
-    fd = os.open(device, os.O_WRONLY)
+    fd = open_dev(device, os.O_WRONLY)
     zero = bytes(CHUNK)
     try:
         done, started, last, since_sync = 0, time.monotonic(), 0.0, 0
@@ -307,6 +320,7 @@ class _Child:
     """Unterprozess, dessen stderr laufend gelesen wird (Fortschritt von partclone, kein Pipe-Stau)."""
 
     def __init__(self, cmd: list[str]):
+        usbguard.check_args(cmd)
         self.proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         self.pct: float | None = None
         self.tail = b""
@@ -423,6 +437,7 @@ def clone(source: str, target: str, mode: str, verify: bool, emit: Emit) -> None
     if source == target:
         raise StickError("Quelle und Ziel sind derselbe Datenträger")
     src, dst = _usb_disk(source), _usb_disk(target)
+    usbguard.check_all()  # B-029: noch dieselben Datenträger wie beim Start im Tool?
     if sector_size(source) != sector_size(target):
         raise StickError(f"Unterschiedliche Sektorgrösse ({sector_size(source)} / {sector_size(target)} Byte) – "
                          "die Partitionstabelle würde nicht passen. Klonen nicht möglich.")
@@ -515,6 +530,7 @@ def format_disk(device: str, fs: str, scheme: str, label: str, prep: str, emit: 
         raise StickError(f"{spec.title}: Programm {spec.tool} fehlt (Paket {spec.package} installieren)")
     progress(0.0, "Datenträger wird geprüft")
     disk = _usb_disk(device)
+    usbguard.check_all()  # B-029
     size = device_size(device)
     if scheme == "mbr" and size > MBR_LIMIT and sector_size(device) == 512 and fs != "none":
         raise StickError("MBR reicht nur bis 2 TiB – für diesen Datenträger GPT wählen")
@@ -644,20 +660,6 @@ def disk_details() -> dict[str, DiskInfo]:
 
 # ---------- Einstieg (okula-make-stick usb-clone / usb-format) ----------
 
-def _watch_cancel() -> None:
-    """Zeile „CANCEL“ auf stdin → wie SIGTERM abbrechen (der Benutzer darf root-Prozesse nicht beenden)."""
-    def run():
-        for line in sys.stdin:
-            if line.strip() == "CANCEL":
-                os.kill(os.getpid(), signal.SIGTERM)
-                return
-    threading.Thread(target=run, daemon=True).start()
-
-
-class Cancelled(Exception):
-    pass
-
-
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="okula-make-stick usb-clone|usb-format")
     sp = ap.add_subparsers(dest="cmd", required=True)
@@ -672,6 +674,8 @@ def main(argv: list[str]) -> int:
     f.add_argument("--scheme", default="mbr", choices=("mbr", "gpt", "none"))
     f.add_argument("--label", default="")
     f.add_argument("--prep", default="none", choices=("none", "quick", "zero", "full"))
+    for p in (c, f):
+        p.add_argument("--ident", action="append", help="Seriennummer/Modell/Grösse je Datenträger (JSON, vom Tool)")
     args = ap.parse_args(argv)
 
     def emit(kind: str, text: str) -> None:
@@ -681,22 +685,24 @@ def main(argv: list[str]) -> int:
         emit("ERROR", "Muss als root laufen (sudo okula-make-stick …)")
         return 1
 
-    def on_term(*_a):
-        raise Cancelled()
-
-    signal.signal(signal.SIGTERM, on_term)
-    _watch_cancel()
+    usbguard.install_sigterm()
     try:
+        # B-029: Datenträger überwachen (Identität, getrennt?), Abbrechen über stdin („CANCEL“ oder geschlossen)
+        if args.cmd == "usb-clone":
+            usbguard.guard(usbguard.idents_for([args.source, args.target], args.ident))
+        else:
+            usbguard.guard(usbguard.idents_for([args.device], args.ident))
+        usbguard.watch(emit)
         if args.cmd == "usb-clone":
             clone(args.source, args.target, args.mode, args.verify, emit)
         else:
             uid, gid = os.environ.get("SUDO_UID"), os.environ.get("SUDO_GID")
             owner = (int(uid), int(gid)) if uid and gid and uid.isdigit() and gid.isdigit() else None
             format_disk(args.device, args.fs, args.scheme, args.label, args.prep, emit, owner)
-    except Cancelled:
-        emit("ERROR", "Abgebrochen – der Ziel-Datenträger ist unvollständig und muss neu beschrieben werden")
+    except Cancelled as e:
+        emit("ERROR", str(e) or usbguard.reason())
         return 1
     except (StickError, ValueError, OSError) as e:
-        emit("ERROR", str(e))
+        emit("ERROR", str(usbguard.explain(e)))
         return 1
     return 0

@@ -1393,7 +1393,19 @@ Bei allen Sticks gilt: Der Stick wird dabei gelöscht.
 <i>Agent-Stick fertig</i>, <i>Restore-Stick fertig</i> bzw. <i>Boot-Stick fertig</i> („Der Stick kann jetzt
 abgezogen werden.“). Agent- und Restore-Stick werden vorher geprüft, beim Restore-Stick auch das Image auf der
 Datenpartition. Ging etwas schief (z. B. Stick zu früh abgezogen), erscheint rot <i>Stick nicht fertig</i> mit
-dem Grund: Stick nicht verwenden – neu erstellen."""),
+dem Grund: Stick nicht verwenden – neu erstellen.
+
+<b>Abbrechen, Datenträger getrennt, Seriennummer</b>
+Gilt für <i>Agent-USB-Stick erstellen</i>, <i>Boot-Stick aus ISO</i>, <i>USB klonen</i> und <i>USB formatieren</i>.
+•  <i>Abbrechen</i> im Fenster stoppt den Vorgang. Reagiert das Hilfsprogramm nicht innerhalb von 15 Sekunden
+    (z. B. weil ein Stick hängt), beendet das Tool es. Das Fenster bleibt nie bei „Wird abgebrochen …“ stehen.
+•  Wird ein Datenträger während des Vorgangs getrennt (abgezogen, Wackelkontakt, Hub), bricht der Vorgang ab:
+    „Datenträger getrennt – abgebrochen (Modell, Seriennummer)“. Das Ziel ist dann unvollständig und muss neu
+    beschrieben werden.
+•  Die Auswahlliste zeigt zu jedem Datenträger die Seriennummer (Kurzform „SN …“), damit gleiche Modelle
+    unterscheidbar sind. Beim Start merkt sich das Tool die Seriennummer. Steckt unter dem Gerätenamen
+    (z. B. /dev/sdb) inzwischen ein anderer Datenträger – nach dem Umstecken bekommen Sticks oft neue Namen –,
+    wird nichts geschrieben. Dann die Liste mit ⟳ neu laden und neu starten."""),
 
     ("USB klonen", """<big><b>USB-Stick oder externe Festplatte klonen</b></big>
 
@@ -1414,6 +1426,8 @@ Mit allen Partitionen, Dateien und – falls vorhanden – mit der Startfähigke
 
 Das Tool zeigt, ob das Ziel gross genug ist, wie schnell es kopiert und wie lange es noch dauert.
 <i>Abbrechen</i> stoppt den Vorgang. Das Ziel ist dann aber unvollständig.
+Wird Quelle oder Ziel während des Klonens getrennt, bricht das Klonen mit „Datenträger getrennt“ ab
+(Kapitel <i>Sticks erstellen</i>, „Abbrechen, Datenträger getrennt, Seriennummer“).
 
 <b>Gut zu wissen:</b>
 •  Nach dem Klonen haben beide Datenträger dieselben Kennungen.
@@ -1429,6 +1443,8 @@ Das Tool zeigt, ob das Ziel gross genug ist, wie schnell es kopiert und wie lang
 4.  Dateisystem wählen (siehe unten). Das Tool schlägt eines vor.
 5.  Auf Wunsch einen Namen eingeben.
 6.  Auf <i>Formatieren</i> klicken und bestätigen. <b>Alle Daten gehen verloren.</b>
+<i>Abbrechen</i> stoppt das Formatieren; der Datenträger muss danach neu formatiert werden. Zu „Datenträger
+getrennt“ und zur Seriennummer in der Liste: Kapitel <i>Sticks erstellen</i>.
 
 <b>Welches Dateisystem wofür?</b>
 •  <b>FAT32</b>: läuft fast überall (Windows, Mac, Linux, TV, Auto). Dateien höchstens 4 GB.
