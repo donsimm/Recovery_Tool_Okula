@@ -1120,3 +1120,10 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stic
       der Netzwerkzugriff des Servers hält den Ordner noch kurz offen“ (kein `[Errno 13]`), kein `.….partial` in
       `Software-Bibliothek` zurückgeblieben; dann melden
 - [ ] Nebenbei: Disk-Image erstellen, Datei-Backup, *Ordner kopieren* aufs NAS, ISO hochladen laufen wie bisher durch
+
+### I-043 Ordner einfärben
+- [ ] Geräteliste: Rechtsklick auf einen Ordner → *Farbe …* → z. B. Blau: Punkt ● vor dem Namen; *Keine Farbe* entfernt ihn
+- [ ] Archiv und „Betriebssysteme“: dasselbe bei Ordnern
+- [ ] Eingefärbten Ordner umbenennen und verschieben: Farbe bleibt; Tool neu starten: Farbe bleibt
+- [ ] Helles und dunkles Design: Punkte gut lesbar
+- [ ] Leeren eingefärbten Ordner löschen (*nur leer*): geht ohne Meldung „nicht leer“

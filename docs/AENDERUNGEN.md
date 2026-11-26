@@ -17,7 +17,7 @@ Kategorie ein (mit ID), leert den Eingang und hält die Kurzübersicht aktuell.
 |---|---|---|---|
 | 🐞 Bugs | 4 | 0 | 0 |
 | 🔧 Änderungen | 9 | 0 | 0 |
-| 💡 Ideen | 22 | 0 | 0 |
+| 💡 Ideen | 21 | 0 | 0 |
 | 🧪 Tests am realen System | siehe [TESTS.md](TESTS.md) | | |
 
 **Stand 25.11.2026 – Version 0.2.0 (Tag `v0.2.0`):** letzter VM-Durchgang grün (VM-Win11-clean: Direktinstallation
@@ -28,8 +28,8 @@ Frühere Stände: Protokoll unten und `git log`.
 **Als Nächstes** (Reihenfolge Dominik 25.11.):
 1. ~~B-027, B-028~~ erledigt 25.11. (am realen System ungeprüft, [TESTS.md](TESTS.md) „B-027“, „B-028“). Klein dazu: Startdialog bei kaputter Schlüsseldatei (`ui.py:135`) und Verlauf „abgebrochen“ von Hand gestarteter Aufträge (`ui.py:4202`) → bei Ä-048.
 2. ~~I-012~~ BitLocker entsperren erledigt 25.11. (am realen System ungeprüft, [TESTS.md](TESTS.md) „I-012“; neuer Agent-Stick und Netzwerkstart nötig). Offen dazu: Ausführungsrecht `packaging/okula-bitlocker` im Repo (install.sh setzt 0755), Schlüssel beim Zusammenführen zweier Geräte übernehmen.
-3. ~~I-042~~ Office und ~~Ä-050~~ Info-Feld erledigt 26.11. (am Gerät ungeprüft, TESTS.md „I-042“, „Ä-050“). ~~Ä-051~~ Ordner senden: Software wie Content erledigt 26.11. ~~Ä-052, B-029, B-030, Ä-053~~ erledigt 26.11. (am Gerät ungeprüft). Als Nächstes **I-044** Raspberry Pi (SD-Karten sichern/bespielen), dann **I-043** Ordner einfärben.
-4. **I-043** Ordner einfärben (Geräteliste und Archiv).
+3. ~~I-042~~ Office und ~~Ä-050~~ Info-Feld erledigt 26.11. (am Gerät ungeprüft, TESTS.md „I-042“, „Ä-050“). ~~Ä-051~~ Ordner senden: Software wie Content erledigt 26.11. ~~Ä-052, B-029, B-030, Ä-053~~ erledigt 26.11. (am Gerät ungeprüft). ~~B-031~~ erledigt 26.11. Als Nächstes **I-044** Raspberry Pi (SD-Karten sichern/bespielen).
+4. ~~I-043~~ Ordner einfärben erledigt 26.11. (am Gerät ungeprüft, [TESTS.md](TESTS.md) „I-043“).
 5. Danach: Kleines aus dem VM-Test (**Ä-047**, **B-023**, **B-024**), Datensicherheit (**I-016**, **I-006**, **Ä-003**),
    **I-017** Rescue, **I-011** Multicast; **Ä-048**/**Ä-049** und zweite Review-Runde.
 6. Am realen Gerät: **B-013** (OEM-Schlüssel), **B-004** (EliteBook UEFI), offene Prüfungen [TESTS.md](TESTS.md) „Übersicht“.
@@ -85,7 +85,6 @@ steht im jeweiligen Protokoll-Eintrag.
 | I-035 | ⚪ | offen | Okuli | **Hinweis bei VM-Disk grösser als freier Platz:** Ä-037 bietet „VM-Disk auf 1001 GB vergrössern“ an, obwohl der Server nur 889 GB frei hat (Befund 10.11., Probe-VM). Zum Zurückspielen reicht es (qcow2 wächst nur mit den belegten Daten), füllt sich die VM später, läuft der Server voll. Vorschlag: Hinweis „⚠ Disk grösser als der freie Platz auf dem Server (… GB)“ im Prüftext, ohne zu sperren |
 | I-036 | ⚪ | offen | Okuli | **Hardware-Fehler (MCE/WHEA) anzeigen:** Der Agent liest Kernel-Meldungen `mce: [Hardware Error]` (bzw. `rasdaemon`) und meldet sie im Tool (Gerätefenster, Verlauf, Hinweis in der Liste). Anlass B-010 (CPU 3 meldet laufend Fehler). Passt zu I-033 Hardware-Test |
 | I-040 | ⚪ | offen | Okuli/Dominik | **Windows-Aktivierung im Blick:** Der Agent liest den OEM-Key aus der Firmware (ACPI-Tabelle MSDM, unter Windows `(Get-CimInstance SoftwareLicensingService).OA3xOriginalProductKey`) und, wenn Windows läuft, den Aktivierungsstatus; das Tool zeigt beides im Gerätefenster bzw. Inventar. Beim Aufsetzen wird der passende allgemeine Setup-Key (RTM-Key) der Edition gesetzt, damit sich ein Gerät mit digitaler Lizenz oder Firmware-Key online von selbst aktiviert. Nur lizenzkonforme Wege (kein KMS-Emulator o. ä.); bei VMs gilt weiter „OEM-Key nie übernehmen“ (I-001). Anlass: Frage Dominik 19.11. zu GVLK/RTM-Keys |
-| I-043 | ⚪ | in Arbeit | Dominik | **Ordner einfärben:** Ordner in der Geräteliste (Kunden/Gruppen) und im Archiv (Images/ISOs) bekommen per Kontextmenü „Farbe …“ eine von etwa 8 festen Farben (oder keine); Anzeige als Farbpunkt bzw. -balken in der Liste, lesbar im hellen und dunklen Design. Farbe wird mit dem Ordner gespeichert und bleibt beim Verschieben/Umbenennen erhalten. Hilfe-Kapitel mitführen. Cockpit-Idee ID-0003 (11.11.), Umfang „beide“ Dominik 25.11. |
 
 Umgesetzte Ideen: Windows-Master-Image mit Sysprep ([MASTER-IMAGE.md](MASTER-IMAGE.md)), Ordner an Geräte senden
 ([ORDNER-SENDEN.md](ORDNER-SENDEN.md)), Automatisierung ([AUTOMATISIERUNG.md](AUTOMATISIERUNG.md)),
@@ -298,6 +297,14 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 26.11.2026
+- **I-043 – Ordner einfärben** (Von: Dominik, Cockpit-Idee ID-0003; Prompt
+  [I-043](prompts/I-043-ordner-einfaerben.md)). Rechtsklick auf einen Ordner → *Farbe …* (Rot, Orange, Gelb, Grün,
+  Türkis, Blau, Violett, Grau; *Keine Farbe*) in der Geräteliste (auch *Virtuelle Maschinen*), im Archiv und bei den
+  Ordnern unter „Betriebssysteme“. Anzeige als farbiger Punkt ● vor dem Namen, je Farbe ein Ton für helles und dunkles
+  Design. Gespeichert in `.okula-ordner.json` im Ordner selbst (neues Modul `folder_colors.py`), wandert beim
+  Umbenennen/Verschieben mit; die Datei zählt nirgends als Inhalt (Geräte laden, Transfer, NAS-Dateiliste), ein Ordner
+  nur mit Farbdatei gilt als leer und lässt sich löschen. Tests `tests/test_folder_colors.py`. Kein neuer Agent-Stick.
+  Doku von Okuli ergänzt (Agent lief ins Limit), abgenommen 26.11.
 - **B-031 – Umbenennen auf dem NAS: bis 90 s warten** (Von: Dominik/Okuli, 26.11.; Prompt
   [B-031](prompts/B-031-nas-umbenennen-warten.md)). Ursache: Der Linux-CIFS-Client hält einen frisch durchsuchten
   Ordner bis `dir_cache_timeout` (30 s) offen, B-030 wartete nur ~18 s. `nas.RENAME_ATTEMPTS` = 31,

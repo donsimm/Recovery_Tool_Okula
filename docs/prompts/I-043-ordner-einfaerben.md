@@ -1,6 +1,6 @@
 # I-043 – Ordner einfärben (Geräteliste und Archiv)
 
-Status: freigegeben · erstellt 26.11.2026 von der Projektleitung · Freigabe: Dominik 26.11.
+Status: abgenommen (Okuli 26.11., Commits 7e70f75, c68b097; Doku von Okuli) · erstellt 26.11.2026 von der Projektleitung · Freigabe: Dominik 26.11.
 
 ## Rolle und Einstieg
 
