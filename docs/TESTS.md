@@ -1114,7 +1114,9 @@ Nach `git pull && sudo ./install.sh` das Tool neu starten (kein neuer Agent-Stic
 - [ ] *Extras → Software-Bibliothek …* → *Ordner laden …* mit dem Office-Ordner (3,9 GB) erneut → Eintrag
       `office-16.0.20625.20142` entsteht, keine „Keine Berechtigung“-Meldung; dauert es, steht unter dem Balken kurz
       „Ordner wird fertiggestellt …“
-- [ ] Scheitert es trotzdem: Meldung „Kopie fertig, aber das NAS lässt den Ordner nicht umbenennen …“ (kein
-      `[Errno 13]`), kein `.….partial` in `Software-Bibliothek` zurückgeblieben; dann NAS-Indexierung/Virenscan für
-      den Ordner prüfen und melden
+- [ ] B-031: Ein grosser Ordner (Office) darf beim Laden bis ~90 s „Ordner wird fertiggestellt (bis 90 s) …“ zeigen
+      (CIFS `dir_cache_timeout` 30 s); danach entsteht der Eintrag ohne Fehlermeldung
+- [ ] Scheitert es trotzdem: Meldung „Kopie fertig, aber das NAS lässt den Ordner nicht umbenennen – nochmals laden;
+      der Netzwerkzugriff des Servers hält den Ordner noch kurz offen“ (kein `[Errno 13]`), kein `.….partial` in
+      `Software-Bibliothek` zurückgeblieben; dann melden
 - [ ] Nebenbei: Disk-Image erstellen, Datei-Backup, *Ordner kopieren* aufs NAS, ISO hochladen laufen wie bisher durch

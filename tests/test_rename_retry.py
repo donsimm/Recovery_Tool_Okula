@@ -1,4 +1,4 @@
-"""B-030: Umbenennen nach grossem Schreiben auf dem NAS mit Wiederholung (SMB hält Dateien noch kurz offen)."""
+"""B-030/B-031: Umbenennen nach grossem Schreiben auf dem NAS mit Wiederholung (SMB hält Dateien noch kurz offen)."""
 
 import errno
 import tempfile
@@ -74,7 +74,8 @@ class RenameRetryTest(unittest.TestCase):
         self.assertEqual(e.errno, errno.EACCES)
         self.assertIn("Kopie fertig, aber das NAS lässt den Ordner nicht umbenennen", str(e))
         self.assertIn("nochmals laden", str(e))
-        self.assertIn("NAS-Indexierung/Virenscan", str(e))
+        self.assertIn("Netzwerkzugriff des Servers hält den Ordner noch kurz offen", str(e))
+        self.assertNotIn("Virenscan", str(e))                 # B-031: falscher Hinweis entfernt
         self.assertNotIn("Errno", str(e))
         self.assertTrue(self.src.is_dir())                    # Aufräumen ist Sache des Aufrufers
 
@@ -93,8 +94,19 @@ class RenameRetryTest(unittest.TestCase):
         self.assertNotIsInstance(cm.exception, nas.RenameError)
         self.assertEqual(self.sleeps, [])
 
-    def test_default_pause_about_twenty_seconds(self):
-        self.assertAlmostEqual((nas.RENAME_ATTEMPTS - 1) * nas.RENAME_PAUSE, 18.0)
+    def test_default_wait_ninety_seconds(self):
+        # B-031: CIFS dir_cache_timeout (30 s) hält den Ordner offen – mindestens 3 × warten, insgesamt 90 s
+        self.assertAlmostEqual((nas.RENAME_ATTEMPTS - 1) * nas.RENAME_PAUSE, 90.0)
+        self.assertIn("bis 90 s", nas.FINISHING)
+
+    def test_default_arguments_wait_ninety_seconds(self):
+        err = PermissionError(errno.EACCES, "Keine Berechtigung")
+        sleeps: list[float] = []
+        with mock.patch.object(Path, "rename", side_effect=err):
+            with self.assertRaises(nas.RenameError):
+                nas.rename_retry(self.src, self.dst, sleep=sleeps.append)
+        self.assertEqual(len(sleeps), nas.RENAME_ATTEMPTS - 1)
+        self.assertAlmostEqual(sum(sleeps), 90.0)
 
 
 class SoftwareLoadRenameTest(unittest.TestCase):

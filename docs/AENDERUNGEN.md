@@ -41,7 +41,6 @@ steht im jeweiligen Protokoll-Eintrag.
 
 | ID | Prio | Status | Von | Beschreibung | Gemeldet |
 |---|---|---|---|---|---|
-| B-031 | 🟡 | in Arbeit | Dominik/Okuli | **Umbenennen auf dem NAS: B-030 wartet zu kurz.** Der CIFS-Client hält einen frisch durchsuchten Ordner bis `dir_cache_timeout` (30 s) offen; B-030 wartet nur ~18 s. Wiederholung auf ~90 s verlängern, Fehlermeldung ohne falschen Hinweis auf Indexierung/Virenscan. Prompt [B-031](prompts/B-031-nas-umbenennen-warten.md) | 26.11. |
 | B-023 | ⚪ | offen | Okuli | **Protokoll „Windows anpassen“ uneinheitlich, Startmenü meldet Hinweis trotz Paket.** VM-Test 25.11. (VM-Win11-clean, Direktinstallation, Vorlage Clean geändert, Pro Build 26200): Startmenü zeigt nur die Okula-Kacheln, `StartPins.ppkg` vom Tool installiert – trotzdem steht in der Zeile „Startmenü: Werbe-Kacheln entfernen“ und in „Wiederinstallation von Werbe-Apps sperren“ weiter der lange Pro-Hinweis (WhatsApp, LinkedIn, Adobe Express … von Hand lösen). Erwartet laut B-022: knappes „ok“, wenn das Paket greift. Zudem schreibt die erste Zeile (vor dem ersten Start, `winsetup.py`) „Startmenue“ und „ - “ statt Umlaut und „–“ und verweist auf eine „Zeile Startmenue beim ersten Start“, die es nicht gibt | 25.11. |
 | B-024 | ⚪ | offen | Okuli | **OneDrive entfernen meldet ok trotz Fehlercode.** Protokoll 25.11.: „OneDrive entfernen (OneDriveSetup /uninstall: -2147219813, Autostart entfernt: 2 Profile)“ mit Status ok. Rückgabewert prüfen (bekannter harmloser Code oder echter Fehler?) und entsprechend Hinweis statt ok melden | 25.11. |
 | B-013 | 🟡 | offen | Okuli | **Windows-Direktinstallation mit OEM-Schlüssel: Setup-Partition bleibt evtl. stehen.** Laut Microsoft Learn („Add a Custom Script to Windows Setup“) läuft `%WINDIR%\Setup\Scripts\SetupComplete.cmd` nicht, wenn Windows mit einem OEM-Schlüssel installiert wird (ausser Enterprise). Die Direktinstallation setzt den Schlüssel (hinterlegt oder aus dem BIOS, MSDM) in specialize als `ProductKey`; ist es ein OEM-Schlüssel, würde das Aufräumen (Setup-Partition „OKULASETUP“ löschen, C: vergrössern) ausbleiben. Hinweis des Agenten bei I-038 (12.11.), am realen System ungeprüft. Prüfen an einem Gerät mit Schlüssel im BIOS; falls bestätigt: Aufräumen zusätzlich anders auslösen (z. B. wie bei I-038 als RunSynchronous bzw. FirstLogonCommand) | 12.11. |
@@ -299,6 +298,15 @@ Gerätename = Name im Tool.
 Neueste zuoberst.
 
 ### 26.11.2026
+- **B-031 – Umbenennen auf dem NAS: bis 90 s warten** (Von: Dominik/Okuli, 26.11.; Prompt
+  [B-031](prompts/B-031-nas-umbenennen-warten.md)). Ursache: Der Linux-CIFS-Client hält einen frisch durchsuchten
+  Ordner bis `dir_cache_timeout` (30 s) offen, B-030 wartete nur ~18 s. `nas.RENAME_ATTEMPTS` = 31,
+  `RENAME_PAUSE` = 3 s → 30 Pausen, insgesamt 90 s (≥ 3 × `dir_cache_timeout`; keine Ableitung aus `/sys`, fester
+  Wert reicht). Anzeige einmal „Ordner wird fertiggestellt (bis 90 s) …“. Fehlermeldung ohne falschen Hinweis auf
+  Indexierung/Virenscan: „Kopie fertig, aber das NAS lässt den Ordner nicht umbenennen – nochmals laden; der
+  Netzwerkzugriff des Servers hält den Ordner noch kurz offen“. Alle Aufrufer (software, agentclient, backups,
+  nasfiles, oslib, shrink) übergeben keine eigene Wartezeit und erben die 90 s. Kein neuer Agent-Stick. Tests
+  `tests/test_rename_retry.py`. Prüfung in `TESTS.md` (B-030).
 - **Ä-052 – USB-Vorgänge im Hintergrund** (Von: Dominik, 26.11.; Prompt
   [Ä-052/B-029](prompts/AE-052-usb-im-hintergrund.md)). *USB klonen*, *USB formatieren*, *Agent-USB-Stick erstellen*
   (auch Restore-Stick) und *Boot-Stick aus ISO* sind nicht mehr modal (`modal=False`, weiter `transient_for`,

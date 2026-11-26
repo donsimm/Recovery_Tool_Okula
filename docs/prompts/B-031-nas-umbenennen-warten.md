@@ -1,6 +1,6 @@
 # B-031 – Umbenennen auf dem NAS: bis ~90 s warten (CIFS dir_cache_timeout)
 
-Status: freigegeben · erstellt 26.11.2026 von der Projektleitung · Freigabe: Dominik 26.11.
+Status: umgesetzt (Commit siehe `git log --grep B-031`) · erstellt 26.11.2026 von der Projektleitung · Freigabe: Dominik 26.11.
 
 ## Rolle und Einstieg
 

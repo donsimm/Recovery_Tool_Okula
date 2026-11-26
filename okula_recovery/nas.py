@@ -267,10 +267,10 @@ def _image_kind(name: str) -> str | None:
 
 # ---------- B-030: Umbenennen nach grossem Schreiben ----------
 
-RENAME_ATTEMPTS = 10      # insgesamt ~20 s
-RENAME_PAUSE = 2.0
+RENAME_ATTEMPTS = 31      # B-031: 30 Pausen × 3 s = 90 s (≥ 3 × CIFS dir_cache_timeout von 30 s)
+RENAME_PAUSE = 3.0
 RENAME_RETRY_ERRNOS = (errno.EACCES, errno.EPERM, errno.EBUSY)
-FINISHING = "Ordner wird fertiggestellt …"
+FINISHING = "Ordner wird fertiggestellt (bis 90 s) …"
 
 
 class RenameError(OSError):
@@ -285,15 +285,16 @@ class RenameError(OSError):
 
 
 def rename_failed_message(again: str = "nochmals versuchen", what: str = "den Ordner") -> str:
-    return (f"Kopie fertig, aber das NAS lässt {what} nicht umbenennen (Datei noch geöffnet?) – {again}; "
-            "bleibt es, NAS-Indexierung/Virenscan für diesen Ordner prüfen")
+    return (f"Kopie fertig, aber das NAS lässt {what} nicht umbenennen – {again}; "
+            "der Netzwerkzugriff des Servers hält den Ordner noch kurz offen")
 
 
 def rename_retry(src: str | Path, dst: str | Path, attempts: int = RENAME_ATTEMPTS, pause: float = RENAME_PAUSE,
                  on_wait: Callable[[], None] | None = None, again: str = "nochmals versuchen",
                  what: str = "den Ordner", sleep: Callable[[float], None] | None = None) -> None:
     """B-030: .partial-/Arbeitsordner nach grossem Schreiben umbenennen. SMB verweigert das Umbenennen, solange darin
-    eine Datei offen ist (CIFS schliesst verzögert, NAS-Indexierung/Virenscan) – dann warten und erneut versuchen.
+    eine Datei offen ist (B-031: der Linux-CIFS-Client hält einen durchsuchten Ordner bis dir_cache_timeout, 30 s,
+    offen) – dann bis ~90 s warten und erneut versuchen.
     Nie, wenn das Ziel schon existiert; andere Fehler sofort. on_wait: einmal vor dem ersten erneuten Versuch."""
     src, dst = Path(src), Path(dst)
     for attempt in range(1, max(1, attempts) + 1):
