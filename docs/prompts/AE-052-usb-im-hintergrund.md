@@ -1,6 +1,6 @@
 # Ä-052 + B-029 – USB-Vorgänge im Hintergrund, Abbrechen zuverlässig
 
-Status: freigegeben · erstellt 26.11.2026 von der Projektleitung · Umfang wie mit Dominik besprochen (26.11.) · in Arbeit 26.11.
+Status: abgenommen (Okuli 26.11.) · erstellt 26.11.2026 von der Projektleitung · Umfang wie mit Dominik besprochen (26.11.)
 
 ## Rolle und Einstieg
 

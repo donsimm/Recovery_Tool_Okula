@@ -1,6 +1,6 @@
 # B-030 – Umbenennen nach dem Laden scheitert auf dem NAS („Keine Berechtigung“)
 
-Status: in Arbeit 26.11. · erstellt 26.11.2026 von der Projektleitung · Freigabe: Dominik 26.11.
+Status: abgenommen (Okuli 26.11.) · erstellt 26.11.2026 von der Projektleitung · Freigabe: Dominik 26.11.
 
 ## Rolle und Einstieg
 

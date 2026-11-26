@@ -1,6 +1,6 @@
 # Ä-053 – Ordner senden: „Alle“ bei Software ersetzt den ganzen Ordner
 
-Status: in Arbeit 26.11. · erstellt 26.11.2026 von der Projektleitung · Entscheid Dominik 26.11.
+Status: abgenommen (Okuli 26.11.) · erstellt 26.11.2026 von der Projektleitung · Entscheid Dominik 26.11.
 
 ## Rolle und Einstieg
 
